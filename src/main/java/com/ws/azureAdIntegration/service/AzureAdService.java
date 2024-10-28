@@ -93,6 +93,7 @@ public class AzureAdService {
                         .displayName(graphUser.displayName)
                         .givenName(graphUser.givenName)
                         .surname(graphUser.surname)
+                        .accountEnabled(graphUser.accountEnabled)
                         .mail(graphUser.mail)
                         .userPrincipalName(graphUser.userPrincipalName)
                         .mobilePhone(graphUser.mobilePhone)

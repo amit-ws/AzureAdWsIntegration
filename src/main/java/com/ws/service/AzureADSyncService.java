@@ -2,8 +2,8 @@ package com.ws.service;
 
 
 import com.microsoft.graph.models.Organization;
-import com.microsoft.graph.models.User;
 import com.microsoft.graph.requests.GraphServiceClient;
+import com.microsoft.graph.requests.GroupCollectionPage;
 import com.microsoft.graph.requests.UserCollectionPage;
 import com.ws.azureAdIntegration.entity.*;
 import com.ws.azureAdIntegration.repository.*;
@@ -59,6 +59,7 @@ public class AzureADSyncService {
         this.wsTenantId = wsTenantId;
         AzureTenant azureTenant = syncTenantData(tenantId);
         List<AzureUser> azureUsers = syncUsersData(azureTenant);
+        List<AzureGroup> azureGroups = syncGroupsData(azureTenant);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -91,5 +92,29 @@ public class AzureADSyncService {
 
         existingAzureUserMap.clear();
         return azureUserRepository.saveAll(azureUsers);
+    }
+
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public List<AzureGroup> syncGroupsData(AzureTenant azureTenant) {
+        GroupCollectionPage result = this.graphClient.groups()
+                .buildRequest()
+                .get();
+
+        Map<String, AzureGroup> existingAzureGroupMap = azureGroupRepository.findAllByAzureTenant(azureTenant)
+                .stream()
+                .collect(Collectors.toMap(AzureGroup::getAzureId, Function.identity()));
+
+        List<AzureGroup> azureGroups = result.getCurrentPage().stream()
+                .map(group -> existingAzureGroupMap.containsKey(group.id)
+                        ? AzureGroup.fromGroup(group, existingAzureGroupMap.get(group.id))
+                        : AzureGroup.fromGroup(group, AzureGroup.builder()
+                        .wsTenantId(this.wsTenantId)
+                        .azureTenant(azureTenant)
+                        .build()))
+                .collect(Collectors.toList());
+
+        existingAzureGroupMap.clear();
+        return azureGroupRepository.saveAll(azureGroups);
     }
 }

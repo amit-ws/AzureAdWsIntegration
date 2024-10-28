@@ -26,6 +26,7 @@ public class AzureUser {
     String displayName;
     String givenName;
     String surname;
+    Boolean accountEnabled;
     String mail;
     String userPrincipalName;
     String mobilePhone;
@@ -60,14 +61,15 @@ public class AzureUser {
         azureUser.setDisplayName(user.displayName);
         azureUser.setGivenName(user.givenName);
         azureUser.setSurname(user.surname);
+        azureUser.setAccountEnabled(user.accountEnabled);
         azureUser.setMail(user.mail);
         azureUser.setUserPrincipalName(user.userPrincipalName);
         azureUser.setMobilePhone(user.mobilePhone);
         azureUser.setJobTitle(user.jobTitle);
         azureUser.setDepartment(user.department);
         azureUser.setOfficeLocation(user.officeLocation);
-        azureUser.setUpdatedAt(StringUtils.isEmpty(azureUser.getId().toString()) ? null : new Date());
-        azureUser.setCreatedAt(StringUtils.isEmpty(azureUser.getId().toString()) ? new Date() : azureUser.getCreatedAt());
+        azureUser.setUpdatedAt(azureUser.getId() == null ? null : new Date());
+        azureUser.setCreatedAt(azureUser.getId() == null ? new Date() : azureUser.getCreatedAt());
         return azureUser;
     }
 }
