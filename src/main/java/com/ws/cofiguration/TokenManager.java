@@ -13,9 +13,9 @@ public class TokenManager {
 
     private TokenManager() {
         clientSecretCredential = new ClientSecretCredentialBuilder()
-                .clientId("9acacaf6-02e1-4e06-84d9-5da4a7ffd2aa")
-                .clientSecret("sJB8Q~G-YDCgTRPv6J~LZCQkNyDyUATwQvP_Bcx0")
-                .tenantId("00b1d06b-e316-45af-a6d2-2734f62a5acd")
+                .clientId("")
+                .clientSecret("")
+                .tenantId("")
                 .build();
     }
 

@@ -26,7 +26,7 @@ public class AzureAdController {
 
     @GetMapping("/sync")
     public void syncAzureWsData() {
-        azureAdService.syncAzureData(1, "00b1d06b-e316-45af-a6d2-2734f62a5acd", "9acacaf6-02e1-4e06-84d9-5da4a7ffd2aa", "sJB8Q~G-YDCgTRPv6J~LZCQkNyDyUATwQvP_Bcx0");
+        azureAdService.syncAzureData(1, "", "", "");
     }
 }
 
