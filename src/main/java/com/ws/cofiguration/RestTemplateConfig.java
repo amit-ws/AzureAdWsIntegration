@@ -1,4 +1,4 @@
-package com.ws.config;
+package com.ws.cofiguration;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

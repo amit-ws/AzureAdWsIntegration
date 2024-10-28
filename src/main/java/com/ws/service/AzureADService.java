@@ -1,52 +1,92 @@
 package com.ws.service;
 
-import com.azure.identity.ClientSecretCredential;
-import com.azure.identity.ClientSecretCredentialBuilder;
-import com.microsoft.graph.authentication.TokenCredentialAuthProvider;
 import com.microsoft.graph.models.*;
 import com.microsoft.graph.requests.GraphServiceClient;
+import lombok.extern.slf4j.Slf4j;
 import okhttp3.Request;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.util.LinkedList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 @Service
+@Slf4j
 public class AzureADService {
-    @Value("${spring.cloud.azure.active-directory.client-id}")
-    private String clientId;
 
-    @Value("${spring.cloud.azure.active-directory.client-secret}")
-    private String clientSecret;
+    //    @Value("${spring.cloud.azure.active-directory.client-id}")
+    private String clientId = "9acacaf6-02e1-4e06-84d9-5da4a7ffd2aa";
 
-    @Value("${spring.cloud.azure.active-directory.tenant-id}")
-    private String tenantId;
+    //    @Value("${spring.cloud.azure.active-directory.client-secret}")
+    private String clientSecret = "sJB8Q~G-YDCgTRPv6J~LZCQkNyDyUATwQvP_Bcx0";
 
-    private final GraphServiceClient<Request> graphClient;
+    //    @Value("${spring.cloud.azure.active-directory.tenant-id}")
+    private String tenantId = "00b1d06b-e316-45af-a6d2-2734f62a5acd";
 
-    public AzureADService() {
-        ClientSecretCredential clientSecretCredential = new ClientSecretCredentialBuilder()
-                .clientId(clientId)
-                .clientSecret(clientSecret)
-                .tenantId(tenantId)
-                .build();
+    private GraphServiceClient<Request> graphClient;
 
-        List<String> scopes = new LinkedList<>();
-        scopes.add("https://graph.microsoft.com/.default");
 
-        TokenCredentialAuthProvider tokenCredentialAuthProvider =
-                new TokenCredentialAuthProvider(scopes, clientSecretCredential);
 
-        this.graphClient = GraphServiceClient
-                .builder()
-                .authenticationProvider(tokenCredentialAuthProvider)
-                .buildClient();
+//    public AzureADService() {
+//        ClientSecretCredential clientSecretCredential = new ClientSecretCredentialBuilder()
+//                .clientId(clientId)
+//                .clientSecret(clientSecret)
+//                .tenantId(tenantId)
+//                .build();
+//
+//        List<String> scopes = new LinkedList<>();
+//        scopes.add("https://graph.microsoft.com/.default");
+//
+//        TokenCredentialAuthProvider tokenCredentialAuthProvider =
+//                new TokenCredentialAuthProvider(scopes, clientSecretCredential);
+//
+//        this.graphClient = GraphServiceClient
+//                .builder()
+//                .authenticationProvider(tokenCredentialAuthProvider)
+//                .buildClient();
+//    }
+
+//    public AzureADService() {
+//        IAuthenticationProvider authProvider = requestUrl -> {
+//            OAuth2AuthenticationToken authentication = (OAuth2AuthenticationToken) SecurityContextHolder.getContext().getAuthentication();
+//
+//            OAuth2AuthenticatedPrincipal principal = authentication.getPrincipal();
+//            String accessToken = principal.getAttribute("access_token");
+//            return CompletableFuture.completedFuture("Bearer " + accessToken);
+//        };
+//
+//        this.graphClient = GraphServiceClient
+//                .builder()
+//                .authenticationProvider(authProvider)
+//                .buildClient();
+//    }
+
+
+    public String someMethod(){
+        return TokenManager.getInstance().getAccessToken();
+    }
+
+    private GraphServiceClient getGraphClient() {
+        if (graphClient == null) {
+            String accessToken = TokenManager.getInstance().getAccessToken();
+            log.info("accessToken: {}", accessToken);
+
+            if (accessToken == null) {
+                throw new RuntimeException("Access token not found");
+            }
+
+            log.info("access token: {}", accessToken);
+
+            this.graphClient = GraphServiceClient
+                    .builder()
+                    .authenticationProvider(requestUrl -> CompletableFuture.completedFuture("Bearer " + accessToken))
+                    .buildClient();
+        }
+        return graphClient;
     }
 
     public User getMyProfile() {
         try {
-            return graphClient.me().buildRequest().get();
+            return getGraphClient().me().buildRequest().get();
         } catch (Exception e) {
             System.err.println("Error fetching profile: " + e.getMessage());
             e.printStackTrace();
@@ -56,7 +96,7 @@ public class AzureADService {
 
     public List<User> fetchAllUsers() {
         try {
-            return graphClient.users()
+            return getGraphClient().users()
                     .buildRequest()
                     .get()
                     .getCurrentPage();

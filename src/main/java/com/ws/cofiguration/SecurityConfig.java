@@ -1,4 +1,4 @@
-package com.ws.config;
+package com.ws.cofiguration;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -13,10 +13,16 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                .authorizeRequests(auth -> auth
-                        .anyRequest().permitAll() // Allow all requests
-                )
-                .csrf(csrf -> csrf.disable()); // Disable CSRF protection (optional)
+                .csrf(csrf -> csrf.disable()) // Disable CSRF protection (use carefully)
+                .authorizeHttpRequests(authz -> authz
+                        .anyRequest().permitAll() // Allow all requests without authentication
+                );
+
         return http.build();
     }
 }
+
+
+
+
+

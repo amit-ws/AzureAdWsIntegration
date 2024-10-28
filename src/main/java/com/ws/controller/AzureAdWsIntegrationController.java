@@ -1,35 +1,49 @@
 package com.ws.controller;
 
-
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
+import com.ws.service.TokenManager;
+import lombok.AccessLevel;
+import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
-import net.minidev.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
-
-import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
-import org.springframework.security.oauth2.client.annotation.RegisteredOAuth2AuthorizedClient;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.util.ObjectUtils;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
 
+import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
 import java.util.Map;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api")
 @Slf4j
+@FieldDefaults(level = AccessLevel.PRIVATE)
 public class AzureAdWsIntegrationController {
+    @Value("${spring.cloud.azure.active-directory.client-id}")
+    String clientId;
 
-    private final RestTemplate restTemplate;
+    @Value("${spring.cloud.azure.active-directory.client-secret}")
+    String clientSecret;
 
-    private final String clientId = "9acacaf6-02e1-4e06-84d9-5da4a7ffd2aa";
-    private final String clientSecret = "sJB8Q~G-YDCgTRPv6J~LZCQkNyDyUATwQvP_Bcx0";
-    private final String tenantId = "00b1d06b-e316-45af-a6d2-2734f62a5acd";
-    private final String redirectUri = "http://localhost:9495/login/oauth2/code/";
+    @Value("${spring.cloud.azure.active-directory.tenant-id}")
+    String tenantId;
+
+    @Value("${spring.cloud.azure.active-directory.redirect-uri}")
+    String redirectUri;
+
+    @Value("${spring.cloud.azure.active-directory.authBaseUrl}")
+    String authBaseUrl;
+
+    @Value("${spring.cloud.azure.active-directory.token-uri}")
+    String tokeUri;
+    final UUID stateCode = UUID.randomUUID();
+    final RestTemplate restTemplate;
+
 
     @Autowired
     public AzureAdWsIntegrationController(RestTemplate restTemplate) {
@@ -37,77 +51,121 @@ public class AzureAdWsIntegrationController {
     }
 
     @GetMapping("/login")
-    public String login() {
-        log.info("into login");
-        String authorizationUrl = "https://login.microsoftonline.com/" + tenantId + "/oauth2/v2.0/authorize"
+    public String login() throws UnsupportedEncodingException {
+        return "https://login.microsoftonline.com/" + tenantId + "/oauth2/v2.0/authorize"
                 + "?client_id=" + clientId
                 + "&response_type=code"
-                + "&redirect_uri=" + redirectUri
+                + "&redirect_uri=" + URLEncoder.encode(redirectUri, "UTF-8")
                 + "&response_mode=query"
-                + "&scope=openid https://graph.microsoft.com/User.Read https://graph.microsoft.com/Directory.Read.All"
-                + "&state=12345";
-
-        log.info("authorizationUrl: {}", authorizationUrl);
-        return "redirect:" + authorizationUrl;
+                + "&scope=" + URLEncoder.encode("offline_access User.Read Mail.Read", "UTF-8")
+                + "&state=" + stateCode;
     }
 
-    @GetMapping("/login/oauth2/code")
-    public String callback(@RequestParam("code") String code, @RequestParam("state") String state, @RequestParam("session_state") String sessionState) {
-        log.info("into /callback");
-        log.info("code: {}", code);
-        String accessToken = exchangeAuthorizationCodeForToken(code);
-        fetchUsers(accessToken);
-        return "Access token received. Check logs for user data.";
+    @GetMapping("/callback")
+    public ResponseEntity callback(@RequestParam("code") String code, @RequestParam("state") String state) {
+        if (!state.equals(stateCode.toString())) {
+            log.info(String.format("State didn't match with what client return. Original: %s Response: %s", stateCode, state));
+            throw new RuntimeException("Invalid request");
+        }
+
+        Map tokenResponse = exchangeCodeForAccessToken(code);
+        TokenManager tokenManager = TokenManager.getInstance();
+        tokenManager.setFieldValues(tokenResponse);
+        return ResponseEntity.ok(tokenResponse);
     }
 
-    private String exchangeAuthorizationCodeForToken(String code) {
-        log.info("Initiating access token exchange");
-        String tokenUrl = "https://login.microsoftonline.com/00b1d06b-e316-45af-a6d2-2734f62a5acd/oauth2/v2.0/token";
+    @GetMapping("/getToken")
+    public ResponseEntity getTokenHandler() {
+        return ResponseEntity.ok(TokenManager.getInstance());
+    }
 
-        MultiValueMap<String, String> tokenParams = new LinkedMultiValueMap<>();
-        tokenParams.add("grant_type", "authorization_code");
-        tokenParams.add("client_id", clientId);
-        tokenParams.add("client_secret", clientSecret);
-        tokenParams.add("code", code);
-        tokenParams.add("redirect_uri", redirectUri);
+    @GetMapping("/refreshToken")
+    public ResponseEntity refreshTokenHandler() {
+        refreshAccessToken();
+        return ResponseEntity.ok(TokenManager.getInstance());
+    }
 
+
+    private Map exchangeCodeForAccessToken(String code) {
+        String url = authBaseUrl + tenantId + tokeUri;
         HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+        headers.setContentType(org.springframework.http.MediaType.APPLICATION_FORM_URLENCODED);
 
-        HttpEntity<MultiValueMap<String, String>> tokenRequest = new HttpEntity<>(tokenParams, headers);
-        ResponseEntity<Map> tokenResponse = restTemplate.postForEntity(tokenUrl, tokenRequest, Map.class);
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("client_id", clientId);
+        body.add("scope", "User.Read Mail.Read");
+        body.add("code", code);
+        body.add("redirect_uri", redirectUri);
+        body.add("grant_type", "authorization_code");
+        body.add("client_secret", clientSecret);
 
-        if (tokenResponse.getStatusCode().is2xxSuccessful()) {
-            return (String) tokenResponse.getBody().get("access_token");
+        HttpEntity<MultiValueMap<String, String>> requestEntity = new HttpEntity<>(body, headers);
+        ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, requestEntity, Map.class);
+
+        if (response.getStatusCode().is2xxSuccessful()) {
+            return response.getBody();
         } else {
-            log.error("Error fetching access token: {}", tokenResponse.getStatusCode());
+            log.error("Error fetching access token: {}", response.getStatusCode());
             throw new RuntimeException("Failed to fetch access token");
         }
     }
 
-
-    public void fetchUsers(String accessToken) {
-        log.info("intp /fetchUsers");
-        String url = "https://graph.microsoft.com/v1.0/users";
-
+    private Map refreshAccessToken() {
+        String url = authBaseUrl + tenantId + tokeUri;
+        TokenManager tokenManager = TokenManager.getInstance();
+        if (ObjectUtils.isEmpty(tokenManager) && StringUtils.isEmpty(tokenManager.getRefreshToken())) {
+            throw new RuntimeException("No refresh token found. Please login!");
+        }
         HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", "Bearer " + accessToken);
-        HttpEntity<String> entity = new HttpEntity<>(headers);
+        headers.setContentType(org.springframework.http.MediaType.APPLICATION_FORM_URLENCODED);
 
-        RestTemplate restTemplate = new RestTemplate();
-        ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("client_id", clientId);
+        body.add("scope", "User.Read Mail.Read");
+        body.add("refresh_token", tokenManager.getRefreshToken());
+        body.add("grant_type", "refresh_token");
+        body.add("client_secret", clientSecret);
+
+        HttpEntity<MultiValueMap<String, String>> requestEntity = new HttpEntity<>(body, headers);
+        ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, requestEntity, Map.class);
 
         if (response.getStatusCode().is2xxSuccessful()) {
-            String usersJson = response.getBody();
-            log.info("Users: {}", usersJson);
+            return response.getBody();
         } else {
-            log.error("Error fetching users: {}", response.getStatusCode());
+            log.error("Error refreshing access token: {}", response.getStatusCode());
+            throw new RuntimeException("Failed to refresh access token");
         }
     }
 
-
-
-
+//    @GetMapping("/fetchMyProfile")
+//    public Map<String, Object> fetchMyProfile() {
+//        final String accessToken = TokenManager.getInstance().getAccessToken();
+//        String url = "https://graph.microsoft.com/v1.0/me";
+//
+//        HttpHeaders headers = new HttpHeaders();
+//        headers.set("Authorization", "Bearer " + accessToken);
+//        HttpEntity<String> entity = new HttpEntity<>(headers);
+//
+//        RestTemplate restTemplate = new RestTemplate();
+//        ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
+//
+//        if (response.getStatusCode().is2xxSuccessful()) {
+//            String usersJson = response.getBody();
+//            log.info("Users: {}", usersJson);
+//
+//            ObjectMapper objectMapper = new ObjectMapper();
+//            Map<String, Object> userProfile;
+//            try {
+//                userProfile = objectMapper.readValue(usersJson, Map.class);
+//            } catch (JsonProcessingException e) {
+//                throw new RuntimeException(e);
+//            }
+//            return userProfile;
+//        } else {
+//            log.error("Error fetching users: {}", response.getStatusCode());
+//            throw new RuntimeException("Error status: " + response.getStatusCode());
+//        }
+//    }
 
 
 }

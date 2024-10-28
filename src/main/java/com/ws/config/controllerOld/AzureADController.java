@@ -1,4 +1,4 @@
-package com.ws.controller;
+package com.ws.config.controllerOld;
 
 import com.ws.dto.AssignRole;
 import com.ws.dto.CreateUser;
@@ -19,6 +19,13 @@ public class AzureADController {
     @Autowired
     public AzureADController(AzureADService azureADService) {
         this.azureADService = azureADService;
+    }
+
+
+
+    @GetMapping("/getMeToken")
+    public String someMethod() {
+       return azureADService.someMethod();
     }
 
 
