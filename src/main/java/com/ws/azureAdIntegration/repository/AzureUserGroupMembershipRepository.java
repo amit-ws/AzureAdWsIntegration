@@ -1,5 +1,6 @@
 package com.ws.azureAdIntegration.repository;
 
+import com.ws.azureAdIntegration.entity.AzureUser;
 import com.ws.azureAdIntegration.entity.AzureUserGroupMembership;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -15,7 +16,8 @@ public interface AzureUserGroupMembershipRepository extends JpaRepository<AzureU
 
 
     @Query(value = "select au.* from azure_user au left join azure_user_group_membership augm on au.id = augm.user_id where augm.group_id = :groupId",
-    nativeQuery = true)
-    List<Map<String, Object> >fetchUsersForGroup(Integer groupId);
+            nativeQuery = true)
+    List<Map<String, Object>> fetchUsersForGroup(Integer groupId);
 
+    void deleteByAzureUser(AzureUser azureUser);
 }

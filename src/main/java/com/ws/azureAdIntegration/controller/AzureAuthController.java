@@ -3,6 +3,7 @@ package com.ws.azureAdIntegration.controller;
 import com.ws.azureAdIntegration.entity.AzureUserCredential;
 import com.ws.azureAdIntegration.repository.AzureUserCredentialRepository;
 import com.ws.azureAdIntegration.service.AzureAdService;
+import com.ws.service.AzureADSyncService;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,18 +22,19 @@ import java.util.Optional;
 public class AzureAuthController {
     final AzureUserCredentialRepository azureUserCredentialRepository;
     //    final TenantAdminService tenantAdminService;
-    final AzureAdService azureAdService;
+//    final AzureAdService azureAdService;
+    final AzureADSyncService azureADSyncService;
 
     @Autowired
-    public AzureAuthController(AzureUserCredentialRepository azureUserCredentialRepository, AzureAdService azureAdService) {
+    public AzureAuthController(AzureUserCredentialRepository azureUserCredentialRepository, AzureADSyncService azureADSyncService) {
         this.azureUserCredentialRepository = azureUserCredentialRepository;
-        this.azureAdService = azureAdService;
+        this.azureADSyncService = azureADSyncService;
     }
 
     @PostMapping("/configure")
     public ResponseEntity creatAzureConfiguration(@RequestBody Map<String, String> payload) {
         String clientId = payload.get("client_id");
-        String tenantId = payload.get("tenant_id");
+        String tenantId = payload.get("az_tenant_id");
         String clientSecret = payload.get("client_secret");
         String objectId = payload.get("object_id");
 //        String wsTenantEmail = payload.get("ws_tenant_email");
@@ -56,10 +58,10 @@ public class AzureAuthController {
                 .createdAt(new Date())
                 .build();
         azureUserCredentialRepository.save(azureUserCredential);
-        azureAdService.syncAzureData(wsTenantId, tenantId, clientId, clientSecret);
+        azureADSyncService.syncAzureData(wsTenantId, tenantId, clientId, clientSecret);
         return ResponseEntity
-                .status(HttpStatus.CREATED)
-                .body(Collections.singletonMap("message", "User configured successfully!"));
+                .status(HttpStatus.ACCEPTED)
+                .body(Collections.singletonMap("message", "User configured successfully and Data sync started!"));
     }
 
 

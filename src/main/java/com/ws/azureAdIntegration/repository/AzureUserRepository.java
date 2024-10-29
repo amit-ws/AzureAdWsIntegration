@@ -11,4 +11,6 @@ import java.util.List;
 public interface AzureUserRepository extends JpaRepository<AzureUser, Integer> {
 
     List<AzureUser> findAllByAzureTenant(AzureTenant azureTenant);
+
+    void deleteAllByAzureTenant(AzureTenant azureTenant);
 }

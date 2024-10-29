@@ -1,4 +1,4 @@
-package com.ws.azureAdIntegration.controller.fromWsBackend.azure;
+package com.ws.azureAdIntegration.controller;
 
 import com.ws.service.AzureADSyncService;
 import lombok.AccessLevel;
@@ -25,11 +25,11 @@ public class AzureADSyncController {
         this.azureADSyncService = azureADSyncService;
     }
 
-    @GetMapping
-    public ResponseEntity syncAzureADData(@RequestParam Integer wsTenantId) {
-        azureADSyncService.syncAzureData(wsTenantId);
+    @GetMapping("onDemand")
+    public ResponseEntity syncAzureADData(@RequestParam String email) {
+        azureADSyncService.syncAzureData(email);
         return ResponseEntity
-                .status(HttpStatus.CREATED)
+                .status(HttpStatus.ACCEPTED)
                 .body(Collections.singletonMap("message", "Data synced successfully!"));
     }
 }

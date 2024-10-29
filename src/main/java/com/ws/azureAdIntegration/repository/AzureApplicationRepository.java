@@ -12,6 +12,7 @@ import java.util.List;
 public interface AzureApplicationRepository extends JpaRepository<AzureApplication, Integer> {
 
     List<AzureApplication> findAllByAzureTenant(@Param("azureTenant") AzureTenant azureTenant);
+    void deleteAllByAzureTenant(AzureTenant azureTenant);
 
 //    @Query("SELECT new com.ws.azureAdIntegration.dto.AzureApplicationDto(a.id, a.objectId, a.displayName, a.description, " +
 //            "a.homepage, a.publisher, a.disabledByMicrosoftStatus, a.isDeviceOnlyAuthSupported, " +

@@ -11,5 +11,8 @@ import java.util.List;
 public interface AzureGroupRepository extends JpaRepository<AzureGroup, Integer> {
 
     List<AzureGroup> findAllByAzureTenant(AzureTenant azureTenant);
+    List<AzureGroup> findAllByWsTenantId(Integer id);
+    void deleteAllByAzureTenant(AzureTenant azureTenant);
+
 
 }

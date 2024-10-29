@@ -13,4 +13,5 @@ public interface AzureTenantRepository extends JpaRepository<AzureTenant, Intege
     void deleteByAzureId(String azureTenantId);
 
 
+
 }

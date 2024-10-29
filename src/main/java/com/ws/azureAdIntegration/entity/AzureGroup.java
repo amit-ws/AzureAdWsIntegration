@@ -33,7 +33,6 @@ public class AzureGroup {
     String securityIdentifier;
 
     Date createdAt;
-    Date updatedAt;
     Integer wsTenantId; // Whiteswan account organization id
 
     @JsonIgnore
@@ -47,7 +46,7 @@ public class AzureGroup {
 //    Integer azureTenantId;
 
 
-    public static AzureGroup fromGroup(Group graphGroup, AzureGroup azureGroup) {
+    public static AzureGroup createFromGraphGroup(Group graphGroup, AzureGroup azureGroup) {
         azureGroup.setAzureId(graphGroup.id);
         azureGroup.setDisplayName(graphGroup.displayName);
         azureGroup.setDescription(graphGroup.description);
@@ -58,8 +57,7 @@ public class AzureGroup {
         azureGroup.setVisibility(graphGroup.visibility);
         azureGroup.setAzureCreatedDateTime(graphGroup.createdDateTime);
         azureGroup.setSecurityIdentifier(graphGroup.securityIdentifier);
-        azureGroup.setCreatedAt(azureGroup.getId() == null ? new Date() : azureGroup.getCreatedAt());
-        azureGroup.setUpdatedAt(azureGroup.getId() == null ? null : new Date());
+        azureGroup.setCreatedAt(new Date());
         return azureGroup;
     }
 }

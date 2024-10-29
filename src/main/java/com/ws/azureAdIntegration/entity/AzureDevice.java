@@ -2,6 +2,7 @@ package com.ws.azureAdIntegration.entity;
 
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.microsoft.graph.models.Device;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
@@ -41,5 +42,19 @@ public class AzureDevice {
     @JsonIgnore
     @OneToOne(mappedBy = "azureDevice", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     AzureUserDeviceRelationship azureUserDeviceRelationship;
+
+
+    public static AzureDevice createFromGraphDevice(Device graphDevice, AzureDevice azureDevice) {
+        azureDevice.setAzureId(graphDevice.id);
+        azureDevice.setDeviceId(graphDevice.deviceId);
+        azureDevice.setDisplayName(graphDevice.displayName);
+        azureDevice.setOperatingSystem(graphDevice.operatingSystem);
+        azureDevice.setOperatingSystemVersion(graphDevice.operatingSystemVersion);
+        azureDevice.setAccountEnabled(Boolean.TRUE.equals(graphDevice.accountEnabled));
+        azureDevice.setDeviceVersion(graphDevice.deviceVersion);
+        azureDevice.setAzureRegistrationDateTime(graphDevice.registrationDateTime);
+        azureDevice.setCreatedAt(new Date());
+        return azureDevice;
+    }
 
 }

@@ -5,7 +5,6 @@ import com.microsoft.graph.models.User;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
-import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Date;
@@ -38,7 +37,6 @@ public class AzureUser {
     Date createdAt;
     Integer wsTenantId; // Whiteswan account organization id
 
-    Date updatedAt;
 
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
@@ -56,7 +54,7 @@ public class AzureUser {
     List<AzureUserDeviceRelationship> azureUserDeviceRelationships = new ArrayList<>();
 
 
-    public static AzureUser fromUser(User user, AzureUser azureUser) {
+    public static AzureUser createFromGraphUser(User user, AzureUser azureUser) {
         azureUser.setAzureId(user.id);
         azureUser.setDisplayName(user.displayName);
         azureUser.setGivenName(user.givenName);
@@ -68,8 +66,7 @@ public class AzureUser {
         azureUser.setJobTitle(user.jobTitle);
         azureUser.setDepartment(user.department);
         azureUser.setOfficeLocation(user.officeLocation);
-        azureUser.setUpdatedAt(azureUser.getId() == null ? null : new Date());
-        azureUser.setCreatedAt(azureUser.getId() == null ? new Date() : azureUser.getCreatedAt());
+        azureUser.setCreatedAt(new Date());
         return azureUser;
     }
 }

@@ -64,20 +64,7 @@ public class AzureAdService {
         Organization organization = this.graphClient.organization(tenantId)
                 .buildRequest()
                 .get();
-        AzureTenant azureTenant = AzureTenant.builder()
-                .azureId(organization.id)
-                .displayName(organization.displayName)
-                .countryLetterCode(organization.countryLetterCode)
-                .azureCreatedDateTime(organization.createdDateTime)
-                .createdAt(new Date())
-                .postalCode(organization.postalCode)
-                .preferredLanguage(organization.preferredLanguage)
-                .state(organization.state)
-                .street(organization.street)
-                .tenantType(organization.tenantType)
-                .wsTenantId(this.wsTenantId)
-                .build();
-
+        AzureTenant azureTenant = AzureTenant.createFromGraphOrganization(organization, AzureTenant.builder().wsTenantId(this.wsTenantId).build());
         return azureTenantRepository.save(azureTenant);
     }
 
@@ -88,22 +75,10 @@ public class AzureAdService {
                 .buildRequest()
                 .get();
         List<AzureUser> azureUserList = result.getCurrentPage().stream()
-                .map(graphUser -> AzureUser.builder()
-                        .azureId(graphUser.id)
-                        .displayName(graphUser.displayName)
-                        .givenName(graphUser.givenName)
-                        .surname(graphUser.surname)
-                        .accountEnabled(graphUser.accountEnabled)
-                        .mail(graphUser.mail)
-                        .userPrincipalName(graphUser.userPrincipalName)
-                        .mobilePhone(graphUser.mobilePhone)
-                        .jobTitle(graphUser.jobTitle)
-                        .department(graphUser.department)
-                        .officeLocation(graphUser.officeLocation)
+                .map(graphUser -> AzureUser.createFromGraphUser(graphUser, AzureUser.builder()
                         .wsTenantId(this.wsTenantId)
-                        .createdAt(new Date())
                         .azureTenant(azureTenant)
-                        .build())
+                        .build()))
                 .collect(Collectors.toList());
         return azureUserRepository.saveAll(azureUserList);
     }
@@ -115,21 +90,10 @@ public class AzureAdService {
                 .buildRequest()
                 .get();
         List<AzureGroup> azureGroupList = result.getCurrentPage().stream()
-                .map(graphGroup -> AzureGroup.builder() // Use builder to create Group entity
-                        .azureId(graphGroup.id)
-                        .displayName(graphGroup.displayName)
-                        .description(graphGroup.description)
-                        .mail(graphGroup.mail)
-                        .mailNickname(graphGroup.mailNickname)
-                        .mailEnabled(graphGroup.mailEnabled)
-                        .securityEnabled(graphGroup.securityEnabled)
-                        .visibility(graphGroup.visibility)
-                        .azureCreatedDateTime(graphGroup.createdDateTime)
-                        .securityIdentifier(graphGroup.securityIdentifier)
+                .map(graphGroup -> AzureGroup.createFromGraphGroup(graphGroup, AzureGroup.builder()
                         .wsTenantId(this.wsTenantId)
-                        .createdAt(new Date())
                         .azureTenant(azureTenant)
-                        .build())
+                        .build()))
                 .collect(Collectors.toList());
         return azureGroupRepository.saveAll(azureGroupList);
     }

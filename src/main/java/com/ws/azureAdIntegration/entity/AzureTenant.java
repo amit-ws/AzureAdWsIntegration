@@ -32,8 +32,6 @@ public class AzureTenant {
     String tenantType;
     OffsetDateTime azureCreatedDateTime;
 
-    Date updatedAt;
-
     Date createdAt;
     Integer wsTenantId; // Whiteswan account organization id
 
@@ -54,7 +52,7 @@ public class AzureTenant {
     List<AzureDevice> azureDevices = new ArrayList<>();
 
 
-    public static AzureTenant fromAzureOrganization(Organization organization, AzureTenant azureTenant) {
+    public static AzureTenant createFromGraphOrganization(Organization organization, AzureTenant azureTenant) {
         azureTenant.setAzureId(organization.id);
         azureTenant.setDisplayName(organization.displayName);
         azureTenant.setCountryLetterCode(organization.countryLetterCode);
@@ -64,7 +62,7 @@ public class AzureTenant {
         azureTenant.setState(organization.state);
         azureTenant.setStreet(organization.street);
         azureTenant.setTenantType(organization.tenantType);
-        azureTenant.setUpdatedAt(new Date());
+        azureTenant.setCreatedAt(new Date());
         return azureTenant;
     }
 }
