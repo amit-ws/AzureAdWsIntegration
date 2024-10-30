@@ -6,6 +6,7 @@ import com.microsoft.graph.models.Organization;
 import com.microsoft.graph.requests.*;
 import com.ws.azureAdIntegration.entity.*;
 import com.ws.azureAdIntegration.repository.*;
+import com.ws.azureAdIntegration.util.EncryptionUtil;
 import com.ws.cofiguration.azure.GraphServiceClientFactory;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
@@ -73,7 +74,17 @@ public class AzureADSyncService {
         AzureUserCredential azureUserCredential = Optional.ofNullable(azureUserCredentialRepository.findByWsTenantId(wsTenantId).get())
                 .orElseThrow(() -> new RuntimeException("No Azure AD configuration found!"));
         String tenantId = azureUserCredential.getTenantId();
-        this.graphClient = graphServiceClientFactory.createClient(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), tenantId);
+        String clientSecret = Optional.ofNullable(azureUserCredential.getClientSecret())
+                .map(secret -> {
+                    try {
+                        return EncryptionUtil.decrypt(secret);
+                    } catch (Exception e) {
+                        log.error("Decryption error: ", e.getMessage());
+                        throw new RuntimeException("Failed to decrypt client secret");
+                    }
+                })
+                .orElse(null);
+        this.graphClient = graphServiceClientFactory.createClient(azureUserCredential.getClientId(), clientSecret, tenantId);
         this.wsTenantId = wsTenantId;
         AzureTenant azureTenant = syncTenantData(tenantId);
         syncApplications(azureTenant);

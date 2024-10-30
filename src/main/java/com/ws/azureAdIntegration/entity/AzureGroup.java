@@ -32,7 +32,7 @@ public class AzureGroup {
     OffsetDateTime azureCreatedDateTime;
     String securityIdentifier;
 
-    Date createdAt;
+    Date syncedAt;
     Integer wsTenantId; // Whiteswan account organization id
 
     @JsonIgnore
@@ -57,7 +57,7 @@ public class AzureGroup {
         azureGroup.setVisibility(graphGroup.visibility);
         azureGroup.setAzureCreatedDateTime(graphGroup.createdDateTime);
         azureGroup.setSecurityIdentifier(graphGroup.securityIdentifier);
-        azureGroup.setCreatedAt(new Date());
+        azureGroup.setSyncedAt(new Date());
         return azureGroup;
     }
 }

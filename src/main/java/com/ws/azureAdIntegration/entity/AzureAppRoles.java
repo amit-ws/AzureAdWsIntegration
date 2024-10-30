@@ -28,7 +28,7 @@ public class AzureAppRoles {
     String origin;
     String value;
 
-    Date createdAt;
+    Date syncedAt;
 
 
     @JsonIgnore
@@ -43,7 +43,7 @@ public class AzureAppRoles {
         azureAppRole.setIsEnabled(graphAppRole.isEnabled);
         azureAppRole.setOrigin(graphAppRole.origin);
         azureAppRole.setValue(graphAppRole.value);
-        azureAppRole.setCreatedAt(new Date());
+        azureAppRole.setSyncedAt(new Date());
         return azureAppRole;
     }
 }

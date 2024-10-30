@@ -34,7 +34,7 @@ public class AzureUser {
     String officeLocation;
     String preferredLanguage;
 
-    Date createdAt;
+    Date syncedAt;
     Integer wsTenantId; // Whiteswan account organization id
 
 
@@ -66,7 +66,7 @@ public class AzureUser {
         azureUser.setJobTitle(user.jobTitle);
         azureUser.setDepartment(user.department);
         azureUser.setOfficeLocation(user.officeLocation);
-        azureUser.setCreatedAt(new Date());
+        azureUser.setSyncedAt(new Date());
         return azureUser;
     }
 }

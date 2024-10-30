@@ -30,7 +30,7 @@ public class AzureDevice {
     int deviceVersion;
     OffsetDateTime azureRegistrationDateTime;
 
-    Date createdAt;
+    Date syncedAt;
     Integer wsTenantId; // Whiteswan account organization id
 
     @JsonIgnore
@@ -53,7 +53,7 @@ public class AzureDevice {
         azureDevice.setAccountEnabled(Boolean.TRUE.equals(graphDevice.accountEnabled));
         azureDevice.setDeviceVersion(graphDevice.deviceVersion);
         azureDevice.setAzureRegistrationDateTime(graphDevice.registrationDateTime);
-        azureDevice.setCreatedAt(new Date());
+        azureDevice.setSyncedAt(new Date());
         return azureDevice;
     }
 

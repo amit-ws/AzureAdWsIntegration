@@ -32,7 +32,7 @@ public class AzureTenant {
     String tenantType;
     OffsetDateTime azureCreatedDateTime;
 
-    Date createdAt;
+    Date syncedAt;
     Integer wsTenantId; // Whiteswan account organization id
 
     @JsonIgnore
@@ -62,7 +62,7 @@ public class AzureTenant {
         azureTenant.setState(organization.state);
         azureTenant.setStreet(organization.street);
         azureTenant.setTenantType(organization.tenantType);
-        azureTenant.setCreatedAt(new Date());
+        azureTenant.setSyncedAt(new Date());
         return azureTenant;
     }
 }

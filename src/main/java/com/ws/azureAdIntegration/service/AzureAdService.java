@@ -160,7 +160,7 @@ public class AzureAdService {
                         .deviceVersion(graphDevice.deviceVersion)
                         .azureRegistrationDateTime(graphDevice.registrationDateTime)
                         .wsTenantId(this.wsTenantId)
-                        .createdAt(new Date())
+                        .syncedAt(new Date())
                         .azureTenant(azureTenant)
                         .build())
                 .collect(Collectors.toList());
@@ -184,7 +184,7 @@ public class AzureAdService {
                     .azureCreatedDateTime(graphApplication.createdDateTime)
                     .tags(graphApplication.tags)
                     .wsTenantId(this.wsTenantId)
-                    .createdAt(new Date())
+                    .syncedAt(new Date())
                     .azureTenant(azureTenant)
                     .build();
             application = azureApplicationRepository.save(application);
@@ -245,7 +245,7 @@ public class AzureAdService {
                         .origin(role.origin)
                         .value(role.value)
                         .application(azureApplication)
-                        .createdAt(new Date())
+                        .syncedAt(new Date())
                         .build())
                 .collect(Collectors.toList());
 

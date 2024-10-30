@@ -34,7 +34,7 @@ public class AzureApplication {
     String publisherDomain;
     OffsetDateTime azureCreatedDateTime;
 
-    Date createdAt;
+    Date syncedAt;
     Integer wsTenantId; // Whiteswan account organization id
     //    Integer azureTenantId;
 
@@ -74,7 +74,7 @@ public class AzureApplication {
         azureApp.setPublisherDomain(graphApp.publisherDomain);
         azureApp.setAzureCreatedDateTime(graphApp.createdDateTime);
         azureApp.setTags(graphApp.tags);
-        azureApp.setCreatedAt(new Date());
+        azureApp.setSyncedAt(new Date());
         return azureApp;
     }
 }
