@@ -1,8 +1,11 @@
 package com.ws.azureAdIntegration.service;
 
+import com.microsoft.graph.requests.GraphServiceClient;
+import com.ws.azureAdIntegration.constants.Constant;
 import com.ws.azureAdIntegration.dto.CreateAzureConfiguration;
 import com.ws.azureAdIntegration.entity.AzureUserCredential;
 import com.ws.azureAdIntegration.repository.AzureUserCredentialRepository;
+import com.ws.azureAdIntegration.util.AzureAuthUtil;
 import com.ws.azureAdIntegration.util.EncryptionUtil;
 import com.ws.service.AzureADSyncService;
 import lombok.AccessLevel;
@@ -15,28 +18,31 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.RequestParam;
 
-import java.util.Collections;
-import java.util.Date;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 
 @Service
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class AzureAuthService {
     final Logger log = LoggerFactory.getLogger(this.getClass());
     final AzureUserCredentialRepository azureUserCredentialRepository;
+    final BackendApplicationLogservice backendApplicationLogservice;
     final AzureADSyncService azureADSyncService;
+    final AzureAuthUtil azureAuthUtil;
 
     @Autowired
-    public AzureAuthService(AzureUserCredentialRepository azureUserCredentialRepository, AzureADSyncService azureADSyncService) {
+    public AzureAuthService(AzureUserCredentialRepository azureUserCredentialRepository, BackendApplicationLogservice backendApplicationLogservice, AzureADSyncService azureADSyncService, AzureAuthUtil azureAuthUtil) {
         this.azureUserCredentialRepository = azureUserCredentialRepository;
+        this.backendApplicationLogservice = backendApplicationLogservice;
         this.azureADSyncService = azureADSyncService;
+        this.azureAuthUtil = azureAuthUtil;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Map creatAzureConfiguration(CreateAzureConfiguration createAzureConfiguration) {
+        Integer wsTenantId = 1;
+        String objectId = createAzureConfiguration.getObjectId().trim();
         String clientId = createAzureConfiguration.getClientId().trim();
-        String tenantId = createAzureConfiguration.getTenantId();
+        String tenantId = createAzureConfiguration.getTenantId().trim();
         String clientSecret = Optional.ofNullable(createAzureConfiguration.getClientSecret())
                 .map(secret -> {
                     try {
@@ -47,18 +53,13 @@ public class AzureAuthService {
                     }
                 })
                 .orElseThrow(() -> new RuntimeException("Client secret found as null"));
-        String objectId = createAzureConfiguration.getObjectId().trim();
-//        String wsTenantEmail = payload.get("ws_tenant_email");
-//        Long wsTenantId = tenantAdminRepository.findByEmail(wsTenantEmail)
-//                .filter(tenantAdmin -> tenantAdmin.equals(Role.SYS_ADMIN))
-//                .map(TenantAdmin::getId)
-//                .orElseThrow(() -> new RuntimeException(String.format("Only %s can configure Azure AD", Role.SYS_ADMIN)));
 
-        Integer wsTenantId = 1;
-
-        if (Optional.ofNullable(getAzureUserCredentialForWSTenant(wsTenantId)).isPresent()) {
-            throw new RuntimeException("Azure credentials already saved!");
-        }
+        log.info("Validating user's Azure-AD credentials..");
+        GraphServiceClient graphClient = azureAuthUtil.validateAzureCredentialsWithGraphApi(tenantId, clientId, createAzureConfiguration.getClientSecret(), objectId);
+        Optional.ofNullable(getAzureUserCredentialForWSTenant(wsTenantId))
+                .ifPresent(credential -> {
+                    throw new RuntimeException("Azure credentials already saved!");
+                });
 
         AzureUserCredential azureUserCredential = AzureUserCredential.builder()
                 .clientId(clientId)
@@ -69,7 +70,8 @@ public class AzureAuthService {
                 .createdAt(new Date())
                 .build();
         azureUserCredentialRepository.save(azureUserCredential);
-        azureADSyncService.syncAzureData(wsTenantId, tenantId, clientId, createAzureConfiguration.getClientSecret());
+        backendApplicationLogservice.saveAuditLog("ws-amit-tenant", wsTenantId, Constant.ADD, Constant.AZURE_CREDENTIALS_SAVED, "Info");
+        azureADSyncService.syncAzureData(wsTenantId, graphClient, tenantId);
         return Collections.singletonMap("message", "Credentials configured successfully and Data sync started!");
     }
 

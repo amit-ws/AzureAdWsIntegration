@@ -62,19 +62,4 @@ public class AzureApplication {
 
 //    @ElementCollection
 //    private List<String> oauth2Permissions;
-
-
-    public static AzureApplication createFromGraphApplication(Application graphApp, AzureApplication azureApp) {
-        azureApp.setObjectId(graphApp.id);
-        azureApp.setDisplayName(graphApp.displayName);
-        azureApp.setDescription(graphApp.description);
-        azureApp.setPublisher(graphApp.publisherDomain);
-        azureApp.setIsDeviceOnlyAuthSupported(graphApp.isDeviceOnlyAuthSupported);
-        azureApp.setDisabledByMicrosoftStatus(graphApp.disabledByMicrosoftStatus);
-        azureApp.setPublisherDomain(graphApp.publisherDomain);
-        azureApp.setAzureCreatedDateTime(graphApp.createdDateTime);
-        azureApp.setTags(graphApp.tags);
-        azureApp.setSyncedAt(new Date());
-        return azureApp;
-    }
 }

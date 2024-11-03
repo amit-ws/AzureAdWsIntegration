@@ -50,20 +50,5 @@ public class AzureTenant {
     @JsonIgnore
     @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     List<AzureDevice> azureDevices = new ArrayList<>();
-
-
-    public static AzureTenant createFromGraphOrganization(Organization organization, AzureTenant azureTenant) {
-        azureTenant.setAzureId(organization.id);
-        azureTenant.setDisplayName(organization.displayName);
-        azureTenant.setCountryLetterCode(organization.countryLetterCode);
-        azureTenant.setAzureCreatedDateTime(organization.createdDateTime);
-        azureTenant.setPostalCode(organization.postalCode);
-        azureTenant.setPreferredLanguage(organization.preferredLanguage);
-        azureTenant.setState(organization.state);
-        azureTenant.setStreet(organization.street);
-        azureTenant.setTenantType(organization.tenantType);
-        azureTenant.setSyncedAt(new Date());
-        return azureTenant;
-    }
 }
 

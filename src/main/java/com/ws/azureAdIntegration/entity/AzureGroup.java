@@ -44,20 +44,4 @@ public class AzureGroup {
     @JoinColumn(name = "ws_azure_tenant_id", referencedColumnName = "id")
     AzureTenant azureTenant;
 //    Integer azureTenantId;
-
-
-    public static AzureGroup createFromGraphGroup(Group graphGroup, AzureGroup azureGroup) {
-        azureGroup.setAzureId(graphGroup.id);
-        azureGroup.setDisplayName(graphGroup.displayName);
-        azureGroup.setDescription(graphGroup.description);
-        azureGroup.setMail(graphGroup.mail);
-        azureGroup.setMailNickname(graphGroup.mailNickname);
-        azureGroup.setMailEnabled(graphGroup.mailEnabled);
-        azureGroup.setSecurityEnabled(graphGroup.securityEnabled);
-        azureGroup.setVisibility(graphGroup.visibility);
-        azureGroup.setAzureCreatedDateTime(graphGroup.createdDateTime);
-        azureGroup.setSecurityIdentifier(graphGroup.securityIdentifier);
-        azureGroup.setSyncedAt(new Date());
-        return azureGroup;
-    }
 }

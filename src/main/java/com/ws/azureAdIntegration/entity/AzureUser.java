@@ -52,22 +52,5 @@ public class AzureUser {
     @JsonIgnore
     @OneToMany(mappedBy = "azureUser", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     List<AzureUserDeviceRelationship> azureUserDeviceRelationships = new ArrayList<>();
-
-
-    public static AzureUser createFromGraphUser(User user, AzureUser azureUser) {
-        azureUser.setAzureId(user.id);
-        azureUser.setDisplayName(user.displayName);
-        azureUser.setGivenName(user.givenName);
-        azureUser.setSurname(user.surname);
-        azureUser.setAccountEnabled(user.accountEnabled);
-        azureUser.setMail(user.mail);
-        azureUser.setUserPrincipalName(user.userPrincipalName);
-        azureUser.setMobilePhone(user.mobilePhone);
-        azureUser.setJobTitle(user.jobTitle);
-        azureUser.setDepartment(user.department);
-        azureUser.setOfficeLocation(user.officeLocation);
-        azureUser.setSyncedAt(new Date());
-        return azureUser;
-    }
 }
 
