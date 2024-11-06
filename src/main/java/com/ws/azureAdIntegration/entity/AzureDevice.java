@@ -26,8 +26,8 @@ public class AzureDevice {
     String displayName;
     String operatingSystem;
     String operatingSystemVersion;
-    boolean accountEnabled;
-    int deviceVersion;
+    Boolean accountEnabled;
+    Integer deviceVersion;
     OffsetDateTime azureRegistrationDateTime;
 
     Date syncedAt;

@@ -35,12 +35,9 @@ public class TokenManager {
     }
 
     public String getApplicationAccessToken() throws ExecutionException, InterruptedException {
-        if (accessToken == null) {
-            TokenRequestContext requestContext = new TokenRequestContext()
-                    .addScopes("https://graph.microsoft.com/.default");
-            accessToken = clientSecretCredential.getToken(requestContext).block().getToken();
-        }
-        return accessToken;
+        TokenRequestContext requestContext = new TokenRequestContext()
+                .addScopes("https://graph.microsoft.com/.default");
+        return accessToken = clientSecretCredential.getToken(requestContext).block().getToken();
     }
 
     public String getDelegatedAccessToken() {

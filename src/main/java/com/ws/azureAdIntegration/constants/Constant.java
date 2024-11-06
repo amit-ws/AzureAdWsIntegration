@@ -12,4 +12,9 @@ public interface Constant {
     String AZURE_USERS_GROUPS_MAPPED = "Azure users mapped with respective azure groups";
     String AZURE_USERS_DEVICES_MAPPED = "Azure users mapped with respective azure devices";
 
+
+    // Secret Encryption related
+    public static final String ENCRYPTION_KEY = "12345678901234567890123456789012";
+    public static final String ENCRYPTION_STANDARD = "AES";
+
 }

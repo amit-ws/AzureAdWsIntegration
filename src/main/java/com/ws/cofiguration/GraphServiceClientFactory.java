@@ -2,7 +2,6 @@ package com.ws.cofiguration;
 
 import com.microsoft.graph.authentication.IAuthenticationProvider;
 import com.microsoft.graph.requests.GraphServiceClient;
-import org.springframework.util.StringUtils;
 
 import java.net.URL;
 import java.util.concurrent.CompletableFuture;
@@ -21,11 +20,9 @@ public abstract class GraphServiceClientFactory {
 
                     private String getAccessToken(String authType) {
                         try {
-                            if (StringUtils.isEmpty(authType)) {
-                                return TokenManager.getInstance().getApplicationAccessToken();
-                            } else {
-                                return TokenManager.getInstance().getDelegatedAccessToken();
-                            }
+                            String at = TokenManager.getInstance().getApplicationAccessToken();
+                            System.out.println("at: " + at);
+                            return at;
                         } catch (ExecutionException | InterruptedException e) {
                             throw new RuntimeException(String.format("Failed to get access token for auth: %s with error: %s", authType, e.getMessage()));
                         }

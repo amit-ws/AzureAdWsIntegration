@@ -76,12 +76,16 @@ public class AzureUserService {
         return azureTenantOpt.isPresent() ? azureTenantOpt.get() : null;
     }
 
-    public List<Map<String, Object>> fetchUsersOfGroup(Integer groupId) {
-        return azureUserGroupMembershipRepository.fetchUsersForGroup(groupId);
+    public List<AzureUser> fetchUsersOfGroup(Integer groupId) {
+        return azureUserGroupMembershipRepository.fetchUsersForGroup(getAzureGroupUsingId(groupId));
     }
 
-    public List<Map<String, Object>> fetchAzureDevicesForUser(Integer userId) {
-        return azureUserDeviceRelationshipRepository.fetchDevicesForUser(userId);
+    public List<AzureGroup> fetchGroupsOfUser(Integer userId) {
+        return azureUserGroupMembershipRepository.fetchGroupsForUser(getAzureUserUsingId(userId));
+    }
+
+    public List<AzureDevice> fetchAzureDevicesForUser(Integer userId) {
+        return azureUserDeviceRelationshipRepository.fetchDevicesForUser(getAzureUserUsingId(userId));
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -90,6 +94,15 @@ public class AzureUserService {
         azureTenantRepository.deleteByAzureId(tenantId);
     }
 
+    private AzureUser getAzureUserUsingId(Integer userId) {
+        return azureUserRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("No Azure User found with provided id: " + userId));
+    }
+
+    private AzureGroup getAzureGroupUsingId(Integer groupId) {
+        return azureGroupRepository.findById(groupId)
+                .orElseThrow(() -> new RuntimeException("No Azure User found with provided id: " + groupId));
+    }
 
 
 }

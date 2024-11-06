@@ -51,10 +51,14 @@ public class AzureUserController {
         return ResponseEntity.ok(azureUserService.fetchUsersOfGroup(groupId));
     }
 
+    @GetMapping("/users-group")
+    public ResponseEntity fetchGroupsOfUserHandler(@RequestParam("userId") Integer userId) {
+        return ResponseEntity.ok(azureUserService.fetchGroupsOfUser(userId));
+    }
 
     @GetMapping("/user-devices")
-    public ResponseEntity fetchAzureDevicesForUserHandler(@RequestParam("groupId") Integer groupId) {
-        return ResponseEntity.ok(azureUserService.fetchAzureDevicesForUser(groupId));
+    public ResponseEntity fetchAzureDevicesForUserHandler(@RequestParam("userId") Integer userId) {
+        return ResponseEntity.ok(azureUserService.fetchAzureDevicesForUser(userId));
     }
 
     @DeleteMapping("/tenant")
