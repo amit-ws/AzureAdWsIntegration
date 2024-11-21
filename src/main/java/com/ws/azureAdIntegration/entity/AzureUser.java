@@ -37,6 +37,9 @@ public class AzureUser {
     Date syncedAt;
     Integer wsTenantId; // Whiteswan account organization id
 
+    @Column(name = "is_sso_enabled")
+    Boolean isSSOEnabled;
+
 
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)

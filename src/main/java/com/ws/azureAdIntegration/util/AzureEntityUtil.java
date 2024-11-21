@@ -21,6 +21,7 @@ public final class AzureEntityUtil {
         azureTenant.setStreet(organization.street);
         azureTenant.setTenantType(organization.tenantType);
         azureTenant.setSyncedAt(new Date());
+        azureTenant.setIsSSOEnabled(true);
         return azureTenant;
     }
 
@@ -65,6 +66,7 @@ public final class AzureEntityUtil {
         azureUser.setDepartment(user.department);
         azureUser.setOfficeLocation(user.officeLocation);
         azureUser.setSyncedAt(new Date());
+        azureUser.setIsSSOEnabled(true);
         return azureUser;
     }
 

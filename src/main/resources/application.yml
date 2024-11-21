@@ -40,6 +40,8 @@ spring:
         client-id: "9acacaf6-02e1-4e06-84d9-5da4a7ffd2aa"
         client-secret: "sJB8Q~G-YDCgTRPv6J~LZCQkNyDyUATwQvP_Bcx0"
         tenant-id: "00b1d06b-e316-45af-a6d2-2734f62a5acd"
+        subscription-id: "<subscription id>"
+        resource-group-name: "<resource group name>"
         redirect-uri: "http://localhost:9495/api/callback"
         authBaseUrl: "https://login.microsoftonline.com/"
         token-uri: "/oauth2/v2.0/token"
@@ -66,3 +68,5 @@ spring:
 
 server:
   port: 9495
+
+

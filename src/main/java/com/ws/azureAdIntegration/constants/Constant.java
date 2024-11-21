@@ -17,4 +17,20 @@ public interface Constant {
     public static final String ENCRYPTION_KEY = "12345678901234567890123456789012";
     public static final String ENCRYPTION_STANDARD = "AES";
 
+    // Azure AD constants
+    public static final String AZURE_RESPONSE_TYPE = "code";
+    public static final String AZURE_RESPONSE_MODE = "query";
+
+    // OAuth 2.0
+    public static final String OAUTH = "oauth2";
+    public static final String OAUTH_VERSION= "v2.0";
+    public static final String OAUTH_TYPE = "authorize";
+
+    // SSO keys
+    public static final String CLIENT_ID_PARAM = "client_id";
+    public static final String RESPONSE_TYPE_PARAM = "response_type";
+    public static final String REDIRECT_URI_PARAM = "redirect_uri";
+    public static final String RESPONSE_MODE_PARAM = "response_mode";
+    public static final String SCOPE_PARAM = "scope";
+
 }

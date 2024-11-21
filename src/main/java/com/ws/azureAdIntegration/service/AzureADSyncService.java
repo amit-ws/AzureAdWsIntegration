@@ -1,4 +1,4 @@
-package com.ws.service;
+package com.ws.azureAdIntegration.service;
 
 
 import com.microsoft.graph.models.DirectoryObject;
@@ -7,11 +7,9 @@ import com.microsoft.graph.requests.*;
 import com.ws.azureAdIntegration.constants.Constant;
 import com.ws.azureAdIntegration.entity.*;
 import com.ws.azureAdIntegration.repository.*;
-import com.ws.azureAdIntegration.service.BackendApplicationLogservice;
 import com.ws.azureAdIntegration.util.AzureAuthUtil;
 import com.ws.azureAdIntegration.util.AzureEntityUtil;
 import com.ws.azureAdIntegration.util.EncryptionUtil;
-import com.ws.cofiguration.azure.GraphServiceClientFactory;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
@@ -21,9 +19,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.PreparedStatement;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Slf4j
 @Service

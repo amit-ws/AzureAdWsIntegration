@@ -35,6 +35,8 @@ public class AzureTenant {
     Date syncedAt;
     Integer wsTenantId; // Whiteswan account organization id
 
+    Boolean isSSOEnabled;
+
     @JsonIgnore
     @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     List<AzureApplication> azureApplications = new ArrayList<>();

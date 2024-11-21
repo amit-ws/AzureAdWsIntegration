@@ -1,6 +1,6 @@
 package com.ws.azureAdIntegration.controller;
 
-import com.ws.service.AzureADSyncService;
+import com.ws.azureAdIntegration.service.AzureADSyncService;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import org.springframework.beans.factory.annotation.Autowired;

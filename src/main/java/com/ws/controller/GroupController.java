@@ -109,6 +109,7 @@ public class GroupController {
 
     /**
      * Endpoint: GET https://graph.microsoft.com/v1.0/devices/{deviceId}
+     *
      * @param deviceId
      * @return
      */
@@ -123,6 +124,7 @@ public class GroupController {
 
     /**
      * Endpoint: GET https://graph.microsoft.com/v1.0/users/{userId}/registeredDevices
+     *
      * @param userId
      * @return
      */
@@ -314,6 +316,20 @@ public class GroupController {
         return groups;
     }
 
+
+    /**
+     * List all Service principles
+     */
+    @GetMapping("/api/listServicePrinciples")
+    public List<ServicePrincipal> getGroupsOfUsers() {
+        final GraphServiceClient graphClient = GraphServiceClientFactory.createClient(null);
+        List<ServicePrincipal> servicePrincipals = graphClient
+                .servicePrincipals()
+                .buildRequest()
+                .get()
+                .getCurrentPage();
+        return servicePrincipals;
+    }
 
 }
 

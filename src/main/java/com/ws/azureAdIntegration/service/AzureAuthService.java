@@ -7,17 +7,20 @@ import com.ws.azureAdIntegration.entity.AzureUserCredential;
 import com.ws.azureAdIntegration.repository.AzureUserCredentialRepository;
 import com.ws.azureAdIntegration.util.AzureAuthUtil;
 import com.ws.azureAdIntegration.util.EncryptionUtil;
-import com.ws.service.AzureADSyncService;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.util.UriComponentsBuilder;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 @Service
@@ -28,13 +31,17 @@ public class AzureAuthService {
     final BackendApplicationLogservice backendApplicationLogservice;
     final AzureADSyncService azureADSyncService;
     final AzureAuthUtil azureAuthUtil;
+    final AzureUserEntityService azureUserEntityService;
+    @Value("${spring.cloud.azure.active-directory.redirect-uri}")
+    String redirectUri;
 
     @Autowired
-    public AzureAuthService(AzureUserCredentialRepository azureUserCredentialRepository, BackendApplicationLogservice backendApplicationLogservice, AzureADSyncService azureADSyncService, AzureAuthUtil azureAuthUtil) {
+    public AzureAuthService(AzureUserCredentialRepository azureUserCredentialRepository, BackendApplicationLogservice backendApplicationLogservice, AzureADSyncService azureADSyncService, AzureAuthUtil azureAuthUtil, AzureUserEntityService azureUserEntityService) {
         this.azureUserCredentialRepository = azureUserCredentialRepository;
         this.backendApplicationLogservice = backendApplicationLogservice;
         this.azureADSyncService = azureADSyncService;
         this.azureAuthUtil = azureAuthUtil;
+        this.azureUserEntityService = azureUserEntityService;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -95,6 +102,22 @@ public class AzureAuthService {
                         .orElse(null)
         );
         return azureUserCredential;
+    }
+
+
+    public String generateAzureSSOUrl(String email) {
+        azureUserEntityService.getAzureUserUsingEmail(email);
+        AzureUserCredential azureUserCredential = getAzureUserCredentialForWSTenant(1);
+
+        String url = UriComponentsBuilder.fromHttpUrl("https://login.microsoftonline.com/")
+                .pathSegment(azureUserCredential.getTenantId(), Constant.OAUTH, Constant.OAUTH_VERSION, Constant.OAUTH_TYPE)
+                .queryParam(Constant.CLIENT_ID_PARAM, azureUserCredential.getClientId())
+                .queryParam(Constant.RESPONSE_TYPE_PARAM, Constant.AZURE_RESPONSE_TYPE)
+                .queryParam(Constant.REDIRECT_URI_PARAM, redirectUri)
+                .queryParam(Constant.RESPONSE_MODE_PARAM, Constant.AZURE_RESPONSE_MODE)
+                .queryParam(Constant.SCOPE_PARAM, URLEncoder.encode("offline_access User.Read Mail.Read", StandardCharsets.UTF_8))
+                .toUriString();
+        return url;
     }
 
 

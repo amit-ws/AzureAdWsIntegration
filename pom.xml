@@ -148,26 +148,21 @@
 
         <!--		Azure Resources relayted-->
 
-        <!--		&lt;!&ndash; Azure Compute SDK for Virtual Machines &ndash;&gt;-->
-        <!-- https://mvnrepository.com/artifact/com.microsoft.azure/azure-mgmt-compute -->
-        <dependency>
-            <groupId>com.microsoft.azure</groupId>
-            <artifactId>azure-mgmt-compute</artifactId>
-            <version>1.41.4</version>
-        </dependency>
 
 
-        <!--		&lt;!&ndash; Azure SQL SDK (for interacting with Azure SQL Database) &ndash;&gt;-->
-        <!-- https://mvnrepository.com/artifact/com.microsoft.sqlserver/mssql-jdbc -->
-        <dependency>
-            <groupId>com.microsoft.sqlserver</groupId>
-            <artifactId>mssql-jdbc</artifactId>
-            <version>12.8.1.jre11</version>
-        </dependency>
 
 
-        <!--		&lt;!&ndash; Azure Core SDK &ndash;&gt;-->
-        <!-- https://mvnrepository.com/artifact/com.azure/azure-core -->
+        <!--        &lt;!&ndash;		&lt;!&ndash; Azure SQL SDK (for interacting with Azure SQL Database) &ndash;&gt;&ndash;&gt;-->
+<!--        &lt;!&ndash; https://mvnrepository.com/artifact/com.microsoft.sqlserver/mssql-jdbc &ndash;&gt;-->
+<!--        <dependency>-->
+<!--            <groupId>com.microsoft.sqlserver</groupId>-->
+<!--            <artifactId>mssql-jdbc</artifactId>-->
+<!--            <version>12.8.1.jre11</version>-->
+<!--        </dependency>-->
+
+
+<!--        &lt;!&ndash;		&lt;!&ndash; Azure Core SDK &ndash;&gt;&ndash;&gt;-->
+<!--        &lt;!&ndash; https://mvnrepository.com/artifact/com.azure/azure-core &ndash;&gt;-->
         <dependency>
             <groupId>com.azure</groupId>
             <artifactId>azure-core</artifactId>
@@ -175,12 +170,86 @@
         </dependency>
 
 
-        <!-- Azure SDK for Resource Management (for resource groups and other resources) -->
-        <!-- https://mvnrepository.com/artifact/com.microsoft.azure/azure-mgmt-resources -->
+<!--        &lt;!&ndash; Azure SDK for Resource Management (for resource groups and other resources) &ndash;&gt;-->
+<!--        &lt;!&ndash; https://mvnrepository.com/artifact/com.microsoft.azure/azure-mgmt-resources &ndash;&gt;-->
+<!--        <dependency>-->
+<!--            <groupId>com.microsoft.azure</groupId>-->
+<!--            <artifactId>azure-mgmt-resources</artifactId>-->
+<!--            <version>1.41.4</version>-->
+<!--        </dependency>-->
+
         <dependency>
-            <groupId>com.microsoft.azure</groupId>
-            <artifactId>azure-mgmt-resources</artifactId>
-            <version>1.41.4</version>
+            <groupId>com.nimbusds</groupId>
+            <artifactId>nimbus-jose-jwt</artifactId>
+            <version>9.23</version>
+        </dependency>
+
+<!--        &lt;!&ndash; Apache HttpClient for fetching the JWKS &ndash;&gt;-->
+<!--        <dependency>-->
+<!--            <groupId>org.apache.httpcomponents</groupId>-->
+<!--            <artifactId>httpclient</artifactId>-->
+<!--            <version>4.5.13</version>-->
+<!--        </dependency>-->
+
+<!--        &lt;!&ndash; Jackson Databind for JSON parsing &ndash;&gt;-->
+<!--        <dependency>-->
+<!--            <groupId>com.fasterxml.jackson.core</groupId>-->
+<!--            <artifactId>jackson-databind</artifactId>-->
+<!--            <version>2.12.5</version>-->
+<!--        </dependency>-->
+
+
+        <dependency>
+            <groupId>javax.json</groupId>
+            <artifactId>javax.json-api</artifactId>
+            <version>1.1.4</version> <!-- Or another version if using Java EE or a compatible version -->
+        </dependency>
+
+
+        <dependency>
+            <groupId>org.glassfish</groupId>
+            <artifactId>javax.json</artifactId>
+            <version>1.1.4</version> <!-- This is the latest version for the javax.json API -->
+        </dependency>
+
+
+        <!-- https://mvnrepository.com/artifact/io.jsonwebtoken/jjwt -->
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt</artifactId>
+            <version>0.12.5</version>
+        </dependency>
+
+
+
+
+
+
+
+        <!--        Azure Resources related     -->
+
+
+        <!-- https://mvnrepository.com/artifact/com.azure.resourcemanager/azure-resourcemanager -->
+        <dependency>
+            <groupId>com.azure.resourcemanager</groupId>
+            <artifactId>azure-resourcemanager</artifactId>
+            <version>2.44.0</version>
+        </dependency>
+
+
+        <!-- https://mvnrepository.com/artifact/com.azure.resourcemanager/azure-resourcemanager-network -->
+        <dependency>
+            <groupId>com.azure.resourcemanager</groupId>
+            <artifactId>azure-resourcemanager-network</artifactId>
+            <version>2.44.0</version>
+        </dependency>
+
+
+        <!-- https://mvnrepository.com/artifact/com.azure.resourcemanager/azure-resourcemanager-compute -->
+        <dependency>
+            <groupId>com.azure.resourcemanager</groupId>
+            <artifactId>azure-resourcemanager-compute</artifactId>
+            <version>2.44.0</version>
         </dependency>
 
 

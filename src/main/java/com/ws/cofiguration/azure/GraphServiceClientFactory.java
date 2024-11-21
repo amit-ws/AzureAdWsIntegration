@@ -5,12 +5,14 @@ import com.azure.identity.ClientSecretCredential;
 import com.azure.identity.ClientSecretCredentialBuilder;
 import com.microsoft.graph.authentication.IAuthenticationProvider;
 import com.microsoft.graph.requests.GraphServiceClient;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.net.URL;
 import java.util.concurrent.CompletableFuture;
 
 @Component
+@Slf4j
 public class GraphServiceClientFactory {
     public GraphServiceClient createClient(String clientId, String clientSecret, String tenantId) {
         ClientSecretCredential clientSecretCredential = new ClientSecretCredentialBuilder()
@@ -31,6 +33,7 @@ public class GraphServiceClientFactory {
                         TokenRequestContext requestContext = new TokenRequestContext().addScopes("https://graph.microsoft.com/.default");
                         String accessToken = clientSecretCredential.getToken(requestContext).block().getToken();
                         TokenManager.getInstance().setAccessToken(accessToken);
+                        log.info("accessToken: {}", accessToken);
                         return TokenManager.getInstance().getAccessToken();
                     }
                 })

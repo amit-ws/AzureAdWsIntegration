@@ -2,8 +2,11 @@ package com.ws.azureAdIntegration.controller;
 
 
 import com.ws.azureAdIntegration.dto.CreateAzureConfiguration;
+import com.ws.azureAdIntegration.service.AzureADJwtValidationService;
+import com.ws.azureAdIntegration.service.AzureADJwtValidator;
 import com.ws.azureAdIntegration.service.AzureAuthService;
 import jakarta.validation.Valid;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -11,12 +14,17 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/azure/auth")
+@Slf4j
 public class AzureAuthController {
     private final AzureAuthService azureAuthService;
+    final AzureADJwtValidator azureADJwtValidator;
+    final AzureADJwtValidationService azureADJwtValidationService;
 
     @Autowired
-    public AzureAuthController(AzureAuthService azureAuthService) {
+    public AzureAuthController(AzureAuthService azureAuthService, AzureADJwtValidator azureADJwtValidator, AzureADJwtValidationService azureADJwtValidationService) {
         this.azureAuthService = azureAuthService;
+        this.azureADJwtValidator = azureADJwtValidator;
+        this.azureADJwtValidationService = azureADJwtValidationService;
     }
 
     @PostMapping("/configure")
@@ -31,6 +39,27 @@ public class AzureAuthController {
         return ResponseEntity
                 .status(HttpStatus.OK)
                 .body(azureAuthService.fetchAzureConfiguration(email));
+    }
+
+    @GetMapping("/sso-login")
+    public ResponseEntity ssoLoginUrlhandler(@RequestParam String email) {
+        return ResponseEntity
+                .status(HttpStatus.OK)
+                .body(azureAuthService.generateAzureSSOUrl(email));
+    }
+
+//    @GetMapping("/jwtValidate")
+//    public ResponseEntity validateTokenHandler(@RequestParam Integer wsTenantId, @RequestParam String token) {
+//        azureADJwtValidator.validate(wsTenantId, token);
+//        return new ResponseEntity(HttpStatus.OK);
+//    }
+
+    @GetMapping("/jwtValidate")
+    public ResponseEntity validateTokenHandler(@RequestParam String token) {
+        log.info("Into controller...");
+        return ResponseEntity
+                .status(HttpStatus.OK)
+                .body(azureADJwtValidationService.validateJWTToken(token));
     }
 }
 
