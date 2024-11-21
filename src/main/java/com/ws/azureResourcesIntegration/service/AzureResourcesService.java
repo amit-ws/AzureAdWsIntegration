@@ -38,9 +38,6 @@ public class AzureResourcesService {
     @Value("${spring.cloud.azure.active-directory.subscription-id}")
     String subscriptionId;
 
-    @Value("${spring.cloud.azure.active-directory.resource-group-name}")
-    String resourceGroupName;
-
 
     @Autowired
     public AzureResourcesService(AzureResourceAuthFactory azureResourceAuthFactory) {
@@ -53,9 +50,23 @@ public class AzureResourcesService {
 
 
     /**
-     * List all VMs in a resource group
+     * List all VMs
      */
     public void listVMs() {
+        AzureResourceManager azureResourceManager = getAzureResourceManager();
+        PagedIterable<VirtualMachine> vms = azureResourceManager.virtualMachines().list();
+        for (VirtualMachine vm : vms) {
+            log.info("id: {}", vm.id());
+            log.info("name: {}", vm.name());
+            log.info("computer name: {}", vm.computerName());
+        }
+    }
+
+
+    /**
+     * List all VMs in a resource group
+     */
+    public void listVMsByResource(String resourceGroupName) {
         AzureResourceManager azureResourceManager = getAzureResourceManager();
         azureResourceManager.virtualMachines().listByResourceGroup(resourceGroupName)
                 .forEach(vm -> log.info("VM name: {} ", vm.name()));
@@ -64,7 +75,7 @@ public class AzureResourcesService {
     /**
      * Start a VM
      */
-    public void startVM(String vmName) {
+    public void startVM(String resourceGroupName, String vmName) {
         AzureResourceManager azureResourceManager = getAzureResourceManager();
         VirtualMachine vm = azureResourceManager.virtualMachines().getByResourceGroup(resourceGroupName, vmName);
         vm.start();
@@ -74,7 +85,7 @@ public class AzureResourcesService {
     /**
      * Stop a VM
      */
-    public void stopVM(String vmName) {
+    public void stopVM(String resourceGroupName, String vmName) {
         AzureResourceManager azureResourceManager = getAzureResourceManager();
         VirtualMachine vm = azureResourceManager.virtualMachines().getByResourceGroup(resourceGroupName, vmName);
         vm.powerOff();
@@ -134,10 +145,10 @@ public class AzureResourcesService {
         AzureResourceManager azureResourceManager = getAzureResourceManager();
         PagedIterable<WebAppBasic> webApps = azureResourceManager.webApps().list();
         for (WebAppBasic app : webApps) {
-            System.out.println("App Name: " + app.name());
-            System.out.println("Region: " + app.regionName());
-            System.out.println("Resource Group: " + app.resourceGroupName());
-            System.out.println("App Service Plan: " + app.appServicePlanId());
+            log.info("App Name: " + app.name());
+            log.info("Region: " + app.regionName());
+            log.info("Resource Group: " + app.resourceGroupName());
+            log.info("App Service Plan: " + app.appServicePlanId());
         }
     }
 
@@ -149,10 +160,10 @@ public class AzureResourcesService {
         AzureResourceManager azureResourceManager = getAzureResourceManager();
         PagedIterable<StorageAccount> storageAccounts = azureResourceManager.storageAccounts().list();
         for (StorageAccount storageAccount : storageAccounts) {
-            System.out.println("Storage Account Name: " + storageAccount.name());
-            System.out.println("Resource Group: " + storageAccount.resourceGroupName());
-            System.out.println("Region: " + storageAccount.regionName());
-            System.out.println("SKU type: " + storageAccount.skuType());
+            log.info("Storage Account Name: " + storageAccount.name());
+            log.info("Resource Group: " + storageAccount.resourceGroupName());
+            log.info("Region: " + storageAccount.regionName());
+            log.info("SKU type: " + storageAccount.skuType());
         }
     }
 
@@ -164,9 +175,9 @@ public class AzureResourcesService {
         AzureResourceManager azureResourceManager = getAzureResourceManager();
         PagedIterable<LoadBalancer> loadBalancers = azureResourceManager.networks().manager().loadBalancers().list();
         for (LoadBalancer lb : loadBalancers) {
-            System.out.println("Load Balancer Name: " + lb.name());
-            System.out.println("Region: " + lb.regionName());
-            System.out.println("Resource Group: " + lb.resourceGroupName());
+            log.info("Load Balancer Name: " + lb.name());
+            log.info("Region: " + lb.regionName());
+            log.info("Resource Group: " + lb.resourceGroupName());
         }
     }
 
@@ -177,10 +188,10 @@ public class AzureResourcesService {
         AzureResourceManager azureResourceManager = getAzureResourceManager();
         PagedIterable<KubernetesCluster> aksClusters = azureResourceManager.kubernetesClusters().list();
         for (KubernetesCluster cluster : aksClusters) {
-            System.out.println("Cluster Name: " + cluster.name());
-            System.out.println("Region: " + cluster.regionName());
-            System.out.println("Resource Group: " + cluster.resourceGroupName());
-            System.out.println("Kubernetes Version: " + cluster.version());
+            log.info("Cluster Name: " + cluster.name());
+            log.info("Region: " + cluster.regionName());
+            log.info("Resource Group: " + cluster.resourceGroupName());
+            log.info("Kubernetes Version: " + cluster.version());
         }
     }
 
@@ -192,10 +203,10 @@ public class AzureResourcesService {
         AzureResourceManager azureResourceManager = getAzureResourceManager();
         PagedIterable<NetworkSecurityGroup> nsgs = azureResourceManager.networks().manager().networkSecurityGroups().list();
         for (NetworkSecurityGroup nsg : nsgs) {
-            System.out.println("NSG Name: " + nsg.name());
-            System.out.println("Region: " + nsg.regionName());
-            System.out.println("Resource Group: " + nsg.resourceGroupName());
-            System.out.println("Security Rules Count: " + nsg.securityRules().size());
+            log.info("NSG Name: " + nsg.name());
+            log.info("Region: " + nsg.regionName());
+            log.info("Resource Group: " + nsg.resourceGroupName());
+            log.info("Security Rules Count: " + nsg.securityRules().size());
         }
     }
 
@@ -207,9 +218,9 @@ public class AzureResourcesService {
         AzureResourceManager azureResourceManager = getAzureResourceManager();
         PagedIterable<ApplicationGateway> applicationGateways = azureResourceManager.networks().manager().applicationGateways().list();
         for (ApplicationGateway appGw : applicationGateways) {
-            System.out.println("Application Gateway Name: " + appGw.name());
-            System.out.println("Resource Group: " + appGw.resourceGroupName());
-            System.out.println("Region: " + appGw.regionName());
+            log.info("Application Gateway Name: " + appGw.name());
+            log.info("Resource Group: " + appGw.resourceGroupName());
+            log.info("Region: " + appGw.regionName());
 
             // Access frontend configurations
             Map<String, ApplicationGatewayFrontend> frontends = appGw.frontends();
@@ -230,12 +241,11 @@ public class AzureResourcesService {
         AzureResourceManager azureResourceManager = getAzureResourceManager();
         PagedIterable<VirtualMachineScaleSet> vmScaleSets = azureResourceManager.virtualMachineScaleSets().list();
         for (VirtualMachineScaleSet vmScaleSet : vmScaleSets) {
-            System.out.println("VM Scale Set Name: " + vmScaleSet.name());
-            System.out.println("Resource Group: " + vmScaleSet.resourceGroupName());
-            System.out.println("Region: " + vmScaleSet.regionName());
-            System.out.println("Number of VMs: " + vmScaleSet.virtualMachines().list().stream().toList().size());
+            log.info("VM Scale Set Name: " + vmScaleSet.name());
+            log.info("Resource Group: " + vmScaleSet.resourceGroupName());
+            log.info("Region: " + vmScaleSet.regionName());
+            log.info("Number of VMs: " + vmScaleSet.virtualMachines().list().stream().toList().size());
         }
-
     }
 
 
