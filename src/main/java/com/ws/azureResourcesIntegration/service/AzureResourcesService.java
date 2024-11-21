@@ -10,6 +10,7 @@ import com.azure.resourcemanager.network.models.*;
 import com.azure.resourcemanager.resources.models.ResourceGroup;
 import com.azure.resourcemanager.sql.models.SqlDatabase;
 import com.azure.resourcemanager.sql.models.SqlServer;
+import com.azure.resourcemanager.storage.models.StorageAccount;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
@@ -127,7 +128,7 @@ public class AzureResourcesService {
     }
 
     /**
-     * List all Storage accounts
+     * List App Services
      */
     public void listAppServices() {
         AzureResourceManager azureResourceManager = getAzureResourceManager();
@@ -137,6 +138,21 @@ public class AzureResourcesService {
             System.out.println("Region: " + app.regionName());
             System.out.println("Resource Group: " + app.resourceGroupName());
             System.out.println("App Service Plan: " + app.appServicePlanId());
+        }
+    }
+
+
+    /**
+     * List Storage Accounts:
+     */
+    public void listStorageAccounts() {
+        AzureResourceManager azureResourceManager = getAzureResourceManager();
+        PagedIterable<StorageAccount> storageAccounts = azureResourceManager.storageAccounts().list();
+        for (StorageAccount storageAccount : storageAccounts) {
+            System.out.println("Storage Account Name: " + storageAccount.name());
+            System.out.println("Resource Group: " + storageAccount.resourceGroupName());
+            System.out.println("Region: " + storageAccount.regionName());
+            System.out.println("SKU type: " + storageAccount.skuType());
         }
     }
 
