@@ -2,10 +2,15 @@ package com.ws.azureResourcesIntegration.service;
 
 import com.azure.core.http.rest.PagedIterable;
 import com.azure.resourcemanager.AzureResourceManager;
+import com.azure.resourcemanager.appservice.AppServiceManager;
+import com.azure.resourcemanager.appservice.models.FunctionApp;
+import com.azure.resourcemanager.appservice.models.FunctionAppBasic;
 import com.azure.resourcemanager.appservice.models.WebAppBasic;
+import com.azure.resourcemanager.compute.models.AvailabilitySet;
 import com.azure.resourcemanager.compute.models.VirtualMachine;
 import com.azure.resourcemanager.compute.models.VirtualMachineScaleSet;
 import com.azure.resourcemanager.containerservice.models.KubernetesCluster;
+import com.azure.resourcemanager.keyvault.models.Vault;
 import com.azure.resourcemanager.network.models.*;
 import com.azure.resourcemanager.resources.models.ResourceGroup;
 import com.azure.resourcemanager.sql.models.SqlDatabase;
@@ -245,6 +250,65 @@ public class AzureResourcesService {
             log.info("Resource Group: " + vmScaleSet.resourceGroupName());
             log.info("Region: " + vmScaleSet.regionName());
             log.info("Number of VMs: " + vmScaleSet.virtualMachines().list().stream().toList().size());
+        }
+    }
+
+    /**
+     * List Azure Functions
+     */
+    public void listAzureFunctions() {
+        AzureResourceManager azureResourceManager = getAzureResourceManager();
+        PagedIterable<FunctionAppBasic> functionApps = azureResourceManager.functionApps().list();
+        for (FunctionAppBasic functionApp : functionApps) {
+            log.info("Function App Name: " + functionApp.name());
+            log.info("Resource Group: " + functionApp.resourceGroupName());
+            log.info("Region: " + functionApp.regionName());
+            log.info("Default Hostname: " + functionApp.defaultHostname());
+        }
+    }
+
+    /**
+     * List Key Vaults
+     */
+    public void listKeyVaults(String resourceGroupName) {
+        AzureResourceManager azureResourceManager = getAzureResourceManager();
+        PagedIterable<Vault> keyVaults = azureResourceManager.vaults().listByResourceGroup(resourceGroupName);
+        for (Vault vault : keyVaults) {
+            log.info("Key Vault Name: " + vault.name());
+            log.info("Resource Group: " + vault.resourceGroupName());
+            log.info("Region: " + vault.regionName());
+            log.info("SKU: " + vault.sku().name());
+        }
+    }
+
+
+    /**
+     * List Availability Sets
+     */
+    public void listAvailabilitySets() {
+        AzureResourceManager azureResourceManager = getAzureResourceManager();
+        PagedIterable<AvailabilitySet> availabilitySets = azureResourceManager.availabilitySets().list();
+        for (AvailabilitySet availabilitySet : availabilitySets) {
+            log.info("Availability Set Name: " + availabilitySet.name());
+            log.info("Resource Group: " + availabilitySet.resourceGroupName());
+            log.info("Region: " + availabilitySet.regionName());
+            log.info("Fault Domain count: " + availabilitySet.faultDomainCount());
+            log.info("Update Domain count: " + availabilitySet.updateDomainCount());
+        }
+    }
+
+    /**
+     * List Availability Sets by resource-group=name
+     */
+    public void listAvailabilitySets(String resourceGroupName) {
+        AzureResourceManager azureResourceManager = getAzureResourceManager();
+        PagedIterable<AvailabilitySet> availabilitySets = azureResourceManager.availabilitySets().listByResourceGroup(resourceGroupName);
+        for (AvailabilitySet availabilitySet : availabilitySets) {
+            log.info("Availability Set Name: " + availabilitySet.name());
+            log.info("Resource Group: " + availabilitySet.resourceGroupName());
+            log.info("Region: " + availabilitySet.regionName());
+            log.info("Fault Domain count: " + availabilitySet.faultDomainCount());
+            log.info("Update Domain count: " + availabilitySet.updateDomainCount());
         }
     }
 
