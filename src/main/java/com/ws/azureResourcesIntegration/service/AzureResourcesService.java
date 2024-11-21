@@ -98,7 +98,7 @@ public class AzureResourcesService {
      */
     public void getServersAndDBS() {
         AzureResourceManager azureResourceManager = getAzureResourceManager();
-        List<SqlServer> sqlServers = (List<SqlServer>) azureResourceManager.sqlServers().list();
+        PagedIterable<SqlServer> sqlServers = azureResourceManager.sqlServers().list();
         for (SqlServer sqlServer : sqlServers) {
             log.info("Server name: {}", sqlServer.name());
             log.info("Server Region: {}", sqlServer.regionName());
