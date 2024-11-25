@@ -4,9 +4,7 @@ import com.azure.core.http.rest.PagedIterable;
 import com.azure.resourcemanager.AzureResourceManager;
 import com.azure.resourcemanager.appservice.models.FunctionAppBasic;
 import com.azure.resourcemanager.appservice.models.WebAppBasic;
-import com.azure.resourcemanager.compute.models.AvailabilitySet;
-import com.azure.resourcemanager.compute.models.VirtualMachine;
-import com.azure.resourcemanager.compute.models.VirtualMachineScaleSet;
+import com.azure.resourcemanager.compute.models.*;
 import com.azure.resourcemanager.containerservice.models.KubernetesCluster;
 import com.azure.resourcemanager.keyvault.models.Vault;
 import com.azure.resourcemanager.network.models.*;
@@ -310,5 +308,33 @@ public class AzureResourcesService {
         }
     }
 
+
+    /**
+     * List Disks
+     */
+    public void getDisks() {
+        AzureResourceManager azureResourceManager = getAzureResourceManager();
+        PagedIterable<Disk> disks = azureResourceManager.disks().list();
+        for (Disk disk : disks) {
+            log.info("name: {}", disk.name());
+            log.info("id: {}", disk.id());
+            log.info("size in byte: {}", disk.sizeInByte());
+        }
+    }
+
+
+    /**
+     * List VirtualNetworkGateway
+     */
+    public void getVirtualNetworkGateway() {
+        AzureResourceManager azureResourceManager = getAzureResourceManager();
+        PagedIterable<VirtualNetworkGateway> vngs = azureResourceManager.virtualNetworkGateways().list();
+        for (VirtualNetworkGateway vng : vngs) {
+            log.info("name: {}", vng.name());
+            log.info("type: {}", vng.vpnType());
+            log.info("gateway type: {}", vng.gatewayType());
+
+        }
+    }
 
 }
