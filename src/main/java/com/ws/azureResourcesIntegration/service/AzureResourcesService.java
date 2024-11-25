@@ -4,6 +4,7 @@ import com.azure.core.http.rest.PagedIterable;
 import com.azure.resourcemanager.AzureResourceManager;
 import com.azure.resourcemanager.appservice.models.FunctionAppBasic;
 import com.azure.resourcemanager.appservice.models.WebAppBasic;
+import com.azure.resourcemanager.authorization.models.RoleAssignment;
 import com.azure.resourcemanager.authorization.models.RoleDefinition;
 import com.azure.resourcemanager.compute.models.*;
 import com.azure.resourcemanager.containerservice.models.KubernetesCluster;
@@ -53,14 +54,36 @@ public class AzureResourcesService {
 
     /**
      * List all VMs
+     * Equivalent to AWS EC2
      */
     public void listVMs() {
         AzureResourceManager azureResourceManager = getAzureResourceManager();
         PagedIterable<VirtualMachine> vms = azureResourceManager.virtualMachines().list();
         for (VirtualMachine vm : vms) {
-            log.info("id: {}", vm.id());
-            log.info("name: {}", vm.name());
+            log.info("VM ID: {}", vm.id());
+            log.info("VM Name: {}", vm.name());
             log.info("computer name: {}", vm.computerName());
+            log.info("VM State: {}", vm.powerState().toString()); // e.g., "Running" or "Stopped"
+            log.info("VM Size: {}", vm.size());
+            log.info("VM OS: {}", vm.osType().toString());
+            log.info("Public IP: {}", vm.getPrimaryPublicIPAddressId());
+            log.info("Resource Group: {}", vm.resourceGroupName());
+
+            // Listing private and public address ids
+            NetworkInterface networkInterface = vm.getPrimaryNetworkInterface();
+            if (networkInterface != null) {
+                // Get the primary IP configuration from the network interface
+                NicIpConfiguration ipConfig = networkInterface.ipConfigurations().values().iterator().next();
+                // Private IP address
+                String privateIp = ipConfig.privateIpAddress();
+                log.info("Private IP: {}", privateIp);
+
+                // Public IP address (if exists)
+                String publicIp = ipConfig.getPublicIpAddress() != null
+                        ? ipConfig.getPublicIpAddress().ipAddress()
+                        : "No Public IP";
+                log.info("Public IP: {}", publicIp);
+            }
         }
     }
 
@@ -340,6 +363,7 @@ public class AzureResourcesService {
 
     /**
      * List RBAC (roles)
+     * Equivalent to Aws_Iam_Policies
      */
     public void listRBACRoles() {
         AzureResourceManager azureResourceManager = getAzureResourceManager();
@@ -348,8 +372,65 @@ public class AzureResourcesService {
             log.info("Role ID: {}", role.id());
             log.info("Role Name: {}", role.roleName());
             log.info("Description: {}", role.description());
+            log.info("IS ROLE CUSTOM? : {}", isCustomRole(role.id()));
+            log.info("Custom Role: {}", isCustomRole(role.id()) ? "Yes" : "No");
         }
     }
 
+    private boolean isCustomRole(String roleId) {
+        // In Azure, custom roles have IDs that typically don't follow the pattern of built-in roles.
+        // Built-in role definition IDs typically start with a prefix like below:
+        String builtInPrefix = "/providers/Microsoft.Authorization/roleDefinitions/";
+        return !roleId.startsWith(builtInPrefix);
+    }
+
+
+    /**
+     * List Azure RABC assignments
+     * Equivalent to AWS_Attached_Policies
+     * Stores mapping of policies (roles) <--> with specific users/groups
+     */
+    public void listRBACRolesAssignment() {
+        AzureResourceManager azureResourceManager = getAzureResourceManager();
+        PagedIterable<RoleAssignment> assignments = azureResourceManager.accessManagement().roleAssignments().listByScope(String.format("/subscriptions/%s", azureResourceManager.subscriptionId()));
+        for (RoleAssignment assignment : assignments) {
+            log.info("Role Assignment ID: {}", assignment.id());
+            log.info("RoleDefinition ID: {}", assignment.roleDefinitionId());
+            log.info("Name: {}", assignment.name());
+            log.info("Description: {}", assignment.description());
+            log.info("Assignee: {}", assignment.principalId());
+            RoleDefinition roleDefinition = azureResourceManager.accessManagement().roleDefinitions().getById(assignment.roleDefinitionId());
+            log.info("Assigned Role: {}", roleDefinition.name());
+            log.info("Custom Role: {}", isCustomRole(roleDefinition.id()) ? "Yes" : "No");
+        }
+    }
+
+
+    /**
+     * List NSG specific for VMs
+     * Purpose: Control traffic to and from VMs or network interfaces
+     * Equivalent to aws_ec2_security_groups
+     */
+    public void listAzureNSGs() {
+        AzureResourceManager azureResourceManager = getAzureResourceManager();
+        PagedIterable<VirtualMachine> vms = azureResourceManager.virtualMachines().list();
+
+        for (VirtualMachine vm : vms) {
+            log.info("VM ID: {}", vm.id());
+            // Get the network interface associated with the VM
+            NetworkInterface networkInterface = vm.getPrimaryNetworkInterface();
+
+            if (networkInterface != null) {
+                // Retrieve the NSG associated with the NIC
+                NetworkSecurityGroup nsg = networkInterface.getNetworkSecurityGroup();
+                if (nsg != null) {
+                    log.info("Associated NSG Name: {}", nsg.name());
+                    log.info("NSG ID: {}", nsg.id());
+                } else {
+                    log.info("No NSG associated with this VM.");
+                }
+            }
+        }
+    }
 
 }
