@@ -4,6 +4,7 @@ import com.azure.core.http.rest.PagedIterable;
 import com.azure.resourcemanager.AzureResourceManager;
 import com.azure.resourcemanager.appservice.models.FunctionAppBasic;
 import com.azure.resourcemanager.appservice.models.WebAppBasic;
+import com.azure.resourcemanager.authorization.models.RoleDefinition;
 import com.azure.resourcemanager.compute.models.*;
 import com.azure.resourcemanager.containerservice.models.KubernetesCluster;
 import com.azure.resourcemanager.keyvault.models.Vault;
@@ -333,8 +334,22 @@ public class AzureResourcesService {
             log.info("name: {}", vng.name());
             log.info("type: {}", vng.vpnType());
             log.info("gateway type: {}", vng.gatewayType());
-
         }
     }
+
+
+    /**
+     * List RBAC (roles)
+     */
+    public void listRBACRoles() {
+        AzureResourceManager azureResourceManager = getAzureResourceManager();
+        PagedIterable<RoleDefinition> roles = azureResourceManager.accessManagement().roleDefinitions().listByScope(String.format("/subscriptions/%s", azureResourceManager.subscriptionId()));
+        for (RoleDefinition role : roles) {
+            log.info("Role ID: {}", role.id());
+            log.info("Role Name: {}", role.roleName());
+            log.info("Description: {}", role.description());
+        }
+    }
+
 
 }
