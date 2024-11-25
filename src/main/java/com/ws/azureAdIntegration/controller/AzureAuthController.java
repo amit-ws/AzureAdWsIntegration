@@ -1,6 +1,5 @@
 package com.ws.azureAdIntegration.controller;
 
-
 import com.ws.azureAdIntegration.dto.CreateAzureConfiguration;
 import com.ws.azureAdIntegration.service.AzureADJwtValidationService;
 import com.ws.azureAdIntegration.service.AzureADJwtValidator;
@@ -11,6 +10,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/azure/auth")
@@ -48,19 +49,27 @@ public class AzureAuthController {
                 .body(azureAuthService.generateAzureSSOUrl(email));
     }
 
-//    @GetMapping("/jwtValidate")
+    @GetMapping("/keys")
+    public ResponseEntity createAzureADPublicKeyMapHandler(@RequestParam String tenantId, @RequestParam String clientId) {
+        azureADJwtValidationService.createAzureADPublicKeyMap(tenantId, clientId);
+        return new ResponseEntity(HttpStatus.CREATED);
+    }
+
+
+    @PostMapping("/token-validate")
+    public ResponseEntity isAzureADTokenValidHandler(@RequestBody Map<String, String> payload) {
+        return ResponseEntity
+                .status(HttpStatus.OK)
+                .body(azureADJwtValidationService.isAzureADTokenValid(payload.get("token")));
+    }
+
+
+    //    @GetMapping("/jwtValidate")
 //    public ResponseEntity validateTokenHandler(@RequestParam Integer wsTenantId, @RequestParam String token) {
 //        azureADJwtValidator.validate(wsTenantId, token);
 //        return new ResponseEntity(HttpStatus.OK);
 //    }
 
-    @GetMapping("/jwtValidate")
-    public ResponseEntity validateTokenHandler(@RequestParam String token) {
-        log.info("Into controller...");
-        return ResponseEntity
-                .status(HttpStatus.OK)
-                .body(azureADJwtValidationService.validateJWTToken(token));
-    }
 }
 
 

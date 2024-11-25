@@ -47,7 +47,6 @@ public class AzureAuthService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Map creatAzureConfiguration(CreateAzureConfiguration createAzureConfiguration) {
         Integer wsTenantId = 1;
-        String objectId = createAzureConfiguration.getObjectId().trim();
         String clientId = createAzureConfiguration.getClientId().trim();
         String tenantId = createAzureConfiguration.getTenantId().trim();
         String clientSecret = Optional.ofNullable(createAzureConfiguration.getClientSecret())
@@ -62,7 +61,7 @@ public class AzureAuthService {
                 .orElseThrow(() -> new RuntimeException("Client secret found as null"));
 
         log.info("Validating user's Azure-AD credentials..");
-        GraphServiceClient graphClient = azureAuthUtil.validateAzureCredentialsWithGraphApi(tenantId, clientId, createAzureConfiguration.getClientSecret(), objectId);
+        GraphServiceClient graphClient = azureAuthUtil.validateAzureCredentialsWithGraphApi(tenantId, clientId, createAzureConfiguration.getClientSecret());
         Optional.ofNullable(getAzureUserCredentialForWSTenant(wsTenantId))
                 .ifPresent(credential -> {
                     throw new RuntimeException("Azure credentials already saved!");
@@ -72,7 +71,6 @@ public class AzureAuthService {
                 .clientId(clientId)
                 .clientSecret(clientSecret)
                 .tenantId(tenantId)
-                .objectId(objectId)
                 .wsTenantId(wsTenantId)
                 .createdAt(new Date())
                 .build();
@@ -109,7 +107,7 @@ public class AzureAuthService {
         azureUserEntityService.getAzureUserUsingEmail(email);
         AzureUserCredential azureUserCredential = getAzureUserCredentialForWSTenant(1);
 
-        String url = UriComponentsBuilder.fromHttpUrl("https://login.microsoftonline.com/")
+        return UriComponentsBuilder.fromHttpUrl("https://login.microsoftonline.com/")
                 .pathSegment(azureUserCredential.getTenantId(), Constant.OAUTH, Constant.OAUTH_VERSION, Constant.OAUTH_TYPE)
                 .queryParam(Constant.CLIENT_ID_PARAM, azureUserCredential.getClientId())
                 .queryParam(Constant.RESPONSE_TYPE_PARAM, Constant.AZURE_RESPONSE_TYPE)
@@ -117,7 +115,6 @@ public class AzureAuthService {
                 .queryParam(Constant.RESPONSE_MODE_PARAM, Constant.AZURE_RESPONSE_MODE)
                 .queryParam(Constant.SCOPE_PARAM, URLEncoder.encode("offline_access User.Read Mail.Read", StandardCharsets.UTF_8))
                 .toUriString();
-        return url;
     }
 
 

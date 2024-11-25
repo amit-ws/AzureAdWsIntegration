@@ -33,7 +33,6 @@ public class GraphServiceClientFactory {
                         TokenRequestContext requestContext = new TokenRequestContext().addScopes("https://graph.microsoft.com/.default");
                         String accessToken = clientSecretCredential.getToken(requestContext).block().getToken();
                         TokenManager.getInstance().setAccessToken(accessToken);
-                        log.info("accessToken: {}", accessToken);
                         return TokenManager.getInstance().getAccessToken();
                     }
                 })

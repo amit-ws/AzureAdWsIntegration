@@ -92,7 +92,7 @@ public class AzureADSyncService {
 
         // Validate Azure credentials
         log.info("Validating user's Azure-AD credentials..");
-        this.graphClient = azureAuthUtil.validateAzureCredentialsWithGraphApi(tenantId, clientId, clientSecret, azureUserCredential.getObjectId());
+        this.graphClient = azureAuthUtil.validateAzureCredentialsWithGraphApi(tenantId, clientId, clientSecret);
         log.info("Azure-AD data sync started at: {}", LocalDateTime.now());
         executeSync(tenantId);
         log.info("Azure-AD data sync ended successfully at: {}", LocalDateTime.now());

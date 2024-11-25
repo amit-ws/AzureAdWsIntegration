@@ -125,11 +125,12 @@ import com.nimbusds.jose.crypto.RSASSAVerifier;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import com.ws.azureAdIntegration.entity.AzureUserCredential;
+import jakarta.json.*;
+import jakarta.json.Json;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import javax.json.*;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.net.HttpURLConnection;

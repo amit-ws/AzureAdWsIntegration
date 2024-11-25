@@ -72,8 +72,7 @@ public class AzureUserService {
     }
 
     public AzureTenant getAzureTenantUsingwsTenantEmail(String email) {
-        Optional<AzureTenant> azureTenantOpt = azureTenantRepository.findByWsTenantId(1);
-        return azureTenantOpt.isPresent() ? azureTenantOpt.get() : null;
+        return azureTenantRepository.findByWsTenantId(1).orElseThrow(() -> new RuntimeException("No tenant found with provided email: " + email));
     }
 
     public List<AzureUser> fetchUsersOfGroup(Integer groupId) {

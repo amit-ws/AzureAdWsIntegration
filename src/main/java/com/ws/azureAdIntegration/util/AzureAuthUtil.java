@@ -55,7 +55,6 @@ package com.ws.azureAdIntegration.util;
 //}
 
 
-
 import com.microsoft.graph.requests.GraphServiceClient;
 import com.ws.cofiguration.azure.GraphServiceClientFactory;
 import lombok.extern.slf4j.Slf4j;
@@ -77,7 +76,7 @@ public class AzureAuthUtil {
             put("AADSTS700016", "Invalid Client ID or Client Secret");
             put("AADSTS7000215", "Invalid Client Secret");
             put("AADSTS900023", "Invalid Tenant ID");
-            put("Request_BadRequest", "Invalid Object ID");
+//            put("Request_BadRequest", "Invalid Object ID");
         }};
     }
 
@@ -86,11 +85,9 @@ public class AzureAuthUtil {
         this.graphServiceClientFactory = graphServiceClientFactory;
     }
 
-    public GraphServiceClient validateAzureCredentialsWithGraphApi(String tenantId, String clientId, String clientSecret, String objectId) {
+    public GraphServiceClient validateAzureCredentialsWithGraphApi(String tenantId, String clientId, String clientSecret) {
         try {
-            GraphServiceClient graphClient = graphServiceClientFactory.createClient(clientId, clientSecret, tenantId);
-            graphClient.applications(objectId).buildRequest().get();
-            return graphClient;
+            return graphServiceClientFactory.createClient(clientId, clientSecret, tenantId);
         } catch (Exception e) {
             log.error("Error in verifying Azure credentials: {}", e.getMessage());
             String message = resolveAzureCredentialError(e.getMessage());
