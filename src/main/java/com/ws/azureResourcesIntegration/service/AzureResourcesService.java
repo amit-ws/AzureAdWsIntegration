@@ -381,12 +381,12 @@ public class AzureResourcesService {
         // In Azure, custom roles have IDs that typically don't follow the pattern of built-in roles.
         // Built-in role definition IDs typically start with a prefix like below:
         String builtInPrefix = "/providers/Microsoft.Authorization/roleDefinitions/";
-        return !roleId.startsWith(builtInPrefix);
+        return !roleId.startsWith(builtInPrefix); // or check for .contains() instead of startsWith()
     }
 
 
     /**
-     * List Azure RABC assignments
+     * List Azure RBAC assignments
      * Equivalent to AWS_Attached_Policies
      * Stores mapping of policies (roles) <--> with specific users/groups
      */
@@ -402,6 +402,67 @@ public class AzureResourcesService {
             RoleDefinition roleDefinition = azureResourceManager.accessManagement().roleDefinitions().getById(assignment.roleDefinitionId());
             log.info("Assigned Role: {}", roleDefinition.name());
             log.info("Custom Role: {}", isCustomRole(roleDefinition.id()) ? "Yes" : "No");
+        }
+    }
+
+
+    /**
+     * DEFINITIONS
+     * AWS_ROLES => the set of permissions which can be assigned to users or groups
+     * AWS_POLICIES => What particular actions does each of these permissions (roles) can do
+     *
+     * So in the context of Azure: We have RoleDefinition corresponding to AWS_ROLE and,
+     * we have roleDefinition.permissions() talking about the set of actions the specific role can play
+     *
+     * Note: The specific role (RoleDefinition) can be of two types: 1. Attached (in-built) and 2. Inline (custom)
+     *
+     * Now coming to RoleAssignment, it means the mapping of Azure Roles against specific users groups etc
+     */
+
+    /**
+     * Equivalent to aws_roles
+     * CREATE TABLE public.azure_roles (
+     * role_id varchar(255) NOT NULL,          -- Role definition ID (similar to AWS Role ARN)
+     * created_date varchar(255) NULL,         -- Creation date of the role definition
+     * is_attachable varchar(255) NULL,        -- Indicates if the role can be attached to a resource or user
+     * role_name varchar(255) NULL,            -- Name of the role (e.g., 'Contributor', 'Reader')
+     * role_definition_id varchar(255) NULL,   -- Role definition ID
+     * tenant_name varchar(255) NULL,          -- Tenant associated with the role definition
+     * is_custom_role bool DEFAULT false,      -- Whether the role is custom (true/false)
+     * );
+     */
+    public void listAzureRoleAssignments() {
+        AzureResourceManager azureResourceManager = getAzureResourceManager();
+        PagedIterable<RoleAssignment> assignments = azureResourceManager.accessManagement().roleAssignments().listByScope(String.format("/subscriptions/%s", azureResourceManager.subscriptionId()));
+        for (RoleAssignment assignment : assignments) {
+
+        }
+
+    }
+
+
+    /**
+     * List details of roles mapped with users/groups etc
+     * types: Attached (in azure = Predefined) and Inline (in azure = Custom)
+     * Equivalent to aws_role_attached_permissions and aws_role_in_line_permissions
+     * Structure:
+     * CREATE TABLE public.azure_custom_role_in_line_permissions (
+     * azure_role_id varchar(255) NOT NULL,       -- Role Definition ID (Custom Role in Azure)
+     * policy_name varchar(255) NULL,              -- Name of the Custom Role (like inline policy name)
+     * principal_id varchar(255) NULL,             -- The ID of the user/group/service principal assigned to the role
+     * tenant_name varchar(255) NULL,              -- Tenant or Subscription Name
+     * );
+     */
+    public void listAzurePermissions() {
+        AzureResourceManager azureResourceManager = getAzureResourceManager();
+        PagedIterable<RoleAssignment> assignments = azureResourceManager.accessManagement().roleAssignments().listByScope(String.format("/subscriptions/%s", azureResourceManager.subscriptionId()));
+        for (RoleAssignment assignment : assignments) {
+            log.info("azure_role_id ID: {}", assignment.roleDefinitionId());
+            log.info("principal_id: {}", assignment.principalId());
+            RoleDefinition roleDefinition = azureResourceManager.accessManagement().roleDefinitions().getById(assignment.roleDefinitionId());
+            log.info("policy_name: {}", roleDefinition.name());
+            // checking whether its attached or inline
+            log.info(isCustomRole(roleDefinition.id()) ? "inline" : "attached");
         }
     }
 
@@ -432,5 +493,4 @@ public class AzureResourcesService {
             }
         }
     }
-
 }
