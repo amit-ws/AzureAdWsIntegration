@@ -74,7 +74,7 @@ public class AzureADSyncService {
     public void syncAzureData(String wsTenantEmail) {
         this.wsTenantId = 1;
 
-        AzureUserCredential azureUserCredential = Optional.ofNullable(azureUserCredentialRepository.findByWsTenantId(wsTenantId).get())
+        AzureUserCredential azureUserCredential = Optional.of(azureUserCredentialRepository.findByWsTenantId(wsTenantId).get())
                 .orElseThrow(() -> new RuntimeException("No Azure AD configuration found!"));
 
         String tenantId = azureUserCredential.getTenantId();

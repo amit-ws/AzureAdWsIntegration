@@ -447,7 +447,7 @@ public class AzureResourcesService {
      * Equivalent to aws_role_attached_permissions and aws_role_in_line_permissions
      * Structure:
      * CREATE TABLE public.azure_custom_role_in_line_permissions (
-     * azure_role_id varchar(255) NOT NULL,       -- Role Definition ID (Custom Role in Azure)
+     * azure_role_id varchar(255) NOT NULL,        -- Role Definition ID (Custom Role in Azure)
      * policy_name varchar(255) NULL,              -- Name of the Custom Role (like inline policy name)
      * principal_id varchar(255) NULL,             -- The ID of the user/group/service principal assigned to the role
      * tenant_name varchar(255) NULL,              -- Tenant or Subscription Name
