@@ -440,7 +440,6 @@ public class AzureResourcesService {
 
     }
 
-
     /**
      * List details of roles mapped with users/groups etc
      * types: Attached (in azure = Predefined) and Inline (in azure = Custom)
