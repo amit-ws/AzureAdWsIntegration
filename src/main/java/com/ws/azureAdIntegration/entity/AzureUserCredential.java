@@ -25,4 +25,5 @@ public class AzureUserCredential {
 
     Date createdAt;
     Integer wsTenantId; // Whiteswan account organization id
+    String wsTenantName;
 }

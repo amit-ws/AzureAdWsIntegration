@@ -10,5 +10,6 @@ import java.util.Optional;
 public interface AzureUserCredentialRepository extends JpaRepository<AzureUserCredential, Integer> {
     void deleteByTenantId(String tenantId);
     Optional<AzureUserCredential> findByWsTenantId(Integer wsTenantId);
+    Optional<AzureUserCredential> findByWsTenantName(String wsTenantName);
 
 }
