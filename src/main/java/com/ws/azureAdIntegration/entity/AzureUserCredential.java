@@ -22,6 +22,7 @@ public class AzureUserCredential {
     String clientId;
     String tenantId;
     String clientSecret;
+    String subscriptionId;
 
     Date createdAt;
     Integer wsTenantId; // Whiteswan account organization id
