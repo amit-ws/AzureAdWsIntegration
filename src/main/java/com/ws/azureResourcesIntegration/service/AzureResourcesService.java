@@ -14,6 +14,7 @@ import com.azure.resourcemanager.resources.models.ResourceGroup;
 import com.azure.resourcemanager.sql.models.SqlDatabase;
 import com.azure.resourcemanager.sql.models.SqlServer;
 import com.azure.resourcemanager.storage.models.StorageAccount;
+import com.ws.azureResourcesIntegration.configuration.AzureResourceAuthFactory;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;

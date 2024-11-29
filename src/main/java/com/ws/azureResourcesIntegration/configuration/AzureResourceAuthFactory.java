@@ -1,4 +1,4 @@
-package com.ws.azureResourcesIntegration.service;
+package com.ws.azureResourcesIntegration.configuration;
 
 
 import com.azure.core.management.AzureEnvironment;
