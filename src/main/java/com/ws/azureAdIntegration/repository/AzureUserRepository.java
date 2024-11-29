@@ -17,4 +17,6 @@ public interface AzureUserRepository extends JpaRepository<AzureUser, Integer> {
 
     Optional<AzureUser> findByUserPrincipalName(String username);
 
+    List<AzureUser> findAllByWsTenantName(String tenantName);
+
 }

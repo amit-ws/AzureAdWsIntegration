@@ -4,6 +4,7 @@ import com.azure.core.http.rest.PagedIterable;
 import com.azure.resourcemanager.AzureResourceManager;
 import com.azure.resourcemanager.authorization.models.RoleAssignment;
 import com.azure.resourcemanager.authorization.models.RoleDefinition;
+import com.ws.azureAdIntegration.repository.AzureUserRepository;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
@@ -12,16 +13,14 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
-import java.util.HashSet;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 
 @Service
 @Slf4j
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class AzureResourceFeatureService {
     final AzureResourceAuthFactory azureResourceAuthFactory;
+    final AzureUserRepository azureUserRepository;
     @Value("${spring.cloud.azure.active-directory.client-id}")
     String clientId;
 
@@ -36,8 +35,9 @@ public class AzureResourceFeatureService {
 
 
     @Autowired
-    public AzureResourceFeatureService(AzureResourceAuthFactory azureResourceAuthFactory) {
+    public AzureResourceFeatureService(AzureResourceAuthFactory azureResourceAuthFactory, AzureUserRepository azureUserRepository) {
         this.azureResourceAuthFactory = azureResourceAuthFactory;
+        this.azureUserRepository = azureUserRepository;
     }
 
     private AzureResourceManager getAzureResourceManager() {
