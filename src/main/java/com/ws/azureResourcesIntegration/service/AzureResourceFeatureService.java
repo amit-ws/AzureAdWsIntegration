@@ -2,9 +2,15 @@ package com.ws.azureResourcesIntegration.service;
 
 import com.azure.core.http.rest.PagedIterable;
 import com.azure.resourcemanager.AzureResourceManager;
+import com.azure.resourcemanager.authorization.models.Permission;
 import com.azure.resourcemanager.authorization.models.RoleAssignment;
 import com.azure.resourcemanager.authorization.models.RoleDefinition;
+import com.ws.azureAdIntegration.entity.AzureGroup;
+import com.ws.azureAdIntegration.entity.AzureUser;
+import com.ws.azureAdIntegration.repository.AzureUserGroupMembershipRepository;
 import com.ws.azureAdIntegration.repository.AzureUserRepository;
+import com.ws.azureResourcesIntegration.dto.UserGroupRolePermissionResponse;
+import com.ws.azureResourcesIntegration.dto.UserIdGroup;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
@@ -14,6 +20,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -21,6 +28,7 @@ import java.util.*;
 public class AzureResourceFeatureService {
     final AzureResourceAuthFactory azureResourceAuthFactory;
     final AzureUserRepository azureUserRepository;
+    final AzureUserGroupMembershipRepository azureUserGroupMembershipRepository;
     @Value("${spring.cloud.azure.active-directory.client-id}")
     String clientId;
 
@@ -35,9 +43,10 @@ public class AzureResourceFeatureService {
 
 
     @Autowired
-    public AzureResourceFeatureService(AzureResourceAuthFactory azureResourceAuthFactory, AzureUserRepository azureUserRepository) {
+    public AzureResourceFeatureService(AzureResourceAuthFactory azureResourceAuthFactory, AzureUserRepository azureUserRepository, AzureUserGroupMembershipRepository azureUserGroupMembershipRepository) {
         this.azureResourceAuthFactory = azureResourceAuthFactory;
         this.azureUserRepository = azureUserRepository;
+        this.azureUserGroupMembershipRepository = azureUserGroupMembershipRepository;
     }
 
     private AzureResourceManager getAzureResourceManager() {
