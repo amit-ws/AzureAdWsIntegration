@@ -169,7 +169,7 @@ public class AzureResourceFeatureService {
                 .findByWsTenantName(tenantName)
                 .orElseThrow(() -> new RuntimeException("No azure credentials found for provided tenant: " + tenantName));
         AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
-        List<UserGroupRolePermissionResponse> responses = new ArrayList<>();
+        List<UserGroupRolePermissionResponse> response = new ArrayList<>();
         List<String> userIds = azureUserRepository.findAllByWsTenantName(tenantName)
                 .stream()
                 .map(AzureUser::getAzureId)
@@ -177,27 +177,26 @@ public class AzureResourceFeatureService {
         Map<String, UserIdGroup> userIdGroupMap = azureUserGroupMembershipRepository.fetchGroupsForUsers(userIds)
                 .stream()
                 .collect(Collectors.toMap(UserIdGroup::getUserId, azureGroup -> azureGroup));
-        userIds.forEach(principle ->
-                azureResourceManager.accessManagement().roleAssignments().listByServicePrincipal(principle)
+        userIds.forEach(principleId ->
+                azureResourceManager.accessManagement().roleAssignments().listByServicePrincipal(principleId)
                         .forEach(assignment -> {
                             RoleDefinition roleDefinition = azureResourceManager.accessManagement().roleDefinitions().getById(assignment.roleDefinitionId());
-                            Set<Permission> permissions = roleDefinition.permissions();
-                            UserIdGroup userIdGroup = userIdGroupMap.get(principle);
-                            Set<String> actions = permissions.stream()
+                            UserIdGroup userIdGroup = userIdGroupMap.get(principleId);
+                            Set<String> permissions = roleDefinition.permissions().stream()
                                     .flatMap(permission -> permission.actions().stream())
                                     .collect(Collectors.toSet());
                             UserGroupRolePermissionResponse user = UserGroupRolePermissionResponse
                                     .builder()
-                                    .userId(principle)
+                                    .userId(principleId)
                                     .displayName(userIdGroup.getDisplayName())
                                     .groupName(userIdGroup.getGroupName())
                                     .role(roleDefinition.name())
-                                    .permissions(actions)
+                                    .permissions(permissions)
                                     .build();
-                            responses.add(user);
+                            response.add(user);
                         })
         );
-        return responses;
+        return response;
     }
 
 
