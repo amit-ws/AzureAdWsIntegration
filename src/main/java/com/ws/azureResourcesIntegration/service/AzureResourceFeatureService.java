@@ -27,10 +27,6 @@ import java.util.stream.Collectors;
 @Slf4j
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class AzureResourceFeatureService {
-    final AzureResourceAuthFactory azureResourceAuthFactory;
-    final AzureUserRepository azureUserRepository;
-    final AzureUserGroupMembershipRepository azureUserGroupMembershipRepository;
-    final AzureUserCredentialRepository azureUserCredentialRepository;
     @Value("${spring.cloud.azure.active-directory.client-id}")
     String clientId;
 
@@ -42,6 +38,10 @@ public class AzureResourceFeatureService {
 
     @Value("${spring.cloud.azure.active-directory.subscription-id}")
     String subscriptionId;
+    final AzureResourceAuthFactory azureResourceAuthFactory;
+    final AzureUserRepository azureUserRepository;
+    final AzureUserGroupMembershipRepository azureUserGroupMembershipRepository;
+    final AzureUserCredentialRepository azureUserCredentialRepository;
 
 
     @Autowired
