@@ -306,6 +306,185 @@ public class AzureResourceFeatureService {
         return response;
     }
 
+
+    /**
+     * Feature: LIST ALL VMs FOR SPECIFIC USER/GROUP (aka Principle)
+     *
+     * @param azureUserId -> principle-id in the azure-resource context
+     * @return
+     */
+    public List<VirtualMachine> listAllVmsForPrinciple(String azureUserId) {
+        AzureUserCredential azureUserCredential = azureUserCredentialRepository
+                .findAzureUserCredentialUsingAzureUserId(azureUserId)
+                .orElseThrow(() -> new RuntimeException("No azure credentials found for provided azure user: " + azureUserId));
+        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
+        List<String> vmResourceIds = getAllRoleAssignmentForPrinciple(azureResourceManager, azureUserId)
+                .stream()
+                .filter(roleAssignment -> roleAssignment.scope().contains("Microsoft.Compute/virtualMachines"))
+                .map(RoleAssignment::scope)
+                .toList();
+        // Filter VMs based on the role assignments (i.e., only those the user has access to)
+        List<VirtualMachine> userVms = azureResourceManager.virtualMachines().list().stream()
+                .filter(vm -> vmResourceIds.contains(vm.id()))
+                .collect(Collectors.toList());
+        return userVms;
+    }
+
+
+    /**
+     * Feature: LIST ALL SERVERS WITH DBs FOR SPECIFIC USER/GROUP (aka Principle)
+     *
+     * @param azureUserId -> principle-id in the azure-resource context
+     * @return
+     */
+    public List<DBServerDTO> listAllServerWithDBsForPrinciple(String azureUserId) {
+        List<DBServerDTO> response = new ArrayList<>();
+        AzureUserCredential azureUserCredential = azureUserCredentialRepository
+                .findAzureUserCredentialUsingAzureUserId(azureUserId)
+                .orElseThrow(() -> new RuntimeException("No azure credentials found for provided azure user: " + azureUserId));
+        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
+        List<String> sqlServerResourceIds = getAllRoleAssignmentForPrinciple(azureResourceManager, azureUserId)
+                .stream()
+                .map(RoleAssignment::scope)
+                .filter(scope -> scope.contains("Microsoft.Sql/servers"))
+                .toList();
+        // Iterate through all SQL servers and filter based on the role assignments (i.e., only those the user has access to)
+        azureResourceManager.sqlServers().list().stream()
+                .filter(sqlServer -> sqlServerResourceIds.contains(sqlServer.id()))
+                .forEach(sqlServer -> {
+                    DBServerDTO serverDTO = DBServerDTO.builder()
+                            .serverId(sqlServer.id())
+                            .serverName(sqlServer.name())
+                            .serverType(sqlServer.type())
+                            .region(sqlServer.region().name())
+                            .serverVersion(sqlServer.version())
+                            .databases(sqlServer.databases().list().stream()
+                                    .map(sqlDatabase -> DatabaseDTO.builder()
+                                            .databaseId(sqlDatabase.id())
+                                            .databaseName(sqlDatabase.name())
+                                            .databaseType(sqlDatabase.innerModel().type())
+                                            .status(sqlDatabase.status().toString())
+                                            .build())
+                                    .collect(Collectors.toList()))
+                            .build();
+
+                    response.add(serverDTO);
+                });
+
+        return response;
+    }
+
+
+    /**
+     * Feature: LIST ALL STORAGES FOR SPECIFIC USER/GROUP (aka Principle)
+     *
+     * @param azureUserId -> principle-id in the azure-resource context
+     * @return
+     */
+    public List<StorageAccountDTO> listAllStorageDetailsForPrinciple(String azureUserId) {
+        List<StorageAccountDTO> response = new ArrayList<>();
+        AzureUserCredential azureUserCredential = azureUserCredentialRepository
+                .findAzureUserCredentialUsingAzureUserId(azureUserId)
+                .orElseThrow(() -> new RuntimeException("No azure credentials found for provided azure user: " + azureUserId));
+        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
+        List<String> storageAccountResourceIds = getAllRoleAssignmentForPrinciple(azureResourceManager, azureUserId)
+                .stream()
+                .map(RoleAssignment::scope)
+                .filter(scope -> scope.contains("Microsoft.Storage/storageAccounts"))
+                .toList();
+        azureResourceManager.storageAccounts().list().stream()
+                .filter(storageAccount -> storageAccountResourceIds.contains(storageAccount.id()))
+                .forEach(storageAccount -> {
+                    azureResourceManager.storageBlobContainers()
+                            .list(storageAccount.resourceGroupName(), storageAccount.name())
+                            .forEach(container -> {
+                                StorageAccountDTO storageDetails = StorageAccountDTO.builder()
+                                        .storageAccountId(storageAccount.id())
+                                        .storageAccountName(storageAccount.name())
+                                        .storageAccountRegion(storageAccount.regionName())
+                                        .createdDate(storageAccount.creationTime())
+                                        .containerName(container.name())
+                                        .publicAccess(container.publicAccess().toString())
+                                        .containerType(container.type())
+                                        .build();
+                                response.add(storageDetails);
+                            });
+                });
+        return response;
+    }
+
+
+    /**
+     * Feature: LIST USERS ASSOCIATED WITH SPECIFIC PERMISSION
+     *
+     * @param permissionName
+     * @param tenantName
+     * @return
+     */
+    public List<String> listUsersForPermission(String permissionName, String tenantName) {
+        AzureUserCredential azureUserCredential = azureUserCredentialRepository
+                .findByWsTenantName(tenantName)
+                .orElseThrow(() -> new RuntimeException("No azure credentials found for provided tenant: " + tenantName));
+        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
+        PagedIterable<RoleAssignment> roleAssignments = azureResourceManager.accessManagement().roleAssignments().listByScope(String.format("/subscriptions/%s", azureResourceManager.subscriptionId()));
+        return roleAssignments.stream()
+                .filter(roleAssignment -> {
+                    RoleDefinition roleDefinition = azureResourceManager.accessManagement().roleDefinitions().getById(roleAssignment.roleDefinitionId());
+                    return roleDefinition.name().equalsIgnoreCase(permissionName);
+                })
+                .map(RoleAssignment::principalId)
+                .collect(Collectors.toList());
+    }
+
+
+    /**
+     * Feature: LIST GROUPS ASSOCIATED WITH SPECIFIC PERMISSION
+     *
+     * @param permissionName
+     * @param tenantName
+     * @return
+     */
+    public List<String> listGroupsForPermission(String permissionName, String tenantName) {
+        AzureUserCredential azureUserCredential = azureUserCredentialRepository
+                .findByWsTenantName(tenantName)
+                .orElseThrow(() -> new RuntimeException("No azure credentials found for provided tenant: " + tenantName));
+        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
+        PagedIterable<RoleAssignment> roleAssignments = azureResourceManager.accessManagement().roleAssignments().listByScope(String.format("/subscriptions/%s", azureResourceManager.subscriptionId()));
+        return roleAssignments.stream()
+                .filter(roleAssignment -> {
+                    RoleDefinition roleDefinition = azureResourceManager.accessManagement().roleDefinitions().getById(roleAssignment.roleDefinitionId());
+                    return roleDefinition.name().equalsIgnoreCase(permissionName);
+                })
+                .map(RoleAssignment::principalId)
+                .filter(principal -> principal != null && principal.contains("group")) // Filter for groups
+                .collect(Collectors.toList());
+    }
+
+
+    /**
+     * Feature: RESPONSE DETAILS ABOUT A SPECIFIC PERMISSION
+     *
+     * @param permissionName
+     * @param tenantName
+     * @return
+     */
+    public RoleDefinition getPermissionDetails(String permissionName, String tenantName) {
+        AzureUserCredential azureUserCredential = azureUserCredentialRepository
+                .findByWsTenantName(tenantName)
+                .orElseThrow(() -> new RuntimeException("No azure credentials found for provided tenant: " + tenantName));
+        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
+        return azureResourceManager.accessManagement().roleDefinitions().listByScope(String.format("/subscriptions/%s", azureResourceManager.subscriptionId()))
+                .stream()
+                .filter(role -> role.name().equalsIgnoreCase(permissionName))
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("Role not found"));
+    }
+
+
+    private PagedIterable<RoleAssignment> getAllRoleAssignmentForPrinciple(AzureResourceManager azureResourceManager, String principleId) {
+        return azureResourceManager.accessManagement().roleAssignments().listByServicePrincipal(principleId);
+    }
+
     private boolean isCustomRole(String roleId) {
         String builtInPrefix = "/providers/Microsoft.Authorization/roleDefinitions/";
         return !roleId.startsWith(builtInPrefix);
