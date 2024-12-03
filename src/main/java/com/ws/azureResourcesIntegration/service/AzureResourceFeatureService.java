@@ -277,7 +277,7 @@ public class AzureResourceFeatureService {
 
             response.add(serverDTO);
         });
-        return null;
+        return response;
     }
 
 
@@ -305,7 +305,6 @@ public class AzureResourceFeatureService {
         );
         return response;
     }
-
 
     private boolean isCustomRole(String roleId) {
         String builtInPrefix = "/providers/Microsoft.Authorization/roleDefinitions/";
