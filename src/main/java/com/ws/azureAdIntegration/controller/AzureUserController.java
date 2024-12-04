@@ -16,18 +16,18 @@ public class AzureUserController {
     }
 
     @GetMapping("/users")
-    public ResponseEntity fetchUsersHandlerHandler(@RequestParam("email") String email) {
-        return ResponseEntity.ok(azureUserService.fetchUsers(email));
+    public ResponseEntity fetchUsersHandlerHandler(@RequestParam("tenantName") String wsTenantName) {
+        return ResponseEntity.ok(azureUserService.fetchUsers(wsTenantName));
     }
 
     @GetMapping("/groups")
-    public ResponseEntity fetchGroupsHandler(@RequestParam("email") String email) {
-        return ResponseEntity.ok(azureUserService.fetchGroups(email));
+    public ResponseEntity fetchGroupsHandler(@RequestParam("tenantName") String wsTenantName) {
+        return ResponseEntity.ok(azureUserService.fetchGroups(wsTenantName));
     }
 
     @GetMapping("/applications")
-    public ResponseEntity fetchApplicationsHandler(@RequestParam("email") String email) {
-        return ResponseEntity.ok(azureUserService.fetchApplications(email));
+    public ResponseEntity fetchApplicationsHandler(@RequestParam("tenantName") String wsTenantName) {
+        return ResponseEntity.ok(azureUserService.fetchApplications(wsTenantName));
     }
 
     @GetMapping("/appRoles")
@@ -36,13 +36,13 @@ public class AzureUserController {
     }
 
     @GetMapping("/devices")
-    public ResponseEntity fetchAzureDevicesHandler(@RequestParam("email") String email) {
-        return ResponseEntity.ok(azureUserService.fetchAzureDevices(email));
+    public ResponseEntity fetchAzureDevicesHandler(@RequestParam("tenantName") String wsTenantName) {
+        return ResponseEntity.ok(azureUserService.fetchAzureDevices(wsTenantName));
     }
 
     @GetMapping("/tenant")
-    public ResponseEntity fetchTenantHandler(@RequestParam("email") String email) {
-        return ResponseEntity.ok(azureUserService.getAzureTenantUsingwsTenantEmail(email));
+    public ResponseEntity fetchTenantHandler(@RequestParam("tenantName") String wsTenantName) {
+        return ResponseEntity.ok(azureUserService.getAzureTenantUsingwsTenantEmail(wsTenantName));
     }
 
 

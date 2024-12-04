@@ -234,6 +234,13 @@
             <version>2.44.0</version>
         </dependency>
 
+        <!-- https://mvnrepository.com/artifact/com.microsoft.azure.resources.v2016_06_01/azure-mgmt-subscriptions -->
+        <dependency>
+            <groupId>com.microsoft.azure.resources.v2016_06_01</groupId>
+            <artifactId>azure-mgmt-subscriptions</artifactId>
+            <version>1.0.0-beta</version>
+        </dependency>
+
 
     </dependencies>
     <dependencyManagement>

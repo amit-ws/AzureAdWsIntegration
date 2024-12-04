@@ -11,10 +11,11 @@ import com.azure.resourcemanager.containerservice.models.KubernetesCluster;
 import com.azure.resourcemanager.keyvault.models.Vault;
 import com.azure.resourcemanager.network.models.*;
 import com.azure.resourcemanager.resources.models.ResourceGroup;
+import com.azure.resourcemanager.resources.models.Subscription;
 import com.azure.resourcemanager.sql.models.SqlDatabase;
 import com.azure.resourcemanager.sql.models.SqlServer;
 import com.azure.resourcemanager.storage.models.StorageAccount;
-import com.ws.azureResourcesIntegration.configuration.AzureResourceAuthFactory;
+import com.ws.azureResourcesIntegration.configuration.AzureAuthConfigurationFactory;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
@@ -29,7 +30,7 @@ import java.util.*;
 @Slf4j
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class AzureResourcesService {
-    final AzureResourceAuthFactory azureResourceAuthFactory;
+    final AzureAuthConfigurationFactory azureAuthConfigurationFactory;
     @Value("${spring.cloud.azure.active-directory.client-id}")
     String clientId;
 
@@ -44,12 +45,12 @@ public class AzureResourcesService {
 
 
     @Autowired
-    public AzureResourcesService(AzureResourceAuthFactory azureResourceAuthFactory) {
-        this.azureResourceAuthFactory = azureResourceAuthFactory;
+    public AzureResourcesService(AzureAuthConfigurationFactory azureAuthConfigurationFactory) {
+        this.azureAuthConfigurationFactory = azureAuthConfigurationFactory;
     }
 
     private AzureResourceManager getAzureResourceManager() {
-        return azureResourceAuthFactory.createResourceClient(clientId, clientSecret, tenantId, subscriptionId);
+        return azureAuthConfigurationFactory.createAzureResourceClient(clientId, clientSecret, tenantId, subscriptionId);
     }
 
 
@@ -491,6 +492,20 @@ public class AzureResourcesService {
                     log.info("No NSG associated with this VM.");
                 }
             }
+        }
+    }
+
+
+    /**
+     * List all Subscriptions associated with the Azure Client Application
+     */
+    public void listAllSubscriptions() {
+        AzureResourceManager azureResourceManager = getAzureResourceManager();
+        PagedIterable<Subscription> subscriptions = azureResourceManager.subscriptions().list();
+        for (Subscription subscription : subscriptions) {
+            log.info("subscription-id: {}", subscription.subscriptionId());
+            log.info("subscription-name: {}", subscription.displayName());
+            log.info("subscription-state: {}", subscription.state().name());
         }
     }
 }

@@ -56,7 +56,7 @@ package com.ws.azureAdIntegration.util;
 
 
 import com.microsoft.graph.requests.GraphServiceClient;
-import com.ws.cofiguration.azure.GraphServiceClientFactory;
+import com.ws.azureResourcesIntegration.configuration.AzureAuthConfigurationFactory;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.HashMap;
@@ -68,7 +68,7 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Component
 public class AzureAuthUtil {
-    private final GraphServiceClientFactory graphServiceClientFactory;
+    private final AzureAuthConfigurationFactory azureAuthConfigurationFactory;
     private static final Map<String, String> AZURE_AUTH_ERROR_MAP;
 
     static {
@@ -80,14 +80,16 @@ public class AzureAuthUtil {
         }};
     }
 
+
     @Autowired
-    public AzureAuthUtil(GraphServiceClientFactory graphServiceClientFactory) {
-        this.graphServiceClientFactory = graphServiceClientFactory;
+    public AzureAuthUtil(AzureAuthConfigurationFactory azureAuthConfigurationFactory) {
+        this.azureAuthConfigurationFactory = azureAuthConfigurationFactory;
     }
+
 
     public GraphServiceClient validateAzureCredentialsWithGraphApi(String tenantId, String clientId, String clientSecret) {
         try {
-            return graphServiceClientFactory.createClient(clientId, clientSecret, tenantId);
+            return azureAuthConfigurationFactory.createAzureGraphServiceClient(clientId, clientSecret, tenantId);
         } catch (Exception e) {
             log.error("Error in verifying Azure credentials: {}", e.getMessage());
             String message = resolveAzureCredentialError(e.getMessage());

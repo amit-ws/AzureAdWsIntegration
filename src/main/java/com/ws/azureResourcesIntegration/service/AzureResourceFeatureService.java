@@ -5,12 +5,13 @@ import com.azure.resourcemanager.AzureResourceManager;
 import com.azure.resourcemanager.authorization.models.RoleAssignment;
 import com.azure.resourcemanager.authorization.models.RoleDefinition;
 import com.azure.resourcemanager.compute.models.VirtualMachine;
+import com.azure.resourcemanager.resources.models.Subscription;
 import com.ws.azureAdIntegration.entity.AzureUser;
 import com.ws.azureAdIntegration.entity.AzureUserCredential;
 import com.ws.azureAdIntegration.repository.AzureUserCredentialRepository;
 import com.ws.azureAdIntegration.repository.AzureUserGroupMembershipRepository;
 import com.ws.azureAdIntegration.repository.AzureUserRepository;
-import com.ws.azureResourcesIntegration.configuration.AzureResourceAuthFactory;
+import com.ws.azureResourcesIntegration.configuration.AzureAuthConfigurationFactory;
 import com.ws.azureResourcesIntegration.dto.*;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
@@ -38,26 +39,26 @@ public class AzureResourceFeatureService {
 
     @Value("${spring.cloud.azure.active-directory.subscription-id}")
     String subscriptionId;
-    final AzureResourceAuthFactory azureResourceAuthFactory;
+    final AzureAuthConfigurationFactory azureAuthConfigurationFactory;
     final AzureUserRepository azureUserRepository;
     final AzureUserGroupMembershipRepository azureUserGroupMembershipRepository;
     final AzureUserCredentialRepository azureUserCredentialRepository;
 
 
     @Autowired
-    public AzureResourceFeatureService(AzureResourceAuthFactory azureResourceAuthFactory, AzureUserRepository azureUserRepository, AzureUserGroupMembershipRepository azureUserGroupMembershipRepository, AzureUserCredentialRepository azureUserCredentialRepository) {
-        this.azureResourceAuthFactory = azureResourceAuthFactory;
+    public AzureResourceFeatureService(AzureAuthConfigurationFactory azureAuthConfigurationFactory, AzureUserRepository azureUserRepository, AzureUserGroupMembershipRepository azureUserGroupMembershipRepository, AzureUserCredentialRepository azureUserCredentialRepository) {
+        this.azureAuthConfigurationFactory = azureAuthConfigurationFactory;
         this.azureUserRepository = azureUserRepository;
         this.azureUserGroupMembershipRepository = azureUserGroupMembershipRepository;
         this.azureUserCredentialRepository = azureUserCredentialRepository;
     }
 
     private AzureResourceManager getAzureResourceManager() {
-        return azureResourceAuthFactory.createResourceClient(clientId, clientSecret, tenantId, subscriptionId);
+        return azureAuthConfigurationFactory.createAzureResourceClient(clientId, clientSecret, tenantId, subscriptionId);
     }
 
     private AzureResourceManager getAzureResourceManager(String clientId, String clientSecret, String tenantId, String subscriptionId) {
-        return azureResourceAuthFactory.createResourceClient(clientId, clientSecret, tenantId, subscriptionId);
+        return azureAuthConfigurationFactory.createAzureResourceClient(clientId, clientSecret, tenantId, subscriptionId);
     }
 
 
@@ -165,9 +166,7 @@ public class AzureResourceFeatureService {
      * @return
      */
     public List<UserGroupRolePermissionResponse> usersWithGroupsRolesPermissions(String tenantName) {
-        AzureUserCredential azureUserCredential = azureUserCredentialRepository
-                .findByWsTenantName(tenantName)
-                .orElseThrow(() -> new RuntimeException("No azure credentials found for provided tenant: " + tenantName));
+        AzureUserCredential azureUserCredential = getAzureUserCredentialUsingWsTenantName(tenantName);
         AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
         List<UserGroupRolePermissionResponse> response = new ArrayList<>();
         List<String> userIds = azureUserRepository.findAllByWsTenantName(tenantName)
@@ -206,9 +205,7 @@ public class AzureResourceFeatureService {
      * @param tenantName
      */
     public PagedIterable<VirtualMachine> listAllVmsForTenant(String tenantName) {
-        AzureUserCredential azureUserCredential = azureUserCredentialRepository
-                .findByWsTenantName(tenantName)
-                .orElseThrow(() -> new RuntimeException("No azure credentials found for provided tenant: " + tenantName));
+        AzureUserCredential azureUserCredential = getAzureUserCredentialUsingWsTenantName(tenantName);
         AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
         return azureResourceManager.virtualMachines().list();
     }
@@ -222,9 +219,7 @@ public class AzureResourceFeatureService {
      */
     public List<StorageAccountDTO> listAllStorageDetailsForTenant(String tenantName) {
         List<StorageAccountDTO> response = new ArrayList<>();
-        AzureUserCredential azureUserCredential = azureUserCredentialRepository
-                .findByWsTenantName(tenantName)
-                .orElseThrow(() -> new RuntimeException("No azure credentials found for provided tenant: " + tenantName));
+        AzureUserCredential azureUserCredential = getAzureUserCredentialUsingWsTenantName(tenantName);
         AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
         azureResourceManager.storageAccounts().list().forEach(storageAccount ->
                 azureResourceManager.storageBlobContainers()
@@ -254,9 +249,7 @@ public class AzureResourceFeatureService {
      */
     public List<DBServerDTO> listAllServerWithDBsForTenant(String tenantName) {
         List<DBServerDTO> response = new ArrayList<>();
-        AzureUserCredential azureUserCredential = azureUserCredentialRepository
-                .findByWsTenantName(tenantName)
-                .orElseThrow(() -> new RuntimeException("No azure credentials found for provided tenant: " + tenantName));
+        AzureUserCredential azureUserCredential = getAzureUserCredentialUsingWsTenantName(tenantName);
         AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
         azureResourceManager.sqlServers().list().forEach(sqlServer -> {
             DBServerDTO serverDTO = DBServerDTO.builder()
@@ -289,9 +282,7 @@ public class AzureResourceFeatureService {
      */
     public List<RolesWithPermissionsResponse> listAllRolesForTenant(String tenantName) {
         List<RolesWithPermissionsResponse> response = new ArrayList<>();
-        AzureUserCredential azureUserCredential = azureUserCredentialRepository
-                .findByWsTenantName(tenantName)
-                .orElseThrow(() -> new RuntimeException("No azure credentials found for provided tenant: " + tenantName));
+        AzureUserCredential azureUserCredential = getAzureUserCredentialUsingWsTenantName(tenantName);
         AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
         PagedIterable<RoleDefinition> roles = azureResourceManager.accessManagement().roleDefinitions().listByScope(String.format("/subscriptions/%s", azureResourceManager.subscriptionId()));
         roles.forEach(roleDefinition ->
@@ -314,9 +305,7 @@ public class AzureResourceFeatureService {
      * @return
      */
     public List<VirtualMachine> listAllVmsForPrinciple(String azureUserId) {
-        AzureUserCredential azureUserCredential = azureUserCredentialRepository
-                .findAzureUserCredentialUsingAzureUserId(azureUserId)
-                .orElseThrow(() -> new RuntimeException("No azure credentials found for provided azure user: " + azureUserId));
+        AzureUserCredential azureUserCredential = getAzureUserCredentialUsingAzureUserId(azureUserId);
         AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
         List<String> vmResourceIds = getAllRoleAssignmentForPrinciple(azureResourceManager, azureUserId)
                 .stream()
@@ -339,9 +328,7 @@ public class AzureResourceFeatureService {
      */
     public List<DBServerDTO> listAllServerWithDBsForPrinciple(String azureUserId) {
         List<DBServerDTO> response = new ArrayList<>();
-        AzureUserCredential azureUserCredential = azureUserCredentialRepository
-                .findAzureUserCredentialUsingAzureUserId(azureUserId)
-                .orElseThrow(() -> new RuntimeException("No azure credentials found for provided azure user: " + azureUserId));
+        AzureUserCredential azureUserCredential = getAzureUserCredentialUsingAzureUserId(azureUserId);
         AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
         List<String> sqlServerResourceIds = getAllRoleAssignmentForPrinciple(azureResourceManager, azureUserId)
                 .stream()
@@ -383,9 +370,7 @@ public class AzureResourceFeatureService {
      */
     public List<StorageAccountDTO> listAllStorageDetailsForPrinciple(String azureUserId) {
         List<StorageAccountDTO> response = new ArrayList<>();
-        AzureUserCredential azureUserCredential = azureUserCredentialRepository
-                .findAzureUserCredentialUsingAzureUserId(azureUserId)
-                .orElseThrow(() -> new RuntimeException("No azure credentials found for provided azure user: " + azureUserId));
+        AzureUserCredential azureUserCredential = getAzureUserCredentialUsingAzureUserId(azureUserId);
         AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
         List<String> storageAccountResourceIds = getAllRoleAssignmentForPrinciple(azureResourceManager, azureUserId)
                 .stream()
@@ -422,9 +407,7 @@ public class AzureResourceFeatureService {
      * @return
      */
     public List<String> listUsersForPermission(String permissionName, String tenantName) {
-        AzureUserCredential azureUserCredential = azureUserCredentialRepository
-                .findByWsTenantName(tenantName)
-                .orElseThrow(() -> new RuntimeException("No azure credentials found for provided tenant: " + tenantName));
+        AzureUserCredential azureUserCredential = getAzureUserCredentialUsingWsTenantName(tenantName);
         AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
         PagedIterable<RoleAssignment> roleAssignments = azureResourceManager.accessManagement().roleAssignments().listByScope(String.format("/subscriptions/%s", azureResourceManager.subscriptionId()));
         return roleAssignments.stream()
@@ -445,9 +428,7 @@ public class AzureResourceFeatureService {
      * @return
      */
     public List<String> listGroupsForPermission(String permissionName, String tenantName) {
-        AzureUserCredential azureUserCredential = azureUserCredentialRepository
-                .findByWsTenantName(tenantName)
-                .orElseThrow(() -> new RuntimeException("No azure credentials found for provided tenant: " + tenantName));
+        AzureUserCredential azureUserCredential = getAzureUserCredentialUsingWsTenantName(tenantName);
         AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
         PagedIterable<RoleAssignment> roleAssignments = azureResourceManager.accessManagement().roleAssignments().listByScope(String.format("/subscriptions/%s", azureResourceManager.subscriptionId()));
         return roleAssignments.stream()
@@ -469,9 +450,7 @@ public class AzureResourceFeatureService {
      * @return
      */
     public RoleDefinition getPermissionDetails(String permissionName, String tenantName) {
-        AzureUserCredential azureUserCredential = azureUserCredentialRepository
-                .findByWsTenantName(tenantName)
-                .orElseThrow(() -> new RuntimeException("No azure credentials found for provided tenant: " + tenantName));
+        AzureUserCredential azureUserCredential = getAzureUserCredentialUsingWsTenantName(tenantName);
         AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
         return azureResourceManager.accessManagement().roleDefinitions().listByScope(String.format("/subscriptions/%s", azureResourceManager.subscriptionId()))
                 .stream()
@@ -480,6 +459,28 @@ public class AzureResourceFeatureService {
                 .orElseThrow(() -> new RuntimeException("Role not found"));
     }
 
+    public void listAllSubscriptions(String tenantName) {
+        AzureUserCredential azureUserCredential = getAzureUserCredentialUsingWsTenantName(tenantName);
+        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
+        PagedIterable<Subscription> subscriptions = azureResourceManager.subscriptions().list();
+        for (Subscription subscription : subscriptions) {
+            log.info("subscription-id: {}", subscription.subscriptionId());
+            log.info("subscription-name: {}", subscription.displayName());
+            log.info("subscription-state: {}", subscription.state().name());
+        }
+    }
+
+    private AzureUserCredential getAzureUserCredentialUsingWsTenantName(String tenantName) {
+        return azureUserCredentialRepository
+                .findByWsTenantName(tenantName)
+                .orElseThrow(() -> new RuntimeException("No azure credentials found for provided tenant: " + tenantName));
+    }
+
+    private AzureUserCredential getAzureUserCredentialUsingAzureUserId(String azureUserId) {
+        return azureUserCredentialRepository
+                .findAzureUserCredentialUsingAzureUserId(azureUserId)
+                .orElseThrow(() -> new RuntimeException("No azure credentials found for provided azure user: " + azureUserId));
+    }
 
     private PagedIterable<RoleAssignment> getAllRoleAssignmentForPrinciple(AzureResourceManager azureResourceManager, String principleId) {
         return azureResourceManager.accessManagement().roleAssignments().listByServicePrincipal(principleId);
