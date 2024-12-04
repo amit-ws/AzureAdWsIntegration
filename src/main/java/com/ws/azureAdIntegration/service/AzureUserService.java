@@ -7,12 +7,9 @@ import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 
 @Service
 @Slf4j
@@ -87,7 +84,7 @@ public class AzureUserService {
         return azureUserDeviceRelationshipRepository.fetchDevicesForUser(getAzureUserUsingId(userId));
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
     public void deleteTenant(String tenantId) {
         azureUserCredentialRepository.deleteByTenantId(tenantId);
         azureTenantRepository.deleteByAzureId(tenantId);

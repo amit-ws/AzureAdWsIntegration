@@ -7,13 +7,13 @@ import lombok.experimental.FieldDefaults;
 
 import java.util.Date;
 
-@Entity
-@Table(name = "azure_user_credential", schema = "azure_test")
 @Builder
 @Getter
 @Setter
 @AllArgsConstructor
 @NoArgsConstructor
+@Entity
+@Table(name = "azure_user_credential", schema = "azure_test")
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class AzureUserCredential {
     @Id

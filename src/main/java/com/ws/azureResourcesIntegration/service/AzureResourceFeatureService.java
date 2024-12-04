@@ -61,6 +61,9 @@ public class AzureResourceFeatureService {
         return azureAuthConfigurationFactory.createAzureResourceClient(clientId, clientSecret, tenantId, subscriptionId);
     }
 
+    private AzureResourceManager getAzureResourceManager(String clientId, String clientSecret, String tenantId) {
+        return azureAuthConfigurationFactory.createAzureResourceClient(clientId, clientSecret, tenantId);
+    }
 
     /**
      * Feature: Assign a particular resource to a user/group for certain time period
@@ -460,8 +463,9 @@ public class AzureResourceFeatureService {
     }
 
     public void listAllSubscriptions(String tenantName) {
-        AzureUserCredential azureUserCredential = getAzureUserCredentialUsingWsTenantName(tenantName);
-        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
+//        AzureUserCredential azureUserCredential = getAzureUserCredentialUsingWsTenantName(tenantName);
+//        log.info("azureUserCredential: {}", azureUserCredential);
+        AzureResourceManager azureResourceManager = getAzureResourceManager("927b5559-d13f-4a17-b63f-20695d2f3490", "Gu48Q~GiSgmbKh.VqOAYrKC_xif6l-rRv51gnaga", "3c10c941-37e4-4b03-8d97-d3524abe6040");
         PagedIterable<Subscription> subscriptions = azureResourceManager.subscriptions().list();
         for (Subscription subscription : subscriptions) {
             log.info("subscription-id: {}", subscription.subscriptionId());

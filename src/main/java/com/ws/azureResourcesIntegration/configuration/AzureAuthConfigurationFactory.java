@@ -44,6 +44,8 @@ public class AzureAuthConfigurationFactory {
     /*
         Method to create Azure AzureResourceManager
         To be use for Azure Resource related apis
+        Create with specific  SubscriptionId
+        Note: Subscription is required anyhow
     */
     public AzureResourceManager createAzureResourceClient(String clientId, String clientSecret, String tenantId, String subscriptionId) {
         ClientSecretCredential clientSecretCredential = createAzureClientSecretCredential(clientId, clientSecret, tenantId);
@@ -51,6 +53,18 @@ public class AzureAuthConfigurationFactory {
         return AzureResourceManager
                 .authenticate(clientSecretCredential, profile)
                 .withSubscription(subscriptionId);
+    }
+
+    /*
+        Create without any SubscriptionId
+        Note: Subscription is required anyhow
+    */
+    public AzureResourceManager createAzureResourceClient(String clientId, String clientSecret, String tenantId) {
+        ClientSecretCredential clientSecretCredential = createAzureClientSecretCredential(clientId, clientSecret, tenantId);
+        AzureProfile profile = new AzureProfile(tenantId, null, AzureEnvironment.AZURE);
+        return AzureResourceManager
+                .authenticate(clientSecretCredential, profile)
+                .withDefaultSubscription();
     }
 
 
@@ -61,5 +75,4 @@ public class AzureAuthConfigurationFactory {
                 .tenantId(tenantId)
                 .build();
     }
-
 }
