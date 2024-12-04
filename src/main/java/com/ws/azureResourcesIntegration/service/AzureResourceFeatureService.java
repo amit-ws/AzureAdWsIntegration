@@ -11,6 +11,7 @@ import com.ws.azureAdIntegration.entity.AzureUserCredential;
 import com.ws.azureAdIntegration.repository.AzureUserCredentialRepository;
 import com.ws.azureAdIntegration.repository.AzureUserGroupMembershipRepository;
 import com.ws.azureAdIntegration.repository.AzureUserRepository;
+import com.ws.azureAdIntegration.util.EncryptionUtil;
 import com.ws.azureResourcesIntegration.configuration.AzureAuthConfigurationFactory;
 import com.ws.azureResourcesIntegration.dto.*;
 import lombok.AccessLevel;
@@ -170,7 +171,7 @@ public class AzureResourceFeatureService {
      */
     public List<UserGroupRolePermissionResponse> usersWithGroupsRolesPermissions(String tenantName) {
         AzureUserCredential azureUserCredential = getAzureUserCredentialUsingWsTenantName(tenantName);
-        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
+        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), decryptClientSecret(azureUserCredential.getClientSecret()), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
         List<UserGroupRolePermissionResponse> response = new ArrayList<>();
         List<String> userIds = azureUserRepository.findAllByWsTenantName(tenantName)
                 .stream()
@@ -209,7 +210,7 @@ public class AzureResourceFeatureService {
      */
     public PagedIterable<VirtualMachine> listAllVmsForTenant(String tenantName) {
         AzureUserCredential azureUserCredential = getAzureUserCredentialUsingWsTenantName(tenantName);
-        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
+        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), decryptClientSecret(azureUserCredential.getClientSecret()), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
         return azureResourceManager.virtualMachines().list();
     }
 
@@ -223,7 +224,7 @@ public class AzureResourceFeatureService {
     public List<StorageAccountDTO> listAllStorageDetailsForTenant(String tenantName) {
         List<StorageAccountDTO> response = new ArrayList<>();
         AzureUserCredential azureUserCredential = getAzureUserCredentialUsingWsTenantName(tenantName);
-        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
+        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), decryptClientSecret(azureUserCredential.getClientSecret()), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
         azureResourceManager.storageAccounts().list().forEach(storageAccount ->
                 azureResourceManager.storageBlobContainers()
                         .list(storageAccount.resourceGroupName(), storageAccount.name())
@@ -253,7 +254,7 @@ public class AzureResourceFeatureService {
     public List<DBServerDTO> listAllServerWithDBsForTenant(String tenantName) {
         List<DBServerDTO> response = new ArrayList<>();
         AzureUserCredential azureUserCredential = getAzureUserCredentialUsingWsTenantName(tenantName);
-        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
+        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), decryptClientSecret(azureUserCredential.getClientSecret()), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
         azureResourceManager.sqlServers().list().forEach(sqlServer -> {
             DBServerDTO serverDTO = DBServerDTO.builder()
                     .serverId(sqlServer.id())
@@ -286,7 +287,7 @@ public class AzureResourceFeatureService {
     public List<RolesWithPermissionsResponse> listAllRolesForTenant(String tenantName) {
         List<RolesWithPermissionsResponse> response = new ArrayList<>();
         AzureUserCredential azureUserCredential = getAzureUserCredentialUsingWsTenantName(tenantName);
-        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
+        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), decryptClientSecret(azureUserCredential.getClientSecret()), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
         PagedIterable<RoleDefinition> roles = azureResourceManager.accessManagement().roleDefinitions().listByScope(String.format("/subscriptions/%s", azureResourceManager.subscriptionId()));
         roles.forEach(roleDefinition ->
                 response.add(RolesWithPermissionsResponse.builder()
@@ -309,7 +310,7 @@ public class AzureResourceFeatureService {
      */
     public List<VirtualMachine> listAllVmsForPrinciple(String azureUserId) {
         AzureUserCredential azureUserCredential = getAzureUserCredentialUsingAzureUserId(azureUserId);
-        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
+        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), decryptClientSecret(azureUserCredential.getClientSecret()), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
         List<String> vmResourceIds = getAllRoleAssignmentForPrinciple(azureResourceManager, azureUserId)
                 .stream()
                 .filter(roleAssignment -> roleAssignment.scope().contains("Microsoft.Compute/virtualMachines"))
@@ -332,7 +333,7 @@ public class AzureResourceFeatureService {
     public List<DBServerDTO> listAllServerWithDBsForPrinciple(String azureUserId) {
         List<DBServerDTO> response = new ArrayList<>();
         AzureUserCredential azureUserCredential = getAzureUserCredentialUsingAzureUserId(azureUserId);
-        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
+        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), decryptClientSecret(azureUserCredential.getClientSecret()), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
         List<String> sqlServerResourceIds = getAllRoleAssignmentForPrinciple(azureResourceManager, azureUserId)
                 .stream()
                 .map(RoleAssignment::scope)
@@ -374,7 +375,7 @@ public class AzureResourceFeatureService {
     public List<StorageAccountDTO> listAllStorageDetailsForPrinciple(String azureUserId) {
         List<StorageAccountDTO> response = new ArrayList<>();
         AzureUserCredential azureUserCredential = getAzureUserCredentialUsingAzureUserId(azureUserId);
-        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
+        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), decryptClientSecret(azureUserCredential.getClientSecret()), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
         List<String> storageAccountResourceIds = getAllRoleAssignmentForPrinciple(azureResourceManager, azureUserId)
                 .stream()
                 .map(RoleAssignment::scope)
@@ -411,7 +412,7 @@ public class AzureResourceFeatureService {
      */
     public List<String> listUsersForPermission(String permissionName, String tenantName) {
         AzureUserCredential azureUserCredential = getAzureUserCredentialUsingWsTenantName(tenantName);
-        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
+        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), decryptClientSecret(azureUserCredential.getClientSecret()), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
         PagedIterable<RoleAssignment> roleAssignments = azureResourceManager.accessManagement().roleAssignments().listByScope(String.format("/subscriptions/%s", azureResourceManager.subscriptionId()));
         return roleAssignments.stream()
                 .filter(roleAssignment -> {
@@ -432,7 +433,7 @@ public class AzureResourceFeatureService {
      */
     public List<String> listGroupsForPermission(String permissionName, String tenantName) {
         AzureUserCredential azureUserCredential = getAzureUserCredentialUsingWsTenantName(tenantName);
-        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
+        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), decryptClientSecret(azureUserCredential.getClientSecret()), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
         PagedIterable<RoleAssignment> roleAssignments = azureResourceManager.accessManagement().roleAssignments().listByScope(String.format("/subscriptions/%s", azureResourceManager.subscriptionId()));
         return roleAssignments.stream()
                 .filter(roleAssignment -> {
@@ -454,7 +455,7 @@ public class AzureResourceFeatureService {
      */
     public RoleDefinition getPermissionDetails(String permissionName, String tenantName) {
         AzureUserCredential azureUserCredential = getAzureUserCredentialUsingWsTenantName(tenantName);
-        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
+        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), decryptClientSecret(azureUserCredential.getClientSecret()), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
         return azureResourceManager.accessManagement().roleDefinitions().listByScope(String.format("/subscriptions/%s", azureResourceManager.subscriptionId()))
                 .stream()
                 .filter(role -> role.name().equalsIgnoreCase(permissionName))
@@ -463,15 +464,28 @@ public class AzureResourceFeatureService {
     }
 
     public void listAllSubscriptions(String tenantName) {
-//        AzureUserCredential azureUserCredential = getAzureUserCredentialUsingWsTenantName(tenantName);
-//        log.info("azureUserCredential: {}", azureUserCredential);
-        AzureResourceManager azureResourceManager = getAzureResourceManager("927b5559-d13f-4a17-b63f-20695d2f3490", "Gu48Q~GiSgmbKh.VqOAYrKC_xif6l-rRv51gnaga", "3c10c941-37e4-4b03-8d97-d3524abe6040");
+        AzureUserCredential azureUserCredential = getAzureUserCredentialUsingWsTenantName(tenantName);
+        log.info("azureUserCredential: {}", azureUserCredential);
+        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), decryptClientSecret(azureUserCredential.getClientSecret()), "3c10c941-37e4-4b03-8d97-d3524abe6040");
         PagedIterable<Subscription> subscriptions = azureResourceManager.subscriptions().list();
         for (Subscription subscription : subscriptions) {
             log.info("subscription-id: {}", subscription.subscriptionId());
             log.info("subscription-name: {}", subscription.displayName());
             log.info("subscription-state: {}", subscription.state().name());
         }
+    }
+
+    private String decryptClientSecret(String encryptedStr) {
+        return Optional.ofNullable(clientId)
+                .map(secret -> {
+                    try {
+                        return EncryptionUtil.decrypt(secret);
+                    } catch (Exception e) {
+                        log.error("Decryption error: ", e.getMessage());
+                        throw new RuntimeException("Failed to decrypt client secret");
+                    }
+                })
+                .orElseThrow(() -> new RuntimeException("Decrypted Client secret found to be null"));
     }
 
     private AzureUserCredential getAzureUserCredentialUsingWsTenantName(String tenantName) {
