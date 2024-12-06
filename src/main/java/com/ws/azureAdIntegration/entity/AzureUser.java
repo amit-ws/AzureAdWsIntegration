@@ -35,8 +35,7 @@ public class AzureUser {
     String preferredLanguage;
 
     Date syncedAt;
-    Integer wsTenantId; // Whiteswan account organization id
-    String wsTenantName;
+    String wsTenantName; // Whiteswan account organization name
 
     @Column(name = "is_sso_enabled")
     Boolean isSSOEnabled;

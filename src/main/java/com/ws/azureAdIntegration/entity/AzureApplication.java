@@ -35,7 +35,7 @@ public class AzureApplication {
     OffsetDateTime azureCreatedDateTime;
 
     Date syncedAt;
-    Integer wsTenantId; // Whiteswan account organization id
+    String wsTenantName; // Whiteswan account organization name
     //    Integer azureTenantId;
 
     @JsonIgnore

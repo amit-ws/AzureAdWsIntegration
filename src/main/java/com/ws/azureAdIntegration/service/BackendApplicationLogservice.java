@@ -20,13 +20,13 @@ public class BackendApplicationLogservice {
     }
 
 
-    public void saveAuditLog(String tenantName, Integer wsTenantId, String action, String message, String logLevel) {
+    public void saveAuditLog(String tenantName, String tenantEmail, String action, String message, String logLevel) {
         backendApplicationLogsRepository.save(
                 BackendApplicationLog.builder()
                         .action(action)
                         .message(message)
-                        .wsTenantId(wsTenantId)
-                        .loggedInUserEmail(tenantName)
+                        .wsTenantName(tenantName)
+                        .loggedInUserEmail(tenantEmail)
                         .time(LocalDateTime.now())
                         .logLevel(logLevel)
                         .build());

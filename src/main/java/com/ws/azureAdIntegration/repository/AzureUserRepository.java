@@ -14,7 +14,6 @@ public interface AzureUserRepository extends JpaRepository<AzureUser, Integer> {
     List<AzureUser> findAllByAzureTenant(AzureTenant azureTenant);
 
     void deleteAllByAzureTenant(AzureTenant azureTenant);
-
     Optional<AzureUser> findByUserPrincipalName(String username);
 
     List<AzureUser> findAllByWsTenantName(String tenantName);

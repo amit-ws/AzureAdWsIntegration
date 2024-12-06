@@ -2,6 +2,8 @@ package com.ws.azureAdIntegration.constants;
 
 public interface Constant {
     String ADD = "Add";
+    public static final String AZURE_AD_DATA_SYNC_START = "Azure-AD data sync started";
+    public static final String AZURE_AD_DATA_SYNC_END = "Azure-AD data sync ended successfully";
     String AZURE_SYNC_FAILURE = "Azure Sync Failure";
     String AZURE_CREDENTIALS_SAVED = "User azure credentials saved";
     String AZURE_TENANT_SAVED = "Azure tenant (Org) saved";

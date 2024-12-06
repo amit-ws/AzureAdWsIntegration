@@ -36,10 +36,10 @@ public class AzureAuthController {
     }
 
     @GetMapping("/configuration")
-    public ResponseEntity fetchAzureConfiguration(@RequestParam("email") String email) {
+    public ResponseEntity fetchAzureConfiguration(@RequestParam String tenantName) {
         return ResponseEntity
                 .status(HttpStatus.OK)
-                .body(azureAuthService.fetchAzureConfiguration(email));
+                .body(azureAuthService.fetchAzureConfiguration(tenantName));
     }
 
     @GetMapping("/sso-login")

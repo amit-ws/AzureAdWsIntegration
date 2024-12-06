@@ -31,7 +31,7 @@ public class AzureDevice {
     OffsetDateTime azureRegistrationDateTime;
 
     Date syncedAt;
-    Integer wsTenantId; // Whiteswan account organization id
+    String wsTenantName; // Whiteswan account organization name
 
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)

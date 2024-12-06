@@ -23,7 +23,7 @@ public class BackendApplicationLog {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Integer id;
-    Integer wsTenantId;
+    String wsTenantName;
     String logLevel;
     String message;
     String loggedInUserEmail;

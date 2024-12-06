@@ -38,12 +38,12 @@ public class AzureUserService {
         this.azureUserCredentialRepository = azureUserCredentialRepository;
     }
 
-    public List<AzureUser> fetchUsers(String email) {
-        return azureUserRepository.findAllByAzureTenant(getAzureTenantUsingwsTenantEmail(email));
+    public List<AzureUser> fetchUsers(String wsTenantName) {
+        return azureUserRepository.findAllByAzureTenant(getAzureTenantUsingwsTenantEmail(wsTenantName));
     }
 
-    public List<AzureGroup> fetchGroups(String email) {
-        return azureGroupRepository.findAllByAzureTenant(getAzureTenantUsingwsTenantEmail(email));
+    public List<AzureGroup> fetchGroups(String wsTenantName) {
+        return azureGroupRepository.findAllByAzureTenant(getAzureTenantUsingwsTenantEmail(wsTenantName));
     }
 //
 //    @Transactional
@@ -54,8 +54,8 @@ public class AzureUserService {
 //        return applications;
 //    }
 
-    public List<AzureApplication> fetchApplications(String email) {
-        return azureApplicationRepository.findAllByAzureTenant(getAzureTenantUsingwsTenantEmail(email));
+    public List<AzureApplication> fetchApplications(String wsTenantName) {
+        return azureApplicationRepository.findAllByAzureTenant(getAzureTenantUsingwsTenantEmail(wsTenantName));
     }
 
 
@@ -64,12 +64,12 @@ public class AzureUserService {
         return azureAppRolesRepository.findAllByApplication(azureApplication);
     }
 
-    public List<AzureDevice> fetchAzureDevices(String email) {
-        return azureDeviceRepository.findAllByAzureTenant(getAzureTenantUsingwsTenantEmail(email));
+    public List<AzureDevice> fetchAzureDevices(String wsTenantName) {
+        return azureDeviceRepository.findAllByAzureTenant(getAzureTenantUsingwsTenantEmail(wsTenantName));
     }
 
-    public AzureTenant getAzureTenantUsingwsTenantEmail(String email) {
-        return azureTenantRepository.findByWsTenantId(1).orElseThrow(() -> new RuntimeException("No tenant found with provided email: " + email));
+    public AzureTenant getAzureTenantUsingwsTenantEmail(String wsTenantName) {
+        return azureTenantRepository.findByWsTenantName(wsTenantName).orElseThrow(() -> new RuntimeException("No tenant found with provided tenantName: " + wsTenantName));
     }
 
     public List<AzureUser> fetchUsersOfGroup(Integer groupId) {

@@ -150,8 +150,8 @@ public class AzureADJwtValidator {
     }
 
 
-    public void validate(Integer wsTenantId, String jwtToken) {
-        AzureUserCredential azureUserCredential = azureUserCredentialService.findWSTeanantIdWithoutDecryptedSecret(wsTenantId);
+    public void validate(String wsTenantName, String jwtToken) {
+        AzureUserCredential azureUserCredential = azureUserCredentialService.findWSTeanantIdWithoutDecryptedSecret(wsTenantName);
         validateToken(jwtToken, azureUserCredential.getTenantId(), azureUserCredential.getClientId());
     }
 

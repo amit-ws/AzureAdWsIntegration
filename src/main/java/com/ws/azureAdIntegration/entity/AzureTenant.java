@@ -33,7 +33,7 @@ public class AzureTenant {
     OffsetDateTime azureCreatedDateTime;
 
     Date syncedAt;
-    Integer wsTenantId; // Whiteswan account organization id
+    String wsTenantName; // Whiteswan account organization name
 
     Boolean isSSOEnabled;
 

@@ -33,7 +33,7 @@ public class AzureGroup {
     String securityIdentifier;
 
     Date syncedAt;
-    Integer wsTenantId; // Whiteswan account organization id
+    String wsTenantName; // Whiteswan account organization name
 
     @JsonIgnore
     @OneToMany(mappedBy = "azureGroup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)

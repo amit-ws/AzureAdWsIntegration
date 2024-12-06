@@ -122,7 +122,7 @@ public class AzureAdWsIntegrationController {
 
 
     private Map exchangeCodeForAccessToken(String code) throws Exception{
-        AzureUserCredential azureUserCredential = getAzureUserCredentialForWSTenant(getAzureUserUsingEmail("ramki@wsazuread.onmicrosoft.com").getWsTenantId());
+        AzureUserCredential azureUserCredential = getAzureUserCredentialForWSTenant(getAzureUserUsingEmail("ramki@wsazuread.onmicrosoft.com").getWsTenantName());
 
         String url = authBaseUrl + azureUserCredential.getTenantId() + tokeUri;
         HttpHeaders headers = new HttpHeaders();
@@ -206,7 +206,7 @@ public class AzureAdWsIntegrationController {
 
 
     public void exchangeCodeForToken(String email, String code) throws Exception {
-        AzureUserCredential azureUserCredential = getAzureUserCredentialForWSTenant(getAzureUserUsingEmail(email).getWsTenantId());
+        AzureUserCredential azureUserCredential = getAzureUserCredentialForWSTenant(getAzureUserUsingEmail(email).getWsTenantName());
         String tokenUrl = "https://login.microsoftonline.com/" + azureUserCredential.getTenantId() + "/oauth2/v2.0/token";
         MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
         body.add("client_id", azureUserCredential.getClientId());
@@ -247,8 +247,8 @@ public class AzureAdWsIntegrationController {
 //        return null;
     }
 
-    private AzureUserCredential getAzureUserCredentialForWSTenant(Integer wsTenantName) {
-        return azureUserCredentialRepository.findByWsTenantId(1).orElse(null);
+    private AzureUserCredential getAzureUserCredentialForWSTenant(String wsTenantName) {
+        return azureUserCredentialRepository.findByWsTenantName(wsTenantName).orElse(null);
     }
 
     private AzureUser getAzureUserUsingEmail(String email) {

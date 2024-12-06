@@ -29,8 +29,8 @@ import java.util.stream.Stream;
 @Service
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class AzureADSyncService {
-    Integer wsTenantId;
-    String teantName = "ws-amit-tenant";
+    String wsTenantName;
+    String tenantEmail = "dummy@gmail.com";
     GraphServiceClient graphClient;
     final AzureUserRepository azureUserRepository;
     final AzureGroupRepository azureGroupRepository;
@@ -62,19 +62,17 @@ public class AzureADSyncService {
 
     @Async
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void syncAzureData(Integer wsTenantId, GraphServiceClient graphClient, String tenantId) {
+    public void syncAzureData(String wsTenantName, GraphServiceClient graphClient, String tenantId) {
         this.graphClient = graphClient;
-        this.wsTenantId = wsTenantId;
+        this.wsTenantName = wsTenantName;
         log.info("Azure-AD data sync started at: {}", LocalDateTime.now());
         executeSync(tenantId);
         log.info("Azure-AD data sync ended at: {}", LocalDateTime.now());
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void syncAzureData(String wsTenantEmail) {
-        this.wsTenantId = 1;
-
-        AzureUserCredential azureUserCredential = Optional.of(azureUserCredentialRepository.findByWsTenantId(wsTenantId).get())
+    public void syncAzureData(String wsTenantName) {
+        AzureUserCredential azureUserCredential = Optional.ofNullable(azureUserCredentialRepository.findByWsTenantName(wsTenantName).get())
                 .orElseThrow(() -> new RuntimeException("No Azure AD configuration found!"));
 
         String tenantId = azureUserCredential.getTenantId();
@@ -88,14 +86,14 @@ public class AzureADSyncService {
                         throw new RuntimeException("Failed to decrypt client secret");
                     }
                 })
-                .orElse(null);
+                .orElseThrow(() -> new RuntimeException("Decrypted cClient secret found to be null"));
 
         // Validate Azure credentials
         log.info("Validating user's Azure-AD credentials..");
         this.graphClient = azureAuthUtil.validateAzureCredentialsWithGraphApi(tenantId, clientId, clientSecret);
-        log.info("Azure-AD data sync started at: {}", LocalDateTime.now());
+        backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_AD_DATA_SYNC_START, "Info");
         executeSync(tenantId);
-        log.info("Azure-AD data sync ended successfully at: {}", LocalDateTime.now());
+        backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_AD_DATA_SYNC_END, "Info");
     }
 
     private void executeSync(String tenantId) {
@@ -109,7 +107,7 @@ public class AzureADSyncService {
             syncUsersDeviceRelationshipData(azureUsers, azureDevices);
         } catch (Exception ex) {
             log.error("Error occurred in syncing data from Azure AD");
-            backendApplicationLogservice.saveAuditLog(this.teantName, this.wsTenantId, Constant.AZURE_SYNC_FAILURE, ex.getMessage(), "Error");
+            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.wsTenantName, Constant.AZURE_SYNC_FAILURE, ex.getMessage(), "Error");
             throw new RuntimeException(ex.getMessage());
         }
     }
@@ -121,10 +119,10 @@ public class AzureADSyncService {
                 .get();
 
         // delete the existing tenant and re-create whatever has been fetched this time
-        azureTenantRepository.deleteByAzureId(tenantId);
+        azureTenantRepository.deleteByAzureIdAndWsTenantName(tenantId, wsTenantName);
 
-        AzureTenant azureTenant = AzureEntityUtil.createAzureTenantFromGraphOrganization(organization, AzureTenant.builder().wsTenantId(this.wsTenantId).build());
-        backendApplicationLogservice.saveAuditLog(this.teantName, this.wsTenantId, Constant.ADD, Constant.AZURE_TENANT_SAVED, "Info");
+        AzureTenant azureTenant = AzureEntityUtil.createAzureTenantFromGraphOrganization(organization, AzureTenant.builder().wsTenantName(this.wsTenantName).build());
+        backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_TENANT_SAVED, "Info");
         return azureTenantRepository.save(azureTenant);
     }
 
@@ -140,7 +138,7 @@ public class AzureADSyncService {
                 .map(graphApp -> {
                     AzureApplication azureApp = AzureEntityUtil.createAzureApplicationFromGraphApplication(
                             graphApp,
-                            AzureApplication.builder().wsTenantId(this.wsTenantId).azureTenant(azureTenant).build()
+                            AzureApplication.builder().wsTenantName(this.wsTenantName).azureTenant(azureTenant).build()
                     );
                     List<AzureAppRoles> azureAppRoles = graphApp.appRoles.stream()
                             .map(graphAppRoles -> {
@@ -158,7 +156,7 @@ public class AzureADSyncService {
                 })
                 .collect(Collectors.toList());
 
-        backendApplicationLogservice.saveAuditLog(this.teantName, this.wsTenantId, Constant.ADD, Constant.AZURE_APPLICATION__SAVED, "Info");
+        backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_APPLICATION__SAVED, "Info");
         azureApplicationRepository.saveAll(azureApplications);
     }
 
@@ -172,12 +170,12 @@ public class AzureADSyncService {
 
         List<AzureUser> azureUsers = result.getCurrentPage().stream()
                 .map(graphUser -> AzureEntityUtil.createAzureUserFromGraphUser(graphUser, AzureUser.builder()
-                        .wsTenantId(this.wsTenantId)
+                        .wsTenantName(this.wsTenantName)
                         .azureTenant(azureTenant)
                         .build()))
                 .collect(Collectors.toList());
 
-        backendApplicationLogservice.saveAuditLog(this.teantName, this.wsTenantId, Constant.ADD, Constant.AZURE_USERS_SAVED, "Info");
+        backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_USERS_SAVED, "Info");
         return azureUserRepository.saveAll(azureUsers);
     }
 
@@ -192,12 +190,12 @@ public class AzureADSyncService {
 
         List<AzureGroup> azureGroups = result.getCurrentPage().stream()
                 .map(group -> AzureEntityUtil.createAzureGroupFromGraphGroup(group, AzureGroup.builder()
-                        .wsTenantId(this.wsTenantId)
+                        .wsTenantName(this.wsTenantName)
                         .azureTenant(azureTenant)
                         .build()))
                 .collect(Collectors.toList());
 
-        backendApplicationLogservice.saveAuditLog(this.teantName, this.wsTenantId, Constant.ADD, Constant.AZURE_GROUP_SAVED, "Info");
+        backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_GROUP_SAVED, "Info");
         return azureGroupRepository.saveAll(azureGroups);
     }
 
@@ -235,7 +233,7 @@ public class AzureADSyncService {
             });
         });
 
-        backendApplicationLogservice.saveAuditLog(this.teantName, this.wsTenantId, Constant.ADD, Constant.AZURE_USERS_GROUPS_MAPPED, "Info");
+        backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_USERS_GROUPS_MAPPED, "Info");
         azureUserGroupMembershipRepository.saveAll(memberships);
     }
 
@@ -250,12 +248,12 @@ public class AzureADSyncService {
 
         List<AzureDevice> azureDevices = result.getCurrentPage().stream()
                 .map(device -> AzureEntityUtil.createAzureDeviceFromGraphDevice(device, AzureDevice.builder()
-                        .wsTenantId(this.wsTenantId)
+                        .wsTenantName(this.wsTenantName)
                         .azureTenant(azureTenant)
                         .build()))
                 .collect(Collectors.toList());
 
-        backendApplicationLogservice.saveAuditLog(this.teantName, this.wsTenantId, Constant.ADD, Constant.AZURE_DEVICE_SAVED, "Info");
+        backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_DEVICE_SAVED, "Info");
         return azureDeviceRepository.saveAll(azureDevices);
     }
 
@@ -293,7 +291,7 @@ public class AzureADSyncService {
             });
         });
 
-        backendApplicationLogservice.saveAuditLog(this.teantName, this.wsTenantId, Constant.ADD, Constant.AZURE_USERS_DEVICES_MAPPED, "Info");
+        backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_USERS_DEVICES_MAPPED, "Info");
         azureUserDeviceRelationshipRepository.saveAll(userDevices);
     }
 }

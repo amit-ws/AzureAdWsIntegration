@@ -8,10 +8,11 @@ import java.util.Optional;
 public interface AzureTenantRepository extends JpaRepository<AzureTenant, Integer> {
     Optional<AzureTenant> findByAzureId(String azureTenantId);
 
-    Optional<AzureTenant> findByWsTenantId(Integer wsTenantId);
+    Optional<AzureTenant> findByWsTenantName(String wsTenantName);
 
     void deleteByAzureId(String azureTenantId);
 
+    void deleteByAzureIdAndWsTenantName(String azureTenantId, String wsTenantName);
 
 
 }
