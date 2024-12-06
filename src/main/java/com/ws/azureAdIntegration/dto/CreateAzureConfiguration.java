@@ -24,6 +24,10 @@ public class CreateAzureConfiguration {
     @JsonProperty("client_secret")
     String clientSecret;
 
+    @NotNull(message = "azure subscriptionId is required")
+    @JsonProperty("subscription_id")
+    String subscriptionId;
+
 //    @NotNull(message = "azure application object_id is required")
 //    @JsonProperty("object_id")
 //    String objectId;

@@ -15,6 +15,7 @@ import com.azure.resourcemanager.resources.models.Subscription;
 import com.azure.resourcemanager.sql.models.SqlDatabase;
 import com.azure.resourcemanager.sql.models.SqlServer;
 import com.azure.resourcemanager.storage.models.StorageAccount;
+import com.microsoft.graph.requests.GraphServiceClient;
 import com.ws.azureResourcesIntegration.configuration.AzureAuthConfigurationFactory;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
@@ -53,13 +54,17 @@ public class AzureResourcesService {
         return azureAuthConfigurationFactory.createAzureResourceClient(clientId, clientSecret, tenantId, subscriptionId);
     }
 
+    private AzureResourceManager getAzureResourceManager(String clientId, String clientSecret, String tenantId, String subscriptionId) {
+        return azureAuthConfigurationFactory.createAzureResourceClient(clientId, clientSecret, tenantId, subscriptionId);
+    }
+
 
     /**
      * List all VMs
      * Equivalent to AWS EC2
      */
     public void listVMs() {
-        AzureResourceManager azureResourceManager = getAzureResourceManager();
+        AzureResourceManager azureResourceManager = getAzureResourceManager("f741d2f8-8ec5-4246-9051-96fd8f041267", "mpH8Q~6czRNmViPwzdGL2J6Vb4-2eyco12aJ3dhl", "0079de83-6146-45cb-a189-5d5b03507ce8", "15b85f1d-1983-469c-a593-46fe8fc514f7");
         PagedIterable<VirtualMachine> vms = azureResourceManager.virtualMachines().list();
         for (VirtualMachine vm : vms) {
             log.info("VM ID: {}", vm.id());

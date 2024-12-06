@@ -66,15 +66,14 @@ public class AzureAuthService {
                 .ifPresent(credential -> {
                     throw new RuntimeException("Azure credentials already saved!");
                 });
-
-        AzureUserCredential azureUserCredential = AzureUserCredential.builder()
+        azureUserCredentialRepository.save(AzureUserCredential.builder()
                 .clientId(clientId)
                 .clientSecret(clientSecret)
                 .tenantId(tenantId)
+                .subscriptionId(createAzureConfiguration.getSubscriptionId().trim())
                 .wsTenantId(wsTenantId)
                 .createdAt(new Date())
-                .build();
-        azureUserCredentialRepository.save(azureUserCredential);
+                .build());
         backendApplicationLogservice.saveAuditLog("ws-amit-tenant", wsTenantId, Constant.ADD, Constant.AZURE_CREDENTIALS_SAVED, "Info");
         azureADSyncService.syncAzureData(wsTenantId, graphClient, tenantId);
         return Collections.singletonMap("message", "Credentials configured successfully and Data sync started!");
