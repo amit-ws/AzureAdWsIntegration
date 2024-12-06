@@ -4,6 +4,7 @@ import lombok.*;
 import lombok.experimental.FieldDefaults;
 
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 @Data
 @NoArgsConstructor
@@ -20,4 +21,13 @@ public class DatabaseDTO {
     Integer sizeInGb;
     LocalDateTime lastBackupTime;
     LocalDateTime createdDate;
+
+    String edition;
+    Long maxSizeBytes;
+    String region;
+    String dbStatus;
+    String readScale;
+    Double minCapacity;
+    OffsetDateTime pausedDate;
+    OffsetDateTime resumedDate;
 }

@@ -11,11 +11,17 @@ import java.time.OffsetDateTime;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @Builder
 public class StorageAccountDTO {
-    Long id;
     String storageAccountId;
     String storageAccountName;
-    String storageAccountRegion;
+    String region;
     OffsetDateTime createdDate;
+    String kind;
+    String customDomainName;
+    Boolean blobPublicAccessAllowed;
+    Boolean sharedKeyAccessAllowed;
+    Boolean isAccessAllowedFromAllNetworks;
+    String publicNetworkAccess;
+
     String containerType;
     String containerName;
     String publicAccess;

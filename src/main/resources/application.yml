@@ -69,3 +69,8 @@ server:
   port: 9495
 
 
+clientId:
+clientSecret:
+tenantId:
+subscriptionId:
+

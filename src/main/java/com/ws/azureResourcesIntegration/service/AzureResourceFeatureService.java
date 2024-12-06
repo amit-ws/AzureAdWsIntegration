@@ -232,7 +232,7 @@ public class AzureResourceFeatureService {
                             StorageAccountDTO storageDetails = StorageAccountDTO.builder()
                                     .storageAccountId(storageAccount.id())
                                     .storageAccountName(storageAccount.name())
-                                    .storageAccountRegion(storageAccount.regionName())
+                                    .region(storageAccount.regionName())
                                     .createdDate(storageAccount.creationTime())
                                     .containerName(container.name())
                                     .publicAccess(container.publicAccess().toString())
@@ -390,7 +390,7 @@ public class AzureResourceFeatureService {
                                 StorageAccountDTO storageDetails = StorageAccountDTO.builder()
                                         .storageAccountId(storageAccount.id())
                                         .storageAccountName(storageAccount.name())
-                                        .storageAccountRegion(storageAccount.regionName())
+                                        .region(storageAccount.regionName())
                                         .createdDate(storageAccount.creationTime())
                                         .containerName(container.name())
                                         .publicAccess(container.publicAccess().toString())
@@ -472,6 +472,7 @@ public class AzureResourceFeatureService {
             log.info("subscription-id: {}", subscription.subscriptionId());
             log.info("subscription-name: {}", subscription.displayName());
             log.info("subscription-state: {}", subscription.state().name());
+            subscription.subscriptionPolicies().spendingLimit().name();
         }
     }
 

@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/azureResources")
+@RequestMapping("/api/azure-resources")
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class AzureResourceFeatureController {
     final AzureResourceFeatureService azureResourceFeatureService;

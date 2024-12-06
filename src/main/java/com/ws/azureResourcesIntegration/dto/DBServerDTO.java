@@ -22,4 +22,18 @@ public class DBServerDTO {
     LocalDateTime createdDate;
     String status;
     List<DatabaseDTO> databases = new ArrayList<>();
+
+    String kind;
+    String state;
+    Boolean managedServiceIdentityEnabled;
+    String managedServiceIdentityType;
+    String publicNetworkAccess;
+    String resourceGroupName;
+    String version;
+    String innerModelState;
+    String administratorType;
+    String administratorSignInName;
+    String administratorId;
+    List<String> privateEndpointConnectionIds;
+    List<String> privateEndpointIds;
 }
