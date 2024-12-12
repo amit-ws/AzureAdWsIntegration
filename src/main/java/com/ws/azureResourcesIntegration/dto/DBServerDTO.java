@@ -15,7 +15,7 @@ import java.util.List;
 public class DBServerDTO {
     String serverId;
     String serverName;
-    String serverType;
+    String type;
     String serverVersion;
     String region;
     String resourceGroup;
@@ -36,4 +36,9 @@ public class DBServerDTO {
     String administratorId;
     List<String> privateEndpointConnectionIds;
     List<String> privateEndpointIds;
+
+    String location;
+    String administratorLogin;
+    String privateEndpointConnectionId;
+    String privateEndpointId;
 }

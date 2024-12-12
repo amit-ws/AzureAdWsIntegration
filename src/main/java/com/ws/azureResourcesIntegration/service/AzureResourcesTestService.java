@@ -30,10 +30,10 @@ import java.util.stream.StreamSupport;
 @Slf4j
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class AzureResourcesTestService {
-    final String clientId = "f741d2f8-8ec5-4246-9051-";
-    final String clientSecret = "C6n8Q~Pe3lYUXaRp6gLNOZUK~";
-    final String tenantId = "0079de83-6146-45cb-a189-8";
-    final String subscriptionId = "15b85f1d-1983-469c-a593-";
+    final String clientId = "f741d2f8-8ec5-4246-9051-96fd8f041267";
+    final String clientSecret = "C6n8Q~Pe3lYUXaRp6gLNOZUK~uM5UUSkqP~9JbuY";
+    final String tenantId = "0079de83-6146-45cb-a189-5d5b03507ce8";
+    final String subscriptionId = "15b85f1d-1983-469c-a593-46fe8fc514f7";
     final AzureAuthConfigurationFactory azureAuthConfigurationFactory;
 
     @Autowired
@@ -179,28 +179,28 @@ public class AzureResourcesTestService {
         List<DBServerDTO> response = new ArrayList<>();
         AzureResourceManager azureResourceManager = getAzureResourceManager();
         for (SqlServer sqlServer : azureResourceManager.sqlServers().list()) {
-            log.info("SQL Server Kind: {}", sqlServer.kind());
-            log.info("SQL Server State: {}", sqlServer.state());
-            log.info("SQL Server Managed Service Identity Enabled: {}", sqlServer.isManagedServiceIdentityEnabled());
-            log.info("SQL Server Managed Service Identity Type: {}", sqlServer.managedServiceIdentityType());
-            log.info("SQL Server Public Network Access: {}", sqlServer.publicNetworkAccess());
+            log.info("Kind: {}", sqlServer.kind());
+            log.info("State: {}", sqlServer.state());
+            log.info("Managed Service Identity Enabled: {}", sqlServer.isManagedServiceIdentityEnabled());
+            log.info("Managed Service Identity Type: {}", sqlServer.managedServiceIdentityType());
+            log.info("Public Network Access: {}", sqlServer.publicNetworkAccess());
+            log.info("Location: {}",  sqlServer.innerModel().location());
+            log.info("Administrator Login: {}",   sqlServer.administratorLogin());
             if (sqlServer.getActiveDirectoryAdministrator() != null) {
-                log.info("SQL Server Active Directory Administrator Type: {}", sqlServer.getActiveDirectoryAdministrator().administratorType());
-                log.info("SQL Server Active Directory Administrator Sign-in Name: {}", sqlServer.getActiveDirectoryAdministrator().signInName());
-                log.info("SQL Server Active Directory Administrator ID: {}", sqlServer.getActiveDirectoryAdministrator().id());
+                log.info("Administrator ID: {}", sqlServer.getActiveDirectoryAdministrator().id());
+                log.info("Administrator Type: {}", sqlServer.getActiveDirectoryAdministrator().administratorType());
+                log.info("Administrator Sign-in Name: {}", sqlServer.getActiveDirectoryAdministrator().signInName());
             }
-            log.info("SQL Server DNS Aliases: {}", sqlServer.dnsAliases());
-            log.info("SQL Server Resource Group Name: {}", sqlServer.resourceGroupName());
-            log.info("SQL Server Version: {}", sqlServer.version());
-            log.info("SQL Server Inner Model State: {}", sqlServer.innerModel().state());
-
+            log.info("DNS Aliases: {}", sqlServer.dnsAliases());
+            log.info("Resource Group Name: {}", sqlServer.resourceGroupName());
+            log.info("Version: {}", sqlServer.version());
+            log.info("Inner Model State: {}", sqlServer.innerModel().state());
             if (sqlServer.innerModel().privateEndpointConnections() != null) {
                 for (ServerPrivateEndpointConnection privateEndpointConnection : sqlServer.innerModel().privateEndpointConnections()) {
-                    log.info("SQL Server Private Endpoint Connection ID: {}", privateEndpointConnection.id());
-                    log.info("SQL Server Private Endpoint ID: {}", privateEndpointConnection.properties().privateEndpoint().id());
+                    log.info("Private Endpoint Connection ID: {}", privateEndpointConnection.id());
+                    log.info("Private Endpoint ID: {}", privateEndpointConnection.properties().privateEndpoint().id());
                 }
             }
-
             log.info(" ");
             for (SqlDatabase sqlDatabase : sqlServer.databases().list()) {
                 log.info("Edition: {}", sqlDatabase.edition());
@@ -211,13 +211,15 @@ public class AzureResourcesTestService {
                 log.info("Min Capacity: {}", sqlDatabase.innerModel().minCapacity());
                 log.info("Paused Date: {}", sqlDatabase.innerModel().pausedDate());
                 log.info("Resumed Date: {}", sqlDatabase.innerModel().resumedDate());
+                log.info("DefaultSecondaryLocation: {}", sqlDatabase.defaultSecondaryLocation());
+                log.info("location: {}", sqlDatabase.innerModel().location());
             }
         }
         azureResourceManager.sqlServers().list().forEach(sqlServer -> {
             DBServerDTO serverDTO = DBServerDTO.builder()
                     .serverId(sqlServer.id())
                     .serverName(sqlServer.name())
-                    .serverType(sqlServer.type())
+                    .type(sqlServer.type())
                     .region(sqlServer.region().name())
                     .serverVersion(sqlServer.version())
                     .kind(sqlServer.kind())
