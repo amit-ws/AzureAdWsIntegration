@@ -31,14 +31,12 @@ public class DBServerDTO {
     String resourceGroupName;
     String version;
     String innerModelState;
+    String administratorId;
     String administratorType;
     String administratorSignInName;
-    String administratorId;
     List<String> privateEndpointConnectionIds;
     List<String> privateEndpointIds;
 
     String location;
     String administratorLogin;
-    String privateEndpointConnectionId;
-    String privateEndpointId;
 }

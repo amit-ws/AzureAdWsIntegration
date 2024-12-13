@@ -32,7 +32,7 @@ CREATE TABLE public.azure_vm
     public_ip_instance_id  UUID,
     resource_group_name    VARCHAR(255) NOT NULL,
     os_disk_size           INTEGER      NOT NULL,
-    region                 VARCHAR(100) NOT NULL,
+--     region                 VARCHAR(100) NOT NULL,
     security_type          VARCHAR(50)  NOT NULL,
     type                   VARCHAR(50)  NOT NULL,
     zones                  TEXT[],
