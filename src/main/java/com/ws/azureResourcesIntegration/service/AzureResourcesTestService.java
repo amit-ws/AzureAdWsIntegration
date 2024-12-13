@@ -184,8 +184,8 @@ public class AzureResourcesTestService {
             log.info("Managed Service Identity Enabled: {}", sqlServer.isManagedServiceIdentityEnabled());
             log.info("Managed Service Identity Type: {}", sqlServer.managedServiceIdentityType());
             log.info("Public Network Access: {}", sqlServer.publicNetworkAccess());
-            log.info("Location: {}",  sqlServer.innerModel().location());
-            log.info("Administrator Login: {}",   sqlServer.administratorLogin());
+            log.info("Location: {}", sqlServer.innerModel().location());
+            log.info("Administrator Login: {}", sqlServer.administratorLogin());
             if (sqlServer.getActiveDirectoryAdministrator() != null) {
                 log.info("Administrator ID: {}", sqlServer.getActiveDirectoryAdministrator().id());
                 log.info("Administrator Type: {}", sqlServer.getActiveDirectoryAdministrator().administratorType());
@@ -259,6 +259,46 @@ public class AzureResourcesTestService {
                                     .resumedDate(sqlDatabase.innerModel().resumedDate())
                                     .build())
                             .collect(Collectors.toList()))
+                    .build();
+
+            response.add(serverDTO);
+        });
+        return response;
+    }
+
+    public List<DBServerDTO> getServers() {
+        List<DBServerDTO> response = new ArrayList<>();
+        AzureResourceManager azureResourceManager = getAzureResourceManager();
+        azureResourceManager.sqlServers().list().forEach(sqlServer -> {
+            DBServerDTO serverDTO = DBServerDTO.builder()
+                    .serverId(sqlServer.id())
+                    .serverName(sqlServer.name())
+                    .type(sqlServer.type())
+                    .region(sqlServer.region().name())
+                    .serverVersion(sqlServer.version())
+                    .kind(sqlServer.kind())
+                    .state(sqlServer.state())
+                    .managedServiceIdentityEnabled(sqlServer.isManagedServiceIdentityEnabled())
+                    .managedServiceIdentityType(sqlServer.managedServiceIdentityType().toString())
+                    .publicNetworkAccess(sqlServer.publicNetworkAccess().toString())
+                    .resourceGroupName(sqlServer.resourceGroupName())
+                    .innerModelState(sqlServer.innerModel().state())
+                    .administratorType(sqlServer.getActiveDirectoryAdministrator() != null
+                            ? sqlServer.getActiveDirectoryAdministrator().administratorType().toString() : null)
+                    .administratorSignInName(sqlServer.getActiveDirectoryAdministrator() != null
+                            ? sqlServer.getActiveDirectoryAdministrator().signInName() : null)
+                    .administratorId(sqlServer.getActiveDirectoryAdministrator() != null
+                            ? sqlServer.getActiveDirectoryAdministrator().id() : null)
+                    .privateEndpointConnectionIds(sqlServer.innerModel().privateEndpointConnections() != null
+                            ? sqlServer.innerModel().privateEndpointConnections().stream()
+                            .map(ServerPrivateEndpointConnection::id)
+                            .collect(Collectors.toList()) : null)
+                    .privateEndpointIds(sqlServer.innerModel().privateEndpointConnections() != null
+                            ? sqlServer.innerModel().privateEndpointConnections().stream()
+                            .map(connection -> connection.properties().privateEndpoint().id())
+                            .collect(Collectors.toList()) : null)
+                    .location(sqlServer.innerModel().location())
+                    .administratorLogin(sqlServer.administratorLogin())
                     .build();
 
             response.add(serverDTO);
