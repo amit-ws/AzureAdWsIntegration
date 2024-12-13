@@ -9,10 +9,12 @@ import com.azure.identity.ClientSecretCredentialBuilder;
 import com.azure.resourcemanager.AzureResourceManager;
 import com.microsoft.graph.authentication.IAuthenticationProvider;
 import com.microsoft.graph.requests.GraphServiceClient;
-import com.ws.cofiguration.azure.TokenManager;
+import okhttp3.Request;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.stereotype.Component;
 
 import java.net.URL;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
 @Component
@@ -22,10 +24,11 @@ public class AzureAuthConfigurationFactory {
         Method to create Azure GraphServiceClient
         To be use for Azure Active Directory apis
      */
-    public GraphServiceClient createAzureGraphServiceClient(String clientId, String clientSecret, String tenantId) {
+    public GraphServiceClient<Request> createAzureGraphServiceClient(String clientId, String clientSecret, String tenantId) {
         ClientSecretCredential clientSecretCredential = createAzureClientSecretCredential(clientId, clientSecret, tenantId);
         return GraphServiceClient.builder()
                 .authenticationProvider(new IAuthenticationProvider() {
+                    @NotNull
                     @Override
                     public CompletableFuture<String> getAuthorizationTokenAsync(URL requestUrl) {
                         return CompletableFuture.completedFuture(getAccessToken());
@@ -33,9 +36,7 @@ public class AzureAuthConfigurationFactory {
 
                     private String getAccessToken() {
                         TokenRequestContext requestContext = new TokenRequestContext().addScopes("https://graph.microsoft.com/.default");
-                        String accessToken = clientSecretCredential.getToken(requestContext).block().getToken();
-                        TokenManager.getInstance().setAccessToken(accessToken);
-                        return TokenManager.getInstance().getAccessToken();
+                        return Objects.requireNonNull(clientSecretCredential.getToken(requestContext).block()).getToken();
                     }
                 })
                 .buildClient();

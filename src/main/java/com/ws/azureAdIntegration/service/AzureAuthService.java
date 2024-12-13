@@ -9,6 +9,7 @@ import com.ws.azureAdIntegration.repository.AzureUserCredentialRepository;
 import com.ws.azureAdIntegration.repository.AzureUserRepository;
 import com.ws.azureAdIntegration.util.AzureAuthUtil;
 import com.ws.azureAdIntegration.util.EncryptionUtil;
+import com.ws.azureResourcesIntegration.service.AzureResourceSyncService;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import org.slf4j.Logger;
@@ -30,7 +31,8 @@ public class AzureAuthService {
     final Logger log = LoggerFactory.getLogger(this.getClass());
     final AzureUserCredentialRepository azureUserCredentialRepository;
     final BackendApplicationLogservice backendApplicationLogservice;
-    final AzureADSyncService azureADSyncService;
+    final AzureSyncService azureSyncService;
+    final AzureResourceSyncService azureResourceSyncService;
     final AzureAuthUtil azureAuthUtil;
     final AzureUserEntityService azureUserEntityService;
     final AzureUserRepository azureUserRepository;
@@ -38,10 +40,12 @@ public class AzureAuthService {
     String redirectUri;
 
     @Autowired
-    public AzureAuthService(AzureUserCredentialRepository azureUserCredentialRepository, BackendApplicationLogservice backendApplicationLogservice, AzureADSyncService azureADSyncService, AzureAuthUtil azureAuthUtil, AzureUserEntityService azureUserEntityService, AzureUserRepository azureUserRepository) {
+    public AzureAuthService(AzureUserCredentialRepository azureUserCredentialRepository, BackendApplicationLogservice backendApplicationLogservice, AzureSyncService azureSyncService,
+                            AzureResourceSyncService azureResourceSyncService, AzureAuthUtil azureAuthUtil, AzureUserEntityService azureUserEntityService, AzureUserRepository azureUserRepository) {
         this.azureUserCredentialRepository = azureUserCredentialRepository;
         this.backendApplicationLogservice = backendApplicationLogservice;
-        this.azureADSyncService = azureADSyncService;
+        this.azureSyncService = azureSyncService;
+        this.azureResourceSyncService = azureResourceSyncService;
         this.azureAuthUtil = azureAuthUtil;
         this.azureUserEntityService = azureUserEntityService;
         this.azureUserRepository = azureUserRepository;
@@ -65,12 +69,12 @@ public class AzureAuthService {
                 .orElseThrow(() -> new RuntimeException("Client secret found as null"));
 
         log.info("Validating user's Azure-AD credentials..");
-        GraphServiceClient graphClient = azureAuthUtil.validateAzureCredentialsWithGraphApi(tenantId, clientId, createAzureConfiguration.getClientSecret());
+        GraphServiceClient graphClient = azureAuthUtil.validateAzureCredentials(tenantId, clientId, createAzureConfiguration.getClientSecret());
         Optional.ofNullable(getAzureUserCredentialForWSTenant(wsTenantName))
                 .ifPresent(credential -> {
                     throw new RuntimeException("Azure credentials already saved!");
                 });
-        azureUserCredentialRepository.save(AzureUserCredential.builder()
+        AzureUserCredential azureUserCredential = azureUserCredentialRepository.save(AzureUserCredential.builder()
                 .clientId(clientId)
                 .clientSecret(clientSecret)
                 .tenantId(tenantId)
@@ -79,7 +83,7 @@ public class AzureAuthService {
                 .createdAt(new Date())
                 .build());
         backendApplicationLogservice.saveAuditLog(wsTenantName, "dummy@gmail.com", Constant.ADD, Constant.AZURE_CREDENTIALS_SAVED, "Info");
-        azureADSyncService.syncAzureData(wsTenantName, graphClient, tenantId);
+        azureSyncService.syncAzureData(wsTenantName, graphClient, azureUserCredential);
         return Collections.singletonMap("message", "Credentials configured successfully and Data sync started!");
     }
 

@@ -60,51 +60,16 @@ public class AzureADSyncService {
         this.azureAuthUtil = azureAuthUtil;
     }
 
-    @Async
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void syncAzureData(String wsTenantName, GraphServiceClient graphClient, String tenantId) {
-        this.graphClient = graphClient;
-        this.wsTenantName = wsTenantName;
-        log.info("Azure-AD data sync started at: {}", LocalDateTime.now());
-        executeSync(tenantId);
-        log.info("Azure-AD data sync ended at: {}", LocalDateTime.now());
-    }
-
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void syncAzureData(String wsTenantName) {
-        AzureUserCredential azureUserCredential = Optional.ofNullable(azureUserCredentialRepository.findByWsTenantName(wsTenantName).get())
-                .orElseThrow(() -> new RuntimeException("No Azure AD configuration found!"));
-
-        String tenantId = azureUserCredential.getTenantId();
-        String clientId = azureUserCredential.getClientId();
-        String clientSecret = Optional.ofNullable(azureUserCredential.getClientSecret())
-                .map(secret -> {
-                    try {
-                        return EncryptionUtil.decrypt(secret);
-                    } catch (Exception e) {
-                        log.error("Decryption error: ", e.getMessage());
-                        throw new RuntimeException("Failed to decrypt client secret");
-                    }
-                })
-                .orElseThrow(() -> new RuntimeException("Decrypted cClient secret found to be null"));
-
-        // Validate Azure credentials
-        log.info("Validating user's Azure-AD credentials..");
-        this.graphClient = azureAuthUtil.validateAzureCredentialsWithGraphApi(tenantId, clientId, clientSecret);
-        backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_AD_DATA_SYNC_START, "Info");
-        executeSync(tenantId);
-        backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_AD_DATA_SYNC_END, "Info");
-    }
-
-    private void executeSync(String tenantId) {
+    protected void syncAzureADData(AzureTenant azureTenant) {
         try {
-            AzureTenant azureTenant = syncTenantData(tenantId);
+            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_AD_DATA_SYNC_START, "Info");
             syncApplications(azureTenant);
             List<AzureUser> azureUsers = syncUsersData(azureTenant);
             List<AzureGroup> azureGroups = syncGroupsData(azureTenant);
             List<AzureDevice> azureDevices = syncDevicesData(azureTenant);
             syncUsersGroupsMembershipData(azureUsers, azureGroups);
             syncUsersDeviceRelationshipData(azureUsers, azureDevices);
+            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_AD_DATA_SYNC_END, "Info");
         } catch (Exception ex) {
             log.error("Error occurred in syncing data from Azure AD");
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.wsTenantName, Constant.AZURE_SYNC_FAILURE, ex.getMessage(), "Error");

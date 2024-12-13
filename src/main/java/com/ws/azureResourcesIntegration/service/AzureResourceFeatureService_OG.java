@@ -28,7 +28,7 @@ import java.util.stream.Collectors;
 @Service
 @Slf4j
 @FieldDefaults(level = AccessLevel.PRIVATE)
-public class AzureResourceFeatureService {
+public class AzureResourceFeatureService_OG {
     @Value("${spring.cloud.azure.active-directory.client-id}")
     String clientId;
 
@@ -47,7 +47,7 @@ public class AzureResourceFeatureService {
 
 
     @Autowired
-    public AzureResourceFeatureService(AzureAuthConfigurationFactory azureAuthConfigurationFactory, AzureUserRepository azureUserRepository, AzureUserGroupMembershipRepository azureUserGroupMembershipRepository, AzureUserCredentialRepository azureUserCredentialRepository) {
+    public AzureResourceFeatureService_OG(AzureAuthConfigurationFactory azureAuthConfigurationFactory, AzureUserRepository azureUserRepository, AzureUserGroupMembershipRepository azureUserGroupMembershipRepository, AzureUserCredentialRepository azureUserCredentialRepository) {
         this.azureAuthConfigurationFactory = azureAuthConfigurationFactory;
         this.azureUserRepository = azureUserRepository;
         this.azureUserGroupMembershipRepository = azureUserGroupMembershipRepository;
@@ -259,7 +259,7 @@ public class AzureResourceFeatureService {
             DBServerDTO serverDTO = DBServerDTO.builder()
                     .serverId(sqlServer.id())
                     .serverName(sqlServer.name())
-                    .serverType(sqlServer.type())
+                    .type(sqlServer.type())
                     .region(sqlServer.region().name())
                     .serverVersion(sqlServer.version())
                     .databases(sqlServer.databases().list().stream()
@@ -346,7 +346,7 @@ public class AzureResourceFeatureService {
                     DBServerDTO serverDTO = DBServerDTO.builder()
                             .serverId(sqlServer.id())
                             .serverName(sqlServer.name())
-                            .serverType(sqlServer.type())
+                            .type(sqlServer.type())
                             .region(sqlServer.region().name())
                             .serverVersion(sqlServer.version())
                             .databases(sqlServer.databases().list().stream()

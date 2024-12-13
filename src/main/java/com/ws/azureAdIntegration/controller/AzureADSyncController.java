@@ -1,6 +1,6 @@
 package com.ws.azureAdIntegration.controller;
 
-import com.ws.azureAdIntegration.service.AzureADSyncService;
+import com.ws.azureAdIntegration.service.AzureSyncService;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,16 +18,16 @@ import java.util.Collections;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class AzureADSyncController {
 
-    final AzureADSyncService azureADSyncService;
+    final AzureSyncService azureSyncService;
 
     @Autowired
-    public AzureADSyncController(AzureADSyncService azureADSyncService) {
-        this.azureADSyncService = azureADSyncService;
+    public AzureADSyncController(AzureSyncService azureSyncService) {
+        this.azureSyncService = azureSyncService;
     }
 
     @GetMapping("onDemand")
     public ResponseEntity syncAzureADData(@RequestParam String email) {
-        azureADSyncService.syncAzureData(email);
+        azureSyncService.syncAzureData(email);
         return ResponseEntity
                 .status(HttpStatus.ACCEPTED)
                 .body(Collections.singletonMap("message", "Data synced successfully!"));
