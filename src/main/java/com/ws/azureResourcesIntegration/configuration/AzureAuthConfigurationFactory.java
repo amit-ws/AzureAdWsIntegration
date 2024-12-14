@@ -9,6 +9,7 @@ import com.azure.identity.ClientSecretCredentialBuilder;
 import com.azure.resourcemanager.AzureResourceManager;
 import com.microsoft.graph.authentication.IAuthenticationProvider;
 import com.microsoft.graph.requests.GraphServiceClient;
+import lombok.extern.slf4j.Slf4j;
 import okhttp3.Request;
 import org.jetbrains.annotations.NotNull;
 import org.springframework.stereotype.Component;
@@ -18,6 +19,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
 @Component
+@Slf4j
 public class AzureAuthConfigurationFactory {
 
     /*
@@ -54,18 +56,6 @@ public class AzureAuthConfigurationFactory {
         return AzureResourceManager
                 .authenticate(clientSecretCredential, profile)
                 .withSubscription(subscriptionId);
-    }
-
-    /*
-        Create without any SubscriptionId
-        Note: Subscription is required anyhow
-    */
-    public AzureResourceManager createAzureResourceClient(String clientId, String clientSecret, String tenantId) {
-        ClientSecretCredential clientSecretCredential = createAzureClientSecretCredential(clientId, clientSecret, tenantId);
-        AzureProfile profile = new AzureProfile(tenantId, null, AzureEnvironment.AZURE);
-        return AzureResourceManager
-                .authenticate(clientSecretCredential, profile)
-                .withDefaultSubscription();
     }
 
 

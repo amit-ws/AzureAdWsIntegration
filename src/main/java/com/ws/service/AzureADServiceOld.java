@@ -11,7 +11,7 @@ import java.util.concurrent.CompletableFuture;
 
 @Service
 @Slf4j
-public class AzureADService {
+public class AzureADServiceOld {
 
     //    @Value("${spring.cloud.azure.active-directory.client-id}")
     private String clientId = "9acacaf6-02e1-4e06-84d9-5da4a7ffd2aa";

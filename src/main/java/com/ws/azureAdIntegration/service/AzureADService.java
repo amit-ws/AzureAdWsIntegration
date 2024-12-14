@@ -14,7 +14,7 @@ import java.util.List;
 @Service
 @Slf4j
 @FieldDefaults(level = AccessLevel.PRIVATE)
-public class AzureUserService {
+public class AzureADService {
     final AzureUserRepository azureUserRepository;
     final AzureApplicationRepository azureApplicationRepository;
     final AzureAppRolesRepository azureAppRolesRepository;
@@ -24,9 +24,10 @@ public class AzureUserService {
     final AzureUserGroupMembershipRepository azureUserGroupMembershipRepository;
     final AzureUserDeviceRelationshipRepository azureUserDeviceRelationshipRepository;
     final AzureUserCredentialRepository azureUserCredentialRepository;
+    final BackendApplicationLogservice backendApplicationLogservice;
 
     @Autowired
-    public AzureUserService(AzureUserRepository azureUserRepository, AzureApplicationRepository azureApplicationRepository, AzureAppRolesRepository azureAppRolesRepository, AzureTenantRepository azureTenantRepository, AzureGroupRepository azureGroupRepository, AzureUserGroupMembershipRepository azureUserGroupMembershipRepository, AzureDeviceRepository azureDeviceRepository, AzureUserDeviceRelationshipRepository azureUserDeviceRelationshipRepository, AzureUserCredentialRepository azureUserCredentialRepository) {
+    public AzureADService(AzureUserRepository azureUserRepository, AzureApplicationRepository azureApplicationRepository, AzureAppRolesRepository azureAppRolesRepository, AzureTenantRepository azureTenantRepository, AzureGroupRepository azureGroupRepository, AzureUserGroupMembershipRepository azureUserGroupMembershipRepository, AzureDeviceRepository azureDeviceRepository, AzureUserDeviceRelationshipRepository azureUserDeviceRelationshipRepository, AzureUserCredentialRepository azureUserCredentialRepository, BackendApplicationLogservice backendApplicationLogservice) {
         this.azureUserRepository = azureUserRepository;
         this.azureApplicationRepository = azureApplicationRepository;
         this.azureAppRolesRepository = azureAppRolesRepository;
@@ -36,6 +37,7 @@ public class AzureUserService {
         this.azureDeviceRepository = azureDeviceRepository;
         this.azureUserDeviceRelationshipRepository = azureUserDeviceRelationshipRepository;
         this.azureUserCredentialRepository = azureUserCredentialRepository;
+        this.backendApplicationLogservice = backendApplicationLogservice;
     }
 
     public List<AzureUser> fetchUsers(String wsTenantName) {

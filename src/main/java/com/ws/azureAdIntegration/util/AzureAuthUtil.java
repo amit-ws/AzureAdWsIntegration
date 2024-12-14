@@ -64,6 +64,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.HashMap;
 import java.util.Map;
 
+import okhttp3.Request;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -89,7 +90,7 @@ public class AzureAuthUtil {
         this.azureAuthConfigurationFactory = azureAuthConfigurationFactory;
     }
 
-    public GraphServiceClient validateAzureCredentials(String tenantId, String clientId, String clientSecret) {
+    public GraphServiceClient<Request> validateAzureCredentials(String tenantId, String clientId, String clientSecret) {
         try {
             return azureAuthConfigurationFactory.createAzureGraphServiceClient(clientId, clientSecret, tenantId);
         } catch (Exception e) {
@@ -112,6 +113,7 @@ public class AzureAuthUtil {
 
     public AzureResourceManager validateAzureCredentialsWithSubscriptionId(AzureUserCredential azureUserCredential) {
         try {
+            log.info("hey buddy: {}", azureUserCredential.getClientSecret());
             return azureAuthConfigurationFactory.createAzureResourceClient(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
         } catch (Exception e) {
             log.error("Error in verifying Azure credentials: {}", e.getMessage());

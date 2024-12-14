@@ -2,7 +2,7 @@ package com.ws.config.controllerOld;
 
 import com.ws.dto.AssignRole;
 import com.ws.dto.CreateUser;
-import com.ws.service.AzureADService;
+import com.ws.service.AzureADServiceOld;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -12,44 +12,44 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/azure-mgmt")
-public class AzureADController {
+public class AzureADControllerOld {
 
-    private final AzureADService azureADService;
+    private final AzureADServiceOld azureADServiceOld;
 
     @Autowired
-    public AzureADController(AzureADService azureADService) {
-        this.azureADService = azureADService;
+    public AzureADControllerOld(AzureADServiceOld azureADServiceOld) {
+        this.azureADServiceOld = azureADServiceOld;
     }
 
 
 
     @GetMapping("/getMeToken")
     public String someMethod() {
-       return azureADService.someMethod();
+       return azureADServiceOld.someMethod();
     }
 
 
     @GetMapping("/myProfile")
     public ResponseEntity getMyProfileHandler() {
-        return new ResponseEntity(azureADService.getMyProfile(), HttpStatus.OK);
+        return new ResponseEntity(azureADServiceOld.getMyProfile(), HttpStatus.OK);
     }
 
 
     @GetMapping("/fetchAllUsers")
     public ResponseEntity fetchAllUsersHandler() {
-        return new ResponseEntity(azureADService.fetchAllUsers(), HttpStatus.OK);
+        return new ResponseEntity(azureADServiceOld.fetchAllUsers(), HttpStatus.OK);
     }
 
 
     @PostMapping("/createUser")
     public ResponseEntity createUserHandler(@RequestBody CreateUser createUser) {
-        return new ResponseEntity(azureADService.createUser(createUser.getDisplayName(), createUser.getUserPrincipalName(), createUser.getPassword()), HttpStatus.CREATED);
+        return new ResponseEntity(azureADServiceOld.createUser(createUser.getDisplayName(), createUser.getUserPrincipalName(), createUser.getPassword()), HttpStatus.CREATED);
     }
 
 
     @PatchMapping("/assignRole")
     public ResponseEntity assignRoleHandler(@RequestBody AssignRole assignRole) {
-        azureADService.assignRole(assignRole.getUserId(), assignRole.getRolTemplateId());
+        azureADServiceOld.assignRole(assignRole.getUserId(), assignRole.getRolTemplateId());
         return new ResponseEntity(HttpStatus.NO_CONTENT);
     }
 
@@ -66,7 +66,7 @@ public class AzureADController {
             return new ResponseEntity<>("Both values must not be null", HttpStatus.BAD_REQUEST);
         }
 
-        return new ResponseEntity<>(azureADService.createGroup(displayName, nickName), HttpStatus.CREATED);
+        return new ResponseEntity<>(azureADServiceOld.createGroup(displayName, nickName), HttpStatus.CREATED);
     }
 
 
@@ -80,14 +80,14 @@ public class AzureADController {
         if (groupId == null || userId == null) {
             return new ResponseEntity<>("Please provide some values", HttpStatus.BAD_REQUEST);
         }
-        azureADService.addUserToGroup(userId, groupId);
+        azureADServiceOld.addUserToGroup(userId, groupId);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 
 
     @GetMapping("/getRoleTemplates")
     public ResponseEntity getRoleTemplatesHandler() {
-        return new ResponseEntity(azureADService.getRoleTemplates(), HttpStatus.OK);
+        return new ResponseEntity(azureADServiceOld.getRoleTemplates(), HttpStatus.OK);
     }
 
 
@@ -104,7 +104,7 @@ public class AzureADController {
             return new ResponseEntity<>("Please provide some values", HttpStatus.BAD_REQUEST);
         }
 
-        return new ResponseEntity<>(azureADService.createRole(roleTemplateId, roleName, description), HttpStatus.NO_CONTENT);
+        return new ResponseEntity<>(azureADServiceOld.createRole(roleTemplateId, roleName, description), HttpStatus.NO_CONTENT);
     }
 
 }

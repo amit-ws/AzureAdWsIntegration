@@ -9,21 +9,14 @@ import com.ws.azureAdIntegration.entity.*;
 import com.ws.azureAdIntegration.repository.*;
 import com.ws.azureAdIntegration.util.AzureAuthUtil;
 import com.ws.azureAdIntegration.util.AzureEntityUtil;
-import com.ws.azureAdIntegration.util.EncryptionUtil;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.sql.PreparedStatement;
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 @Slf4j
 @Service
@@ -60,9 +53,19 @@ public class AzureADSyncService {
         this.azureAuthUtil = azureAuthUtil;
     }
 
+    public AzureTenant initializeGraphClientAndSyncAzureTenant(AzureUserCredential azureUserCredential, GraphServiceClient graphClient) {
+        this.wsTenantName = azureUserCredential.getWsTenantName();
+        this.graphClient = Optional.ofNullable(graphClient)
+                .orElseGet(() -> {
+                    log.info("Validating user's Azure-AD credentials..");
+                    return azureAuthUtil.validateAzureCredentials(azureUserCredential);
+                });
+        backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_AD_DATA_SYNC_START, "Info");
+        return syncTenantData(azureUserCredential.getTenantId());
+    }
+
     protected void syncAzureADData(AzureTenant azureTenant) {
         try {
-            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_AD_DATA_SYNC_START, "Info");
             syncApplications(azureTenant);
             List<AzureUser> azureUsers = syncUsersData(azureTenant);
             List<AzureGroup> azureGroups = syncGroupsData(azureTenant);
@@ -76,7 +79,6 @@ public class AzureADSyncService {
             throw new RuntimeException(ex.getMessage());
         }
     }
-
 
     private AzureTenant syncTenantData(String tenantId) {
         Organization organization = this.graphClient.organization(tenantId)

@@ -3,9 +3,9 @@ package com.ws.azureAdIntegration.constants;
 public interface Constant {
     String ADD = "Add";
     public static final String AZURE_AD_DATA_SYNC_START = "Azure-AD data sync started";
-    public static final String AZURE_RESOURCE_DATA_SYNC_START = "Azure resource data sync started";
+    public static final String AZURE_RESOURCE_DATA_SYNC_START = "Azure resources related data sync started";
     public static final String AZURE_AD_DATA_SYNC_END = "Azure-AD data sync ended successfully";
-    public static final String AZURE_RESOURCE_DATA_SYNC_END = "Azure resource data sync ended successfully";
+    public static final String AZURE_RESOURCE_DATA_SYNC_END = "Azure resources related data sync ended successfully";
     String AZURE_SYNC_FAILURE = "Azure data sync failure";
     String AZURE_CREDENTIALS_SAVED = "User azure credentials saved";
     String AZURE_TENANT_SAVED = "Azure tenant (Org) saved";
@@ -15,6 +15,20 @@ public interface Constant {
     String AZURE_DEVICE_SAVED = "Azure devices saved";
     String AZURE_USERS_GROUPS_MAPPED = "Azure users mapped with respective azure groups";
     String AZURE_USERS_DEVICES_MAPPED = "Azure users mapped with respective azure devices";
+
+
+    /*Azure resource related*/
+    String AZURE_VMS_SYNCED = "Azure VMs synced";
+    String AZURE_SUBSCRIPTION_SYNCED = "Azure subscription(s) synced";
+    String AZURE_RESOURCE_GROUPS_SYNCED = "Azure resource groups synced";
+    String AZURE_STORAGES_SYNCED = "Azure storages related data synced";
+    String AZURE_SERVER_DATABASES_SYNCED = "Azure Servers and associated DBs related data synced";
+
+    /*Azure resource error related*/
+    String ERROR_IN_SYNCING_AZURE_RESOURCES = "Error in syncing azure ";
+
+
+
 
 
     // Secret Encryption related

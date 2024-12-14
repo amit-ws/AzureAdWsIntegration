@@ -12,6 +12,7 @@ import com.ws.azureAdIntegration.util.EncryptionUtil;
 import com.ws.azureResourcesIntegration.service.AzureResourceSyncService;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
+import okhttp3.Request;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,7 +32,7 @@ public class AzureAuthService {
     final Logger log = LoggerFactory.getLogger(this.getClass());
     final AzureUserCredentialRepository azureUserCredentialRepository;
     final BackendApplicationLogservice backendApplicationLogservice;
-    final AzureSyncService azureSyncService;
+    final AzureSyncControlService azureSyncControlService;
     final AzureResourceSyncService azureResourceSyncService;
     final AzureAuthUtil azureAuthUtil;
     final AzureUserEntityService azureUserEntityService;
@@ -40,11 +41,11 @@ public class AzureAuthService {
     String redirectUri;
 
     @Autowired
-    public AzureAuthService(AzureUserCredentialRepository azureUserCredentialRepository, BackendApplicationLogservice backendApplicationLogservice, AzureSyncService azureSyncService,
+    public AzureAuthService(AzureUserCredentialRepository azureUserCredentialRepository, BackendApplicationLogservice backendApplicationLogservice, AzureSyncControlService azureSyncControlService,
                             AzureResourceSyncService azureResourceSyncService, AzureAuthUtil azureAuthUtil, AzureUserEntityService azureUserEntityService, AzureUserRepository azureUserRepository) {
         this.azureUserCredentialRepository = azureUserCredentialRepository;
         this.backendApplicationLogservice = backendApplicationLogservice;
-        this.azureSyncService = azureSyncService;
+        this.azureSyncControlService = azureSyncControlService;
         this.azureResourceSyncService = azureResourceSyncService;
         this.azureAuthUtil = azureAuthUtil;
         this.azureUserEntityService = azureUserEntityService;
@@ -57,7 +58,7 @@ public class AzureAuthService {
         String wsTenantName = createAzureConfiguration.getWsTenantName().trim();
         String clientId = createAzureConfiguration.getClientId().trim();
         String tenantId = createAzureConfiguration.getTenantId().trim();
-        String clientSecret = Optional.ofNullable(createAzureConfiguration.getClientSecret())
+        String encryptedClientSecret = Optional.ofNullable(createAzureConfiguration.getClientSecret())
                 .map(secret -> {
                     try {
                         return EncryptionUtil.encrypt(secret.trim());
@@ -69,21 +70,22 @@ public class AzureAuthService {
                 .orElseThrow(() -> new RuntimeException("Client secret found as null"));
 
         log.info("Validating user's Azure-AD credentials..");
-        GraphServiceClient graphClient = azureAuthUtil.validateAzureCredentials(tenantId, clientId, createAzureConfiguration.getClientSecret());
+        GraphServiceClient<Request> graphClient = azureAuthUtil.validateAzureCredentials(tenantId, clientId, createAzureConfiguration.getClientSecret());
         Optional.ofNullable(getAzureUserCredentialForWSTenant(wsTenantName))
                 .ifPresent(credential -> {
                     throw new RuntimeException("Azure credentials already saved!");
                 });
         AzureUserCredential azureUserCredential = azureUserCredentialRepository.save(AzureUserCredential.builder()
                 .clientId(clientId)
-                .clientSecret(clientSecret)
+                .clientSecret(encryptedClientSecret)
                 .tenantId(tenantId)
                 .subscriptionId(subscriptionId)
                 .wsTenantName(wsTenantName)
                 .createdAt(new Date())
                 .build());
+        azureUserCredential.setClientSecret(createAzureConfiguration.getClientSecret());
         backendApplicationLogservice.saveAuditLog(wsTenantName, "dummy@gmail.com", Constant.ADD, Constant.AZURE_CREDENTIALS_SAVED, "Info");
-        azureSyncService.syncAzureData(wsTenantName, graphClient, azureUserCredential);
+        azureSyncControlService.syncAzureData(graphClient, azureUserCredential);
         return Collections.singletonMap("message", "Credentials configured successfully and Data sync started!");
     }
 

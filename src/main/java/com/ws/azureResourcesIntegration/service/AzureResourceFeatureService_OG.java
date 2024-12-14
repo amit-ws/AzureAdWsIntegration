@@ -62,10 +62,6 @@ public class AzureResourceFeatureService_OG {
         return azureAuthConfigurationFactory.createAzureResourceClient(clientId, clientSecret, tenantId, subscriptionId);
     }
 
-    private AzureResourceManager getAzureResourceManager(String clientId, String clientSecret, String tenantId) {
-        return azureAuthConfigurationFactory.createAzureResourceClient(clientId, clientSecret, tenantId);
-    }
-
     /**
      * Feature: Assign a particular resource to a user/group for certain time period
      *
@@ -466,7 +462,7 @@ public class AzureResourceFeatureService_OG {
     public void listAllSubscriptions(String tenantName) {
         AzureUserCredential azureUserCredential = getAzureUserCredentialUsingWsTenantName(tenantName);
         log.info("azureUserCredential: {}", azureUserCredential);
-        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), decryptClientSecret(azureUserCredential.getClientSecret()), "3c10c941-37e4-4b03-8d97-d3524abe6040");
+        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), decryptClientSecret(azureUserCredential.getClientSecret()), "3c10c941-37e4-4b03-8d97-d3524abe6040", subscriptionId);
         PagedIterable<Subscription> subscriptions = azureResourceManager.subscriptions().list();
         for (Subscription subscription : subscriptions) {
             log.info("subscription-id: {}", subscription.subscriptionId());
@@ -482,7 +478,7 @@ public class AzureResourceFeatureService_OG {
                     try {
                         return EncryptionUtil.decrypt(secret);
                     } catch (Exception e) {
-                        log.error("Decryption error: ", e.getMessage());
+                        log.error("Decryption error: {}", e.getMessage());
                         throw new RuntimeException("Failed to decrypt client secret");
                     }
                 })

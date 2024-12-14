@@ -3,19 +3,16 @@ package com.ws.azureResourcesIntegration.entities;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.ws.azureAdIntegration.entity.AzureTenant;
 import jakarta.persistence.*;
-import lombok.AccessLevel;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.NoArgsConstructor;
+import lombok.*;
 import lombok.experimental.FieldDefaults;
 
 import java.time.OffsetDateTime;
 import java.util.Date;
-import java.util.UUID;
 
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@Data
 @Entity
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @Table(name = "azure_server", schema = "azure_test")
@@ -23,9 +20,9 @@ public class AzureDatabase {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Integer id;
-    UUID azureDatabaseId;
+    String azureDatabaseId;
     String databaseName;
-    UUID azureServerId;
+    String azureServerId;
     String databaseType;
     String version;
     String status;
@@ -38,8 +35,8 @@ public class AzureDatabase {
     String dbStatus;
     String readScale;
     Double minCapacity;
-    java.time.OffsetDateTime pausedDate;
-    java.time.OffsetDateTime resumedDate;
+    OffsetDateTime pausedDate;
+    OffsetDateTime resumedDate;
     String defaultSecondaryLocation;
     Date syncedAt;
     String wsTenantName; // WhiteSwan account organization name

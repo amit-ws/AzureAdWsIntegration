@@ -69,4 +69,32 @@ public class AzureResourcesTestController {
                 .status(HttpStatus.OK)
                 .body(azureResourcesTestService.listSubscriptions());
     }
+
+    @GetMapping("/listPolicyDefinition")
+    public ResponseEntity listPolicyDefinition() {
+        return ResponseEntity
+                .status(HttpStatus.OK)
+                .body(azureResourcesTestService.listPolicyDefinition());
+    }
+
+    @GetMapping("/listPolicyAssignments")
+    public ResponseEntity listPolicyAssignments() {
+        return ResponseEntity
+                .status(HttpStatus.OK)
+                .body(azureResourcesTestService.listPolicyAssignments());
+    }
+
+    @GetMapping("/getIdentities")
+    public ResponseEntity getIdentities() {
+        return ResponseEntity
+                .status(HttpStatus.OK)
+                .body(azureResourcesTestService.getIdentities());
+    }
+
+    @GetMapping("/getServicePrinciples")
+    public ResponseEntity getServicePrinciples() {
+        return ResponseEntity
+                .status(HttpStatus.OK)
+                .body(azureResourcesTestService.getServicePrinciples());
+    }
 }

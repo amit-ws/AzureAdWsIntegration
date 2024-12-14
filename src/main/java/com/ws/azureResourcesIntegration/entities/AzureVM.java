@@ -7,16 +7,14 @@ import jakarta.persistence.*;
 import java.util.Date;
 import java.util.UUID;
 
-import lombok.AccessLevel;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.NoArgsConstructor;
+import lombok.*;
 import lombok.experimental.FieldDefaults;
 
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
+@Data
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @Table(name = "azure_vm", schema = "azure_test")
 public class AzureVM {

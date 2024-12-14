@@ -5,12 +5,13 @@ import com.azure.resourcemanager.AzureResourceManager;
 import com.azure.resourcemanager.authorization.models.RoleAssignment;
 import com.azure.resourcemanager.authorization.models.RoleDefinition;
 import com.azure.resourcemanager.compute.models.VirtualMachine;
+import com.azure.resourcemanager.resources.models.PolicyAssignment;
+import com.azure.resourcemanager.resources.models.PolicyDefinition;
 import com.azure.resourcemanager.resources.models.ResourceGroup;
 import com.azure.resourcemanager.resources.models.Subscription;
 import com.azure.resourcemanager.sql.models.ServerPrivateEndpointConnection;
 import com.azure.resourcemanager.sql.models.SqlDatabase;
 import com.azure.resourcemanager.sql.models.SqlServer;
-import com.microsoft.graph.requests.GraphServiceClient;
 import com.ws.azureResourcesIntegration.configuration.AzureAuthConfigurationFactory;
 import com.ws.azureResourcesIntegration.dto.*;
 import lombok.AccessLevel;
@@ -45,12 +46,8 @@ public class AzureResourcesTestService {
         return azureAuthConfigurationFactory.createAzureResourceClient(clientId, clientSecret, tenantId, subscriptionId);
     }
 
-    private AzureResourceManager getAzureResourceManager(String clientId, String clientSecret, String tenantId) {
-        return azureAuthConfigurationFactory.createAzureResourceClient(clientId, clientSecret, tenantId);
-    }
-
-    private GraphServiceClient getGraphServiceClient() {
-        return azureAuthConfigurationFactory.createAzureGraphServiceClient(clientId, clientSecret, tenantId);
+    private AzureResourceManager getAzureResourceManager(String clientId, String clientSecret, String tenantId, String subscriptionId) {
+        return azureAuthConfigurationFactory.createAzureResourceClient(clientId, clientSecret, tenantId, subscriptionId);
     }
 
 
@@ -80,11 +77,11 @@ public class AzureResourcesTestService {
     }
 
     public Collection<ResourceGroupDTO> listResourceGroups() {
-        AzureResourceManager azureResourceManager = getAzureResourceManager();
+        AzureResourceManager azureResourceManager = getAzureResourceManager(clientId, clientSecret, tenantId, subscriptionId);
         PagedIterable<ResourceGroup> resourceGroups = azureResourceManager.resourceGroups().list();
         return StreamSupport.stream(resourceGroups.spliterator(), false)
                 .map(resourceGroup -> ResourceGroupDTO.builder()
-                        .id(resourceGroup.id())
+                        .id(resourceGroup.innerModel().id())
                         .name(resourceGroup.name())
                         .regionName(resourceGroup.regionName())
                         .build())
@@ -309,7 +306,7 @@ public class AzureResourcesTestService {
 
     public List<SubscriptionDTO> listSubscriptions() {
         List<SubscriptionDTO> response = new ArrayList<>();
-        AzureResourceManager azureResourceManager = getAzureResourceManager(clientId, clientSecret, tenantId);
+        AzureResourceManager azureResourceManager = getAzureResourceManager(clientId, clientSecret, tenantId, subscriptionId);
         PagedIterable<Subscription> subscriptions = azureResourceManager.subscriptions().list();
         subscriptions.forEach(subscription -> {
             SubscriptionDTO subscriptionDTO = SubscriptionDTO.builder()
@@ -323,6 +320,145 @@ public class AzureResourcesTestService {
         return response;
     }
 
+
+
+    /* -------------------------------------------------------------------------------------------------------------- */
+    /* -------------------------------------------------------------------------------------------------------------- */
+
+
+    /*
+    select * from aws_roles; -- → Azure Role Assignments
+    select * from aws_role_attached_permissions;  -- → Permissions from Built-in Role Definitions
+    select * from aws_role_in_line_permissions; -- → Permissions from Custom Role Definitions
+
+    select * from aws_policy;  -- → Azure Role Definitions (includes both Built-in and Custom)
+    select * from aws_attached_policies; -- → Built-in Role Definitions assigned via Role Assignments
+    select * from aws_inline_policies; -- → Custom Role Definitions assigned via Role Assignments
+    * */
+    public void experiments() {
+        AzureResourceManager azureResourceManager = getAzureResourceManager(clientId, clientSecret, tenantId, subscriptionId);
+
+        azureResourceManager.identities().list();
+        azureResourceManager.accessManagement().servicePrincipals().list();
+    }
+
+
+    public List<IdentityDTO> getIdentities() {
+        List<IdentityDTO> identities = new ArrayList<>();
+        AzureResourceManager azureResourceManager = getAzureResourceManager(clientId, clientSecret, tenantId, subscriptionId);
+        azureResourceManager.identities().list().forEach((identity -> {
+            IdentityDTO dto = IdentityDTO.builder()
+                    .id(identity.id())
+                    .clientId(identity.clientId())
+                    .tenantId(identity.tenantId())
+                    .principalId(identity.principalId())
+                    .type(identity.innerModel().type())
+                    .name(identity.innerModel().name())
+                    .build();
+            identities.add(dto);
+        }));
+        return identities;
+    }
+
+
+    public List<ServicePrincipleDTO> getServicePrinciples() {
+        List<ServicePrincipleDTO> identities = new ArrayList<>();
+        AzureResourceManager azureResourceManager = getAzureResourceManager(clientId, clientSecret, tenantId, subscriptionId);
+        azureResourceManager.accessManagement().servicePrincipals().list().forEach((servicePrincipal -> {
+            ServicePrincipleDTO dto = ServicePrincipleDTO.builder()
+                    .id(servicePrincipal.id())
+                    .applicationId(servicePrincipal.applicationId())
+                    .servicePrincipalNames(servicePrincipal.servicePrincipalNames())
+                    .build();
+            identities.add(dto);
+        }));
+        return identities;
+    }
+
+
+    public void printInlineRolePermissions(AzureResourceManager azureResourceManager, String subscriptionId) {
+        try {
+            System.out.println("Fetching Custom Role Definitions (equivalent to AWS Inline Role Permissions)...");
+
+            // Step 1: Get all Role Definitions (Custom Roles)
+            azureResourceManager.accessManagement()
+                    .roleDefinitions()
+                    .listByScope("/subscriptions/" + subscriptionId)
+                    .stream()
+                    .filter(roleDefinition -> roleDefinition.innerModel().roleType().equalsIgnoreCase("CustomRole")) // Custom Roles only
+                    .forEach(roleDefinition -> {
+                        System.out.println("-----------------------------------------------------");
+                        System.out.println("Role Definition ID: " + roleDefinition.id());
+                        System.out.println("Role Name: " + roleDefinition.roleName());
+                        System.out.println("Role Description: " + roleDefinition.description());
+                        System.out.println("Permissions: ");
+
+                        roleDefinition.permissions().forEach(permission -> {
+                            System.out.println("  Actions: " + permission.actions());
+                            System.out.println("  NotActions: " + permission.notActions());
+                            System.out.println("  DataActions: " + permission.dataActions());
+                            System.out.println("  NotDataActions: " + permission.notDataActions());
+                        });
+                    });
+
+            // Step 2: Get Role Assignments for these Custom Roles
+            System.out.println("\nFetching Role Assignments for Custom Roles...");
+            azureResourceManager
+                    .accessManagement()
+                    .roleAssignments()
+                    .listByScope("/subscriptions/" + subscriptionId)
+                    .forEach(roleAssignment -> {
+                        System.out.println("-----------------------------------------------------");
+                        System.out.println("Role Assignment ID: " + roleAssignment.id());
+                        System.out.println("Role Definition ID (Linked Role): " + roleAssignment.roleDefinitionId());
+                        System.out.println("Assigned Principal ID: " + roleAssignment.principalId());
+                        System.out.println("Scope: " + roleAssignment.scope());
+                    });
+        } catch (Exception e) {
+            System.out.println("An error occurred while fetching the role permissions: " + e.getMessage());
+        }
+    }
+
+
+    public List<PolicyDefinitionDto> listPolicyDefinition() {
+        List<PolicyDefinitionDto> policies = new ArrayList<>();
+        AzureResourceManager azureResourceManager = getAzureResourceManager(clientId, clientSecret, tenantId, subscriptionId);
+        PagedIterable<PolicyDefinition> policyDefinitions = azureResourceManager.policyDefinitions().list();
+        policyDefinitions.forEach((policyDefinition -> {
+            PolicyDefinitionDto dto = PolicyDefinitionDto.builder()
+                    .id(policyDefinition.id())
+                    .azureId(policyDefinition.innerModel().id())
+                    .policyType(policyDefinition.policyType().toString())
+                    .policyRule(policyDefinition.policyRule())
+                    .description(policyDefinition.description())
+                    .displayName(policyDefinition.displayName())
+                    .mode(policyDefinition.mode())
+                    .build();
+            policies.add(dto);
+        }));
+        return policies;
+    }
+
+
+    public List<PolicyAssignmentDTO> listPolicyAssignments() {
+        List<PolicyAssignmentDTO> policies = new ArrayList<>();
+        AzureResourceManager azureResourceManager = getAzureResourceManager(clientId, clientSecret, tenantId, subscriptionId);
+        PagedIterable<PolicyAssignment> policyDefinitions = azureResourceManager.policyAssignments().list();
+        policyDefinitions.forEach((policyAssignment -> {
+            PolicyAssignmentDTO dto = PolicyAssignmentDTO.builder()
+                    .id(policyAssignment.id())
+                    .azureId(policyAssignment.innerModel().id())
+                    .policyDefinitionId(policyAssignment.policyDefinitionId())
+                    .displayName(policyAssignment.displayName())
+                    .scope(policyAssignment.scope())
+                    .excludedScopes(policyAssignment.excludedScopes())
+                    .type(policyAssignment.type())
+                    .enforcementMode(policyAssignment.enforcementMode().toString())
+                    .build();
+            policies.add(dto);
+        }));
+        return policies;
+    }
 
     private boolean isCustomRole(String roleType) {
         return !Objects.equals(roleType, "BuiltInRole");

@@ -3,10 +3,7 @@ package com.ws.azureResourcesIntegration.entities;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.ws.azureAdIntegration.entity.AzureTenant;
 import jakarta.persistence.*;
-import lombok.AccessLevel;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.NoArgsConstructor;
+import lombok.*;
 import lombok.experimental.FieldDefaults;
 
 import java.time.OffsetDateTime;
@@ -18,6 +15,7 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@Data
 @Entity
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @Table(name = "azure_server", schema = "azure_test")
@@ -25,29 +23,25 @@ public class AzureServer {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Integer id;
-    UUID azureServerId;
+    String azureServerId;
     String serverName;
     String type;
     String serverVersion;
     String region;
     String resourceGroup;
-    OffsetDateTime createdDate;
-    String status;
     String kind;
     String state;
     Boolean managedServiceIdentityEnabled;
     String managedServiceIdentityType;
     String publicNetworkAccess;
     String resourceGroupName;
-    String version;
     String innerModelState;
     String administratorType;
     String administratorSignInName;
-    UUID administratorId;
+    String administratorId;
     String location;
     String administratorLogin;
-    UUID endpointConnectionId;
-    UUID endpointId;
+    String endpointId;
     Date syncedAt;
     String wsTenantName; // WhiteSwan account organization name
     @JsonIgnore
