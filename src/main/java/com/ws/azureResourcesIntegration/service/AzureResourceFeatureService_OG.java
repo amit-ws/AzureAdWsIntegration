@@ -6,6 +6,7 @@ import com.azure.resourcemanager.authorization.models.RoleAssignment;
 import com.azure.resourcemanager.authorization.models.RoleDefinition;
 import com.azure.resourcemanager.compute.models.VirtualMachine;
 import com.azure.resourcemanager.resources.models.Subscription;
+import com.ws.azureAdIntegration.constants.Constant;
 import com.ws.azureAdIntegration.entity.AzureUser;
 import com.ws.azureAdIntegration.entity.AzureUserCredential;
 import com.ws.azureAdIntegration.repository.AzureUserCredentialRepository;
@@ -474,16 +475,7 @@ public class AzureResourceFeatureService_OG {
     }
 
     private String decryptClientSecret(String encryptedStr) {
-        return Optional.ofNullable(clientId)
-                .map(secret -> {
-                    try {
-                        return EncryptionUtil.decrypt(secret);
-                    } catch (Exception e) {
-                        log.error("Decryption error: {}", e.getMessage());
-                        throw new RuntimeException("Failed to decrypt client secret");
-                    }
-                })
-                .orElseThrow(() -> new RuntimeException("Decrypted Client secret found to be null"));
+        return EncryptionUtil.getDecryptedKey(encryptedStr, Constant.AZURE_CLIENT_SECRET);
     }
 
     private AzureUserCredential getAzureUserCredentialUsingWsTenantName(String tenantName) {

@@ -1,6 +1,7 @@
 package com.ws.azureAdIntegration.service;
 
 import com.microsoft.graph.requests.GraphServiceClient;
+import com.ws.azureAdIntegration.constants.Constant;
 import com.ws.azureAdIntegration.entity.AzureTenant;
 import com.ws.azureAdIntegration.entity.AzureUserCredential;
 import com.ws.azureAdIntegration.repository.AzureTenantRepository;
@@ -54,17 +55,7 @@ public class AzureSyncControlService {
         AzureTenant azureTenant = azureTenantRepository
                 .findByWsTenantName(azureUserCredential.getWsTenantName())
                 .orElseGet(() -> azureADSyncService.initializeGraphClientAndSyncAzureTenant(azureUserCredential, null));
-        azureUserCredential.setClientSecret(
-                Optional.ofNullable(azureUserCredential.getClientSecret())
-                        .map(secret -> {
-                            try {
-                                return EncryptionUtil.decrypt(secret);
-                            } catch (Exception e) {
-                                log.error("Decryption error: ", e.getMessage());
-                                throw new RuntimeException("Failed to decrypt client secret");
-                            }
-                        })
-                        .orElseThrow(() -> new RuntimeException("Decrypted cClient secret found to be null")));
+        azureUserCredential.setClientSecret(EncryptionUtil.getDecryptedKey(azureUserCredential.getClientSecret(), Constant.AZURE_CLIENT_SECRET));
         azureResourceSyncService.syncAzureResourceData(azureTenant, azureUserCredential);
     }
 
@@ -74,16 +65,7 @@ public class AzureSyncControlService {
     public void syncAzureData(String wsTenantName) {
         AzureUserCredential azureUserCredential = azureUserCredentialRepository.findByWsTenantName(wsTenantName)
                 .orElseThrow(() -> new RuntimeException("No Azure AD configuration found!"));
-        String clientSecret = Optional.ofNullable(azureUserCredential.getClientSecret())
-                .map(secret -> {
-                    try {
-                        return EncryptionUtil.decrypt(secret);
-                    } catch (Exception e) {
-                        log.error("Decryption error: ", e.getMessage());
-                        throw new RuntimeException("Failed to decrypt client secret");
-                    }
-                })
-                .orElseThrow(() -> new RuntimeException("Decrypted cClient secret found to be null"));
+        String clientSecret = EncryptionUtil.getDecryptedKey(azureUserCredential.getClientSecret(), Constant.AZURE_CLIENT_SECRET);
         azureUserCredential.setClientSecret(clientSecret);
         AzureTenant azureTenant = azureADSyncService.initializeGraphClientAndSyncAzureTenant(azureUserCredential, null);
         azureADSyncService.syncAzureADData(azureTenant);

@@ -3,6 +3,7 @@ package com.ws.controller;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ws.azureAdIntegration.constants.Constant;
 import com.ws.azureAdIntegration.entity.AzureUser;
 import com.ws.azureAdIntegration.entity.AzureUserCredential;
 import com.ws.azureAdIntegration.repository.AzureUserCredentialRepository;
@@ -121,7 +122,7 @@ public class AzureAdWsIntegrationController {
     }
 
 
-    private Map exchangeCodeForAccessToken(String code) throws Exception{
+    private Map exchangeCodeForAccessToken(String code) throws Exception {
         AzureUserCredential azureUserCredential = getAzureUserCredentialForWSTenant(getAzureUserUsingEmail("ramki@wsazuread.onmicrosoft.com").getWsTenantName());
 
         String url = authBaseUrl + azureUserCredential.getTenantId() + tokeUri;
@@ -134,7 +135,7 @@ public class AzureAdWsIntegrationController {
         body.add("code", code);
         body.add("redirect_uri", redirectUri);
         body.add("grant_type", "authorization_code");
-        body.add("client_secret", EncryptionUtil.decrypt(azureUserCredential.getClientSecret()));
+        body.add("client_secret", EncryptionUtil.getDecryptedKey(azureUserCredential.getClientSecret(), Constant.AZURE_CLIENT_SECRET));
 
         HttpEntity<MultiValueMap<String, String>> requestEntity = new HttpEntity<>(body, headers);
         ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, requestEntity, Map.class);
@@ -210,7 +211,7 @@ public class AzureAdWsIntegrationController {
         String tokenUrl = "https://login.microsoftonline.com/" + azureUserCredential.getTenantId() + "/oauth2/v2.0/token";
         MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
         body.add("client_id", azureUserCredential.getClientId());
-        body.add("client_secret", EncryptionUtil.decrypt(azureUserCredential.getClientSecret()));
+        body.add("client_secret", EncryptionUtil.getDecryptedKey(azureUserCredential.getClientSecret(), Constant.AZURE_CLIENT_SECRET));
         body.add("code", code);
         body.add("redirect_uri", "http://localhost:9495/api/callback");
         body.add("grant_type", "authorization_code");

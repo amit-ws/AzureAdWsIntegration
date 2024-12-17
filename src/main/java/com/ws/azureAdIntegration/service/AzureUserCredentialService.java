@@ -1,5 +1,6 @@
 package com.ws.azureAdIntegration.service;
 
+import com.ws.azureAdIntegration.constants.Constant;
 import com.ws.azureAdIntegration.entity.AzureUserCredential;
 import com.ws.azureAdIntegration.repository.AzureUserCredentialRepository;
 import com.ws.azureAdIntegration.util.EncryptionUtil;
@@ -22,18 +23,7 @@ public class AzureUserCredentialService {
     protected AzureUserCredential findWSTeanantIdWithDecryptedSecret(String wsTenantName) {
         AzureUserCredential azureUserCredential = Optional.ofNullable(findWSTeanantIdWithoutDecryptedSecret(wsTenantName))
                 .orElseThrow(() -> new RuntimeException("No Azure AD configuration found!"));
-
-        azureUserCredential.setClientSecret(
-                Optional.ofNullable(azureUserCredential.getClientSecret())
-                        .map(secret -> {
-                            try {
-                                return EncryptionUtil.decrypt(secret);
-                            } catch (Exception e) {
-                                log.error("Decryption error: ", e.getMessage());
-                                throw new RuntimeException("Failed to decrypt client secret");
-                            }
-                        })
-                        .orElseThrow(() -> new RuntimeException("Decrypted cClient secret found to be null")));
+        azureUserCredential.setClientSecret(EncryptionUtil.getDecryptedKey(azureUserCredential.getClientSecret(), Constant.AZURE_CLIENT_SECRET));
         return azureUserCredential;
     }
 

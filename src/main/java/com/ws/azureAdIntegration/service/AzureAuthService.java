@@ -76,22 +76,10 @@ public class AzureAuthService {
                 });
         log.info("Validating user's Azure-AD credentials..");
         GraphServiceClient<Request> graphClient = azureAuthUtil.validateAzureCredentials(tenantId, clientId, createAzureConfiguration.getClientSecret());
-        String encryptedClientSecret = Optional.ofNullable(createAzureConfiguration.getClientSecret())
-                .map(secret -> {
-                    try {
-                        return EncryptionUtil.encrypt(secret.trim());
-                    } catch (Exception e) {
-                        log.error("Encryption error: ", e.getMessage());
-                        throw new RuntimeException("Failed to encrypt client secret");
-                    }
-                })
-                .orElseThrow(() -> new RuntimeException("Client secret found as null"));
-        log.info("encryptedClientSecret: {}", encryptedClientSecret);
-
         AzureUserCredential azureUserCredential = azureUserCredentialRepository.save(
                 AzureUserCredential.builder()
                         .clientId(clientId)
-                        .clientSecret(encryptedClientSecret)
+                        .clientSecret(EncryptionUtil.getEncryptedKey(createAzureConfiguration.getClientSecret(), Constant.AZURE_CLIENT_SECRET))
                         .tenantId(tenantId)
                         .subscriptionId(subscriptionId)
                         .wsTenantName(wsTenantName)
@@ -109,20 +97,7 @@ public class AzureAuthService {
     public AzureUserCredential fetchAzureConfiguration(String tenantName) {
         AzureUserCredential azureUserCredential = Optional.ofNullable(getAzureUserCredentialForWSTenant(tenantName))
                 .orElseThrow(() -> new RuntimeException("No Azure AD configuration found!"));
-        log.info("azureUserCredential secret: {}", azureUserCredential.getClientSecret());
-
-        azureUserCredential.setClientSecret(
-                Optional.ofNullable(azureUserCredential.getClientSecret())
-                        .map(secret -> {
-                            try {
-                                return EncryptionUtil.decrypt(secret);
-                            } catch (Exception e) {
-                                log.error("Decryption error: ", e.getMessage());
-                                throw new RuntimeException("Failed to decrypt client secret");
-                            }
-                        })
-                        .orElse(null)
-        );
+        azureUserCredential.setClientSecret(EncryptionUtil.getDecryptedKey(azureUserCredential.getClientSecret(), Constant.AZURE_CLIENT_SECRET));
         return azureUserCredential;
     }
 

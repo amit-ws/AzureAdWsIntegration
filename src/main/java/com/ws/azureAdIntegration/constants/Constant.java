@@ -17,6 +17,11 @@ public interface Constant {
     String AZURE_USERS_DEVICES_MAPPED = "Azure users mapped with respective azure devices";
 
 
+    /* Secret related */
+    String AZURE_CLIENT_SECRET = "Azure client secret";
+    String GCP_PRIVATE_KEY = "GCP private key";
+
+
     /*Azure resource related*/
     String AZURE_VMS_SYNCED = "Azure VMs synced";
     String AZURE_SUBSCRIPTION_SYNCED = "Azure subscription(s) synced";
@@ -29,8 +34,6 @@ public interface Constant {
 
 
     String AZURE_SUBSCRIPTION_ID_UPDATED = "Subscription ID updated for Azure user credential";
-
-
 
 
     // Secret Encryption related
