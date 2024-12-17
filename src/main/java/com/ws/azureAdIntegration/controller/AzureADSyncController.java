@@ -26,8 +26,8 @@ public class AzureADSyncController {
     }
 
     @GetMapping("onDemand")
-    public ResponseEntity syncAzureADData(@RequestParam String email) {
-        azureSyncControlService.syncAzureData(email);
+    public ResponseEntity syncAzureADData(@RequestParam String tenantName) {
+        azureSyncControlService.syncAzureData(tenantName);
         return ResponseEntity
                 .status(HttpStatus.ACCEPTED)
                 .body(Collections.singletonMap("message", "Data synced successfully!"));

@@ -28,6 +28,8 @@ public interface Constant {
     String ERROR_IN_SYNCING_AZURE_RESOURCES = "Error in syncing azure ";
 
 
+    String AZURE_SUBSCRIPTION_ID_UPDATED = "Subscription ID updated for Azure user credential";
+
 
 
 

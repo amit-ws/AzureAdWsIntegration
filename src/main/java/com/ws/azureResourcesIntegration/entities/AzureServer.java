@@ -49,6 +49,6 @@ public class AzureServer {
     @JoinColumn(name = "ws_azure_tenant_id", referencedColumnName = "id")
     AzureTenant azureTenant;
     @JsonIgnore
-    @OneToMany(mappedBy = "azureServer", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @OneToMany(mappedBy = "azureServer", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     List<AzureDatabase> azureDatabases = new ArrayList<>();
 }

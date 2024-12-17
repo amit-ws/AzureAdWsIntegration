@@ -12,6 +12,7 @@ import com.ws.azureAdIntegration.util.AzureEntityUtil;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
+import okhttp3.Request;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -53,7 +54,7 @@ public class AzureADSyncService {
         this.azureAuthUtil = azureAuthUtil;
     }
 
-    public AzureTenant initializeGraphClientAndSyncAzureTenant(AzureUserCredential azureUserCredential, GraphServiceClient graphClient) {
+    public AzureTenant initializeGraphClientAndSyncAzureTenant(AzureUserCredential azureUserCredential, GraphServiceClient<Request> graphClient) {
         this.wsTenantName = azureUserCredential.getWsTenantName();
         this.graphClient = Optional.ofNullable(graphClient)
                 .orElseGet(() -> {

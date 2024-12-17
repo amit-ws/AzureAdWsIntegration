@@ -23,7 +23,7 @@ public class AzureApplication {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Integer id;
-
+    @Column(unique = true)
     String objectId;
     String displayName;
     String description;

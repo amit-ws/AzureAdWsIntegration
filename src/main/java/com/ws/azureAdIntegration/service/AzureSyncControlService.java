@@ -3,6 +3,7 @@ package com.ws.azureAdIntegration.service;
 import com.microsoft.graph.requests.GraphServiceClient;
 import com.ws.azureAdIntegration.entity.AzureTenant;
 import com.ws.azureAdIntegration.entity.AzureUserCredential;
+import com.ws.azureAdIntegration.repository.AzureTenantRepository;
 import com.ws.azureAdIntegration.repository.AzureUserCredentialRepository;
 import com.ws.azureAdIntegration.util.EncryptionUtil;
 import com.ws.azureResourcesIntegration.service.AzureResourceSyncService;
@@ -24,23 +25,49 @@ public class AzureSyncControlService {
     final AzureADSyncService azureADSyncService;
     final AzureResourceSyncService azureResourceSyncService;
     final AzureUserCredentialRepository azureUserCredentialRepository;
+    final AzureTenantRepository azureTenantRepository;
 
     @Autowired
-    public AzureSyncControlService(AzureADSyncService azureADSyncService, AzureResourceSyncService azureResourceSyncService, AzureUserCredentialRepository azureUserCredentialRepository) {
+    public AzureSyncControlService(AzureADSyncService azureADSyncService, AzureResourceSyncService azureResourceSyncService, AzureUserCredentialRepository azureUserCredentialRepository, AzureTenantRepository azureTenantRepository) {
         this.azureADSyncService = azureADSyncService;
         this.azureResourceSyncService = azureResourceSyncService;
         this.azureUserCredentialRepository = azureUserCredentialRepository;
+        this.azureTenantRepository = azureTenantRepository;
     }
 
     @Async
     @Transactional
     public void syncAzureData(GraphServiceClient<Request> graphClient, AzureUserCredential azureUserCredential) {
+        log.info("secret 1: {}", azureUserCredential.getClientSecret());
         AzureTenant azureTenant = azureADSyncService.initializeGraphClientAndSyncAzureTenant(azureUserCredential, graphClient);
         azureADSyncService.syncAzureADData(azureTenant);
         if (Optional.ofNullable(azureUserCredential.getSubscriptionId()).filter(subscriptionId -> !subscriptionId.isEmpty()).isPresent()) {
             azureResourceSyncService.syncAzureResourceData(azureTenant, azureUserCredential);
         }
     }
+
+
+    /* Sync Azure-Resources data */
+    @Async
+    @Transactional
+    public void syncAzureResourcesData(AzureUserCredential azureUserCredential) {
+        AzureTenant azureTenant = azureTenantRepository
+                .findByWsTenantName(azureUserCredential.getWsTenantName())
+                .orElseGet(() -> azureADSyncService.initializeGraphClientAndSyncAzureTenant(azureUserCredential, null));
+        azureUserCredential.setClientSecret(
+                Optional.ofNullable(azureUserCredential.getClientSecret())
+                        .map(secret -> {
+                            try {
+                                return EncryptionUtil.decrypt(secret);
+                            } catch (Exception e) {
+                                log.error("Decryption error: ", e.getMessage());
+                                throw new RuntimeException("Failed to decrypt client secret");
+                            }
+                        })
+                        .orElseThrow(() -> new RuntimeException("Decrypted cClient secret found to be null")));
+        azureResourceSyncService.syncAzureResourceData(azureTenant, azureUserCredential);
+    }
+
 
     /* on demand sync */
     @Transactional

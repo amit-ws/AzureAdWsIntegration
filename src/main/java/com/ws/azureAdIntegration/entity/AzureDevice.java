@@ -21,7 +21,9 @@ public class AzureDevice {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Integer id;
+    @Column(unique = true)
     String azureId; // Object_id from azure response
+    @Column(unique = true)
     String deviceId; // device_id sent by azure
     String displayName;
     String operatingSystem;

@@ -204,7 +204,8 @@ public class AzureResourceFeatureService_OG {
      *
      * @param tenantName
      */
-    public PagedIterable<VirtualMachine> listAllVmsForTenant(String tenantName) {
+    public PagedIterable<VirtualMachine> listAllVmsForTenant(String tenantName)
+    {
         AzureUserCredential azureUserCredential = getAzureUserCredentialUsingWsTenantName(tenantName);
         AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), decryptClientSecret(azureUserCredential.getClientSecret()), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
         return azureResourceManager.virtualMachines().list();

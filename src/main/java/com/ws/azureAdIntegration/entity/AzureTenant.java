@@ -1,7 +1,7 @@
 package com.ws.azureAdIntegration.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.microsoft.graph.models.Organization;
+import com.ws.azureResourcesIntegration.entities.*;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
@@ -22,6 +22,7 @@ public class AzureTenant {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Integer id;
+    @Column(unique = true)
     String azureId;
     String displayName;
     String countryLetterCode;
@@ -52,5 +53,26 @@ public class AzureTenant {
     @JsonIgnore
     @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     List<AzureDevice> azureDevices = new ArrayList<>();
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    List<AzureResourceGroup> azureResourceGroups = new ArrayList<>();
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    List<AzureSubscription> azureSubscriptions = new ArrayList<>();
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    List<AzureServer> azureServers = new ArrayList<>();
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    List<AzureStorage> azureStorages = new ArrayList<>();
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    List<AzureVM> azureVMS = new ArrayList<>();
+
 }
 

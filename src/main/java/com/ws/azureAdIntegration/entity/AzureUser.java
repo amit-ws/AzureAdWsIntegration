@@ -21,12 +21,14 @@ public class AzureUser {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Integer id;
+    @Column(unique = true)
     String azureId;
     String displayName;
     String givenName;
     String surname;
     Boolean accountEnabled;
     String mail;
+    @Column(unique = true)
     String userPrincipalName;
     String mobilePhone;
     String jobTitle;

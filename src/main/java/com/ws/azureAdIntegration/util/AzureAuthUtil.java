@@ -100,8 +100,9 @@ public class AzureAuthUtil {
         }
     }
 
-    public GraphServiceClient validateAzureCredentials(AzureUserCredential azureUserCredential) {
+    public GraphServiceClient<Request> validateAzureCredentials(AzureUserCredential azureUserCredential) {
         try {
+            log.info("secret 2: {}", azureUserCredential.getClientSecret());
             return azureAuthConfigurationFactory.createAzureGraphServiceClient(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId());
         } catch (Exception e) {
             log.error("Error in verifying Azure credentials: {}", e.getMessage());
@@ -113,7 +114,6 @@ public class AzureAuthUtil {
 
     public AzureResourceManager validateAzureCredentialsWithSubscriptionId(AzureUserCredential azureUserCredential) {
         try {
-            log.info("hey buddy: {}", azureUserCredential.getClientSecret());
             return azureAuthConfigurationFactory.createAzureResourceClient(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
         } catch (Exception e) {
             log.error("Error in verifying Azure credentials: {}", e.getMessage());

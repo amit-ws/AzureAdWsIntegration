@@ -1,6 +1,7 @@
 package com.ws.azureAdIntegration.controller;
 
 import com.ws.azureAdIntegration.dto.CreateAzureConfiguration;
+import com.ws.azureAdIntegration.entity.AzureUserCredential;
 import com.ws.azureAdIntegration.service.AzureADJwtValidationService;
 import com.ws.azureAdIntegration.service.AzureADJwtValidator;
 import com.ws.azureAdIntegration.service.AzureAuthService;
@@ -61,6 +62,13 @@ public class AzureAuthController {
         return ResponseEntity
                 .status(HttpStatus.OK)
                 .body(azureADJwtValidationService.isAzureADTokenValid(payload.get("token")));
+    }
+
+    @PatchMapping("/update/subscriptionId")
+    public ResponseEntity<AzureUserCredential> updateSubscriptionIdHandler(@RequestParam Integer credId, @RequestParam String subscriptionId) {
+        return ResponseEntity
+                .status(HttpStatus.OK)
+                .body(azureAuthService.updateSubscriptionId(credId, subscriptionId));
     }
 
 

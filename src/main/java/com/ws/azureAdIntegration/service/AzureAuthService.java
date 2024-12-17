@@ -10,9 +10,13 @@ import com.ws.azureAdIntegration.repository.AzureUserRepository;
 import com.ws.azureAdIntegration.util.AzureAuthUtil;
 import com.ws.azureAdIntegration.util.EncryptionUtil;
 import com.ws.azureResourcesIntegration.service.AzureResourceSyncService;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import okhttp3.Request;
+import org.apache.commons.lang3.ObjectUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,6 +43,8 @@ public class AzureAuthService {
     final AzureUserRepository azureUserRepository;
     @Value("${spring.cloud.azure.active-directory.redirect-uri}")
     String redirectUri;
+    @PersistenceContext
+    private EntityManager entityManager;
 
     @Autowired
     public AzureAuthService(AzureUserCredentialRepository azureUserCredentialRepository, BackendApplicationLogservice backendApplicationLogservice, AzureSyncControlService azureSyncControlService,
@@ -58,6 +64,18 @@ public class AzureAuthService {
         String wsTenantName = createAzureConfiguration.getWsTenantName().trim();
         String clientId = createAzureConfiguration.getClientId().trim();
         String tenantId = createAzureConfiguration.getTenantId().trim();
+        Optional.ofNullable(getAzureUserCredentialForWSTenant(wsTenantName))
+                .ifPresent(credential -> {
+                    if (StringUtils.equalsIgnoreCase(credential.getClientId(), clientId)) {
+                        throw new RuntimeException("Azure credentials already exist for client ID: " + clientId);
+                    }
+                    if (StringUtils.isNotEmpty(credential.getSubscriptionId()) &&
+                            StringUtils.equalsIgnoreCase(credential.getSubscriptionId(), subscriptionId)) {
+                        throw new RuntimeException("Azure credentials already exist for subscription ID: " + subscriptionId);
+                    }
+                });
+        log.info("Validating user's Azure-AD credentials..");
+        GraphServiceClient<Request> graphClient = azureAuthUtil.validateAzureCredentials(tenantId, clientId, createAzureConfiguration.getClientSecret());
         String encryptedClientSecret = Optional.ofNullable(createAzureConfiguration.getClientSecret())
                 .map(secret -> {
                     try {
@@ -68,21 +86,19 @@ public class AzureAuthService {
                     }
                 })
                 .orElseThrow(() -> new RuntimeException("Client secret found as null"));
+        log.info("encryptedClientSecret: {}", encryptedClientSecret);
 
-        log.info("Validating user's Azure-AD credentials..");
-        GraphServiceClient<Request> graphClient = azureAuthUtil.validateAzureCredentials(tenantId, clientId, createAzureConfiguration.getClientSecret());
-        Optional.ofNullable(getAzureUserCredentialForWSTenant(wsTenantName))
-                .ifPresent(credential -> {
-                    throw new RuntimeException("Azure credentials already saved!");
-                });
-        AzureUserCredential azureUserCredential = azureUserCredentialRepository.save(AzureUserCredential.builder()
-                .clientId(clientId)
-                .clientSecret(encryptedClientSecret)
-                .tenantId(tenantId)
-                .subscriptionId(subscriptionId)
-                .wsTenantName(wsTenantName)
-                .createdAt(new Date())
-                .build());
+        AzureUserCredential azureUserCredential = azureUserCredentialRepository.save(
+                AzureUserCredential.builder()
+                        .clientId(clientId)
+                        .clientSecret(encryptedClientSecret)
+                        .tenantId(tenantId)
+                        .subscriptionId(subscriptionId)
+                        .wsTenantName(wsTenantName)
+                        .createdAt(new Date())
+                        .build()
+        );
+        entityManager.detach(azureUserCredential);
         azureUserCredential.setClientSecret(createAzureConfiguration.getClientSecret());
         backendApplicationLogservice.saveAuditLog(wsTenantName, "dummy@gmail.com", Constant.ADD, Constant.AZURE_CREDENTIALS_SAVED, "Info");
         azureSyncControlService.syncAzureData(graphClient, azureUserCredential);
@@ -93,6 +109,7 @@ public class AzureAuthService {
     public AzureUserCredential fetchAzureConfiguration(String tenantName) {
         AzureUserCredential azureUserCredential = Optional.ofNullable(getAzureUserCredentialForWSTenant(tenantName))
                 .orElseThrow(() -> new RuntimeException("No Azure AD configuration found!"));
+        log.info("azureUserCredential secret: {}", azureUserCredential.getClientSecret());
 
         azureUserCredential.setClientSecret(
                 Optional.ofNullable(azureUserCredential.getClientSecret())
@@ -122,6 +139,18 @@ public class AzureAuthService {
                 .queryParam(Constant.RESPONSE_MODE_PARAM, Constant.AZURE_RESPONSE_MODE)
                 .queryParam(Constant.SCOPE_PARAM, URLEncoder.encode("offline_access User.Read Mail.Read", StandardCharsets.UTF_8))
                 .toUriString();
+    }
+
+    @Transactional
+    public AzureUserCredential updateSubscriptionId(Integer credId, String subscriptionId) {
+        AzureUserCredential azureUserCredential = azureUserCredentialRepository.findById(credId).orElseThrow(() -> new RuntimeException("No azure credentials found with provided id: " + credId));
+        azureUserCredential.setSubscriptionId(subscriptionId);
+        azureUserCredential.setUpdatedAt(new Date());
+        backendApplicationLogservice.saveAuditLog("demo@gmail.com", azureUserCredential.getWsTenantName(), "UPDATE", Constant.AZURE_SUBSCRIPTION_ID_UPDATED, "Info");
+        azureUserCredentialRepository.save(azureUserCredential);
+        entityManager.detach(azureUserCredential);
+        azureSyncControlService.syncAzureResourcesData(azureUserCredential);
+        return azureUserCredential;
     }
 
     private AzureUserCredential getAzureUserCredentialForWSTenant(String wsTenantName) {

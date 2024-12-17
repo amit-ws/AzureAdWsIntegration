@@ -7,10 +7,8 @@ import com.azure.resourcemanager.resources.models.ResourceGroup;
 import com.azure.resourcemanager.resources.models.Subscription;
 import com.ws.azureAdIntegration.constants.Constant;
 import com.ws.azureAdIntegration.entity.*;
-import com.ws.azureAdIntegration.repository.*;
 import com.ws.azureAdIntegration.service.BackendApplicationLogservice;
 import com.ws.azureAdIntegration.util.AzureAuthUtil;
-import com.ws.azureResourcesIntegration.configuration.AzureAuthConfigurationFactory;
 import com.ws.azureResourcesIntegration.entities.*;
 import com.ws.azureResourcesIntegration.repository.*;
 import lombok.AccessLevel;
@@ -35,28 +33,22 @@ public class AzureResourceSyncService {
     final AzureSubscriptionRepository azureSubscriptionRepository;
     final AzureResourceGroupRepository azureResourceGroupRepository;
     final AzureServerRepository azureServerRepository;
-    final AzureDatabaseRepository azureDatabaseRepository;
     final AzureRoleDefinitionRepository azureRoleDefinitionRepository;
     final AzureRoleAssignmentRepository azureRoleAssignmentRepository;
     final AzureVMRepository azureVMRepository;
     final AzureStorageRepository azureStorageRepository;
-    final AzureAuthConfigurationFactory azureAuthConfigurationFactory;
-    final AzureUserCredentialRepository azureUserCredentialRepository;
     final BackendApplicationLogservice backendApplicationLogservice;
     final AzureAuthUtil azureAuthUtil;
 
     @Autowired
-    public AzureResourceSyncService(AzureSubscriptionRepository azureSubscriptionRepository, AzureResourceGroupRepository azureResourceGroupRepository, AzureServerRepository azureServerRepository, AzureDatabaseRepository azureDatabaseRepository, AzureRoleDefinitionRepository azureRoleDefinitionRepository, AzureRoleAssignmentRepository azureRoleAssignmentRepository, AzureVMRepository azureVMRepository, AzureStorageRepository azureStorageRepository, AzureAuthConfigurationFactory azureAuthConfigurationFactory, AzureUserCredentialRepository azureUserCredentialRepository, BackendApplicationLogservice backendApplicationLogservice, AzureAuthUtil azureAuthUtil) {
+    public AzureResourceSyncService(AzureSubscriptionRepository azureSubscriptionRepository, AzureResourceGroupRepository azureResourceGroupRepository, AzureServerRepository azureServerRepository, AzureRoleDefinitionRepository azureRoleDefinitionRepository, AzureRoleAssignmentRepository azureRoleAssignmentRepository, AzureVMRepository azureVMRepository, AzureStorageRepository azureStorageRepository, BackendApplicationLogservice backendApplicationLogservice, AzureAuthUtil azureAuthUtil) {
         this.azureSubscriptionRepository = azureSubscriptionRepository;
         this.azureResourceGroupRepository = azureResourceGroupRepository;
         this.azureServerRepository = azureServerRepository;
-        this.azureDatabaseRepository = azureDatabaseRepository;
         this.azureRoleDefinitionRepository = azureRoleDefinitionRepository;
         this.azureRoleAssignmentRepository = azureRoleAssignmentRepository;
         this.azureVMRepository = azureVMRepository;
         this.azureStorageRepository = azureStorageRepository;
-        this.azureAuthConfigurationFactory = azureAuthConfigurationFactory;
-        this.azureUserCredentialRepository = azureUserCredentialRepository;
         this.backendApplicationLogservice = backendApplicationLogservice;
         this.azureAuthUtil = azureAuthUtil;
     }
