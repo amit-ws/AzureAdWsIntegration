@@ -13,7 +13,7 @@ import java.util.Date;
 @AllArgsConstructor
 @NoArgsConstructor
 @Entity
-@Table(name = "azure_user_credential", schema = "azure_test")
+@Table(name = "azure_user_credential", schema = "azure_test-backup")
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class AzureUserCredential {
     @Id

@@ -17,7 +17,7 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @Builder
 @Entity
-@Table(name = "backend_application_log", schema = "azure_test")
+@Table(name = "backend_application_log", schema = "azure_test-backup")
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class BackendApplicationLog {
     @Id

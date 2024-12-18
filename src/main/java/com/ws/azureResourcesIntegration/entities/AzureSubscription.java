@@ -14,7 +14,7 @@ import java.util.*;
 @Data
 @Entity
 @FieldDefaults(level = AccessLevel.PRIVATE)
-@Table(name = "azure_subscription", schema = "azure_test")
+@Table(name = "azure_subscription", schema = "azure_test-backup")
 public class AzureSubscription {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
