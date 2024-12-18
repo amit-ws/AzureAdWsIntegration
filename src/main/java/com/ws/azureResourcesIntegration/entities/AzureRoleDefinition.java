@@ -7,6 +7,7 @@ import lombok.*;
 import lombok.experimental.FieldDefaults;
 
 import java.util.Date;
+import java.util.List;
 
 @Builder
 @NoArgsConstructor
@@ -26,8 +27,8 @@ public class AzureRoleDefinition {
     Boolean isCustomRole;
     @Column(columnDefinition = "jsonb")
     String permissions;
-    @Column(columnDefinition = "jsonb")
-    String assignableScopes;
+    @ElementCollection(fetch = FetchType.EAGER)
+    List<String> assignableScopes;
     String type;
     String roleType;
     String createdBy;
