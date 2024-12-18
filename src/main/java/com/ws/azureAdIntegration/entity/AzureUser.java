@@ -35,6 +35,7 @@ public class AzureUser {
     String department;
     String officeLocation;
     String preferredLanguage;
+    String userType;
 
     Date syncedAt;
     String wsTenantName; // Whiteswan account organization name

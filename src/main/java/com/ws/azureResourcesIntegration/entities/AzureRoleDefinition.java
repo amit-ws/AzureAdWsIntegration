@@ -28,6 +28,8 @@ public class AzureRoleDefinition {
     @Column(columnDefinition = "jsonb")
     String permissions;
     @ElementCollection(fetch = FetchType.EAGER)
+    List<String> actions;
+    @ElementCollection(fetch = FetchType.EAGER)
     List<String> assignableScopes;
     String type;
     String roleType;

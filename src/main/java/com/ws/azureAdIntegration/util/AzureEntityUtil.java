@@ -64,6 +64,7 @@ public final class AzureEntityUtil {
         azureUser.setMobilePhone(user.mobilePhone);
         azureUser.setJobTitle(user.jobTitle);
         azureUser.setDepartment(user.department);
+        azureUser.setUserType(user.userType);
         azureUser.setOfficeLocation(user.officeLocation);
         azureUser.setSyncedAt(new Date());
         azureUser.setIsSSOEnabled(true);

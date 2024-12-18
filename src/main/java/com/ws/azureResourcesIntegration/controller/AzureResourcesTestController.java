@@ -98,8 +98,8 @@ public class AzureResourcesTestController {
                 .body(azureResourcesTestService.getServicePrinciples());
     }
 
-    @GetMapping("/v1/test")
-    public void listStorageDetailsHandler() {
-        azureResourcesTestService.test();
-    }
+//    @GetMapping("/v1/test")
+//    public void listStorageDetailsHandler() {
+//        azureResourcesTestService.test();
+//    }
 }

@@ -468,23 +468,6 @@ public class AzureResourcesTestService {
     }
 
 
-    public void test() {
-        AzureResourceManager azureResourceManager = getAzureResourceManager(clientId, clientSecret, tenantId, subscriptionId);
-        List<String> resourceGroupNames = Arrays.asList("AZURE-POC", "CD-WORKLOAD", "demo");
-        List<VirtualMachine> finalVMss = resourceGroupNames.stream()
-                .flatMap(resourceGroupName -> {
-                    try {
-                        PagedIterable<VirtualMachine> vmPage = azureResourceManager.virtualMachines().listByResourceGroup(resourceGroupName);
-                        return vmPage.iterator().hasNext() ? vmPage.stream() : Stream.empty();
-                    } catch (Exception ignored) {
-                        return Stream.empty();
-                    }
-                })
-                .toList();
-        log.info("finalVMss size: {}", finalVMss.size());
-    }
-
-
     private boolean isCustomRole(String roleType) {
         return !Objects.equals(roleType, "BuiltInRole");
     }
