@@ -58,7 +58,7 @@ public class AzureAuthService {
         this.azureUserRepository = azureUserRepository;
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
     public Map creatAzureConfiguration(CreateAzureConfiguration createAzureConfiguration) {
         String subscriptionId = Optional.ofNullable(createAzureConfiguration.getSubscriptionId()).filter(subId -> !subId.isEmpty()).map(String::trim).orElse(null);
         String wsTenantName = createAzureConfiguration.getWsTenantName().trim();
@@ -123,10 +123,11 @@ public class AzureAuthService {
         azureUserCredential.setUpdatedAt(new Date());
         backendApplicationLogservice.saveAuditLog("demo@gmail.com", azureUserCredential.getWsTenantName(), "UPDATE", Constant.AZURE_SUBSCRIPTION_ID_UPDATED, "Info");
         azureUserCredentialRepository.save(azureUserCredential);
-        entityManager.detach(azureUserCredential);
+        entityManager.flush();
         azureSyncControlService.syncAzureResourcesData(azureUserCredential);
         return azureUserCredential;
     }
+
 
     private AzureUserCredential getAzureUserCredentialForWSTenant(String wsTenantName) {
         return azureUserCredentialRepository.findByWsTenantName(wsTenantName).orElse(null);

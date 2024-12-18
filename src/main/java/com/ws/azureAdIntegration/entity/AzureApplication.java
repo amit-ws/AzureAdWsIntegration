@@ -47,7 +47,7 @@ public class AzureApplication {
     @OneToMany(mappedBy = "application", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     List<AzureAppRoles> appRoles = new ArrayList<>();
 
-    @ElementCollection
+    @ElementCollection(fetch = FetchType.EAGER)
     List<String> tags;
 
 

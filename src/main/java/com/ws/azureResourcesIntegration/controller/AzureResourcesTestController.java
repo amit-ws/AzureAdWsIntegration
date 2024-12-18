@@ -97,4 +97,9 @@ public class AzureResourcesTestController {
                 .status(HttpStatus.OK)
                 .body(azureResourcesTestService.getServicePrinciples());
     }
+
+    @GetMapping("/v1/test")
+    public void listStorageDetailsHandler() {
+        azureResourcesTestService.test();
+    }
 }

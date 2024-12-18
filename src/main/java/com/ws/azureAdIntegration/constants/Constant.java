@@ -4,6 +4,7 @@ public interface Constant {
     String ADD = "Add";
     public static final String AZURE_AD_DATA_SYNC_START = "Azure-AD data sync started";
     public static final String AZURE_RESOURCE_DATA_SYNC_START = "Azure resources related data sync started";
+    public static final String AZURE_RESOURCE_DATA_TRUNCATED = "Azure resources related data successfully truncated";
     public static final String AZURE_AD_DATA_SYNC_END = "Azure-AD data sync ended successfully";
     public static final String AZURE_RESOURCE_DATA_SYNC_END = "Azure resources related data sync ended successfully";
     String AZURE_SYNC_FAILURE = "Azure data sync failure";

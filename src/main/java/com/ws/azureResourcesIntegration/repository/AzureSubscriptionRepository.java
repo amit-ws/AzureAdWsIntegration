@@ -7,5 +7,5 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface AzureSubscriptionRepository extends JpaRepository<AzureSubscription, Integer> {
-    void deleteAllByAzureTenant(AzureTenant azureTenant);
+    void deleteByAzureTenant(AzureTenant azureTenant);
 }

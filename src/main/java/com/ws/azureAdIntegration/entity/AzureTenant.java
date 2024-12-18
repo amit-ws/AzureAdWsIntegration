@@ -68,7 +68,7 @@ public class AzureTenant {
 
     @JsonIgnore
     @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    List<AzureStorage> azureStorages = new ArrayList<>();
+    List<AzureStorageAccount> azureStorageAccounts = new ArrayList<>();
 
     @JsonIgnore
     @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)

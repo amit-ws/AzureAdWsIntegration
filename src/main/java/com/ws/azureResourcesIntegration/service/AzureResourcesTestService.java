@@ -1,5 +1,6 @@
 package com.ws.azureResourcesIntegration.service;
 
+import com.azure.core.http.rest.Page;
 import com.azure.core.http.rest.PagedIterable;
 import com.azure.resourcemanager.AzureResourceManager;
 import com.azure.resourcemanager.authorization.models.RoleAssignment;
@@ -12,19 +13,22 @@ import com.azure.resourcemanager.resources.models.Subscription;
 import com.azure.resourcemanager.sql.models.ServerPrivateEndpointConnection;
 import com.azure.resourcemanager.sql.models.SqlDatabase;
 import com.azure.resourcemanager.sql.models.SqlServer;
+import com.azure.resourcemanager.storage.fluent.models.FileShareInner;
+import com.azure.resourcemanager.storage.fluent.models.ListContainerItemInner;
+import com.azure.resourcemanager.storage.models.BlobContainer;
+import com.azure.resourcemanager.storage.models.StorageAccount;
 import com.ws.azureResourcesIntegration.configuration.AzureAuthConfigurationFactory;
 import com.ws.azureResourcesIntegration.dto.*;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.ObjectUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 @Service
@@ -322,6 +326,9 @@ public class AzureResourcesTestService {
 
 
 
+
+
+
     /* -------------------------------------------------------------------------------------------------------------- */
     /* -------------------------------------------------------------------------------------------------------------- */
 
@@ -459,6 +466,24 @@ public class AzureResourcesTestService {
         }));
         return policies;
     }
+
+
+    public void test() {
+        AzureResourceManager azureResourceManager = getAzureResourceManager(clientId, clientSecret, tenantId, subscriptionId);
+        List<String> resourceGroupNames = Arrays.asList("AZURE-POC", "CD-WORKLOAD", "demo");
+        List<VirtualMachine> finalVMss = resourceGroupNames.stream()
+                .flatMap(resourceGroupName -> {
+                    try {
+                        PagedIterable<VirtualMachine> vmPage = azureResourceManager.virtualMachines().listByResourceGroup(resourceGroupName);
+                        return vmPage.iterator().hasNext() ? vmPage.stream() : Stream.empty();
+                    } catch (Exception ignored) {
+                        return Stream.empty();
+                    }
+                })
+                .toList();
+        log.info("finalVMss size: {}", finalVMss.size());
+    }
+
 
     private boolean isCustomRole(String roleType) {
         return !Objects.equals(roleType, "BuiltInRole");

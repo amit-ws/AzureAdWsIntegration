@@ -8,6 +8,8 @@ import com.ws.azureAdIntegration.repository.AzureTenantRepository;
 import com.ws.azureAdIntegration.repository.AzureUserCredentialRepository;
 import com.ws.azureAdIntegration.util.EncryptionUtil;
 import com.ws.azureResourcesIntegration.service.AzureResourceSyncService;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +29,8 @@ public class AzureSyncControlService {
     final AzureResourceSyncService azureResourceSyncService;
     final AzureUserCredentialRepository azureUserCredentialRepository;
     final AzureTenantRepository azureTenantRepository;
+    @PersistenceContext
+    EntityManager entityManager;
 
     @Autowired
     public AzureSyncControlService(AzureADSyncService azureADSyncService, AzureResourceSyncService azureResourceSyncService, AzureUserCredentialRepository azureUserCredentialRepository, AzureTenantRepository azureTenantRepository) {
@@ -39,7 +43,6 @@ public class AzureSyncControlService {
     @Async
     @Transactional
     public void syncAzureData(GraphServiceClient<Request> graphClient, AzureUserCredential azureUserCredential) {
-        log.info("secret 1: {}", azureUserCredential.getClientSecret());
         AzureTenant azureTenant = azureADSyncService.initializeGraphClientAndSyncAzureTenant(azureUserCredential, graphClient);
         azureADSyncService.syncAzureADData(azureTenant);
         if (Optional.ofNullable(azureUserCredential.getSubscriptionId()).filter(subscriptionId -> !subscriptionId.isEmpty()).isPresent()) {
@@ -52,6 +55,7 @@ public class AzureSyncControlService {
     @Async
     @Transactional
     public void syncAzureResourcesData(AzureUserCredential azureUserCredential) {
+        entityManager.detach(azureUserCredential);
         AzureTenant azureTenant = azureTenantRepository
                 .findByWsTenantName(azureUserCredential.getWsTenantName())
                 .orElseGet(() -> azureADSyncService.initializeGraphClientAndSyncAzureTenant(azureUserCredential, null));
@@ -60,7 +64,7 @@ public class AzureSyncControlService {
     }
 
 
-    /* on demand sync */
+        /* on demand sync */
     @Transactional
     public void syncAzureData(String wsTenantName) {
         AzureUserCredential azureUserCredential = azureUserCredentialRepository.findByWsTenantName(wsTenantName)

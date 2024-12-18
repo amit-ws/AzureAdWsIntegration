@@ -9,7 +9,6 @@ import java.util.List;
 
 @Repository
 public interface AzureVMRepository extends JpaRepository<AzureVM, Integer> {
-    void deleteAllByAzureTenant(AzureTenant azureTenant);
     List<AzureVM> findAllByAzureTenant(AzureTenant azureTenant);
 
 }

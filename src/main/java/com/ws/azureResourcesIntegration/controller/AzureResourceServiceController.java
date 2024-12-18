@@ -1,7 +1,7 @@
 package com.ws.azureResourcesIntegration.controller;
 
 import com.ws.azureResourcesIntegration.entities.AzureServer;
-import com.ws.azureResourcesIntegration.entities.AzureStorage;
+import com.ws.azureResourcesIntegration.entities.AzureStorageAccount;
 import com.ws.azureResourcesIntegration.entities.AzureVM;
 import com.ws.azureResourcesIntegration.service.AzureResourceService;
 import lombok.AccessLevel;
@@ -32,7 +32,7 @@ public class AzureResourceServiceController {
     }
 
     @GetMapping("/v1/getStorages")
-    public ResponseEntity<List<AzureStorage>> getStoragesHandler(@RequestParam("tenantName") String wsTenantName) {
+    public ResponseEntity<List<AzureStorageAccount>> getStoragesHandler(@RequestParam("tenantName") String wsTenantName) {
         return ResponseEntity.ok(azureResourceService.getStorages(wsTenantName));
     }
 

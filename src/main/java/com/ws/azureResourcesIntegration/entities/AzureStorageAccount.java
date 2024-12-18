@@ -8,7 +8,7 @@ import lombok.experimental.FieldDefaults;
 
 import java.time.OffsetDateTime;
 import java.util.Date;
-import java.util.UUID;
+import java.util.Map;
 
 @Builder
 @NoArgsConstructor
@@ -16,8 +16,8 @@ import java.util.UUID;
 @Data
 @Entity
 @FieldDefaults(level = AccessLevel.PRIVATE)
-@Table(name = "azure_storage", schema = "azure_test")
-public class AzureStorage {
+@Table(name = "azure_storage_account", schema = "azure_test")
+public class AzureStorageAccount {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Integer id;
@@ -31,11 +31,25 @@ public class AzureStorage {
     Boolean sharedKeyAccessAllowed;
     Boolean isAccessAllowedFromAllNetworks;
     String publicNetworkAccess;
-    String containerType;
-    String containerName;
     String publicAccess;
+    String skuTier;
+    String accessTier;
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(
+            name = "azure_storage_account_tags",
+            joinColumns = @JoinColumn(name = "ws_storage_account_id")
+    )
+    @MapKeyColumn(name = "tag_key")
+    @Column(name = "tag_value")
+    private Map<String, String> tags;
     Date syncedAt;
     String wsTenantName; // WhiteSwan account organization name
+
+    @JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "ws_azure_subscription_id", referencedColumnName = "id")
+    AzureSubscription azureSubscription;
+
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ws_azure_tenant_id", referencedColumnName = "id")

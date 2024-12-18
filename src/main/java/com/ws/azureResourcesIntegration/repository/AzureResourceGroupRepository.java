@@ -7,5 +7,4 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface AzureResourceGroupRepository extends JpaRepository<AzureResourceGroup, Integer> {
-    void deleteAllByAzureTenant(AzureTenant azureTenant);
 }

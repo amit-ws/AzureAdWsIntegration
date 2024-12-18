@@ -9,6 +9,5 @@ import java.util.List;
 
 @Repository
 public interface AzureServerRepository extends JpaRepository<AzureServer, Integer> {
-    void deleteAllByAzureTenant(AzureTenant azureTenant);
     List<AzureServer> findAllByAzureTenant(AzureTenant azureTenant);
 }

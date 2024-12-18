@@ -3,10 +3,8 @@ package com.ws.azureResourcesIntegration.service;
 
 import com.ws.azureAdIntegration.entity.AzureTenant;
 import com.ws.azureAdIntegration.service.AzureADService;
-import com.ws.azureResourcesIntegration.dto.DBServerDTO;
-import com.ws.azureResourcesIntegration.dto.StorageAccountDTO;
 import com.ws.azureResourcesIntegration.entities.AzureServer;
-import com.ws.azureResourcesIntegration.entities.AzureStorage;
+import com.ws.azureResourcesIntegration.entities.AzureStorageAccount;
 import com.ws.azureResourcesIntegration.entities.AzureVM;
 import com.ws.azureResourcesIntegration.repository.AzureDatabaseRepository;
 import com.ws.azureResourcesIntegration.repository.AzureServerRepository;
@@ -47,7 +45,7 @@ public class AzureResourceService {
         return azureVMRepository.findAllByAzureTenant(azureTenant);
     }
 
-    public List<AzureStorage> getStorages(String tenantName) {
+    public List<AzureStorageAccount> getStorages(String tenantName) {
         AzureTenant azureTenant = azureADService.getAzureTenantUsingwsTenantEmail(tenantName);
         return azureStorageRepository.findAllByAzureTenant(azureTenant);
     }

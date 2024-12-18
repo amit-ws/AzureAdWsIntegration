@@ -56,6 +56,7 @@ public class AzureADService {
 //        return applications;
 //    }
 
+    @Transactional(readOnly = true)
     public List<AzureApplication> fetchApplications(String wsTenantName) {
         return azureApplicationRepository.findAllByAzureTenant(getAzureTenantUsingwsTenantEmail(wsTenantName));
     }

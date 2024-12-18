@@ -6,8 +6,7 @@ import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
-import java.util.Date;
-import java.util.UUID;
+import java.util.*;
 
 @Builder
 @NoArgsConstructor
@@ -23,11 +22,38 @@ public class AzureSubscription {
     String azureSubscriptionId;
     String subscriptionName;
     String subscriptionState;
+    String authorizationSource;
     String spendingLimit;
     Date syncedAt;
     String wsTenantName; // WhiteSwan account organization name
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(
+            name = "azure_subscription_tags",
+            joinColumns = @JoinColumn(name = "ws_subscription_id")
+    )
+    @MapKeyColumn(name = "tag_key")
+    @Column(name = "tag_value")
+    Map<String, String> tags;
+
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ws_azure_tenant_id", referencedColumnName = "id")
     AzureTenant azureTenant;
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "azureSubscription", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    List<AzureResourceGroup> azureResourceGroups = new ArrayList<>();
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "azureSubscription", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    List<AzureVM> azureVMS = new ArrayList<>();
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "azureSubscription", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    List<AzureServer> azureServers = new ArrayList<>();
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "azureSubscription", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    List<AzureStorageAccount> azureStorageAccounts = new ArrayList<>();
 }
