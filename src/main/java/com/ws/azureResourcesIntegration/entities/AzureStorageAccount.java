@@ -16,7 +16,7 @@ import java.util.Map;
 @Data
 @Entity
 @FieldDefaults(level = AccessLevel.PRIVATE)
-@Table(name = "azure_storage_account", schema = "azure_test_backup")
+@Table(name = "azure_storage_account", schema = "azure_test")
 public class AzureStorageAccount {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

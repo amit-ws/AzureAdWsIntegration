@@ -11,7 +11,7 @@ import java.time.OffsetDateTime;
 import java.util.Date;
 
 @Entity
-@Table(name = "azure_device", schema = "azure_test_backup")
+@Table(name = "azure_device", schema = "azure_test")
 @Data
 @AllArgsConstructor
 @NoArgsConstructor

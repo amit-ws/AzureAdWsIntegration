@@ -10,7 +10,7 @@ import java.util.Date;
 import java.util.UUID;
 
 @Entity
-@Table(name = "azure_app_role", schema = "azure_test_backup")
+@Table(name = "azure_app_role", schema = "azure_test")
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
