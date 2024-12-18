@@ -6,6 +6,7 @@ import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
@@ -28,7 +29,7 @@ public class AzureRoleDefinition {
     @Column(columnDefinition = "jsonb")
     String permissions;
     @ElementCollection(fetch = FetchType.EAGER)
-    List<String> actions;
+    List<String> actions = new ArrayList<>();
     @ElementCollection(fetch = FetchType.EAGER)
     List<String> assignableScopes;
     String type;
