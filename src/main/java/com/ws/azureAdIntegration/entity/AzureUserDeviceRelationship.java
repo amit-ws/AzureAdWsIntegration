@@ -5,7 +5,7 @@ import lombok.*;
 import lombok.experimental.FieldDefaults;
 
 @Entity
-@Table(name = "azure_user_device_relationship", schema = "azure_test-backup")
+@Table(name = "azure_user_device_relationship", schema = "azure_test_backup")
 @Data
 @AllArgsConstructor
 @NoArgsConstructor

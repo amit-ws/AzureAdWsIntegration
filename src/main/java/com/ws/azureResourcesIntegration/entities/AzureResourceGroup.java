@@ -17,7 +17,7 @@ import java.util.Map;
 @Data
 @Entity
 @FieldDefaults(level = AccessLevel.PRIVATE)
-@Table(name = "azure_resource_group", schema = "azure_test-backup")
+@Table(name = "azure_resource_group", schema = "azure_test_backup")
 public class AzureResourceGroup {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

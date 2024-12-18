@@ -16,7 +16,7 @@ import lombok.experimental.FieldDefaults;
 @Entity
 @Data
 @FieldDefaults(level = AccessLevel.PRIVATE)
-@Table(name = "azure_vm", schema = "azure_test-backup")
+@Table(name = "azure_vm", schema = "azure_test_backup")
 public class AzureVM {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

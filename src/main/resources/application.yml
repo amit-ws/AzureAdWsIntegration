@@ -50,14 +50,14 @@ spring:
             scopes: "openid,profile,email"
 
   datasource:
-    url: "jdbc:postgresql://localhost:5432/ws-azureDb?currentSchema=azure_test"
+    url: "jdbc:postgresql://localhost:5432/ws-azureDb?currentSchema=azure_test_backup"
     username: "postgres"
     password: "root"
 
   jpa:
     hibernate:
       ddl-auto: "create"
-    show-sql: false
+    show-sql: true
 
   logging:
     level:

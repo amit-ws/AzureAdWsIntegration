@@ -15,7 +15,7 @@ import java.util.Date;
 @Data
 @Entity
 @FieldDefaults(level = AccessLevel.PRIVATE)
-@Table(name = "azure_role_assignment", schema = "azure_test-backup")
+@Table(name = "azure_role_assignment", schema = "azure_test_backup")
 public class AzureRoleAssignment {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

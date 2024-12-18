@@ -15,7 +15,7 @@ import java.util.Date;
 @Data
 @Entity
 @FieldDefaults(level = AccessLevel.PRIVATE)
-@Table(name = "azure_database", schema = "azure_test-backup")
+@Table(name = "azure_database", schema = "azure_test_backup")
 public class AzureDatabase {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

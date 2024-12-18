@@ -18,7 +18,7 @@ import java.util.UUID;
 @Data
 @Entity
 @FieldDefaults(level = AccessLevel.PRIVATE)
-@Table(name = "azure_server", schema = "azure_test-backup")
+@Table(name = "azure_server", schema = "azure_test_backup")
 public class AzureServer {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

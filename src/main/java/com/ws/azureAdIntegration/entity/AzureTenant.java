@@ -12,7 +12,7 @@ import java.util.Date;
 import java.util.List;
 
 @Entity
-@Table(name = "azure_tenant", schema = "azure_test-backup")
+@Table(name = "azure_tenant", schema = "azure_test_backup")
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
