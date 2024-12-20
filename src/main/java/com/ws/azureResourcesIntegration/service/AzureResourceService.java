@@ -23,9 +23,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
-import javax.management.ObjectName;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Azure Resource feature service
@@ -81,10 +81,11 @@ public class AzureResourceService {
         }
         return azureRoleDefinitions.stream()
                 .map(azureRoleDefinition -> {
-                    Map<String, Object> map = new LinkedHashMap<>();
-                    map.put("id", azureRoleDefinition.getId());
-                    map.put("roleName", azureRoleDefinition.getRoleName());
-                    map.put("roleType", azureRoleDefinition.getRoleType());
+                    Map<String, Object> map = Stream.of(
+                            new AbstractMap.SimpleEntry<>("id", azureRoleDefinition.getId()),
+                            new AbstractMap.SimpleEntry<>("roleName", azureRoleDefinition.getRoleName()),
+                            new AbstractMap.SimpleEntry<>("roleType", azureRoleDefinition.getRoleType())
+                    ).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (v1, v2) -> v1, LinkedHashMap::new));
                     return map;
                 })
                 .collect(Collectors.toList());
@@ -107,7 +108,7 @@ public class AzureResourceService {
                 .wsTenantName(azureRoleDefinition.getWsTenantName())
                 .build();
 
-        List<AzureRoleDefinitionActionNameProjection> roleActions = azureRoleDefinitionActionRepository.findAllAzureRoleDefinitionActionNamesByAzureTenantId(azureTenant.getId());
+        List<AzureRoleDefinitionActionNameProjection> roleActions = azureRoleDefinitionActionRepository.findAllAzureRoleDefinitionActionNamesByAzureTenantId(azureRoleDefinition.getId(), azureTenant.getId());
         if (!CollectionUtils.isEmpty(roleActions)) {
             Map<Boolean, List<String>> partitionedActions = roleActions.stream()
                     .collect(Collectors.partitioningBy(
