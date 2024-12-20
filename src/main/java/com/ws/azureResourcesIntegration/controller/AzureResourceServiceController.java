@@ -1,6 +1,7 @@
 package com.ws.azureResourcesIntegration.controller;
 
 import com.ws.azureResourcesIntegration.dto.AzureRoleDefinitionDTO;
+import com.ws.azureResourcesIntegration.dto.AzureRolePrincipleAssociationResponse;
 import com.ws.azureResourcesIntegration.entities.AzureRoleDefinition;
 import com.ws.azureResourcesIntegration.entities.AzureServer;
 import com.ws.azureResourcesIntegration.entities.AzureStorageAccount;
@@ -10,10 +11,8 @@ import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+import retrofit2.http.Path;
 
 import java.util.List;
 import java.util.Map;
@@ -52,5 +51,13 @@ public class AzureResourceServiceController {
     @GetMapping("/v1/getAzureRoleDefinitionById")
     public ResponseEntity<AzureRoleDefinitionDTO> getAzureRoleDefinitionByIdHandler(@RequestParam("id") Integer azureRoleId, @RequestParam("tenantName") String wsTenantName) {
         return ResponseEntity.ok(azureResourceService.getAzureRoleDefinitionDetailsUsingId(azureRoleId, wsTenantName));
+    }
+
+    @GetMapping("/v1/roleAssociations/{roleId}/wsTenants/{tenantName}/principleTypes/{type}")
+    public ResponseEntity<List<AzureRolePrincipleAssociationResponse>> getAllUsersAssociatedWithRoleIdHandler(
+            @PathVariable("roleId") String azureRoleId,
+            @PathVariable("tenantName") String wsTenantName,
+            @PathVariable("type") String principleType) {
+        return ResponseEntity.ok(azureResourceService.getAllUsersAssociatedWithRoleId(azureRoleId, wsTenantName, principleType));
     }
 }
