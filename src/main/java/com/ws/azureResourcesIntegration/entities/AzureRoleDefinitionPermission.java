@@ -32,8 +32,7 @@ public class AzureRoleDefinitionPermission {
     @JoinColumn(name = "ws_azure_role_definition_id", referencedColumnName = "id")
     AzureRoleDefinition azureRoleDefinition;
 
-    @JsonIgnore
-    @OneToMany(mappedBy = "azureRoleDefinitionPermission", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @OneToMany(mappedBy = "azureRoleDefinitionPermission", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     List<AzureRoleDefinitionAction> azureRoleDefinitionActions = new ArrayList<>();
 
 }

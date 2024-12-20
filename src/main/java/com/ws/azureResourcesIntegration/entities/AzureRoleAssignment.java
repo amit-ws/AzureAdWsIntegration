@@ -30,9 +30,9 @@ public class AzureRoleAssignment {
     String scopeType; /* Eg: SUBSCRIPTION, RESOURCE-GROUP, VM, SERVER etc. To be decided from application */
     String condition;
     String azureRoleDefinitionId;
-    Boolean isROleInherited; /* Role inherited from Parent. If false: The role was specifically assigned on this Scope (resource)*/
-    String createdBy;
+    Boolean isRoleInherited; /* Role inherited from Parent. If false: The role was specifically assigned on this Scope (resource)*/
     OffsetDateTime createdOn;
+    String createdBy;
     LocalDateTime requestedAt;
     Long expiryTimeAmount; /* Holds numerical value representing minute */
     Date syncedAt;

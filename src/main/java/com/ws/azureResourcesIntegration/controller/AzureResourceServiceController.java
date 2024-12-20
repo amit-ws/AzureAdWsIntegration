@@ -1,5 +1,7 @@
 package com.ws.azureResourcesIntegration.controller;
 
+import com.ws.azureResourcesIntegration.dto.AzureRoleDefinitionDTO;
+import com.ws.azureResourcesIntegration.entities.AzureRoleDefinition;
 import com.ws.azureResourcesIntegration.entities.AzureServer;
 import com.ws.azureResourcesIntegration.entities.AzureStorageAccount;
 import com.ws.azureResourcesIntegration.entities.AzureVM;
@@ -14,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/azureResources")
@@ -39,5 +42,15 @@ public class AzureResourceServiceController {
     @GetMapping("/v1/getServersWithDatabases")
     public ResponseEntity<List<AzureServer>> getServersWithDatavsesHandler(@RequestParam("tenantName") String wsTenantName) {
         return ResponseEntity.ok(azureResourceService.getServersWithDatavses(wsTenantName));
+    }
+
+    @GetMapping("/v1/getRoleDefinitionsName")
+    public ResponseEntity<List<Map<String, Object>>> getRoleDefinitionsNameWithIdHandler(@RequestParam("tenantName") String wsTenantName) {
+        return ResponseEntity.ok(azureResourceService.getRoleDefinitionsNameWithId(wsTenantName));
+    }
+
+    @GetMapping("/v1/getAzureRoleDefinitionById")
+    public ResponseEntity<AzureRoleDefinitionDTO> getAzureRoleDefinitionByIdHandler(@RequestParam("id") Integer azureRoleId, @RequestParam("tenantName") String wsTenantName) {
+        return ResponseEntity.ok(azureResourceService.getAzureRoleDefinitionDetailsUsingId(azureRoleId, wsTenantName));
     }
 }

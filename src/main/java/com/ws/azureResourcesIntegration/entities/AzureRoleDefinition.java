@@ -29,7 +29,7 @@ public class AzureRoleDefinition {
     String roleType;
     String createdBy;
     OffsetDateTime createdOn;
-    @ElementCollection(fetch = FetchType.LAZY)
+    @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(
             name = "azure_role_definition_assignable_scopes",
             joinColumns = @JoinColumn(name = "ws_azure_role_definition_id")
@@ -44,7 +44,6 @@ public class AzureRoleDefinition {
     @JoinColumn(name = "ws_azure_tenant_id", referencedColumnName = "id")
     AzureTenant azureTenant;
 
-    @JsonIgnore
-    @OneToMany(mappedBy = "azureRoleDefinition", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @OneToMany(mappedBy = "azureRoleDefinition", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     Set<AzureRoleDefinitionPermission> azureRoleDefinitionPermissions = new LinkedHashSet<>();
 }

@@ -3,6 +3,7 @@ package com.ws.azureResourcesIntegration.service;
 import com.azure.core.http.rest.PagedIterable;
 import com.azure.resourcemanager.AzureResourceManager;
 import com.azure.resourcemanager.authorization.models.Permission;
+import com.azure.resourcemanager.authorization.models.RoleAssignment;
 import com.azure.resourcemanager.authorization.models.RoleDefinition;
 import com.azure.resourcemanager.compute.models.VirtualMachine;
 import com.azure.resourcemanager.resources.models.ResourceGroup;
@@ -68,9 +69,7 @@ public class AzureResourceSyncService {
             syncStorageData(azureTenant, azureSubscription);
             syncServersAndDatabases(azureTenant, azureSubscription);
             syncRoleDefinitions(azureTenant);
-            /* sync below data's too
-             * azure role assignments
-             * */
+            syncRoleAssignments(azureTenant);
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_RESOURCE_DATA_SYNC_END, "Info");
         } catch (Exception ex) {
             log.error("Error occurred in syncing data from Azure Resources");
@@ -260,6 +259,7 @@ public class AzureResourceSyncService {
         } catch (Exception ignored) {
             log.error(String.format("Error in syncing %s with message: %s", AzureServer.class.getName(), ignored.getMessage()));
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, (Constant.ERROR_IN_SYNCING_AZURE_RESOURCES + AzureServer.class.getName()), "Info");
+            throw new RuntimeException(ignored.getMessage());
         }
     }
 
@@ -307,16 +307,9 @@ public class AzureResourceSyncService {
                                             .azureRoleDefinition(azureRoleDefinition)
                                             .build();
 
-                                    List<AzureRoleDefinitionAction> roleDefinitionActions = permission.actions().stream()
-                                            .map(action -> AzureRoleDefinitionAction.builder()
-                                                    .action(action)
-                                                    .type("ACTION")
-                                                    .azureRoleDefinitionPermission(azurePermission)
-                                                    .azureRoleDefinition(azureRoleDefinition)
-                                                    .azureTenant(azureTenant)
-                                                    .build())
-                                            .collect(Collectors.toList());
-
+                                    List<AzureRoleDefinitionAction> roleDefinitionActions = new ArrayList<>(createAzureRoleDefinitionActions(permission.actions(), "ACTION", azurePermission, azureRoleDefinition, azureTenant));
+                                    List<AzureRoleDefinitionAction> roleDefinitionNotActions = new ArrayList<>(createAzureRoleDefinitionActions(permission.notActions(), "NOT ACTION", azurePermission, azureRoleDefinition, azureTenant));
+                                    roleDefinitionActions.addAll(roleDefinitionNotActions);
                                     azurePermission.setAzureRoleDefinitionActions(roleDefinitionActions);
                                     return azurePermission;
                                 })
@@ -327,19 +320,67 @@ public class AzureResourceSyncService {
                     })
                     .collect(Collectors.toList());
 
-
             azureRoleDefinitionRepository.saveAll(azureRoleDefinitions);
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_SERVER_ROLE_DEFINITION_SYNCED, "Info");
         } catch (Exception ignored) {
             log.error(String.format("Error in syncing %s with message: %s", RoleDefinition.class.getName(), ignored.getMessage()));
-            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, (Constant.ERROR_IN_SYNCING_AZURE_RESOURCES + RoleDefinition.class.getName()), "Info");
+            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, (Constant.ERROR_IN_SYNCING_AZURE_RESOURCES + RoleDefinition.class.getName()), "Error");
         }
     }
 
+    private List<AzureRoleDefinitionAction> createAzureRoleDefinitionActions(List<String> permissionActions, String type, AzureRoleDefinitionPermission azurePermission, AzureRoleDefinition azureRoleDefinition, AzureTenant azureTenant) {
+        if (permissionActions == null || permissionActions.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return permissionActions.stream()
+                .map(action -> AzureRoleDefinitionAction.builder()
+                        .action(action)
+                        .type(type)
+                        .azureRoleDefinitionPermission(azurePermission)
+                        .azureRoleDefinition(azureRoleDefinition)
+                        .azureTenant(azureTenant)
+                        .build())
+                .toList();
+    }
+
     private void syncRoleAssignments(AzureTenant azureTenant) {
-        azureRoleAssignmentRepository.deleteAllByAzureTenant(azureTenant);
+        try {
+            azureRoleAssignmentRepository.deleteAllByAzureTenant(azureTenant);
+            List<AzureRoleDefinition> azureRoleDefinitions = azureRoleDefinitionRepository.findAllByAzureTenant(azureTenant);
+            Map<String, AzureRoleDefinition> azureRoleDefinitionMap = new HashMap<>();
+            azureRoleDefinitions.forEach((azureRoleDefinition -> {
+                azureRoleDefinitionMap.put(azureRoleDefinition.getRolePathId(), azureRoleDefinition);
+            }));
+            PagedIterable<RoleAssignment> roleAssignmentPage = this.azureResourceManager.accessManagement().roleAssignments().listByScope(String.format("/subscriptions/%s", this.azureResourceManager.subscriptionId()));
+            List<AzureRoleAssignment> azureRoleAssignments = new ArrayList<>();
+            for (RoleAssignment roleAssignment : roleAssignmentPage) {
+                AzureRoleAssignment azureRoleAssignment = AzureRoleAssignment.builder()
+                        .azureRoleAssignmentPathId(roleAssignment.id())
+                        .azureId(roleAssignment.name())
+                        .description(roleAssignment.description())
+                        .assignee(roleAssignment.principalId())
+                        .principalType(GenericUtil.getOrNull(() -> roleAssignment.innerModel().principalType().getValue()))
+                        .scope(roleAssignment.scope())
+                        .scopeType(GenericUtil.determineScopeType(roleAssignment.scope()))
+                        .condition(roleAssignment.condition())
+                        .azureRoleDefinitionId(GenericUtil.getOrNull(() -> azureRoleDefinitionMap.get(roleAssignment.roleDefinitionId()).getAzureId()))
+                        .isRoleInherited(false)
+                        .createdOn(GenericUtil.getOrNull(() -> roleAssignment.innerModel().createdOn()))
+                        .createdBy(GenericUtil.getOrNull(() -> roleAssignment.innerModel().createdBy()))
+                        .requestedAt(null)
+                        .expiryTimeAmount(null)
+                        .syncedAt(new Date())
+                        .wsTenantName(this.wsTenantName)
+                        .azureTenant(azureTenant)
+                        .build();
+                azureRoleAssignments.add(azureRoleAssignment);
+            }
 
-
+            azureRoleAssignmentRepository.saveAll(azureRoleAssignments);
+        } catch (Exception ignored) {
+            log.error(String.format("Error in syncing %s with message: %s", RoleDefinition.class.getName(), ignored.getMessage()));
+            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, (Constant.ERROR_IN_SYNCING_AZURE_RESOURCES + RoleDefinition.class.getName()), "Error");
+        }
     }
 
 }
