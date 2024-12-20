@@ -42,6 +42,7 @@ public class AzureServer {
     String location;
     String administratorLogin;
     String endpointId;
+    Boolean isPublished;
     Date syncedAt;
     String wsTenantName; // WhiteSwan account organization name
 

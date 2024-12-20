@@ -38,6 +38,7 @@ public class AzureDatabase {
     OffsetDateTime pausedDate;
     OffsetDateTime resumedDate;
     String defaultSecondaryLocation;
+    Boolean isPublished;
     Date syncedAt;
     String wsTenantName; // WhiteSwan account organization name
     @JsonIgnore

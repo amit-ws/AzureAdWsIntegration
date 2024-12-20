@@ -37,6 +37,7 @@ public class AzureVM {
     String zones;
     String resourceIdentityType;
     String ipAddress;
+    Boolean isPublished;
     Date syncedAt;
     String wsTenantName; // WhiteSwan account organization name
 

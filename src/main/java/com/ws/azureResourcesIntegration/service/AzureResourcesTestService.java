@@ -1,6 +1,5 @@
 package com.ws.azureResourcesIntegration.service;
 
-import com.azure.core.http.rest.Page;
 import com.azure.core.http.rest.PagedIterable;
 import com.azure.resourcemanager.AzureResourceManager;
 import com.azure.resourcemanager.authorization.models.RoleAssignment;
@@ -13,22 +12,16 @@ import com.azure.resourcemanager.resources.models.Subscription;
 import com.azure.resourcemanager.sql.models.ServerPrivateEndpointConnection;
 import com.azure.resourcemanager.sql.models.SqlDatabase;
 import com.azure.resourcemanager.sql.models.SqlServer;
-import com.azure.resourcemanager.storage.fluent.models.FileShareInner;
-import com.azure.resourcemanager.storage.fluent.models.ListContainerItemInner;
-import com.azure.resourcemanager.storage.models.BlobContainer;
-import com.azure.resourcemanager.storage.models.StorageAccount;
 import com.ws.azureResourcesIntegration.configuration.AzureAuthConfigurationFactory;
 import com.ws.azureResourcesIntegration.dto.*;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.ObjectUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 @Service
@@ -40,7 +33,6 @@ public class AzureResourcesTestService {
     final String tenantId = "0079de83-6146-45cb-a189-5d5b03507ce8";
     final String subscriptionId = "15b85f1d-1983-469c-a593-46fe8fc514f7";
     final AzureAuthConfigurationFactory azureAuthConfigurationFactory;
-
     @Autowired
     public AzureResourcesTestService(AzureAuthConfigurationFactory azureAuthConfigurationFactory) {
         this.azureAuthConfigurationFactory = azureAuthConfigurationFactory;
@@ -424,6 +416,33 @@ public class AzureResourcesTestService {
         } catch (Exception e) {
             System.out.println("An error occurred while fetching the role permissions: " + e.getMessage());
         }
+    }
+
+
+    /**
+     * LIST ALL ROLE-DEFINITIONS (UNIQUE)
+     * 1. Unique: ones those who got inherited by the child hierarchy
+     * 2. Another which was created for a parent and also a child
+     * Eg:
+     * Role: rolr-1
+     * scopes: [parent-1, children-1]
+     */
+    public void fetchRoleDefinitionEntity() {
+        AzureResourceManager azureResourceManager = getAzureResourceManager(clientId, clientSecret, tenantId, subscriptionId);
+
+        /* FETCHING AT SUBSCRIPTION LEVEL (includes Roles inherited from top hierarchies + created specifically for Subscription as well) */
+        PagedIterable<RoleDefinition> subsRoles = azureResourceManager.accessManagement().roleDefinitions().listByScope(String.format("/subscriptions/%s", azureResourceManager.subscriptionId()));
+        Set<RoleDefinition> roleDefinitionSet = subsRoles.stream().collect(Collectors.toSet());
+
+        /* FETCHING AT EACH RESOURCE-GROUP LEVEL ONLY */
+        PagedIterable<ResourceGroup> resourceGroups = azureResourceManager.resourceGroups().list();
+        resourceGroups.forEach((resourceGroup -> {
+            PagedIterable<RoleDefinition> rgRoles = azureResourceManager.accessManagement().roleDefinitions().listByScope(String.format("/subscriptions/%s/resourceGroups/%s", subscriptionId, resourceGroup.name()));
+            Set<RoleDefinition> rgRoleDefinitionSet = rgRoles.stream()
+                    .filter(rgRole -> rgRole.innerModel().roleType().equals("CustomRole") && rgRole.assignableScopes().contains(String.format("/subscriptions/%s/resourceGroups/%s", subscriptionId, resourceGroup.name())))
+                    .collect(Collectors.toSet());
+            roleDefinitionSet.addAll(rgRoleDefinitionSet);
+        }));
     }
 
 

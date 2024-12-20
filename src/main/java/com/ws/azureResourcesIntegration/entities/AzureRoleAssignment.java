@@ -6,6 +6,7 @@ import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.Date;
 
@@ -20,19 +21,20 @@ public class AzureRoleAssignment {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Integer id;
-    String azureRoleAssignmentId;
-    String name;
+    String azureRoleAssignmentPathId;
+    String azureId;
     String description;
     String assignee;
     String principalType; /* assignee type */
-    String scope;
+    String scope; /* resource on which role has been assigned to eg: Subscription, ResourceGroup, VM etc.. */
+    String scopeType; /* Eg: SUBSCRIPTION, RESOURCE-GROUP, VM, SERVER etc. To be decided from application */
     String condition;
     String azureRoleDefinitionId;
-    Boolean isRoleDefinitionCustom;
+    Boolean isROleInherited; /* Role inherited from Parent. If false: The role was specifically assigned on this Scope (resource)*/
     String createdBy;
-    String type;
-    OffsetDateTime startDate;
-    OffsetDateTime endDate;
+    OffsetDateTime createdOn;
+    LocalDateTime requestedAt;
+    Long expiryTimeAmount; /* Holds numerical value representing minute */
     Date syncedAt;
     String wsTenantName; // WhiteSwan account organization name
     @JsonIgnore

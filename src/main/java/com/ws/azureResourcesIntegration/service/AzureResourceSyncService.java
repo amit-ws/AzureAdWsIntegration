@@ -2,6 +2,8 @@ package com.ws.azureResourcesIntegration.service;
 
 import com.azure.core.http.rest.PagedIterable;
 import com.azure.resourcemanager.AzureResourceManager;
+import com.azure.resourcemanager.authorization.models.Permission;
+import com.azure.resourcemanager.authorization.models.RoleDefinition;
 import com.azure.resourcemanager.compute.models.VirtualMachine;
 import com.azure.resourcemanager.resources.models.ResourceGroup;
 import com.azure.resourcemanager.resources.models.Subscription;
@@ -18,9 +20,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 
-import java.util.Date;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -65,8 +67,8 @@ public class AzureResourceSyncService {
             syncAzureVMs(azureTenant, azureSubscription);
             syncStorageData(azureTenant, azureSubscription);
             syncServersAndDatabases(azureTenant, azureSubscription);
+            syncRoleDefinitions(azureTenant);
             /* sync below data's too
-             * azure roles
              * azure role assignments
              * */
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_RESOURCE_DATA_SYNC_END, "Info");
@@ -259,6 +261,85 @@ public class AzureResourceSyncService {
             log.error(String.format("Error in syncing %s with message: %s", AzureServer.class.getName(), ignored.getMessage()));
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, (Constant.ERROR_IN_SYNCING_AZURE_RESOURCES + AzureServer.class.getName()), "Info");
         }
+    }
+
+    private void syncRoleDefinitions(AzureTenant azureTenant) {
+        try {
+            azureRoleDefinitionRepository.deleteAllByAzureTenant(azureTenant);
+
+            /* FETCHING AT SUBSCRIPTION LEVEL (includes Roles inherited from top hierarchies + created specifically for Subscription as well) */
+            PagedIterable<RoleDefinition> subsRoleDefinitionsPage = azureResourceManager.accessManagement().roleDefinitions().listByScope(String.format("/subscriptions/%s", azureResourceManager.subscriptionId()));
+            Set<RoleDefinition> roleDefinitionSet = subsRoleDefinitionsPage.stream().collect(Collectors.toSet());
+
+            /* FETCHING AT EACH RESOURCE-GROUP LEVEL ONLY */
+            PagedIterable<ResourceGroup> resourceGroups = azureResourceManager.resourceGroups().list();
+            resourceGroups.forEach((resourceGroup -> {
+                PagedIterable<RoleDefinition> rgRoles = azureResourceManager.accessManagement().roleDefinitions().listByScope(String.format("/subscriptions/%s/resourceGroups/%s", azureResourceManager.subscriptionId(), resourceGroup.name()));
+                Set<RoleDefinition> rgRoleDefinitionSet = rgRoles.stream()
+                        .filter(rgRole -> rgRole.innerModel().roleType().equals("CustomRole") && rgRole.assignableScopes().contains(String.format("/subscriptions/%s/resourceGroups/%s", azureResourceManager.subscriptionId(), resourceGroup.name())))
+                        .collect(Collectors.toSet());
+                roleDefinitionSet.addAll(rgRoleDefinitionSet);
+            }));
+
+            List<AzureRoleDefinition> azureRoleDefinitions = roleDefinitionSet.stream()
+                    .filter(role -> !CollectionUtils.isEmpty(role.permissions()))
+                    .map(role -> {
+                        AzureRoleDefinition azureRoleDefinition = AzureRoleDefinition.builder()
+                                .rolePathId(role.id())
+                                .azureId(role.name())
+                                .roleName(GenericUtil.getOrNull(() -> role.innerModel().roleName()))
+                                .roleType(GenericUtil.getOrNull(() -> role.innerModel().roleType()))
+                                .createdBy(GenericUtil.getOrNull(() -> role.innerModel().createdBy()))
+                                .createdOn(GenericUtil.getOrNull(() -> role.innerModel().createdOn()))
+                                .assignableScope(role.assignableScopes())
+                                .syncedAt(new Date())
+                                .wsTenantName(this.wsTenantName)
+                                .azureTenant(azureTenant)
+                                .build();
+
+                        Set<AzureRoleDefinitionPermission> azurePermissions = role.permissions().stream()
+                                .filter(permission -> !CollectionUtils.isEmpty(permission.actions()))
+                                .map(permission -> {
+                                    AzureRoleDefinitionPermission azurePermission = AzureRoleDefinitionPermission.builder()
+                                            .permissionNameHash(null)
+                                            .syncedAt(new Date())
+                                            .wsTenantName(this.wsTenantName)
+                                            .azureRoleDefinition(azureRoleDefinition)
+                                            .build();
+
+                                    List<AzureRoleDefinitionAction> roleDefinitionActions = permission.actions().stream()
+                                            .map(action -> AzureRoleDefinitionAction.builder()
+                                                    .action(action)
+                                                    .type("ACTION")
+                                                    .azureRoleDefinitionPermission(azurePermission)
+                                                    .azureRoleDefinition(azureRoleDefinition)
+                                                    .azureTenant(azureTenant)
+                                                    .build())
+                                            .collect(Collectors.toList());
+
+                                    azurePermission.setAzureRoleDefinitionActions(roleDefinitionActions);
+                                    return azurePermission;
+                                })
+                                .collect(Collectors.toSet());
+
+                        azureRoleDefinition.setAzureRoleDefinitionPermissions(azurePermissions);
+                        return azureRoleDefinition;
+                    })
+                    .collect(Collectors.toList());
+
+
+            azureRoleDefinitionRepository.saveAll(azureRoleDefinitions);
+            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_SERVER_ROLE_DEFINITION_SYNCED, "Info");
+        } catch (Exception ignored) {
+            log.error(String.format("Error in syncing %s with message: %s", RoleDefinition.class.getName(), ignored.getMessage()));
+            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, (Constant.ERROR_IN_SYNCING_AZURE_RESOURCES + RoleDefinition.class.getName()), "Info");
+        }
+    }
+
+    private void syncRoleAssignments(AzureTenant azureTenant) {
+        azureRoleAssignmentRepository.deleteAllByAzureTenant(azureTenant);
+
+
     }
 
 }

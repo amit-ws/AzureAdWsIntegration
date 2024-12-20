@@ -34,6 +34,7 @@ public class AzureStorageAccount {
     String publicAccess;
     String skuTier;
     String accessTier;
+    Boolean isPublished;
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(
             name = "azure_storage_account_tags",

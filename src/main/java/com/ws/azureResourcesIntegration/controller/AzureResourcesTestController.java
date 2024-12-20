@@ -99,7 +99,7 @@ public class AzureResourcesTestController {
     }
 
 //    @GetMapping("/v1/test")
-//    public void listStorageDetailsHandler() {
-//        azureResourcesTestService.test();
+//    public void fetchRoleDefinitionEntityHandler() {
+//        azureResourcesTestService.fetchRoleDefinitionEntity();
 //    }
 }
