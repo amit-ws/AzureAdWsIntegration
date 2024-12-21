@@ -2,12 +2,11 @@ package com.ws.azureResourcesIntegration.service;
 
 
 import com.azure.resourcemanager.authorization.models.PrincipalType;
-import com.azure.resourcemanager.authorization.models.RoleAssignment;
 import com.ws.azureAdIntegration.entity.AzureTenant;
-import com.ws.azureAdIntegration.entity.AzureUser;
 import com.ws.azureAdIntegration.repository.AzureGroupRepository;
 import com.ws.azureAdIntegration.repository.AzureUserRepository;
 import com.ws.azureAdIntegration.service.AzureADService;
+import com.ws.azureResourcesIntegration.constant.AzureResourcesType;
 import com.ws.azureResourcesIntegration.dto.AzureRoleDefinitionActionNameProjection;
 import com.ws.azureResourcesIntegration.dto.AzureRoleDefinitionDTO;
 import com.ws.azureResourcesIntegration.dto.AzureRolePrincipleAssociationResponse;
@@ -40,13 +39,14 @@ public class AzureResourceService {
     final AzureDatabaseRepository azureDatabaseRepository;
     final AzureRoleDefinitionRepository azureRoleDefinitionRepository;
     final AzureRoleDefinitionActionRepository azureRoleDefinitionActionRepository;
+    final AzureRoleAssignmentRepository azureRoleAssignmentRepository;
     final AzureUserRepository azureUserRepository;
     final AzureGroupRepository azureGroupRepository;
     final AzureADService azureADService;
 
     @Autowired
     public AzureResourceService(AzureVMRepository azureVMRepository, AzureStorageRepository azureStorageRepository, AzureServerRepository azureServerRepository, AzureDatabaseRepository azureDatabaseRepository,
-                                AzureRoleDefinitionRepository azureRoleDefinitionRepository, AzureRoleDefinitionActionRepository azureRoleDefinitionActionRepository, AzureUserRepository azureUserRepository,
+                                AzureRoleDefinitionRepository azureRoleDefinitionRepository, AzureRoleDefinitionActionRepository azureRoleDefinitionActionRepository, AzureRoleAssignmentRepository azureRoleAssignmentRepository, AzureUserRepository azureUserRepository,
                                 AzureGroupRepository azureGroupRepository, AzureADService azureADService) {
         this.azureVMRepository = azureVMRepository;
         this.azureStorageRepository = azureStorageRepository;
@@ -54,6 +54,7 @@ public class AzureResourceService {
         this.azureDatabaseRepository = azureDatabaseRepository;
         this.azureRoleDefinitionRepository = azureRoleDefinitionRepository;
         this.azureRoleDefinitionActionRepository = azureRoleDefinitionActionRepository;
+        this.azureRoleAssignmentRepository = azureRoleAssignmentRepository;
         this.azureUserRepository = azureUserRepository;
         this.azureGroupRepository = azureGroupRepository;
         this.azureADService = azureADService;
@@ -103,6 +104,7 @@ public class AzureResourceService {
                 .roleName(azureRoleDefinition.getRoleName())
                 .roleType(azureRoleDefinition.getRoleType())
                 .description(azureRoleDefinition.getDescription())
+                .isPublished(azureRoleDefinition.getIsPublished())
                 .assignableScope(azureRoleDefinition.getAssignableScope())
                 .syncedAt(azureRoleDefinition.getSyncedAt())
                 .wsTenantName(azureRoleDefinition.getWsTenantName())
@@ -131,4 +133,40 @@ public class AzureResourceService {
                 : Collections.emptyList();
     }
 
+
+    public List<?> getAzureVMsForPrinciple(String scopeType, String principleType, String assignee, String wsTenantName) {
+        AzureTenant azureTenant = azureADService.getAzureTenantUsingwsTenantEmail(wsTenantName);
+        if (AzureResourcesType.VM.name().equalsIgnoreCase(scopeType)) {
+            return azureVMRepository.getAzureVMsForPrinciple(scopeType, principleType, assignee, azureTenant);
+        } else if (AzureResourcesType.STORAGE_ACCOUNT.name().equalsIgnoreCase(scopeType)) {
+            return azureStorageRepository.getAzureStorageAccountsForPrinciple(scopeType, principleType, assignee, azureTenant);
+        } else if (AzureResourcesType.SERVER.name().equalsIgnoreCase(scopeType)) {
+            return azureServerRepository.getAzureServersWithDatabasesForPrinciple(Arrays.asList(AzureResourcesType.SERVER.name(), AzureResourcesType.DATABASE.name()), principleType, assignee, azureTenant);
+        } else {
+            throw new RuntimeException(String.format("Invalid type(s) provided. Check %s and %s values", scopeType, principleType));
+        }
+    }
+
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

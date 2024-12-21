@@ -58,4 +58,13 @@ public class AzureResourceController {
             @PathVariable("type") String principleType) {
         return ResponseEntity.ok(azureResourceService.getAllUsersAssociatedWithRoleId(azureRoleId, wsTenantName, principleType));
     }
+
+    @GetMapping("/v1/scopes/{scopeType}/wsTenants/{tenantName}/principleTypes/{principleType}/assignees/{assignee}")
+    public ResponseEntity<List<?>> getAzureVMsForPrincipleHandler(
+            @PathVariable("scopeType") String scopeType,
+            @PathVariable("principleType") String principleType,
+            @PathVariable("tenantName") String wsTenantName,
+            @PathVariable("assignee") String assignee) {
+        return ResponseEntity.ok(azureResourceService.getAzureVMsForPrinciple(scopeType, principleType, assignee, wsTenantName));
+    }
 }

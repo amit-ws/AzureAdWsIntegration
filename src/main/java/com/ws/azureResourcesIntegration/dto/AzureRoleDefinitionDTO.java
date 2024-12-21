@@ -17,6 +17,7 @@ public class AzureRoleDefinitionDTO {
     String roleName;
     String roleType;
     String description;
+    Boolean isPublished;
     Set<String> assignableScope = new LinkedHashSet<>();
     Date syncedAt;
     String wsTenantName;

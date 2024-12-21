@@ -26,7 +26,7 @@ public class AzureRoleAssignment {
     String description;
     String assignee;
     String principalType; /* assignee type */
-    String scope; /* resource on which role has been assigned to eg: Subscription, ResourceGroup, VM etc.. */
+    String scope; /* path-id of the resource on which role has been assigned to eg: Subscription, ResourceGroup, VM etc.. */
     String scopeType; /* Eg: SUBSCRIPTION, RESOURCE-GROUP, VM, SERVER etc. To be decided from application */
     String condition;
     String azureRoleDefinitionId;

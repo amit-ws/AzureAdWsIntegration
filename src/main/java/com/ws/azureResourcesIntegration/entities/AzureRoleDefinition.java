@@ -26,6 +26,7 @@ public class AzureRoleDefinition {
     String azureId;
     String roleName;
     String description;
+    Boolean isPublished;
     String roleType;
     String createdBy;
     OffsetDateTime createdOn;

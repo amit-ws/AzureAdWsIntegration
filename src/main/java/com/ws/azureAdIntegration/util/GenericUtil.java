@@ -1,5 +1,7 @@
 package com.ws.azureAdIntegration.util;
 
+import com.ws.azureResourcesIntegration.constant.AzureResourcesType;
+
 import java.util.Optional;
 import java.util.function.Supplier;
 
@@ -23,13 +25,13 @@ public class GenericUtil {
         // Check for subscription level
         if (pathSegments.length >= 2 && pathSegments[1].equalsIgnoreCase("subscriptions")) {
             if (pathSegments.length == 3) {
-                return "SUBSCRIPTION";
+                return AzureResourcesType.SUBSCRIPTION.name();
             }
 
             // Check if it's a resource group level
             if (pathSegments.length >= 4 && pathSegments[3].equalsIgnoreCase("resourceGroups")) {
                 if (pathSegments.length == 5) {
-                    return "RESOURCE-GROUP";
+                    return AzureResourcesType.RESOURCE_GROUP.name();
                 }
 
                 // Find the position of "providers"
@@ -45,32 +47,32 @@ public class GenericUtil {
                 if (providersIndex != -1 && pathSegments.length > providersIndex + 3) {
                     // Check for VM
                     if (pathSegments[providersIndex + 1].equalsIgnoreCase("Microsoft.Compute") && pathSegments[providersIndex + 2].equalsIgnoreCase("virtualMachines")) {
-                        return "VM";
+                        return AzureResourcesType.VM.name();
                     }
 
                     // Check for Storage Account
                     if (pathSegments[providersIndex + 1].equalsIgnoreCase("Microsoft.Storage") && pathSegments[providersIndex + 2].equalsIgnoreCase("storageAccounts")) {
-                        return "STORAGE-ACCOUNT";
+                        return AzureResourcesType.STORAGE_ACCOUNT.name();
                     }
 
                     // Check for Server
                     if (pathSegments[providersIndex + 1].equalsIgnoreCase("Microsoft.Sql") && pathSegments[providersIndex + 2].equalsIgnoreCase("servers")) {
-                        return "SERVER";
+                        return AzureResourcesType.SERVER.name();
                     }
 
                     // Check for Database (e.g., Azure SQL Database)
                     if (pathSegments[providersIndex + 1].equalsIgnoreCase("Microsoft.Sql") && pathSegments[providersIndex + 2].equalsIgnoreCase("databases")) {
-                        return "DATABASE";
+                        return AzureResourcesType.DATABASE.name();
                     }
 
                     // Check for Network Security Group
                     if (pathSegments[providersIndex + 1].equalsIgnoreCase("Microsoft.Network") && pathSegments[providersIndex + 2].equalsIgnoreCase("networkSecurityGroups")) {
-                        return "NETWORK-SECURITY-GROUP";
+                        return AzureResourcesType.NETWORK_SECURITY_GROUP.name();
                     }
 
                     // Check for Virtual Network
                     if (pathSegments[providersIndex + 1].equalsIgnoreCase("Microsoft.Network") && pathSegments[providersIndex + 2].equalsIgnoreCase("virtualNetworks")) {
-                        return "VIRTUAL-NETWORK";
+                        return AzureResourcesType.VIRTUAL_NETWORK.name();
                     }
                 }
             }
@@ -79,11 +81,11 @@ public class GenericUtil {
         // Check for management group
         if (pathSegments.length >= 2 && pathSegments[1].equalsIgnoreCase("providers")
                 && pathSegments.length >= 4 && pathSegments[3].equalsIgnoreCase("managementGroups")) {
-            return "MANAGEMENT-GROUP";
+            return AzureResourcesType.MANAGEMENT_GROUP.name();
         }
 
         // If no valid match, return UNKNOWN
-        return "UNKNOWN";
+        return AzureResourcesType.UNKNOWN.name();
     }
 
 }

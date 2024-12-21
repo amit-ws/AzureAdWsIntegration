@@ -67,5 +67,15 @@ public class AzureADController {
         return ResponseEntity.noContent().build();
     }
 
+    @GetMapping("/users/getRolesAndGroups")
+    public ResponseEntity getUserDetailsWithGroupNamesAndRoleNamesUsingTenantNameHandler(@RequestParam("tenantName") String wsTenantName) {
+        return ResponseEntity.ok(azureADService.getUserDetailsWithGroupNamesAndRoleNamesUsingTenantName(wsTenantName));
+    }
+
+    @GetMapping("/users/getByAzureId")
+    public ResponseEntity getAzureUserByIdHandler(@RequestParam("azureId") String azureUserId) {
+        return ResponseEntity.ok(azureADService.getAzureUserById(azureUserId));
+    }
+
 
 }

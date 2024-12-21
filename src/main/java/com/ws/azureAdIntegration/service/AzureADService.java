@@ -2,14 +2,21 @@ package com.ws.azureAdIntegration.service;
 
 import com.ws.azureAdIntegration.entity.*;
 import com.ws.azureAdIntegration.repository.*;
+import com.ws.azureResourcesIntegration.dto.UserGroupAndRolesResponse;
+import com.ws.projection.UserGroupAndRolesProjection;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
+import org.checkerframework.checker.units.qual.A;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.CollectionUtils;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -91,6 +98,27 @@ public class AzureADService {
     public void deleteTenant(String tenantId) {
         azureUserCredentialRepository.deleteByTenantId(tenantId);
         azureTenantRepository.deleteByAzureId(tenantId);
+    }
+
+    public List<UserGroupAndRolesResponse> getUserDetailsWithGroupNamesAndRoleNamesUsingTenantName(String wsTenantName) {
+        AzureTenant azureTenant = getAzureTenantUsingwsTenantEmail(wsTenantName);
+        List<UserGroupAndRolesProjection> resultSets = azureUserRepository.getUserDetailsWithGroupNamesAndRoleNamesUsingTenantName(wsTenantName, azureTenant.getId());
+        if (CollectionUtils.isEmpty(resultSets)) {
+            throw new RuntimeException("No data found");
+        }
+        return resultSets.stream()
+                .map((resultSet -> UserGroupAndRolesResponse.builder()
+                        .id(resultSet.getId())
+                        .azureUserId(resultSet.getAzureUserId())
+                        .displayName(resultSet.getDisplayName())
+                        .syncedAt(resultSet.getSyncedAt())
+                        .groups(new ArrayList<>(List.of(resultSet.getGroups().split(","))))
+                        .roleDefinitions(new ArrayList<>(List.of(resultSet.getRoles().split(","))))
+                        .build())).collect(Collectors.toList());
+    }
+
+    public AzureUser getAzureUserById(String azureUserId) {
+        return azureUserRepository.findByAzureId(azureUserId).orElseThrow(() -> new RuntimeException("No azuer user found with provided id: " + azureUserId));
     }
 
     private AzureUser getAzureUserUsingId(Integer userId) {
