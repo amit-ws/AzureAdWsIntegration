@@ -3,7 +3,6 @@ package com.ws.azureAdIntegration.repository;
 import com.ws.azureAdIntegration.entity.AzureTenant;
 import com.ws.azureAdIntegration.entity.AzureUser;
 import com.ws.azureResourcesIntegration.dto.AzureRolePrincipleAssociationResponse;
-import com.ws.azureResourcesIntegration.dto.UserGroupAndRolesResponse;
 import com.ws.projection.UserGroupAndRolesProjection;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -27,7 +26,7 @@ public interface AzureUserRepository extends JpaRepository<AzureUser, Integer> {
     @Query("SELECT new com.ws.azureResourcesIntegration.dto.AzureRolePrincipleAssociationResponse(au.id, au.displayName) FROM AzureRoleAssignment ara LEFT JOIN AzureUser au ON ara.assignee = au.azureId " +
             "WHERE ara.wsTenantName= :wsTenantName and ara.principalType = 'User' and ara.azureRoleDefinitionId = :wsRoleId " +
             "ORDER BY au.displayName")
-    List<AzureRolePrincipleAssociationResponse> getAzureUserNameAndIdAssociatedWithRoleId(String wsRoleId, String wsTenantName);
+    List<AzureRolePrincipleAssociationResponse> getAzureUserNameAndIdAssociatedWithRoleDefinitionId(String wsRoleId, String wsTenantName);
 
 
     @Query(value =

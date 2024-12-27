@@ -58,7 +58,7 @@ package com.ws.azureAdIntegration.util;
 import com.azure.resourcemanager.AzureResourceManager;
 import com.microsoft.graph.requests.GraphServiceClient;
 import com.ws.azureAdIntegration.entity.AzureUserCredential;
-import com.ws.azureResourcesIntegration.configuration.AzureAuthConfigurationFactory;
+import com.ws.configuration.AzureAuthConfigurationFactory;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.HashMap;

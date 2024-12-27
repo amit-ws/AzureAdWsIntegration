@@ -1,4 +1,4 @@
-package com.ws.azureResourcesIntegration.configuration;
+package com.ws.configuration;
 
 
 import com.azure.core.credential.TokenRequestContext;

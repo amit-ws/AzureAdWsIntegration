@@ -37,6 +37,8 @@ public class AzureRoleAssignment {
     Long expiryTimeAmount; /* Holds numerical value representing minute */
     Date syncedAt;
     String wsTenantName; // WhiteSwan account organization name
+    String subscriptionId;
+
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ws_azure_tenant_id", referencedColumnName = "id")

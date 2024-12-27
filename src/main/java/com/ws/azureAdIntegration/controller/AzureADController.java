@@ -77,5 +77,10 @@ public class AzureADController {
         return ResponseEntity.ok(azureADService.getAzureUserById(azureUserId));
     }
 
+    @GetMapping("/users/getGroupNamesById/{userId}")
+    public ResponseEntity getGroupNamesForUserHandler(@PathVariable("userId") Integer userId) {
+        return ResponseEntity.ok(azureADService.getGroupNamesForUser(userId));
+    }
+
 
 }

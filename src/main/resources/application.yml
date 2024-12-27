@@ -57,7 +57,7 @@ spring:
   jpa:
     hibernate:
       ddl-auto: "update"
-    show-sql: false
+    show-sql: true
 
   logging:
     level:

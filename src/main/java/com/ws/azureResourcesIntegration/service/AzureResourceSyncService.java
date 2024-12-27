@@ -31,7 +31,7 @@ import java.util.stream.Collectors;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class AzureResourceSyncService {
     String wsTenantName;
-    String tenantEmail = "dummy@gmail.com";
+    final String tenantEmail = "dummy@gmail.com";
     AzureResourceManager azureResourceManager;
     final AzureSubscriptionRepository azureSubscriptionRepository;
     final AzureResourceGroupRepository azureResourceGroupRepository;
@@ -293,6 +293,7 @@ public class AzureResourceSyncService {
                                 .createdOn(GenericUtil.getOrNull(() -> role.innerModel().createdOn()))
                                 .assignableScope(role.assignableScopes())
                                 .syncedAt(new Date())
+                                .subscriptionId(GenericUtil.getOrNull(() -> azureResourceManager.subscriptionId()))
                                 .wsTenantName(this.wsTenantName)
                                 .azureTenant(azureTenant)
                                 .build();
@@ -370,6 +371,7 @@ public class AzureResourceSyncService {
                         .requestedAt(null)
                         .expiryTimeAmount(null)
                         .syncedAt(new Date())
+                        .subscriptionId(GenericUtil.getOrNull(() -> azureResourceManager.subscriptionId()))
                         .wsTenantName(this.wsTenantName)
                         .azureTenant(azureTenant)
                         .build();

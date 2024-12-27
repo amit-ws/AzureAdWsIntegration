@@ -15,7 +15,6 @@ import jakarta.persistence.PersistenceContext;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import okhttp3.Request;
-import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -86,9 +85,11 @@ public class AzureAuthService {
                         .createdAt(new Date())
                         .build()
         );
+        entityManager.flush();
         entityManager.detach(azureUserCredential);
         azureUserCredential.setClientSecret(createAzureConfiguration.getClientSecret());
         backendApplicationLogservice.saveAuditLog(wsTenantName, "dummy@gmail.com", Constant.ADD, Constant.AZURE_CREDENTIALS_SAVED, "Info");
+        log.info("Thread name: {}", Thread.currentThread().getName());
         azureSyncControlService.syncAzureData(graphClient, azureUserCredential);
         return Collections.singletonMap("message", "Credentials configured successfully and Data sync started!");
     }
@@ -121,9 +122,10 @@ public class AzureAuthService {
         AzureUserCredential azureUserCredential = azureUserCredentialRepository.findById(credId).orElseThrow(() -> new RuntimeException("No azure credentials found with provided id: " + credId));
         azureUserCredential.setSubscriptionId(subscriptionId);
         azureUserCredential.setUpdatedAt(new Date());
-        backendApplicationLogservice.saveAuditLog("demo@gmail.com", azureUserCredential.getWsTenantName(), "UPDATE", Constant.AZURE_SUBSCRIPTION_ID_UPDATED, "Info");
+        backendApplicationLogservice.saveAuditLog(azureUserCredential.getWsTenantName(), "demo@gmail.com", "UPDATE", Constant.AZURE_SUBSCRIPTION_ID_UPDATED, "Info");
         azureUserCredentialRepository.save(azureUserCredential);
         entityManager.flush();
+        backendApplicationLogservice.saveAuditLog(azureUserCredential.getWsTenantName(), "demo@gmail.com", "ADD", Constant.AZURE_RESOURCE_DATA_SYNC_START, "Info");
         azureSyncControlService.syncAzureResourcesData(azureUserCredential);
         return azureUserCredential;
     }

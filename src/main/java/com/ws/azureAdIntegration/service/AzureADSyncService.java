@@ -61,7 +61,7 @@ public class AzureADSyncService {
                     log.info("Validating user's Azure-AD credentials..");
                     return azureAuthUtil.validateAzureCredentials(azureUserCredential);
                 });
-        backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_AD_DATA_SYNC_START, "Info");
+        backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_AD_DATA_SYNC_START, "INFO");
         return syncTenantData(azureUserCredential.getTenantId());
     }
 
@@ -87,10 +87,10 @@ public class AzureADSyncService {
                 .get();
 
         // delete the existing tenant and re-create whatever has been fetched this time
-        azureTenantRepository.deleteByAzureIdAndWsTenantName(tenantId, wsTenantName);
+        azureTenantRepository.deleteByAzureId(tenantId);
 
         AzureTenant azureTenant = AzureEntityUtil.createAzureTenantFromGraphOrganization(organization, AzureTenant.builder().wsTenantName(this.wsTenantName).build());
-        backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_TENANT_SAVED, "Info");
+        backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_TENANT_SAVED, "INFO");
         return azureTenantRepository.save(azureTenant);
     }
 
@@ -236,7 +236,7 @@ public class AzureADSyncService {
         List<AzureUserDeviceRelationship> userDevices = new ArrayList<>();
 
         List<String> azureUserIds = azureUserMap.keySet().stream().collect(Collectors.toList());
-        azureUserIds.stream().forEach((userId) -> {
+        azureUserIds.forEach((userId) -> {
             List<DirectoryObject> devices = this.graphClient.users(userId)
                     .registeredDevices()
                     .buildRequest()
@@ -278,7 +278,7 @@ public class AzureADSyncService {
 //        result.getCurrentPage().stream().forEach((graphApp) -> {
 //            if (existingAzureAppMap.containsKey(graphApp.id)) {
 //                AzureApplication azureApp = AzureApplication.createFromGraphApplication(graphApp, existingAzureAppMap.get(graphApp.id));
-////                AzureAppRoles.fromGraphAppRoles(graphApp.appRoles, azureApp.getAppRoles());
+/// /                AzureAppRoles.fromGraphAppRoles(graphApp.appRoles, azureApp.getAppRoles());
 //
 //                mapAppRoles(graphApp.appRoles, azureApp);
 //            } else {

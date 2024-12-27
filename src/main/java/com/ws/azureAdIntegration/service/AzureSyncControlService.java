@@ -14,6 +14,7 @@ import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Request;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -43,11 +44,12 @@ public class AzureSyncControlService {
     @Async
     @Transactional
     public void syncAzureData(GraphServiceClient<Request> graphClient, AzureUserCredential azureUserCredential) {
+        log.info("Thread name: {}", Thread.currentThread().getName());
         AzureTenant azureTenant = azureADSyncService.initializeGraphClientAndSyncAzureTenant(azureUserCredential, graphClient);
         azureADSyncService.syncAzureADData(azureTenant);
-        if (Optional.ofNullable(azureUserCredential.getSubscriptionId()).filter(subscriptionId -> !subscriptionId.isEmpty()).isPresent()) {
-            azureResourceSyncService.syncAzureResourceData(azureTenant, azureUserCredential);
-        }
+//        if (Optional.ofNullable(azureUserCredential.getSubscriptionId()).filter(subscriptionId -> !subscriptionId.isEmpty()).isPresent()) {
+//            azureResourceSyncService.syncAzureResourceData(azureTenant, azureUserCredential);
+//        }
     }
 
 
@@ -55,6 +57,7 @@ public class AzureSyncControlService {
     @Async
     @Transactional
     public void syncAzureResourcesData(AzureUserCredential azureUserCredential) {
+        log.info("Thread name for syncAzureResourcesData: {}", Thread.currentThread().getName());
         entityManager.detach(azureUserCredential);
         AzureTenant azureTenant = azureTenantRepository
                 .findByWsTenantName(azureUserCredential.getWsTenantName())
@@ -64,7 +67,7 @@ public class AzureSyncControlService {
     }
 
 
-        /* on demand sync */
+    /* on demand sync */
     @Transactional
     public void syncAzureData(String wsTenantName) {
         AzureUserCredential azureUserCredential = azureUserCredentialRepository.findByWsTenantName(wsTenantName)
@@ -73,6 +76,9 @@ public class AzureSyncControlService {
         azureUserCredential.setClientSecret(clientSecret);
         AzureTenant azureTenant = azureADSyncService.initializeGraphClientAndSyncAzureTenant(azureUserCredential, null);
         azureADSyncService.syncAzureADData(azureTenant);
-        azureResourceSyncService.syncAzureResourceData(azureTenant, azureUserCredential);
+        Optional.ofNullable(azureUserCredential.getSubscriptionId())
+                .filter(StringUtils::isNotEmpty)
+                .ifPresentOrElse(subscriptionId -> azureResourceSyncService.syncAzureResourceData(azureTenant, azureUserCredential),
+                        () -> log.info("Skipped Azure-Resources data sync as no subscription-id was found"));
     }
 }

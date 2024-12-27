@@ -1,4 +1,4 @@
-package com.ws.cofiguration;
+package com.ws.cofiguration_old;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

@@ -1,7 +1,8 @@
-package com.ws.cofiguration;
+package com.ws.cofiguration_old;
 
 import com.microsoft.graph.authentication.IAuthenticationProvider;
 import com.microsoft.graph.requests.GraphServiceClient;
+import com.ws.cofiguration.TokenManager;
 
 import java.net.URL;
 import java.util.concurrent.CompletableFuture;

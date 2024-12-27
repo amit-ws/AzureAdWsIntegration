@@ -10,11 +10,9 @@ import com.ws.azureResourcesIntegration.constant.AzureResourcesType;
 import com.ws.azureResourcesIntegration.dto.AzureRoleDefinitionActionNameProjection;
 import com.ws.azureResourcesIntegration.dto.AzureRoleDefinitionDTO;
 import com.ws.azureResourcesIntegration.dto.AzureRolePrincipleAssociationResponse;
-import com.ws.azureResourcesIntegration.entities.AzureRoleDefinition;
-import com.ws.azureResourcesIntegration.entities.AzureServer;
-import com.ws.azureResourcesIntegration.entities.AzureStorageAccount;
-import com.ws.azureResourcesIntegration.entities.AzureVM;
+import com.ws.azureResourcesIntegration.entities.*;
 import com.ws.azureResourcesIntegration.repository.*;
+import jakarta.transaction.Transactional;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
@@ -104,7 +102,6 @@ public class AzureResourceService {
                 .roleName(azureRoleDefinition.getRoleName())
                 .roleType(azureRoleDefinition.getRoleType())
                 .description(azureRoleDefinition.getDescription())
-                .isPublished(azureRoleDefinition.getIsPublished())
                 .assignableScope(azureRoleDefinition.getAssignableScope())
                 .syncedAt(azureRoleDefinition.getSyncedAt())
                 .wsTenantName(azureRoleDefinition.getWsTenantName())
@@ -127,7 +124,7 @@ public class AzureResourceService {
 
     public List<AzureRolePrincipleAssociationResponse> getAllUsersAssociatedWithRoleId(String wsRoleId, String wsTenantName, String principleType) {
         return PrincipalType.USER.getValue().equalsIgnoreCase(principleType)
-                ? azureUserRepository.getAzureUserNameAndIdAssociatedWithRoleId(wsRoleId, wsTenantName)
+                ? azureUserRepository.getAzureUserNameAndIdAssociatedWithRoleDefinitionId(wsRoleId, wsTenantName)
                 : PrincipalType.GROUP.getValue().equalsIgnoreCase(principleType)
                 ? azureGroupRepository.getAzureUserNameAndIdAssociatedWithRoleId(wsRoleId, wsTenantName)
                 : Collections.emptyList();
@@ -146,6 +143,7 @@ public class AzureResourceService {
             throw new RuntimeException(String.format("Invalid type(s) provided. Check %s and %s values", scopeType, principleType));
         }
     }
+
 
 }
 

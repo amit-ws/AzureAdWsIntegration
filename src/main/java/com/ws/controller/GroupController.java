@@ -2,7 +2,7 @@ package com.ws.controller;
 
 import com.microsoft.graph.models.*;
 import com.microsoft.graph.requests.*;
-import com.ws.cofiguration.GraphServiceClientFactory;
+import com.ws.cofiguration_old.GraphServiceClientFactory;
 import com.ws.service.TokenManager;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;

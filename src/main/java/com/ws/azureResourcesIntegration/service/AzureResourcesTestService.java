@@ -12,7 +12,7 @@ import com.azure.resourcemanager.resources.models.Subscription;
 import com.azure.resourcemanager.sql.models.ServerPrivateEndpointConnection;
 import com.azure.resourcemanager.sql.models.SqlDatabase;
 import com.azure.resourcemanager.sql.models.SqlServer;
-import com.ws.azureResourcesIntegration.configuration.AzureAuthConfigurationFactory;
+import com.ws.configuration.AzureAuthConfigurationFactory;
 import com.ws.azureResourcesIntegration.dto.*;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;

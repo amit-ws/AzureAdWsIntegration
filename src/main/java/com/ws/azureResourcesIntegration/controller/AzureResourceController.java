@@ -1,5 +1,8 @@
 package com.ws.azureResourcesIntegration.controller;
 
+import com.azure.resourcemanager.appservice.models.AzureResourceType;
+import com.azure.resourcemanager.resources.models.ResourceChangeType;
+import com.ws.azureResourcesIntegration.constant.AzureResourcesType;
 import com.ws.azureResourcesIntegration.dto.AzureRoleDefinitionDTO;
 import com.ws.azureResourcesIntegration.dto.AzureRolePrincipleAssociationResponse;
 import com.ws.azureResourcesIntegration.entities.AzureServer;
@@ -67,4 +70,6 @@ public class AzureResourceController {
             @PathVariable("assignee") String assignee) {
         return ResponseEntity.ok(azureResourceService.getAzureVMsForPrinciple(scopeType, principleType, assignee, wsTenantName));
     }
+
+
 }

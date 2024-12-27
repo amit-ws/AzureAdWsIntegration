@@ -13,7 +13,7 @@ import com.ws.azureAdIntegration.repository.AzureUserCredentialRepository;
 import com.ws.azureAdIntegration.repository.AzureUserGroupMembershipRepository;
 import com.ws.azureAdIntegration.repository.AzureUserRepository;
 import com.ws.azureAdIntegration.util.EncryptionUtil;
-import com.ws.azureResourcesIntegration.configuration.AzureAuthConfigurationFactory;
+import com.ws.configuration.AzureAuthConfigurationFactory;
 import com.ws.azureResourcesIntegration.dto.*;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;

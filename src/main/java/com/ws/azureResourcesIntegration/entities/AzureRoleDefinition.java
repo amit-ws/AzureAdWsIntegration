@@ -17,7 +17,7 @@ import java.util.*;
 @Entity
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @EqualsAndHashCode(exclude = {"azureRoleDefinitionPermissions"})
-@Table(name = "azure_role_definition", schema = "azure_test")
+@Table(name = "azure_role_definition", schema = "public")
 public class AzureRoleDefinition {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -26,7 +26,6 @@ public class AzureRoleDefinition {
     String azureId;
     String roleName;
     String description;
-    Boolean isPublished;
     String roleType;
     String createdBy;
     OffsetDateTime createdOn;
@@ -39,12 +38,13 @@ public class AzureRoleDefinition {
 
     Date syncedAt;
     String wsTenantName; // WhiteSwan account organization name
+    String subscriptionId;
 
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ws_azure_tenant_id", referencedColumnName = "id")
     AzureTenant azureTenant;
 
-    @OneToMany(mappedBy = "azureRoleDefinition", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @OneToMany(mappedBy = "azureRoleDefinition", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     Set<AzureRoleDefinitionPermission> azureRoleDefinitionPermissions = new LinkedHashSet<>();
 }

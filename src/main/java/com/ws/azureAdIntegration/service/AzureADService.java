@@ -4,18 +4,16 @@ import com.ws.azureAdIntegration.entity.*;
 import com.ws.azureAdIntegration.repository.*;
 import com.ws.azureResourcesIntegration.dto.UserGroupAndRolesResponse;
 import com.ws.projection.UserGroupAndRolesProjection;
+import com.ws.projection.UserGroupsNameProjection;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
-import org.checkerframework.checker.units.qual.A;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -119,6 +117,22 @@ public class AzureADService {
 
     public AzureUser getAzureUserById(String azureUserId) {
         return azureUserRepository.findByAzureId(azureUserId).orElseThrow(() -> new RuntimeException("No azuer user found with provided id: " + azureUserId));
+    }
+
+    public List<Map<String, Object>> getGroupNamesForUser(Integer userId) {
+        List<UserGroupsNameProjection> userGroups = azureGroupRepository.getGroupNamesForUser(userId);
+        if (userGroups.isEmpty()) {
+            throw new RuntimeException("No data found");
+        }
+        return userGroups.stream()
+                .map(userGroup -> {
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("id", userGroup.getId());
+                    map.put("azureGroupId", userGroup.getAzureGroupId());
+                    map.put("displayName", userGroup.getDisplayName());
+                    return map;
+                })
+                .collect(Collectors.toList());
     }
 
     private AzureUser getAzureUserUsingId(Integer userId) {
