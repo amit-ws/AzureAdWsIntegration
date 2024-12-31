@@ -75,7 +75,13 @@ public class AzureAuthService {
                     }
                 });
         log.info("Validating user's Azure-AD credentials..");
+        /**
+         * Validate the azure credentials provided by user ✅
+         */
         GraphServiceClient<Request> graphClient = azureAuthUtil.validateAzureCredentials(tenantId, clientId, createAzureConfiguration.getClientSecret());
+        /**
+         * Add logic to check whether user has provided necessary API permissions or not 💡
+         */
         AzureUserCredential azureUserCredential = azureUserCredentialRepository.save(
                 AzureUserCredential.builder()
                         .clientId(clientId)

@@ -462,9 +462,12 @@ public class AzureResourceFeatureService_OG {
     }
 
     public void listAllSubscriptions(String tenantName) {
-        AzureUserCredential azureUserCredential = getAzureUserCredentialUsingWsTenantName(tenantName);
-        log.info("azureUserCredential: {}", azureUserCredential);
-        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), decryptClientSecret(azureUserCredential.getClientSecret()), "3c10c941-37e4-4b03-8d97-d3524abe6040", subscriptionId);
+//        AzureUserCredential azureUserCredential = getAzureUserCredentialUsingWsTenantName(tenantName);
+//        log.info("azureUserCredential: {}", azureUserCredential);
+//        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), decryptClientSecret(azureUserCredential.getClientSecret()), "3c10c941-37e4-4b03-8d97-d3524abe6040", subscriptionId);
+        AzureResourceManager azureResourceManager =
+                getAzureResourceManager("cb51e8d1-519c-4e18-9b2f-28d53e6badd1", "3F18Q~iM8DjCXg7rL~2.BZZPtdGNAzfOf2qXRdhC", "f875ebf8-f5f0-4915-a2c9-4442e0118fd2",
+                        "4769af8e-ca3d-448d-bd1a-80e03ed94158");
         PagedIterable<Subscription> subscriptions = azureResourceManager.subscriptions().list();
         for (Subscription subscription : subscriptions) {
             log.info("subscription-id: {}", subscription.subscriptionId());

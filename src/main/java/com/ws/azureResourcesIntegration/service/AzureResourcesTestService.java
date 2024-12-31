@@ -28,11 +28,15 @@ import java.util.stream.StreamSupport;
 @Slf4j
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class AzureResourcesTestService {
-    final String clientId = "f741d2f8-8ec5-4246-9051-96fd8f041267";
-    final String clientSecret = "C6n8Q~Pe3lYUXaRp6gLNOZUK~uM5UUSkqP~9JbuY";
-    final String tenantId = "0079de83-6146-45cb-a189-5d5b03507ce8";
-    final String subscriptionId = "15b85f1d-1983-469c-a593-46fe8fc514f7";
+    final String clientId = "cb51e8d1-519c-4e18-9b2f-28d53e6badd1";
+    final String clientSecret = "3F18Q~iM8DjCXg7rL~2.BZZPtdGNAzfOf2qXRdhC";
+    final String tenantId = "f875ebf8-f5f0-4915-a2c9-4442e0118fd2";
+    final String subscriptionId = "4769af8e-ca3d-448d-bd1a-80e03ed94158";
     final AzureAuthConfigurationFactory azureAuthConfigurationFactory;
+//    AzureResourceManager azureResourceManager =
+//            getAzureResourceManager("cb51e8d1-519c-4e18-9b2f-28d53e6badd1", "3F18Q~iM8DjCXg7rL~2.BZZPtdGNAzfOf2qXRdhC",
+//                    "f875ebf8-f5f0-4915-a2c9-4442e0118fd2",
+//                    "4769af8e-ca3d-448d-bd1a-80e03ed94158");
     @Autowired
     public AzureResourcesTestService(AzureAuthConfigurationFactory azureAuthConfigurationFactory) {
         this.azureAuthConfigurationFactory = azureAuthConfigurationFactory;

@@ -56,10 +56,12 @@ public class AzureSyncControlService {
     @Transactional
     public void syncAzureResourcesData(AzureUserCredential azureUserCredential) {
         entityManager.detach(azureUserCredential);
+        log.info("cred: {}", azureUserCredential.getClientSecret());
+        azureUserCredential.setClientSecret(EncryptionUtil.getDecryptedKey(azureUserCredential.getClientSecret(), Constant.AZURE_CLIENT_SECRET));
+        log.info("cred: {}", azureUserCredential.getClientSecret());
         AzureTenant azureTenant = azureTenantRepository
                 .findByWsTenantName(azureUserCredential.getWsTenantName())
                 .orElseGet(() -> azureADSyncService.initializeGraphClientAndSyncAzureTenant(azureUserCredential, null));
-        azureUserCredential.setClientSecret(EncryptionUtil.getDecryptedKey(azureUserCredential.getClientSecret(), Constant.AZURE_CLIENT_SECRET));
         azureResourceSyncService.syncAzureResourceData(azureTenant, azureUserCredential);
     }
 
