@@ -1,8 +1,8 @@
 package com.ws.azureResourcesIntegration.entities;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.ws.azureAdIntegration.entity.AzureTenant;
+import com.ws.test.MyEntity;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
@@ -14,7 +14,7 @@ import java.util.*;
 @NoArgsConstructor
 @AllArgsConstructor
 @Data
-@Entity
+@MyEntity
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @EqualsAndHashCode(exclude = {"azureRoleDefinitionPermissions"})
 @Table(name = "azure_role_definition", schema = "public")

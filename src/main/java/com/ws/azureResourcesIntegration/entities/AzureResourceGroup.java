@@ -2,20 +2,19 @@ package com.ws.azureResourcesIntegration.entities;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.ws.azureAdIntegration.entity.AzureTenant;
+import com.ws.test.MyEntity;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
-import java.util.ArrayList;
 import java.util.Date;
-import java.util.List;
 import java.util.Map;
 
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 @Data
-@Entity
+@MyEntity
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @Table(name = "azure_resource_group", schema = "azure_test")
 public class AzureResourceGroup {

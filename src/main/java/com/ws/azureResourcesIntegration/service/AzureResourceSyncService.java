@@ -195,7 +195,7 @@ public class AzureResourceSyncService {
                             .azureTenant(azureTenant)
                             .syncedAt(new Date())
                             .build())
-                    .toList();
+                    .collect(Collectors.toList());
             azureStorageRepository.saveAll(azureStorageAccounts);
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_STORAGES_SYNCED, "Info");
         } catch (Exception ignored) {
@@ -253,7 +253,7 @@ public class AzureResourceSyncService {
                                 .azureDatabases(azureDatabases)
                                 .build();
                     })
-                    .toList();
+                    .collect(Collectors.toList());
             azureServerRepository.saveAll(azureServers);
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_SERVER_DATABASES_SYNCED, "Info");
         } catch (Exception ignored) {

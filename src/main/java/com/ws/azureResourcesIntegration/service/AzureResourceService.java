@@ -17,6 +17,7 @@ import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.repository.CrudRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
@@ -144,7 +145,49 @@ public class AzureResourceService {
         }
     }
 
+    @Transactional
+    public void publishResourceByResourceIdAndType(Integer resourceId, AzureResourcesType type) {
+        switch (type) {
+            case VM:
+                getByIdAndPublish(resourceId, azureVMRepository, type);
+                break;
+            case STORAGE_ACCOUNT:
+                getByIdAndPublish(resourceId, azureStorageRepository, type);
+                break;
+            case DATABASE:
+                getByIdAndPublish(resourceId, azureDatabaseRepository, type);
+                break;
+            default:
+                throw new RuntimeException(String.format("Invalid type: %s provided", type));
+        }
+    }
 
+    public List<?> getPublishedResources(String wsTenantName, AzureResourcesType type) {
+        switch (type) {
+            case VM:
+                return azureVMRepository.findAllByWsTenantNameAndIsPublishedTrue(wsTenantName);
+            case STORAGE_ACCOUNT:
+                return azureStorageRepository.findAllByWsTenantNameAndIsPublishedTrue(wsTenantName);
+            case DATABASE:
+                return azureDatabaseRepository.findAllByWsTenantNameAndIsPublishedTrue(wsTenantName);
+            default:
+                throw new RuntimeException(String.format("Invalid type: %s provided", type));
+        }
+    }
+
+    private <T> void getByIdAndPublish(Integer resourceId, CrudRepository<T, Integer> repository, AzureResourcesType type) {
+        T resource = repository.findById(resourceId)
+                .orElseThrow(() -> new RuntimeException(String.format("No resource of type %s found with provided resource id: %s", type, resourceId)));
+        updateCommonFields(resource, repository);
+    }
+
+    private <T> void updateCommonFields(T resource, CrudRepository<T, Integer> repository) {
+        if (resource instanceof BaseAzureResource baseResource) {
+            baseResource.setIsPublished(!baseResource.getIsPublished());
+            baseResource.setUpdatedAt(new Date());
+        }
+        repository.save(resource);
+    }
 }
 
 

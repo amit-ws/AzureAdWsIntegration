@@ -1,7 +1,5 @@
 package com.ws.azureResourcesIntegration.controller;
 
-import com.azure.resourcemanager.appservice.models.AzureResourceType;
-import com.azure.resourcemanager.resources.models.ResourceChangeType;
 import com.ws.azureResourcesIntegration.constant.AzureResourcesType;
 import com.ws.azureResourcesIntegration.dto.AzureRoleDefinitionDTO;
 import com.ws.azureResourcesIntegration.dto.AzureRolePrincipleAssociationResponse;
@@ -69,6 +67,17 @@ public class AzureResourceController {
             @PathVariable("tenantName") String wsTenantName,
             @PathVariable("assignee") String assignee) {
         return ResponseEntity.ok(azureResourceService.getAzureVMsForPrinciple(scopeType, principleType, assignee, wsTenantName));
+    }
+
+    @PatchMapping("/v1/publish")
+    public ResponseEntity<Void> publishResourceHandler(@RequestParam("type") AzureResourcesType type, @RequestParam("id") Integer resourceId) {
+        azureResourceService.publishResourceByResourceIdAndType(resourceId, type);
+        return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/v1/publish")
+    public ResponseEntity<List<?>> getPublishedResourcesHandler(@RequestParam("type") AzureResourcesType type, @RequestParam("tenantName") String wsTenantName) {
+        return ResponseEntity.ok(azureResourceService.getPublishedResources(wsTenantName, type));
     }
 
 

@@ -16,4 +16,5 @@ public interface AzureVMRepository extends JpaRepository<AzureVM, Integer> {
             "WHERE ara.scopeType = :scopeType AND ara.principalType = :principalType and ara.assignee = :assignee and av.azureTenant = :azureTenant")
     List<AzureVM> getAzureVMsForPrinciple(String scopeType, String principalType, String assignee, AzureTenant azureTenant);
 
+    List<AzureVM> findAllByWsTenantNameAndIsPublishedTrue(String wsTenantName);
 }

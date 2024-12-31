@@ -4,19 +4,22 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.ws.azureAdIntegration.entity.AzureTenant;
 import jakarta.persistence.*;
 
-import java.util.Date;
-
 import lombok.*;
 import lombok.experimental.FieldDefaults;
+import lombok.experimental.SuperBuilder;
 
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
+
+@EqualsAndHashCode(callSuper = true)
 @Entity
 @Data
+@Setter
+@Getter
+@SuperBuilder
+@NoArgsConstructor
+@AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @Table(name = "azure_vm", schema = "azure_test")
-public class AzureVM {
+public class AzureVM extends BaseAzureResource{
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Integer id;
@@ -37,8 +40,6 @@ public class AzureVM {
     String resourceIdentityType;
     String ipAddress;
     Boolean isPublished;
-    Date syncedAt;
-    String wsTenantName; // WhiteSwan account organization name
 
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
