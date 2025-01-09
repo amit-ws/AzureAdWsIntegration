@@ -15,5 +15,5 @@ public interface AzureServerRepository extends JpaRepository<AzureServer, Intege
 
     @Query("SELECT DISTINCT asv FROM AzureServer asv INNER JOIN AzureRoleAssignment ara ON UPPER(asv.azureServerId) = UPPER(ara.scope) " +
             "WHERE ara.scopeType IN :scopeTypes AND ara.principalType = :principalType and ara.assignee = :assignee and asv.azureTenant = :azureTenant")
-    List<AzureStorageAccount> getAzureServersWithDatabasesForPrinciple(List<String> scopeTypes, String principalType, String assignee, AzureTenant azureTenant);
+    List<AzureServer> getAzureServersWithDatabasesForPrinciple(List<String> scopeTypes, String principalType, String assignee, AzureTenant azureTenant);
 }

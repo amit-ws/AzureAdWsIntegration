@@ -1,9 +1,15 @@
 package com.ws.azureAdIntegration.util;
 
+import com.azure.resourcemanager.authorization.models.RoleAssignment;
 import com.microsoft.graph.models.*;
 import com.ws.azureAdIntegration.entity.*;
+import com.ws.azureResourcesIntegration.constant.CustomRoleAssignmentStatus;
+import com.ws.azureResourcesIntegration.dto.AssignRoleRequest;
+import com.ws.azureResourcesIntegration.entities.AzureRoleAssignment;
+import com.ws.azureResourcesIntegration.entities.CustomRoleAssignment;
 
 import java.util.Date;
+import java.util.UUID;
 
 public final class AzureEntityUtil {
     private AzureEntityUtil() {
@@ -100,4 +106,38 @@ public final class AzureEntityUtil {
         azureDevice.setSyncedAt(new Date());
         return azureDevice;
     }
+
+    public static AzureRoleAssignment createAzureRoleAssignmentFromResourceEntity(RoleAssignment roleAssignment, AzureRoleAssignment azureRoleAssignment) {
+        GenericUtil.ensureNotNull(roleAssignment, "RoleAssignment cannot be null");
+        azureRoleAssignment.setAzureRoleAssignmentPathId(roleAssignment.id());
+        azureRoleAssignment.setAzureId(roleAssignment.name());
+        azureRoleAssignment.setDescription(roleAssignment.description());
+        azureRoleAssignment.setAssignee(roleAssignment.principalId());
+        azureRoleAssignment.setPrincipalType(GenericUtil.getOrNull(() -> roleAssignment.innerModel().principalType().getValue()));
+        azureRoleAssignment.setScope(roleAssignment.scope());
+        azureRoleAssignment.setScopeType(GenericUtil.determineScopeType(roleAssignment.scope()));
+        azureRoleAssignment.setCondition(roleAssignment.condition());
+        azureRoleAssignment.setIsRoleInherited(false);
+        azureRoleAssignment.setCreatedOn(GenericUtil.getOrNull(() -> roleAssignment.innerModel().createdOn()));
+        azureRoleAssignment.setCreatedBy(GenericUtil.getOrNull(() -> roleAssignment.innerModel().createdBy()));
+        azureRoleAssignment.setSyncedAt(new Date());
+        return azureRoleAssignment;
+    }
+
+    public static CustomRoleAssignment createCustomRoleAssignmentFromAssignRoleRequestPayload(AssignRoleRequest request, CustomRoleAssignment customRoleAssignment) {
+        customRoleAssignment.setAzureId(UUID.randomUUID().toString());
+        customRoleAssignment.setScope(request.getResourceScope().trim());
+        customRoleAssignment.setAzureRoleDefinitionId(request.getRoleDefinitionId().trim());
+        customRoleAssignment.setAssignee(request.getPrincipleId().trim());
+        customRoleAssignment.setPrincipalType(request.getPrincipleType().getValue());
+        customRoleAssignment.setScopeType(GenericUtil.determineScopeType(request.getResourceScope()));
+        customRoleAssignment.setDescription(request.getDescription());
+        customRoleAssignment.setStatus(CustomRoleAssignmentStatus.REQUESTED);
+        customRoleAssignment.setCreatedAt(new Date());
+        customRoleAssignment.setExpiryTimeAmount(request.getExpiryTimeAmount());
+        customRoleAssignment.setWsTenantName(request.getTenantName().trim());
+        customRoleAssignment.setSubscriptionId(request.getSubscriptionId().trim());
+        return customRoleAssignment;
+    }
+
 }

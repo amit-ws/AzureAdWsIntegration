@@ -42,7 +42,7 @@ public class AzureADController {
 
     @GetMapping("/tenant")
     public ResponseEntity fetchTenantHandler(@RequestParam("tenantName") String wsTenantName) {
-        return ResponseEntity.ok(azureADService.getAzureTenantUsingwsTenantEmail(wsTenantName));
+        return ResponseEntity.ok(azureADService.getAzureTenantUsingWsTenantName(wsTenantName));
     }
 
 

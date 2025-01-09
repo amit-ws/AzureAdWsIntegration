@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface AzureVMRepository extends JpaRepository<AzureVM, Integer> {
@@ -17,4 +18,6 @@ public interface AzureVMRepository extends JpaRepository<AzureVM, Integer> {
     List<AzureVM> getAzureVMsForPrinciple(String scopeType, String principalType, String assignee, AzureTenant azureTenant);
 
     List<AzureVM> findAllByWsTenantNameAndIsPublishedTrue(String wsTenantName);
+
+    Optional<AzureVM> findByIdAndResourceType(Integer id, String resourceType);
 }

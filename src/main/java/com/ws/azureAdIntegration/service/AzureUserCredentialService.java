@@ -20,14 +20,14 @@ public class AzureUserCredentialService {
         this.azureUserCredentialRepository = azureUserCredentialRepository;
     }
 
-    protected AzureUserCredential findWSTeanantIdWithDecryptedSecret(String wsTenantName) {
+    public AzureUserCredential findWSTeanantIdWithDecryptedSecret(String wsTenantName) {
         AzureUserCredential azureUserCredential = Optional.ofNullable(findWSTeanantIdWithoutDecryptedSecret(wsTenantName))
                 .orElseThrow(() -> new RuntimeException("No Azure AD configuration found!"));
         azureUserCredential.setClientSecret(EncryptionUtil.getDecryptedKey(azureUserCredential.getClientSecret(), Constant.AZURE_CLIENT_SECRET));
         return azureUserCredential;
     }
 
-    protected AzureUserCredential findWSTeanantIdWithoutDecryptedSecret(String wsTenantName) {
+    public AzureUserCredential findWSTeanantIdWithoutDecryptedSecret(String wsTenantName) {
         return azureUserCredentialRepository.findByWsTenantName(wsTenantName).orElse(null);
     }
 }

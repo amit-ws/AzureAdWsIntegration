@@ -47,9 +47,9 @@ public class AzureSyncControlService {
         log.info("Thread name: {}", Thread.currentThread().getName());
         AzureTenant azureTenant = azureADSyncService.initializeGraphClientAndSyncAzureTenant(azureUserCredential, graphClient);
         azureADSyncService.syncAzureADData(azureTenant);
-//        if (Optional.ofNullable(azureUserCredential.getSubscriptionId()).filter(subscriptionId -> !subscriptionId.isEmpty()).isPresent()) {
-//            azureResourceSyncService.syncAzureResourceData(azureTenant, azureUserCredential);
-//        }
+        if (Optional.ofNullable(azureUserCredential.getSubscriptionId()).filter(subscriptionId -> !subscriptionId.isEmpty()).isPresent()) {
+            azureResourceSyncService.syncAzureResourceData(azureTenant, azureUserCredential);
+        }
     }
 
 

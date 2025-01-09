@@ -33,8 +33,6 @@ public class AzureRoleAssignment {
     Boolean isRoleInherited; /* Role inherited from Parent. If false: The role was specifically assigned on this Scope (resource)*/
     OffsetDateTime createdOn;
     String createdBy;
-    LocalDateTime requestedAt;
-    Long expiryTimeAmount; /* Holds numerical value representing minute */
     Date syncedAt;
     String wsTenantName; // WhiteSwan account organization name
     String subscriptionId;

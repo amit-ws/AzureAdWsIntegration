@@ -150,12 +150,13 @@ public class AzureResourceFeatureService_OG {
             throw new RuntimeException("No role found with provided role definition id: " + roleDefinitionId);
         }
 
-        azureResourceManager.accessManagement()
+        RoleAssignment createdRoleAssignment = azureResourceManager.accessManagement()
                 .roleAssignments()
                 .define(assignment.get().id())
                 .forObjectId(principleId)
                 .withRoleDefinition(roleDefinitionId)
                 .withScope(String.format("/subscriptions/%s", azureResourceManager.subscriptionId()))
+                .withDescription("Blah Blah")
                 .create();
     }
 

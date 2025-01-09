@@ -2,19 +2,20 @@ package com.ws.azureResourcesIntegration.entities;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.ws.azureAdIntegration.entity.AzureTenant;
-import com.ws.test.MyEntity;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
 
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 @Data
-@MyEntity
+@Entity
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @Table(name = "azure_resource_group", schema = "azure_test")
 public class AzureResourceGroup {
@@ -36,6 +37,22 @@ public class AzureResourceGroup {
     @MapKeyColumn(name = "tag_key")
     @Column(name = "tag_value")
     Map<String, String> tags;
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "azureResourceGroup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    List<AzureDatabase> azureDatabases = new ArrayList<>();
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "azureResourceGroup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    List<AzureServer> azureServers = new ArrayList<>();
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "azureResourceGroup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    List<AzureStorageAccount> azureStorageAccounts = new ArrayList<>();
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "azureResourceGroup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    List<AzureVM> azureVMS = new ArrayList<>();
 
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)

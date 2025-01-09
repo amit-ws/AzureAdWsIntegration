@@ -39,6 +39,12 @@ public class AzureDatabase extends BaseAzureResource{
     OffsetDateTime pausedDate;
     OffsetDateTime resumedDate;
     String defaultSecondaryLocation;
+    String resourceType;
+
+    @JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "ws_azure_resource_group_id", referencedColumnName = "id")
+    AzureResourceGroup azureResourceGroup;
 
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)

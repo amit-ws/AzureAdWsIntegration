@@ -74,7 +74,7 @@ public class AzureAuthService {
                     }
                 });
         log.info("Validating user's Azure-AD credentials..");
-        GraphServiceClient<Request> graphClient = azureAuthUtil.validateAzureCredentials(tenantId, clientId, createAzureConfiguration.getClientSecret());
+//        GraphServiceClient<Request> graphClient = azureAuthUtil.validateAzureCredentials(tenantId, clientId, createAzureConfiguration.getClientSecret());
         AzureUserCredential azureUserCredential = azureUserCredentialRepository.save(
                 AzureUserCredential.builder()
                         .clientId(clientId)
@@ -85,12 +85,12 @@ public class AzureAuthService {
                         .createdAt(new Date())
                         .build()
         );
-        entityManager.flush();
-        entityManager.detach(azureUserCredential);
-        azureUserCredential.setClientSecret(createAzureConfiguration.getClientSecret());
+//        entityManager.flush();
+//        entityManager.detach(azureUserCredential);
+//        azureUserCredential.setClientSecret(createAzureConfiguration.getClientSecret());
         backendApplicationLogservice.saveAuditLog(wsTenantName, "dummy@gmail.com", Constant.ADD, Constant.AZURE_CREDENTIALS_SAVED, "Info");
-        log.info("Thread name: {}", Thread.currentThread().getName());
-        azureSyncControlService.syncAzureData(graphClient, azureUserCredential);
+//        log.info("Thread name: {}", Thread.currentThread().getName());
+//        azureSyncControlService.syncAzureData(graphClient, azureUserCredential);
         return Collections.singletonMap("message", "Credentials configured successfully and Data sync started!");
     }
 

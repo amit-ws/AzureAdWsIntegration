@@ -37,6 +37,7 @@ public class AzureStorageAccount extends BaseAzureResource{
     String publicAccess;
     String skuTier;
     String accessTier;
+    String resourceType;
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(
             name = "azure_storage_account_tags",
@@ -45,6 +46,11 @@ public class AzureStorageAccount extends BaseAzureResource{
     @MapKeyColumn(name = "tag_key")
     @Column(name = "tag_value")
     private Map<String, String> tags;
+
+    @JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "ws_azure_resource_group_id", referencedColumnName = "id")
+    AzureResourceGroup azureResourceGroup;
 
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)

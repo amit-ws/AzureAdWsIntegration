@@ -46,11 +46,11 @@ public class AzureADService {
     }
 
     public List<AzureUser> fetchUsers(String wsTenantName) {
-        return azureUserRepository.findAllByAzureTenant(getAzureTenantUsingwsTenantEmail(wsTenantName));
+        return azureUserRepository.findAllByAzureTenant(getAzureTenantUsingWsTenantName(wsTenantName));
     }
 
     public List<AzureGroup> fetchGroups(String wsTenantName) {
-        return azureGroupRepository.findAllByAzureTenant(getAzureTenantUsingwsTenantEmail(wsTenantName));
+        return azureGroupRepository.findAllByAzureTenant(getAzureTenantUsingWsTenantName(wsTenantName));
     }
 //
 //    @Transactional
@@ -63,7 +63,7 @@ public class AzureADService {
 
     @Transactional(readOnly = true)
     public List<AzureApplication> fetchApplications(String wsTenantName) {
-        return azureApplicationRepository.findAllByAzureTenant(getAzureTenantUsingwsTenantEmail(wsTenantName));
+        return azureApplicationRepository.findAllByAzureTenant(getAzureTenantUsingWsTenantName(wsTenantName));
     }
 
 
@@ -73,10 +73,10 @@ public class AzureADService {
     }
 
     public List<AzureDevice> fetchAzureDevices(String wsTenantName) {
-        return azureDeviceRepository.findAllByAzureTenant(getAzureTenantUsingwsTenantEmail(wsTenantName));
+        return azureDeviceRepository.findAllByAzureTenant(getAzureTenantUsingWsTenantName(wsTenantName));
     }
 
-    public AzureTenant getAzureTenantUsingwsTenantEmail(String wsTenantName) {
+    public AzureTenant getAzureTenantUsingWsTenantName(String wsTenantName) {
         return azureTenantRepository.findByWsTenantName(wsTenantName).orElseThrow(() -> new RuntimeException("No tenant found with provided tenantName: " + wsTenantName));
     }
 
@@ -99,7 +99,7 @@ public class AzureADService {
     }
 
     public List<UserGroupAndRolesResponse> getUserDetailsWithGroupNamesAndRoleNamesUsingTenantName(String wsTenantName) {
-        AzureTenant azureTenant = getAzureTenantUsingwsTenantEmail(wsTenantName);
+        AzureTenant azureTenant = getAzureTenantUsingWsTenantName(wsTenantName);
         List<UserGroupAndRolesProjection> resultSets = azureUserRepository.getUserDetailsWithGroupNamesAndRoleNamesUsingTenantName(wsTenantName, azureTenant.getId());
         if (CollectionUtils.isEmpty(resultSets)) {
             throw new RuntimeException("No data found");
@@ -116,7 +116,7 @@ public class AzureADService {
     }
 
     public AzureUser getAzureUserById(String azureUserId) {
-        return azureUserRepository.findByAzureId(azureUserId).orElseThrow(() -> new RuntimeException("No azuer user found with provided id: " + azureUserId));
+        return azureUserRepository.findByAzureId(azureUserId).orElseThrow(() -> new RuntimeException("No azure user found with provided id: " + azureUserId));
     }
 
     public List<Map<String, Object>> getGroupNamesForUser(Integer userId) {

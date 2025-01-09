@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface AzureStorageRepository extends JpaRepository<AzureStorageAccount, Integer> {
@@ -18,5 +19,7 @@ public interface AzureStorageRepository extends JpaRepository<AzureStorageAccoun
     List<AzureStorageAccount> getAzureStorageAccountsForPrinciple(String scopeType, String principalType, String assignee, AzureTenant azureTenant);
 
     List<AzureStorageAccount> findAllByWsTenantNameAndIsPublishedTrue(String wsTenantName);
+
+    Optional<AzureStorageAccount> findByIdAndResourceType(Integer id, String resourceType);
 
 }

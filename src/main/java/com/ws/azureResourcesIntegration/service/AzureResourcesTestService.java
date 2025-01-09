@@ -12,6 +12,7 @@ import com.azure.resourcemanager.resources.models.Subscription;
 import com.azure.resourcemanager.sql.models.ServerPrivateEndpointConnection;
 import com.azure.resourcemanager.sql.models.SqlDatabase;
 import com.azure.resourcemanager.sql.models.SqlServer;
+import com.ws.azureAdIntegration.util.GenericUtil;
 import com.ws.configuration.AzureAuthConfigurationFactory;
 import com.ws.azureResourcesIntegration.dto.*;
 import lombok.AccessLevel;
@@ -28,11 +29,16 @@ import java.util.stream.StreamSupport;
 @Slf4j
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class AzureResourcesTestService {
-    final String clientId = "f741d2f8-8ec5-4246-9051-96fd8f041267";
-    final String clientSecret = "C6n8Q~Pe3lYUXaRp6gLNOZUK~uM5UUSkqP~9JbuY";
-    final String tenantId = "0079de83-6146-45cb-a189-5d5b03507ce8";
-    final String subscriptionId = "15b85f1d-1983-469c-a593-46fe8fc514f7";
+//    final String clientId = "f741d2f8-8ec5-4246-9051-96fd8f041267";
+//    final String clientSecret = "C6n8Q~Pe3lYUXaRp6gLNOZUK~uM5UUSkqP~9JbuY";
+//    final String tenantId = "0079de83-6146-45cb-a189-5d5b03507ce8";
+//    final String subscriptionId = "15b85f1d-1983-469c-a593-46fe8fc514f7";
+    final String clientId = "cb51e8d1-519c-4e18-9b2f-28d53e6badd1";
+    final String clientSecret = "3F18Q~iM8DjCXg7rL~2.BZZPtdGNAzfOf2qXRdhC";
+    final String tenantId = "f875ebf8-f5f0-4915-a2c9-4442e0118fd2";
+    final String subscriptionId = "4769af8e-ca3d-448d-bd1a-80e03ed94158";
     final AzureAuthConfigurationFactory azureAuthConfigurationFactory;
+
     @Autowired
     public AzureResourcesTestService(AzureAuthConfigurationFactory azureAuthConfigurationFactory) {
         this.azureAuthConfigurationFactory = azureAuthConfigurationFactory;
@@ -50,26 +56,28 @@ public class AzureResourcesTestService {
     public Collection<VmDTO> listVMs() {
         AzureResourceManager azureResourceManager = getAzureResourceManager();
         PagedIterable<VirtualMachine> vms = azureResourceManager.virtualMachines().list();
-        return StreamSupport.stream(vms.spliterator(), false)
-                .map(vm -> VmDTO.builder()
-                        .vmId(vm.vmId())
-                        .instanceId(vm.id())
-                        .name(vm.name())
-                        .computerName(vm.computerName())
-                        .powerState(vm.powerState().toString())
-                        .size(vm.size().getValue())
-                        .osType(vm.osType().toString())
-                        .publicIPInstanceId(vm.getPrimaryPublicIPAddressId())
-                        .resourceGroupName(vm.resourceGroupName())
-                        .osDiskSize(vm.osDiskSize())
-                        .region(vm.region().name())
-                        .securityType(vm.securityType().toString())
-                        .type(vm.type())
-                        .zones(vm.innerModel().zones())
-                        .resourceIdentityType(vm.innerModel().identity() != null ? vm.innerModel().identity().type().name() : null)
-                        .ipAddress(vm.getPrimaryPublicIPAddress().ipAddress())
-                        .build())
-                .collect(Collectors.toList());
+        log.info("total: {}", vms.stream().toList().size());
+//        return StreamSupport.stream(vms.spliterator(), false)
+//                .map(vm -> VmDTO.builder()
+//                        .vmId(vm.vmId())
+//                        .instanceId(vm.id())
+//                        .name(vm.name())
+//                        .computerName(vm.computerName())
+////                        .powerState(vm.powerState().toString())
+////                        .size(vm.size().getValue())
+//                        .osType(vm.osType().toString())
+//                        .publicIPInstanceId(vm.getPrimaryPublicIPAddressId())
+//                        .resourceGroupName(vm.resourceGroupName())
+//                        .osDiskSize(vm.osDiskSize())
+//                        .region(vm.region().name())
+////                        .securityType(vm.securityType().toString())
+//                        .type(vm.type())
+////                        .zones(vm.innerModel().zones())
+//                        .resourceIdentityType(vm.innerModel().identity() != null ? vm.innerModel().identity().type().name() : null)
+//                        .ipAddress(vm.getPrimaryPublicIPAddress().ipAddress())
+//                        .build())
+//                .collect(Collectors.toList());
+        return Collections.emptyList();
     }
 
     public Collection<ResourceGroupDTO> listResourceGroups() {
@@ -88,6 +96,7 @@ public class AzureResourcesTestService {
     public Collection<StorageAccountDTO> listStorageAccounts() {
         List<StorageAccountDTO> response = new ArrayList<>();
         AzureResourceManager azureResourceManager = getAzureResourceManager();
+        log.info("total SA: {}", azureResourceManager.storageAccounts().list().stream().toList().size());
         azureResourceManager.storageAccounts().list().forEach(storageAccount -> {
             azureResourceManager.storageBlobContainers()
                     .list(storageAccount.resourceGroupName(), storageAccount.name())
@@ -97,12 +106,12 @@ public class AzureResourcesTestService {
                                 .storageAccountName(storageAccount.name())
                                 .region(storageAccount.region().toString())
                                 .createdDate(storageAccount.creationTime())
-                                .kind(storageAccount.kind().toString())
+                                .kind(GenericUtil.getOrNull(() -> storageAccount.kind().toString()))
                                 .customDomainName(storageAccount.customDomain() != null ? storageAccount.customDomain().name() : null)
                                 .blobPublicAccessAllowed(storageAccount.isBlobPublicAccessAllowed())
                                 .sharedKeyAccessAllowed(storageAccount.isSharedKeyAccessAllowed())
                                 .isAccessAllowedFromAllNetworks(storageAccount.isAccessAllowedFromAllNetworks())
-                                .publicAccess(storageAccount.publicNetworkAccess().toString())
+                                .publicAccess(GenericUtil.getOrNull(() -> storageAccount.publicNetworkAccess().toString()))
                                 .containerName(container.name())
                                 .publicAccess(container.publicAccess() != null ? container.publicAccess().toString() : null)
                                 .containerType(container.type() != null ? container.type().toString() : null) // Handle null container type

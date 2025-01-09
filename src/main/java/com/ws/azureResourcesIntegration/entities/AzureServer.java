@@ -43,6 +43,15 @@ public class AzureServer extends BaseAzureResource{
     String location;
     String administratorLogin;
     String endpointId;
+    String resourceType;
+
+    @OneToMany(mappedBy = "azureServer", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    List<AzureDatabase> azureDatabases = new ArrayList<>();
+
+    @JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "ws_azure_resource_group_id", referencedColumnName = "id")
+    AzureResourceGroup azureResourceGroup;
 
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
@@ -53,7 +62,4 @@ public class AzureServer extends BaseAzureResource{
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ws_azure_tenant_id", referencedColumnName = "id")
     AzureTenant azureTenant;
-
-    @OneToMany(mappedBy = "azureServer", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
-    List<AzureDatabase> azureDatabases = new ArrayList<>();
 }

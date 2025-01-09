@@ -35,11 +35,16 @@ public class AzureVM extends BaseAzureResource{
     Integer osDiskSize;
     String region;
     String securityType;
-    String type;
+    String resourceType;
     String zones;
     String resourceIdentityType;
     String ipAddress;
     Boolean isPublished;
+
+    @JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "ws_azure_resource_group_id", referencedColumnName = "id")
+    AzureResourceGroup azureResourceGroup;
 
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
