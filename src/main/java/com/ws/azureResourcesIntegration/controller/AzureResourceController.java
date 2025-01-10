@@ -102,16 +102,21 @@ public class AzureResourceController {
 
     @GetMapping("/v1/requests/all")
     public ResponseEntity<Collection<?>> getAllRaiseRoleAssignmentRequestHandler(@RequestParam("tenantName") String wsTenantName, @RequestParam("state") CustomRoleAssignmentStatus status) {
-        return ResponseEntity.ok(azureResourceService.getAllRaiseRoleAssignmentRequest(wsTenantName, status));
+        return ResponseEntity.ok(azureResourceService.getAllRaisedRoleAssignmentRequest(wsTenantName, status));
     }
 
     @PatchMapping("/v1/requests/process")
-    public ResponseEntity<Boolean> processResourceRequestForPrincipleHandler(@RequestParam("id") Integer customRoleAssignmentId, @RequestParam("state") CustomRoleAssignmentStatus status) {
+    public ResponseEntity<Boolean> processResourceRequestForPrincipleHandler(@RequestParam("id") Integer customRoleAssignmentId, @RequestParam("status") CustomRoleAssignmentStatus updatedStatus) {
         return ResponseEntity
-                .status(HttpStatus.CREATED)
-                .body((azureResourceService.processResourceRequestForPrinciple(customRoleAssignmentId, status)));
+                .status(HttpStatus.OK)
+                .body((azureResourceService.processResourceRequestForPrinciple(customRoleAssignmentId, updatedStatus)));
     }
 
+    @DeleteMapping("/v1/")
+    public ResponseEntity<Void> revokeRoleAssignmentOfPrincipleHandler(@RequestParam String azureId,  @RequestParam("status") CustomRoleAssignmentStatus status) {
+        azureResourceService.revokeRoleAssignmentOfPrinciple(azureId, status);
+        return ResponseEntity.ok().build();
+    }
 
     @PostMapping("/v1/assignRole")
     public ResponseEntity<AzureRoleAssignment> assignRoleToResourceForUserHandler(@Valid @RequestBody AssignRoleRequest request) {

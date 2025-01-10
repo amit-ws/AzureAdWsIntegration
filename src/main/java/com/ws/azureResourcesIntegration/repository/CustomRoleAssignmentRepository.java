@@ -13,9 +13,11 @@ import java.util.Optional;
 public interface CustomRoleAssignmentRepository extends JpaRepository<CustomRoleAssignment, Integer> {
     Optional<CustomRoleAssignment> findByAzureId(String azureId);
 
-    List<CustomRoleAssignment> findAllByWsTenantNameAndStatus(String wsTenantName, CustomRoleAssignmentStatus status);
+    List<CustomRoleAssignment> findAllByWsTenantNameAndStatusOrderByCreatedAtDesc(String wsTenantName, CustomRoleAssignmentStatus status);
 
     @Modifying
     void deleteByAzureRoleAssignmentPathId(String pathId);
+
+    List<CustomRoleAssignment> findAllByWsTenantName(String wsTenantName);
 
 }

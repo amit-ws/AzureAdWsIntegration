@@ -128,7 +128,7 @@ public final class AzureEntityUtil {
     public static CustomRoleAssignment createCustomRoleAssignmentFromAssignRoleRequestPayload(AssignRoleRequest request, CustomRoleAssignment customRoleAssignment) {
         customRoleAssignment.setAzureId(UUID.randomUUID().toString());
         customRoleAssignment.setScope(request.getResourceScope().trim());
-        customRoleAssignment.setAzureRoleDefinitionId(request.getRoleDefinitionPathId().trim());
+        customRoleAssignment.setAzureRoleDefinitionPathId(request.getRoleDefinitionPathId().trim());
         customRoleAssignment.setAssignee(request.getPrincipleId().trim());
         customRoleAssignment.setPrincipalType(request.getPrincipleType().getValue());
         customRoleAssignment.setScopeType(GenericUtil.determineScopeType(request.getResourceScope()));

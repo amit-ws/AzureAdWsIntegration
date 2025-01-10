@@ -82,6 +82,10 @@ public class AzureTenant {
     @JsonIgnore
     @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     List<AzureRoleAssignment> azureRoleAssignments = new ArrayList<>();
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    List<CustomRoleAssignment> customRoleAssignments = new ArrayList<>();
 }
 
 

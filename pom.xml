@@ -234,18 +234,38 @@
             <version>2.44.0</version>
         </dependency>
 
-<!--        &lt;!&ndash; https://mvnrepository.com/artifact/com.microsoft.azure.resources.v2016_06_01/azure-mgmt-subscriptions &ndash;&gt;-->
-<!--        <dependency>-->
-<!--            <groupId>com.microsoft.azure.resources.v2016_06_01</groupId>-->
-<!--            <artifactId>azure-mgmt-subscriptions</artifactId>-->
-<!--            <version>1.0.0-beta</version>-->
-<!--        </dependency>-->
+        <!--        &lt;!&ndash; https://mvnrepository.com/artifact/com.microsoft.azure.resources.v2016_06_01/azure-mgmt-subscriptions &ndash;&gt;-->
+        <!--        <dependency>-->
+        <!--            <groupId>com.microsoft.azure.resources.v2016_06_01</groupId>-->
+        <!--            <artifactId>azure-mgmt-subscriptions</artifactId>-->
+        <!--            <version>1.0.0-beta</version>-->
+        <!--        </dependency>-->
 
-<!--        &lt;!&ndash; SWAGGER   &ndash;&gt;-->
+        <!--        &lt;!&ndash; SWAGGER   &ndash;&gt;-->
         <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
             <version>2.5.0</version>
+        </dependency>
+
+
+        <dependency>
+            <groupId>org.mapstruct</groupId>
+            <artifactId>mapstruct</artifactId>
+            <version>1.5.3.Final</version>
+        </dependency>
+        <dependency>
+            <groupId>org.mapstruct</groupId>
+            <artifactId>mapstruct-processor</artifactId>
+            <version>1.5.3.Final</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- https://mvnrepository.com/artifact/org.springframework.statemachine/spring-statemachine-core -->
+        <dependency>
+            <groupId>org.springframework.statemachine</groupId>
+            <artifactId>spring-statemachine-core</artifactId>
+            <version>3.2.1</version>
         </dependency>
 
 

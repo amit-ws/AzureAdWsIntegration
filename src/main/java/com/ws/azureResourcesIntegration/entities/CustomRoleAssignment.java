@@ -1,5 +1,7 @@
 package com.ws.azureResourcesIntegration.entities;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.ws.azureAdIntegration.entity.AzureTenant;
 import com.ws.azureResourcesIntegration.constant.CustomRoleAssignmentStatus;
 import jakarta.persistence.*;
 import lombok.*;
@@ -25,10 +27,10 @@ public class CustomRoleAssignment {
     String principalType;
     String scope;
     String scopeType;
-    String azureRoleDefinitionId;
+    String condition;
+    String azureRoleDefinitionPathId;
     String wsTenantName;
     String subscriptionId; /* subscription-id associated for this Resource (scope) on which role has been assigned*/
-    String azureTenantId; /* Azure ID of azure-tenant */
 
     @Enumerated(EnumType.STRING)
     CustomRoleAssignmentStatus status;
@@ -38,4 +40,9 @@ public class CustomRoleAssignment {
     Date validFrom;
     Date validTo;
     Long expiryTimeAmount;
+
+    @JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "ws_azure_tenant_id", referencedColumnName = "id")
+    AzureTenant azureTenant;
 }
