@@ -58,13 +58,11 @@ public class AzureResourceService {
     final AzureADService azureADService;
     final AzureAuthUtil azureAuthUtil;
     final AzureUserCredentialService azureUserCredentialService;
-    final AzureEntitiesMapper mapper;
-
     @Autowired
     public AzureResourceService(AzureVMRepository azureVMRepository, AzureStorageRepository azureStorageRepository, AzureServerRepository azureServerRepository, AzureDatabaseRepository azureDatabaseRepository,
                                 AzureRoleDefinitionRepository azureRoleDefinitionRepository, AzureRoleDefinitionActionRepository azureRoleDefinitionActionRepository, AzureRoleAssignmentRepository azureRoleAssignmentRepository, AzureUserRepository azureUserRepository,
                                 AzureGroupRepository azureGroupRepository, CustomRoleAssignmentRepository customRoleAssignmentRepository, AzureADService azureADService,
-                                AzureAuthUtil azureAuthUtil, AzureUserCredentialService azureUserCredentialService, AzureEntitiesMapper mapper) {
+                                AzureAuthUtil azureAuthUtil, AzureUserCredentialService azureUserCredentialService) {
         this.azureVMRepository = azureVMRepository;
         this.azureStorageRepository = azureStorageRepository;
         this.azureServerRepository = azureServerRepository;
@@ -78,7 +76,6 @@ public class AzureResourceService {
         this.azureADService = azureADService;
         this.azureAuthUtil = azureAuthUtil;
         this.azureUserCredentialService = azureUserCredentialService;
-        this.mapper = mapper;
     }
 
     public List<AzureVM> getAllVirtualMachines(String tenantName) {
@@ -213,7 +210,7 @@ public class AzureResourceService {
     // 1. API to get the suitable roles for the target resource ✅
     // 2. Raise the request ✅
     // 3. Get all raised requests (of all types) ✅
-    // 4. DENY | APPROVE actions -> if approved then call Azure_API for transaction
+    // 4. DENY | APPROVE actions -> if approved then call Azure_API for transaction ✅
     public List<ApplicableRoleDefinition> getAllApplicableRoleDefinitionsForResource(String resourceType, Integer resourceId, AzureResourcesType type) {
         Pair<Integer, String> idPair = switch (type) {
             case VM -> {
@@ -264,7 +261,7 @@ public class AzureResourceService {
         if (CustomRoleAssignmentStatus.APPROVED.equals(status)) {
             Map<String, CustomRoleAssignment> customRoleAssignmentMap = new LinkedHashMap<>();
             customRoleAssignments.forEach(customRoleAssignment -> customRoleAssignmentMap.put(customRoleAssignment.getAzureId(), customRoleAssignment));
-            List<CustomRoleAssignment> mappedCustomRoleAssignments = mapper.fromAzureRoleAssignments(azureRoleAssignmentRepository.findAllByWsTenantName(wsTenantName));
+            List<CustomRoleAssignment> mappedCustomRoleAssignments = AzureEntitiesMapper.INSTANCE.fromAzureRoleAssignments(azureRoleAssignmentRepository.findAllByWsTenantName(wsTenantName));
             mappedCustomRoleAssignments.stream()
                     .filter(customRoleAssignment -> !customRoleAssignmentMap.containsKey(customRoleAssignment.getAzureId()))
                     .forEach(customRoleAssignment -> customRoleAssignmentMap.put(customRoleAssignment.getAzureId(), customRoleAssignment));
@@ -348,7 +345,7 @@ public class AzureResourceService {
     private void processApproval(CustomRoleAssignment customRoleAssignment) {
         RoleAssignment createdRoleAssignment = assignRoleToPrincipalForResourceInAzure(customRoleAssignment.getWsTenantName(), customRoleAssignment);
         createAzureRoleAssignmentFromRoleAssignment(createdRoleAssignment, customRoleAssignment);
-        updateCustomRoleAssignment(customRoleAssignment, CustomRoleAssignmentStatus.APPROVED);
+        updateCustomRoleAssignmentCommonFields(customRoleAssignment, CustomRoleAssignmentStatus.APPROVED);
         customRoleAssignment.setAzureRoleAssignmentPathId(createdRoleAssignment.id());
         customRoleAssignment.setValidFrom(new Date());
         customRoleAssignment.setValidTo(null);
@@ -357,14 +354,14 @@ public class AzureResourceService {
     private void processExpiration(CustomRoleAssignment customRoleAssignment) {
         revokeRoleToPrincipalForResourceInAzure(customRoleAssignment.getAzureRoleAssignmentPathId(), customRoleAssignment.getWsTenantName());
         azureRoleAssignmentRepository.deleteByAzureRoleAssignmentPathId(customRoleAssignment.getAzureRoleAssignmentPathId());
-        updateCustomRoleAssignment(customRoleAssignment, CustomRoleAssignmentStatus.EXPIRED);
+        updateCustomRoleAssignmentCommonFields(customRoleAssignment, CustomRoleAssignmentStatus.EXPIRED);
     }
 
     private void processDenial(CustomRoleAssignment customRoleAssignment) {
-        updateCustomRoleAssignment(customRoleAssignment, CustomRoleAssignmentStatus.DENIED);
+        updateCustomRoleAssignmentCommonFields(customRoleAssignment, CustomRoleAssignmentStatus.DENIED);
     }
 
-    private void updateCustomRoleAssignment(CustomRoleAssignment customRoleAssignment, CustomRoleAssignmentStatus status) {
+    private void updateCustomRoleAssignmentCommonFields(CustomRoleAssignment customRoleAssignment, CustomRoleAssignmentStatus status) {
         customRoleAssignment.setStatus(status);
         customRoleAssignment.setUpdatedAt(new Date());
         customRoleAssignmentRepository.save(customRoleAssignment);
@@ -384,7 +381,7 @@ public class AzureResourceService {
             Optional.ofNullable(createdRoleAssignment).orElseThrow(() -> new RuntimeException("Created RoleAssignment found to be null"));
             return createdRoleAssignment;
         } catch (RuntimeException ex) {
-            log.error("Azure error: {}", ex.getMessage());
+            log.error("Azure error during assigning role. Message: {}", ex.getMessage());
             if (ex.getMessage().contains("403")) {
                 throw new RuntimeException("Insufficient privilege. Please review your permissions in Azure");
             }
