@@ -18,7 +18,7 @@ public class AssignRoleRequest {
     @NotNull(message = "Resource Scope is required")
     String resourceScope;
     @NotNull(message = "Role definition ID is required")
-    String roleDefinitionId;
+    String roleDefinitionPathId;
     @NotNull(message = "Principle (assignee) ID is required")
     String principleId;
     @NotNull(message = "Principle (assignee) type is required")

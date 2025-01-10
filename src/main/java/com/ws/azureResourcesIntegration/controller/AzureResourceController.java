@@ -16,6 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
@@ -64,7 +65,7 @@ public class AzureResourceController {
     }
 
     @GetMapping("/v1/scopes/{scopeType}/wsTenants/{tenantName}/principleTypes/{principleType}/assignees/{assignee}")
-    public ResponseEntity<List<?>> getAzureVMsForPrincipleHandler(
+    public ResponseEntity<List<?>> getAzureAzureResourcesForPrincipleHandler(
             @PathVariable("scopeType") AzureResourcesType scopeType,
             @PathVariable("principleType") String principleType,
             @PathVariable("tenantName") String wsTenantName,
@@ -93,35 +94,35 @@ public class AzureResourceController {
     }
 
     @PostMapping("/v1/requests/raise")
-    public ResponseEntity<Boolean> raiseResourceAssignmentRequestHandler(@Valid @RequestBody AssignRoleRequest request) {
+    public ResponseEntity<CustomRoleAssignment> raiseResourceAssignmentRequestHandler(@Valid @RequestBody AssignRoleRequest request) {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body((azureResourceService.raiseResourceAssignmentRequest(request)));
     }
 
-    @GetMapping("/v1/requests")
-    public ResponseEntity<List<CustomRoleAssignment>> getAllRaiseRoleAssignmentRequestHandler(@RequestParam("tenantName") String wsTenantName, @RequestParam("state") CustomRoleAssignmentStatus status) {
+    @GetMapping("/v1/requests/all")
+    public ResponseEntity<Collection<?>> getAllRaiseRoleAssignmentRequestHandler(@RequestParam("tenantName") String wsTenantName, @RequestParam("state") CustomRoleAssignmentStatus status) {
         return ResponseEntity.ok(azureResourceService.getAllRaiseRoleAssignmentRequest(wsTenantName, status));
     }
 
-    @PatchMapping("/v1/requests/manage")
-    public ResponseEntity<Boolean> manageResourceRequestHandler(@RequestParam("id") Integer customRoleAssignmentId, @RequestParam("state") CustomRoleAssignmentStatus status) {
+    @PatchMapping("/v1/requests/process")
+    public ResponseEntity<Boolean> processResourceRequestForPrincipleHandler(@RequestParam("id") Integer customRoleAssignmentId, @RequestParam("state") CustomRoleAssignmentStatus status) {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
-                .body((azureResourceService.manageResourceRequest(customRoleAssignmentId, status)));
+                .body((azureResourceService.processResourceRequestForPrinciple(customRoleAssignmentId, status)));
     }
 
 
     @PostMapping("/v1/assignRole")
-    public ResponseEntity<AzureRoleAssignment> assignRoleToResourceForUserhandler(@Valid @RequestBody AssignRoleRequest request) {
+    public ResponseEntity<AzureRoleAssignment> assignRoleToResourceForUserHandler(@Valid @RequestBody AssignRoleRequest request) {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body((azureResourceService.assignRoleToPrincipalForResourceInAzure(request)));
     }
 
     @DeleteMapping("/v1/removeRole")
-    public ResponseEntity<Boolean> revokeRoleAssignmentHandler(String roleAssignmentId) {
-        return ResponseEntity.ok(azureResourceService.revokeRoleAssignment(roleAssignmentId));
+    public ResponseEntity<Boolean> revokeRoleAssignmentHandler(String azureId) {
+        return ResponseEntity.ok(azureResourceService.revokeRoleAssignment(azureId));
     }
 
 

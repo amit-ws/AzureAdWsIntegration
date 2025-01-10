@@ -364,17 +364,11 @@ public class AzureResourceSyncService {
     private void syncRoleAssignments(AzureTenant azureTenant) {
         try {
             azureRoleAssignmentRepository.deleteAllByAzureTenant(azureTenant);
-            List<AzureRoleDefinition> azureRoleDefinitions = azureRoleDefinitionRepository.findAllByAzureTenant(azureTenant);
-            Map<String, AzureRoleDefinition> azureRoleDefinitionMap = new HashMap<>();
-            azureRoleDefinitions.forEach((azureRoleDefinition -> {
-                azureRoleDefinitionMap.put(azureRoleDefinition.getRolePathId(), azureRoleDefinition);
-            }));
             PagedIterable<RoleAssignment> roleAssignmentPage = this.azureResourceManager.accessManagement().roleAssignments().listByScope(String.format("/subscriptions/%s", this.azureResourceManager.subscriptionId()));
             List<AzureRoleAssignment> azureRoleAssignments = new ArrayList<>();
             for (RoleAssignment roleAssignment : roleAssignmentPage) {
                 AzureRoleAssignment azureRoleAssignment = AzureEntityUtil.createAzureRoleAssignmentFromResourceEntity(roleAssignment,
                         AzureRoleAssignment.builder()
-                                .azureRoleDefinitionId(GenericUtil.getOrNull(() -> azureRoleDefinitionMap.get(roleAssignment.roleDefinitionId()).getAzureId()))
                                 .subscriptionId(azureResourceManager.subscriptionId())
                                 .wsTenantName(this.wsTenantName)
                                 .azureTenant(azureTenant)

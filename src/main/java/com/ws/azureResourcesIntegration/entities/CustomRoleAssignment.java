@@ -19,6 +19,7 @@ public class CustomRoleAssignment {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Integer id;
     String azureId;
+    String azureRoleAssignmentPathId;
     String description;
     String assignee;
     String principalType;

@@ -24,7 +24,7 @@ public interface AzureUserRepository extends JpaRepository<AzureUser, Integer> {
     List<AzureUser> findAllByWsTenantName(String tenantName);
 
     @Query("SELECT new com.ws.azureResourcesIntegration.dto.AzureRolePrincipleAssociationResponse(au.id, au.displayName) FROM AzureRoleAssignment ara LEFT JOIN AzureUser au ON ara.assignee = au.azureId " +
-            "WHERE ara.wsTenantName= :wsTenantName and ara.principalType = 'User' and ara.azureRoleDefinitionId = :wsRoleId " +
+            "WHERE ara.wsTenantName= :wsTenantName and ara.principalType = 'User' and ara.azureRoleDefinitionPathId = :wsRoleId " +
             "ORDER BY au.displayName")
     List<AzureRolePrincipleAssociationResponse> getAzureUserNameAndIdAssociatedWithRoleDefinitionId(String wsRoleId, String wsTenantName);
 

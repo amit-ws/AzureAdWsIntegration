@@ -20,18 +20,19 @@ public interface AzureRoleDefinitionRepository extends JpaRepository<AzureRoleDe
     Optional<AzureRoleDefinition> findByIdAndAzureTenant(Integer id, AzureTenant azureTenant);
 
     @Query(value =
-            "with rd_id as ( " +
-                    "select distinct ws_azure_role_definition_id as id  FROM azure_role_definition_action a WHERE  " +
-                    "a.ws_azure_tenant_id = :tenantId and upper(a.\"action\") ILIKE ANY (ARRAY[CONCAT(upper(:action), '/%'), '*'])   " +
+            "WITH rd_id AS " +
+                    "( " +
+                    "SELECT DISTINCT ws_azure_role_definition_id AS id  FROM azure_role_definition_action a " +
+                    "WHERE a.ws_azure_tenant_id = :tenantId AND upper(a.\"action\") ILIKE ANY (ARRAY[CONCAT(upper(:action), '/%'), '*']) " +
                     ") " +
-                    "select ard.role_path_id as azureRolePathId, ard.id, ard.role_name as roleName, ard.role_type as roleType, STRING_AGG(arda.\"action\", ', ') AS actionList   " +
-                    "from rd_id  " +
-                    "inner join azure_role_definition ard on rd_id.id = ard.id  " +
-                    "inner join azure_role_definition_assignable_scopes ardas on rd_id.id = ardas.ws_azure_role_definition_id " +
-                    "inner join azure_role_definition_action arda on rd_id.id = arda.ws_azure_role_definition_id  " +
-                    "where ardas.assignable_scope = ANY (ARRAY[:assignableScope, '/'])  " +
-                    "group by ard.id, ard.role_name, ard.role_type " +
-                    "order by ard.role_name"
+                    "SELECT ard.role_path_id AS azureRolePathId, ard.role_name AS roleName, ard.role_type AS roleType, STRING_AGG(arda.\"action\", ', ') AS actionList   " +
+                    "FROM rd_id " +
+                    "INNER JOIN azure_role_definition ard on rd_id.id = ard.id  " +
+                    "INNER JOIN azure_role_definition_assignable_scopes ardas on rd_id.id = ardas.ws_azure_role_definition_id " +
+                    "INNER JOIN azure_role_definition_action arda on rd_id.id = arda.ws_azure_role_definition_id  " +
+                    "WHERE ardas.assignable_scope = ANY (ARRAY[:assignableScope, '/']) " +
+                    "GROUP BY ard.id, ard.role_name, ard.role_type " +
+                    "ORDER BY ard.role_name"
             , nativeQuery = true)
     List<ApplicableRoleDefinitionProjection> findAllSuitableRolesForResource(@Param("tenantId") Integer azureTenantId, String action, String assignableScope);
 

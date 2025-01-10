@@ -6,7 +6,6 @@ import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
-import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.Date;
 
@@ -29,7 +28,7 @@ public class AzureRoleAssignment {
     String scope; /* path-id of the resource on which role has been assigned to eg: Subscription, ResourceGroup, VM etc.. */
     String scopeType; /* Eg: SUBSCRIPTION, RESOURCE-GROUP, VM, SERVER etc. To be decided from application */
     String condition;
-    String azureRoleDefinitionId;
+    String azureRoleDefinitionPathId;
     Boolean isRoleInherited; /* Role inherited from Parent. If false: The role was specifically assigned on this Scope (resource)*/
     OffsetDateTime createdOn;
     String createdBy;

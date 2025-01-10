@@ -109,8 +109,9 @@ public final class AzureEntityUtil {
 
     public static AzureRoleAssignment createAzureRoleAssignmentFromResourceEntity(RoleAssignment roleAssignment, AzureRoleAssignment azureRoleAssignment) {
         GenericUtil.ensureNotNull(roleAssignment, "RoleAssignment cannot be null");
-        azureRoleAssignment.setAzureRoleAssignmentPathId(roleAssignment.id());
         azureRoleAssignment.setAzureId(roleAssignment.name());
+        azureRoleAssignment.setAzureRoleAssignmentPathId(roleAssignment.id());
+        azureRoleAssignment.setAzureRoleDefinitionPathId(roleAssignment.roleDefinitionId());
         azureRoleAssignment.setDescription(roleAssignment.description());
         azureRoleAssignment.setAssignee(roleAssignment.principalId());
         azureRoleAssignment.setPrincipalType(GenericUtil.getOrNull(() -> roleAssignment.innerModel().principalType().getValue()));
@@ -127,7 +128,7 @@ public final class AzureEntityUtil {
     public static CustomRoleAssignment createCustomRoleAssignmentFromAssignRoleRequestPayload(AssignRoleRequest request, CustomRoleAssignment customRoleAssignment) {
         customRoleAssignment.setAzureId(UUID.randomUUID().toString());
         customRoleAssignment.setScope(request.getResourceScope().trim());
-        customRoleAssignment.setAzureRoleDefinitionId(request.getRoleDefinitionId().trim());
+        customRoleAssignment.setAzureRoleDefinitionId(request.getRoleDefinitionPathId().trim());
         customRoleAssignment.setAssignee(request.getPrincipleId().trim());
         customRoleAssignment.setPrincipalType(request.getPrincipleType().getValue());
         customRoleAssignment.setScopeType(GenericUtil.determineScopeType(request.getResourceScope()));
