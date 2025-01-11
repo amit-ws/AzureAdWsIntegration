@@ -74,3 +74,8 @@ clientSecret:
 tenantId:
 subscriptionId:
 
+springdoc:
+  swagger-ui:
+    defaultModelsExpandDepth: -1
+    defaultModelExpandDepth: -1
+    docExpansion: none
