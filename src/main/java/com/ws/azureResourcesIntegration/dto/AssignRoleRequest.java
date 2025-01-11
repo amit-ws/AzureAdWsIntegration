@@ -14,7 +14,7 @@ public class AssignRoleRequest {
     @NotNull(message = "tenant name is required")
     String tenantName;
     @NotNull(message = "Subscription ID is required")
-    String subscriptionId;
+    Integer subscriptionId;
     @NotNull(message = "Resource Scope is required")
     String resourceScope;
     @NotNull(message = "Role definition ID is required")

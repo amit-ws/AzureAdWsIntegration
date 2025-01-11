@@ -264,7 +264,7 @@ public class AzureResourceService {
                 new Date(),
                 request.getExpiryTimeAmount(),
                 request.getTenantName().trim(),
-                request.getSubscriptionId().trim());
+                request.getSubscriptionId());
 //        CustomRoleAssignment customRoleAssignment = AzureEntityUtil.createCustomRoleAssignmentFromAssignRoleRequestPayload(request,
 //                CustomRoleAssignment.builder()
 //                        .azureTenant(azureADService.getAzureTenantUsingWsTenantName(request.getTenantName().trim()))
