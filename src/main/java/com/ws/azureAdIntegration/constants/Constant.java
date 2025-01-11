@@ -7,6 +7,7 @@ public class Constant {
     public static final String AZURE_RESOURCE_DATA_TRUNCATED = "Azure resources related data successfully truncated";
     public static final String AZURE_AD_DATA_SYNC_END = "Azure-AD data sync ended successfully";
     public static final String AZURE_RESOURCE_DATA_SYNC_END = "Azure resources related data sync ended successfully";
+    public static final String AZURE_RESOURCE_DATA_SYNC_SKIPPED = "Skipped Azure-Resources data sync as no subscription-id was found";
     public static final String AZURE_SYNC_FAILURE = "Azure data sync failure";
     public static final String AZURE_CREDENTIALS_SAVED = "User azure credentials saved";
     public static final  String AZURE_TENANT_SAVED = "Azure tenant (Org) saved";

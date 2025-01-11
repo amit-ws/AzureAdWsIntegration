@@ -56,4 +56,16 @@ public class AzureSubscription {
     @JsonIgnore
     @OneToMany(mappedBy = "azureSubscription", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     List<AzureStorageAccount> azureStorageAccounts = new ArrayList<>();
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "azureSubscription", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    List<AzureRoleDefinition> azureRoleDefinitions = new ArrayList<>();
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "azureSubscription", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    List<CustomRoleAssignment> customRoleAssignments = new ArrayList<>();
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "azureSubscription", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    List<AzureRoleAssignment> azureRoleAssignments = new ArrayList<>();
 }

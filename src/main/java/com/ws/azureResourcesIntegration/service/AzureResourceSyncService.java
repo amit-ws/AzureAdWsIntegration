@@ -2,13 +2,13 @@ package com.ws.azureResourcesIntegration.service;
 
 import com.azure.core.http.rest.PagedIterable;
 import com.azure.resourcemanager.AzureResourceManager;
-import com.azure.resourcemanager.authorization.models.Permission;
 import com.azure.resourcemanager.authorization.models.RoleAssignment;
 import com.azure.resourcemanager.authorization.models.RoleDefinition;
 import com.azure.resourcemanager.compute.models.VirtualMachine;
 import com.azure.resourcemanager.resources.models.ResourceGroup;
 import com.azure.resourcemanager.resources.models.Subscription;
 import com.ws.azureAdIntegration.constants.Constant;
+import com.ws.azureAdIntegration.dto.AzureUserCredentialDTO;
 import com.ws.azureAdIntegration.entity.*;
 import com.ws.azureAdIntegration.service.BackendApplicationLogservice;
 import com.ws.azureAdIntegration.util.AzureAuthUtil;
@@ -57,10 +57,10 @@ public class AzureResourceSyncService {
         this.azureAuthUtil = azureAuthUtil;
     }
 
-    public void syncAzureResourceData(AzureTenant azureTenant, AzureUserCredential azureUserCredential) {
+    public void syncAzureResourceData(AzureTenant azureTenant, AzureUserCredentialDTO azureUserCredentialDTO) {
         try {
-            this.wsTenantName = azureUserCredential.getWsTenantName();
-            this.azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredential);
+            this.wsTenantName = azureUserCredentialDTO.getWsTenantName();
+            this.azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredentialDTO);
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_RESOURCE_DATA_SYNC_START, "Info");
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_RESOURCE_DATA_TRUNCATED, "Info");
             log.info("0");
@@ -70,12 +70,12 @@ public class AzureResourceSyncService {
             log.info("1");
             syncResourceGroups(azureTenant, azureSubscription);
             log.info("2");
-//            syncAzureVMs(azureTenant, azureSubscription);
+            syncAzureVMs(azureTenant, azureSubscription);
             syncStorageData(azureTenant, azureSubscription);
             log.info("3");
-//            syncServersAndDatabases(azureTenant, azureSubscription);
-            syncRoleDefinitions(azureTenant);
-            syncRoleAssignments(azureTenant);
+            syncServersAndDatabases(azureTenant, azureSubscription);
+            syncRoleDefinitions(azureTenant, azureSubscription);
+            syncRoleAssignments(azureTenant, azureSubscription);
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_RESOURCE_DATA_SYNC_END, "Info");
         } catch (Exception ex) {
             log.error("Error occurred in syncing data from Azure Resources");
@@ -133,7 +133,6 @@ public class AzureResourceSyncService {
                             .location(GenericUtil.getOrNull(() -> resourceGroup.innerModel().location()))
                             .wsTenantName(this.wsTenantName)
                             .azureSubscription(azureSubscription)
-                            .azureTenant(azureTenant)
                             .build()
                     )
                     .collect(Collectors.toList());
@@ -168,7 +167,6 @@ public class AzureResourceSyncService {
                             .ipAddress(GenericUtil.getOrNull(() -> vm.getPrimaryPublicIPAddress().ipAddress()))
                             .syncedAt(new Date())
                             .azureSubscription(azureSubscription)
-                            .azureTenant(azureTenant)
                             .wsTenantName(wsTenantName)
                             .build())
                     .collect(Collectors.toList());
@@ -207,7 +205,6 @@ public class AzureResourceSyncService {
                             .tags(storageAccount.tags())
                             .azureSubscription(azureSubscription)
                             .wsTenantName(this.wsTenantName)
-                            .azureTenant(azureTenant)
                             .syncedAt(new Date())
                             .build())
                     .collect(Collectors.toList());
@@ -241,7 +238,6 @@ public class AzureResourceSyncService {
                                         .resourceType(GenericUtil.getOrNull(() -> sqlDatabase.innerModel().type()))
                                         .syncedAt(new Date())
                                         .wsTenantName(this.wsTenantName)
-                                        .azureTenant(azureTenant)
                                         .build())
                                 .collect(Collectors.toList());
                         return AzureServer.builder()
@@ -264,7 +260,6 @@ public class AzureResourceSyncService {
                                 .syncedAt(new Date())
                                 .azureSubscription(azureSubscription)
                                 .wsTenantName(this.wsTenantName)
-                                .azureTenant(azureTenant)
                                 .location(GenericUtil.getOrNull(() -> sqlServer.innerModel().location()))
                                 .administratorLogin(sqlServer.administratorLogin())
                                 .azureDatabases(azureDatabases)
@@ -280,7 +275,7 @@ public class AzureResourceSyncService {
         }
     }
 
-    private void syncRoleDefinitions(AzureTenant azureTenant) {
+    private void syncRoleDefinitions(AzureTenant azureTenant, AzureSubscription azureSubscription) {
         try {
             azureRoleDefinitionRepository.deleteAllByAzureTenant(azureTenant);
 
@@ -310,7 +305,7 @@ public class AzureResourceSyncService {
                                 .createdOn(GenericUtil.getOrNull(() -> role.innerModel().createdOn()))
                                 .assignableScope(role.assignableScopes())
                                 .syncedAt(new Date())
-                                .subscriptionId(GenericUtil.getOrNull(() -> azureResourceManager.subscriptionId()))
+                                .azureSubscription(azureSubscription)
                                 .wsTenantName(this.wsTenantName)
                                 .azureTenant(azureTenant)
                                 .build();
@@ -354,14 +349,16 @@ public class AzureResourceSyncService {
                 .map(action -> AzureRoleDefinitionAction.builder()
                         .action(action)
                         .type(type)
+                        .createdAt(new Date())
+                        .subscriptionId(azureRoleDefinition.getAzureSubscription().getAzureSubscriptionId())
+                        .wsTenantName(this.wsTenantName)
                         .azureRoleDefinitionPermission(azurePermission)
                         .azureRoleDefinition(azureRoleDefinition)
-                        .azureTenant(azureTenant)
                         .build())
                 .toList();
     }
 
-    private void syncRoleAssignments(AzureTenant azureTenant) {
+    private void syncRoleAssignments(AzureTenant azureTenant, AzureSubscription azureSubscription) {
         try {
             azureRoleAssignmentRepository.deleteAllByAzureTenant(azureTenant);
             PagedIterable<RoleAssignment> roleAssignmentPage = this.azureResourceManager.accessManagement().roleAssignments().listByScope(String.format("/subscriptions/%s", this.azureResourceManager.subscriptionId()));
@@ -369,7 +366,7 @@ public class AzureResourceSyncService {
             for (RoleAssignment roleAssignment : roleAssignmentPage) {
                 AzureRoleAssignment azureRoleAssignment = AzureEntityUtil.createAzureRoleAssignmentFromResourceEntity(roleAssignment,
                         AzureRoleAssignment.builder()
-                                .subscriptionId(azureResourceManager.subscriptionId())
+                                .azureSubscription(azureSubscription)
                                 .wsTenantName(this.wsTenantName)
                                 .azureTenant(azureTenant)
                                 .build());

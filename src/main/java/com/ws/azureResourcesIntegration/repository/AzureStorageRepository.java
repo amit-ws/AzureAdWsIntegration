@@ -12,14 +12,12 @@ import java.util.Optional;
 
 @Repository
 public interface AzureStorageRepository extends JpaRepository<AzureStorageAccount, Integer> {
-    List<AzureStorageAccount> findAllByAzureTenant(AzureTenant azureTenant);
+    List<AzureStorageAccount> findAllByWsTenantName(String wsTenantName);
 
     @Query("SELECT DISTINCT asa FROM AzureStorageAccount asa INNER JOIN AzureRoleAssignment ara ON UPPER(asa.azureStorageAccountId) = UPPER(ara.scope) " +
-            "WHERE ara.scopeType = :scopeType AND ara.principalType = :principalType and ara.assignee = :assignee and asa.azureTenant = :azureTenant")
-    List<AzureStorageAccount> getAzureStorageAccountsForPrinciple(String scopeType, String principalType, String assignee, AzureTenant azureTenant);
+            "WHERE ara.scopeType = :scopeType AND ara.principalType = :principalType and ara.assignee = :assignee and asa.wsTenantName = :tenantName")
+    List<AzureStorageAccount> getAzureStorageAccountsForPrinciple(String scopeType, String principalType, String assignee, String tenantName);
 
     List<AzureStorageAccount> findAllByWsTenantNameAndIsPublishedTrue(String wsTenantName);
-
-    Optional<AzureStorageAccount> findByIdAndResourceType(Integer id, String resourceType);
 
 }

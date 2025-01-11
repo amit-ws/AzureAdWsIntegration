@@ -2,6 +2,7 @@ package com.ws.azureAdIntegration.service;
 
 import com.microsoft.graph.requests.GraphServiceClient;
 import com.ws.azureAdIntegration.constants.Constant;
+import com.ws.azureAdIntegration.dto.AzureUserCredentialDTO;
 import com.ws.azureAdIntegration.dto.CreateAzureConfiguration;
 import com.ws.azureAdIntegration.entity.AzureUser;
 import com.ws.azureAdIntegration.entity.AzureUserCredential;
@@ -10,8 +11,7 @@ import com.ws.azureAdIntegration.repository.AzureUserRepository;
 import com.ws.azureAdIntegration.util.AzureAuthUtil;
 import com.ws.azureAdIntegration.util.EncryptionUtil;
 import com.ws.azureResourcesIntegration.service.AzureResourceSyncService;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
+import com.ws.mapper.AzureEntitiesMapper;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import okhttp3.Request;
@@ -21,7 +21,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -39,15 +38,14 @@ public class AzureAuthService {
     final AzureResourceSyncService azureResourceSyncService;
     final AzureAuthUtil azureAuthUtil;
     final AzureUserEntityService azureUserEntityService;
+    final AzureUserCredentialService azureUserCredentialService;
     final AzureUserRepository azureUserRepository;
     @Value("${spring.cloud.azure.active-directory.redirect-uri}")
     String redirectUri;
-    @PersistenceContext
-    private EntityManager entityManager;
 
     @Autowired
     public AzureAuthService(AzureUserCredentialRepository azureUserCredentialRepository, BackendApplicationLogservice backendApplicationLogservice, AzureSyncControlService azureSyncControlService,
-                            AzureResourceSyncService azureResourceSyncService, AzureAuthUtil azureAuthUtil, AzureUserEntityService azureUserEntityService, AzureUserRepository azureUserRepository) {
+                            AzureResourceSyncService azureResourceSyncService, AzureAuthUtil azureAuthUtil, AzureUserEntityService azureUserEntityService, AzureUserRepository azureUserRepository, AzureUserCredentialService azureUserCredentialService) {
         this.azureUserCredentialRepository = azureUserCredentialRepository;
         this.backendApplicationLogservice = backendApplicationLogservice;
         this.azureSyncControlService = azureSyncControlService;
@@ -55,6 +53,7 @@ public class AzureAuthService {
         this.azureAuthUtil = azureAuthUtil;
         this.azureUserEntityService = azureUserEntityService;
         this.azureUserRepository = azureUserRepository;
+        this.azureUserCredentialService = azureUserCredentialService;
     }
 
     @Transactional
@@ -74,7 +73,7 @@ public class AzureAuthService {
                     }
                 });
         log.info("Validating user's Azure-AD credentials..");
-//        GraphServiceClient<Request> graphClient = azureAuthUtil.validateAzureCredentials(tenantId, clientId, createAzureConfiguration.getClientSecret());
+        GraphServiceClient<Request> graphClient = azureAuthUtil.validateAzureCredentials(tenantId, clientId, createAzureConfiguration.getClientSecret());
         AzureUserCredential azureUserCredential = azureUserCredentialRepository.save(
                 AzureUserCredential.builder()
                         .clientId(clientId)
@@ -85,21 +84,16 @@ public class AzureAuthService {
                         .createdAt(new Date())
                         .build()
         );
-//        entityManager.flush();
-//        entityManager.detach(azureUserCredential);
-//        azureUserCredential.setClientSecret(createAzureConfiguration.getClientSecret());
         backendApplicationLogservice.saveAuditLog(wsTenantName, "dummy@gmail.com", Constant.ADD, Constant.AZURE_CREDENTIALS_SAVED, "Info");
-//        log.info("Thread name: {}", Thread.currentThread().getName());
-//        azureSyncControlService.syncAzureData(graphClient, azureUserCredential);
+        AzureUserCredentialDTO azureUserCredentialDTO = azureUserCredentialService.mapFromAzureUserCredentialAndDecryptSecretKey(azureUserCredential);
+        log.info("Thread name: {}", Thread.currentThread().getName());
+        azureSyncControlService.syncAzureData(graphClient, azureUserCredentialDTO);
         return Collections.singletonMap("message", "Credentials configured successfully and Data sync started!");
     }
 
 
-    public AzureUserCredential fetchAzureConfiguration(String tenantName) {
-        AzureUserCredential azureUserCredential = Optional.ofNullable(getAzureUserCredentialForWSTenant(tenantName))
-                .orElseThrow(() -> new RuntimeException("No Azure AD configuration found!"));
-        azureUserCredential.setClientSecret(EncryptionUtil.getDecryptedKey(azureUserCredential.getClientSecret(), Constant.AZURE_CLIENT_SECRET));
-        return azureUserCredential;
+    public AzureUserCredentialDTO fetchAzureConfiguration(String tenantName) {
+        return azureUserCredentialService.findWSTenantIdWithDecryptedSecret(tenantName);
     }
 
 
@@ -118,16 +112,20 @@ public class AzureAuthService {
     }
 
     @Transactional
-    public AzureUserCredential updateSubscriptionId(Integer credId, String subscriptionId) {
-        AzureUserCredential azureUserCredential = azureUserCredentialRepository.findById(credId).orElseThrow(() -> new RuntimeException("No azure credentials found with provided id: " + credId));
+    public AzureUserCredentialDTO updateSubscriptionId(Integer credId, String subscriptionId) {
+        AzureUserCredential updatedCredential = updateSubscriptionIdInCredential(subscriptionId,
+                azureUserCredentialRepository.findById(credId).orElseThrow(() -> new RuntimeException("No azure credentials found with provided id: " + credId)));
+        backendApplicationLogservice.saveAuditLog(updatedCredential.getWsTenantName(), "demo@gmail.com", "UPDATE", Constant.AZURE_SUBSCRIPTION_ID_UPDATED, "Info");
+        backendApplicationLogservice.saveAuditLog(updatedCredential.getWsTenantName(), "demo@gmail.com", "ADD", Constant.AZURE_RESOURCE_DATA_SYNC_START, "Info");
+        AzureUserCredentialDTO azureUserCredentialDTO = azureUserCredentialService.mapFromAzureUserCredentialAndDecryptSecretKey(updatedCredential);
+        azureSyncControlService.syncAzureResourcesData(azureUserCredentialDTO);
+        return azureUserCredentialDTO;
+    }
+
+    private AzureUserCredential updateSubscriptionIdInCredential(String subscriptionId, AzureUserCredential azureUserCredential) {
         azureUserCredential.setSubscriptionId(subscriptionId);
         azureUserCredential.setUpdatedAt(new Date());
-        backendApplicationLogservice.saveAuditLog(azureUserCredential.getWsTenantName(), "demo@gmail.com", "UPDATE", Constant.AZURE_SUBSCRIPTION_ID_UPDATED, "Info");
-        azureUserCredentialRepository.save(azureUserCredential);
-        entityManager.flush();
-        backendApplicationLogservice.saveAuditLog(azureUserCredential.getWsTenantName(), "demo@gmail.com", "ADD", Constant.AZURE_RESOURCE_DATA_SYNC_START, "Info");
-        azureSyncControlService.syncAzureResourcesData(azureUserCredential);
-        return azureUserCredential;
+        return azureUserCredentialRepository.save(azureUserCredential);
     }
 
 
@@ -145,4 +143,5 @@ public class AzureAuthService {
                 })
                 .orElseThrow(() -> new RuntimeException(String.format("No Azure User found with provided email: %s", email)));
     }
+
 }

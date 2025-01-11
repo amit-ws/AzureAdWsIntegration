@@ -2,14 +2,11 @@ package com.ws.azureAdIntegration.service;
 
 import com.microsoft.graph.requests.GraphServiceClient;
 import com.ws.azureAdIntegration.constants.Constant;
+import com.ws.azureAdIntegration.dto.AzureUserCredentialDTO;
 import com.ws.azureAdIntegration.entity.AzureTenant;
-import com.ws.azureAdIntegration.entity.AzureUserCredential;
 import com.ws.azureAdIntegration.repository.AzureTenantRepository;
 import com.ws.azureAdIntegration.repository.AzureUserCredentialRepository;
-import com.ws.azureAdIntegration.util.EncryptionUtil;
 import com.ws.azureResourcesIntegration.service.AzureResourceSyncService;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
@@ -30,25 +27,27 @@ public class AzureSyncControlService {
     final AzureResourceSyncService azureResourceSyncService;
     final AzureUserCredentialRepository azureUserCredentialRepository;
     final AzureTenantRepository azureTenantRepository;
-    @PersistenceContext
-    EntityManager entityManager;
+    final AzureUserCredentialService azureUserCredentialService;
+    final BackendApplicationLogservice backendApplicationLogservice;
 
     @Autowired
-    public AzureSyncControlService(AzureADSyncService azureADSyncService, AzureResourceSyncService azureResourceSyncService, AzureUserCredentialRepository azureUserCredentialRepository, AzureTenantRepository azureTenantRepository) {
+    public AzureSyncControlService(AzureADSyncService azureADSyncService, AzureResourceSyncService azureResourceSyncService, AzureUserCredentialRepository azureUserCredentialRepository, AzureTenantRepository azureTenantRepository, AzureUserCredentialService azureUserCredentialService, BackendApplicationLogservice backendApplicationLogservice) {
         this.azureADSyncService = azureADSyncService;
         this.azureResourceSyncService = azureResourceSyncService;
         this.azureUserCredentialRepository = azureUserCredentialRepository;
         this.azureTenantRepository = azureTenantRepository;
+        this.azureUserCredentialService = azureUserCredentialService;
+        this.backendApplicationLogservice = backendApplicationLogservice;
     }
 
     @Async
     @Transactional
-    public void syncAzureData(GraphServiceClient<Request> graphClient, AzureUserCredential azureUserCredential) {
+    public void syncAzureData(GraphServiceClient<Request> graphClient, AzureUserCredentialDTO azureUserCredentialDTO) {
         log.info("Thread name: {}", Thread.currentThread().getName());
-        AzureTenant azureTenant = azureADSyncService.initializeGraphClientAndSyncAzureTenant(azureUserCredential, graphClient);
+        AzureTenant azureTenant = azureADSyncService.initializeGraphClientAndSyncAzureTenant(azureUserCredentialDTO, graphClient);
         azureADSyncService.syncAzureADData(azureTenant);
-        if (Optional.ofNullable(azureUserCredential.getSubscriptionId()).filter(subscriptionId -> !subscriptionId.isEmpty()).isPresent()) {
-            azureResourceSyncService.syncAzureResourceData(azureTenant, azureUserCredential);
+        if (Optional.ofNullable(azureUserCredentialDTO.getSubscriptionId()).filter(subscriptionId -> !subscriptionId.isEmpty()).isPresent()) {
+            azureResourceSyncService.syncAzureResourceData(azureTenant, azureUserCredentialDTO);
         }
     }
 
@@ -56,29 +55,25 @@ public class AzureSyncControlService {
     /* Sync Azure-Resources data */
     @Async
     @Transactional
-    public void syncAzureResourcesData(AzureUserCredential azureUserCredential) {
+    public void syncAzureResourcesData(AzureUserCredentialDTO azureUserCredentialDTO) {
         log.info("Thread name for syncAzureResourcesData: {}", Thread.currentThread().getName());
-        entityManager.detach(azureUserCredential);
         AzureTenant azureTenant = azureTenantRepository
-                .findByWsTenantName(azureUserCredential.getWsTenantName())
-                .orElseGet(() -> azureADSyncService.initializeGraphClientAndSyncAzureTenant(azureUserCredential, null));
-        azureUserCredential.setClientSecret(EncryptionUtil.getDecryptedKey(azureUserCredential.getClientSecret(), Constant.AZURE_CLIENT_SECRET));
-        azureResourceSyncService.syncAzureResourceData(azureTenant, azureUserCredential);
+                .findByWsTenantName(azureUserCredentialDTO.getWsTenantName())
+                .orElseGet(() -> azureADSyncService.initializeGraphClientAndSyncAzureTenant(azureUserCredentialDTO, null));
+        azureResourceSyncService.syncAzureResourceData(azureTenant, azureUserCredentialDTO);
     }
 
 
     /* on demand sync */
     @Transactional
     public void syncAzureData(String wsTenantName) {
-        AzureUserCredential azureUserCredential = azureUserCredentialRepository.findByWsTenantName(wsTenantName)
-                .orElseThrow(() -> new RuntimeException("No Azure AD configuration found!"));
-        String clientSecret = EncryptionUtil.getDecryptedKey(azureUserCredential.getClientSecret(), Constant.AZURE_CLIENT_SECRET);
-        azureUserCredential.setClientSecret(clientSecret);
-        AzureTenant azureTenant = azureADSyncService.initializeGraphClientAndSyncAzureTenant(azureUserCredential, null);
+        AzureUserCredentialDTO azureUserCredentialDTO = azureUserCredentialService.findWSTenantIdWithDecryptedSecret(wsTenantName);
+        AzureTenant azureTenant = azureADSyncService.initializeGraphClientAndSyncAzureTenant(azureUserCredentialDTO, null);
         azureADSyncService.syncAzureADData(azureTenant);
-        Optional.ofNullable(azureUserCredential.getSubscriptionId())
+        Optional.ofNullable(azureUserCredentialDTO.getSubscriptionId())
                 .filter(StringUtils::isNotEmpty)
-                .ifPresentOrElse(subscriptionId -> azureResourceSyncService.syncAzureResourceData(azureTenant, azureUserCredential),
-                        () -> log.info("Skipped Azure-Resources data sync as no subscription-id was found"));
+                .ifPresentOrElse(subscriptionId -> azureResourceSyncService.syncAzureResourceData(azureTenant, azureUserCredentialDTO),
+                        () -> backendApplicationLogservice.saveAuditLog(
+                                wsTenantName, "demo@gmail.com", "ADD", Constant.AZURE_RESOURCE_DATA_SYNC_SKIPPED, "Info"));
     }
 }

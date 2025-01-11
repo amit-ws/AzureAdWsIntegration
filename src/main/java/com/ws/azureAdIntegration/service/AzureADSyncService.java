@@ -5,10 +5,13 @@ import com.microsoft.graph.models.DirectoryObject;
 import com.microsoft.graph.models.Organization;
 import com.microsoft.graph.requests.*;
 import com.ws.azureAdIntegration.constants.Constant;
+import com.ws.azureAdIntegration.dto.AzureUserCredentialDTO;
 import com.ws.azureAdIntegration.entity.*;
 import com.ws.azureAdIntegration.repository.*;
 import com.ws.azureAdIntegration.util.AzureAuthUtil;
 import com.ws.azureAdIntegration.util.AzureEntityUtil;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
@@ -54,15 +57,15 @@ public class AzureADSyncService {
         this.azureAuthUtil = azureAuthUtil;
     }
 
-    public AzureTenant initializeGraphClientAndSyncAzureTenant(AzureUserCredential azureUserCredential, GraphServiceClient<Request> graphClient) {
-        this.wsTenantName = azureUserCredential.getWsTenantName();
+    public AzureTenant initializeGraphClientAndSyncAzureTenant(AzureUserCredentialDTO azureUserCredentialDTO, GraphServiceClient<Request> graphClient) {
+        this.wsTenantName = azureUserCredentialDTO.getWsTenantName();
         this.graphClient = Optional.ofNullable(graphClient)
                 .orElseGet(() -> {
                     log.info("Validating user's Azure-AD credentials..");
-                    return azureAuthUtil.validateAzureCredentials(azureUserCredential);
+                    return azureAuthUtil.validateAzureCredentials(azureUserCredentialDTO);
                 });
         backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_AD_DATA_SYNC_START, "INFO");
-        return syncTenantData(azureUserCredential.getTenantId());
+        return syncTenantData(azureUserCredentialDTO.getTenantId());
     }
 
     protected void syncAzureADData(AzureTenant azureTenant) {
@@ -88,6 +91,7 @@ public class AzureADSyncService {
 
         // delete the existing tenant and re-create whatever has been fetched this time
         azureTenantRepository.deleteByAzureId(tenantId);
+        azureTenantRepository.flush();
 
         AzureTenant azureTenant = AzureEntityUtil.createAzureTenantFromGraphOrganization(organization, AzureTenant.builder().wsTenantName(this.wsTenantName).build());
         backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_TENANT_SAVED, "INFO");

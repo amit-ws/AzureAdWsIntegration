@@ -38,9 +38,9 @@ public class AzureResourceGroup {
     @Column(name = "tag_value")
     Map<String, String> tags;
 
-    @JsonIgnore
-    @OneToMany(mappedBy = "azureResourceGroup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    List<AzureDatabase> azureDatabases = new ArrayList<>();
+//    @JsonIgnore
+//    @OneToMany(mappedBy = "azureResourceGroup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+//    List<AzureDatabase> azureDatabases = new ArrayList<>();
 
     @JsonIgnore
     @OneToMany(mappedBy = "azureResourceGroup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
@@ -59,9 +59,9 @@ public class AzureResourceGroup {
     @JoinColumn(name = "ws_azure_subscription_id", referencedColumnName = "id")
     AzureSubscription azureSubscription;
 
-    @JsonIgnore
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "ws_azure_tenant_id", referencedColumnName = "id")
-    AzureTenant azureTenant;
+//    @JsonIgnore
+//    @ManyToOne(fetch = FetchType.LAZY)
+//    @JoinColumn(name = "ws_azure_tenant_id", referencedColumnName = "id")
+//    AzureTenant azureTenant;
 
 }

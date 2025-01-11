@@ -11,13 +11,11 @@ import java.util.Optional;
 
 @Repository
 public interface AzureVMRepository extends JpaRepository<AzureVM, Integer> {
-    List<AzureVM> findAllByAzureTenant(AzureTenant azureTenant);
+    List<AzureVM> findAllByWsTenantName(String wsTenantName);
 
     @Query("SELECT DISTINCT av FROM AzureVM av INNER JOIN AzureRoleAssignment ara ON UPPER(av.instanceId) = UPPER(ara.scope) " +
-            "WHERE ara.scopeType = :scopeType AND ara.principalType = :principalType and ara.assignee = :assignee and av.azureTenant = :azureTenant")
-    List<AzureVM> getAzureVMsForPrinciple(String scopeType, String principalType, String assignee, AzureTenant azureTenant);
+            "WHERE ara.scopeType = :scopeType AND ara.principalType = :principalType and ara.assignee = :assignee and av.wsTenantName = :tenantName")
+    List<AzureVM> getAzureVMsForPrinciple(String scopeType, String principalType, String assignee, String tenantName);
 
     List<AzureVM> findAllByWsTenantNameAndIsPublishedTrue(String wsTenantName);
-
-    Optional<AzureVM> findByIdAndResourceType(Integer id, String resourceType);
 }

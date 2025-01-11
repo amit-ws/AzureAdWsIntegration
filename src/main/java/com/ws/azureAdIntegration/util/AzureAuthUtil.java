@@ -57,6 +57,7 @@ package com.ws.azureAdIntegration.util;
 
 import com.azure.resourcemanager.AzureResourceManager;
 import com.microsoft.graph.requests.GraphServiceClient;
+import com.ws.azureAdIntegration.dto.AzureUserCredentialDTO;
 import com.ws.azureAdIntegration.entity.AzureUserCredential;
 import com.ws.configuration.AzureAuthConfigurationFactory;
 import lombok.extern.slf4j.Slf4j;
@@ -100,10 +101,10 @@ public class AzureAuthUtil {
         }
     }
 
-    public GraphServiceClient<Request> validateAzureCredentials(AzureUserCredential azureUserCredential) {
+    public GraphServiceClient<Request> validateAzureCredentials(AzureUserCredentialDTO azureUserCredentialDTO) {
         try {
-            log.info("secret 2: {}", azureUserCredential.getClientSecret());
-            return azureAuthConfigurationFactory.createAzureGraphServiceClient(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId());
+            log.info("secret 2: {}", azureUserCredentialDTO.getClientSecret());
+            return azureAuthConfigurationFactory.createAzureGraphServiceClient(azureUserCredentialDTO.getClientId(), azureUserCredentialDTO.getClientSecret(), azureUserCredentialDTO.getTenantId());
         } catch (Exception e) {
             log.error("Error in verifying Azure credentials: {}", e.getMessage());
             String message = resolveAzureCredentialError(e.getMessage());
@@ -112,9 +113,9 @@ public class AzureAuthUtil {
     }
 
 
-    public AzureResourceManager validateAzureCredentialsWithSubscriptionId(AzureUserCredential azureUserCredential) {
+    public AzureResourceManager validateAzureCredentialsWithSubscriptionId(AzureUserCredentialDTO azureUserCredentialDTO) {
         try {
-            return azureAuthConfigurationFactory.createAzureResourceClient(azureUserCredential.getClientId(), azureUserCredential.getClientSecret(), azureUserCredential.getTenantId(), azureUserCredential.getSubscriptionId());
+            return azureAuthConfigurationFactory.createAzureResourceClient(azureUserCredentialDTO.getClientId(), azureUserCredentialDTO.getClientSecret(), azureUserCredentialDTO.getTenantId(), azureUserCredentialDTO.getSubscriptionId());
         } catch (Exception e) {
             log.error("Error in verifying Azure credentials: {}", e.getMessage());
             String message = resolveAzureCredentialError(e.getMessage());

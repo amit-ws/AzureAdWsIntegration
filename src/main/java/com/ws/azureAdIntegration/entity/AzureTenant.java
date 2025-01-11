@@ -57,23 +57,7 @@ public class AzureTenant {
 
     @JsonIgnore
     @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    List<AzureResourceGroup> azureResourceGroups = new ArrayList<>();
-
-    @JsonIgnore
-    @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     List<AzureSubscription> azureSubscriptions = new ArrayList<>();
-
-    @JsonIgnore
-    @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    List<AzureServer> azureServers = new ArrayList<>();
-
-    @JsonIgnore
-    @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    List<AzureStorageAccount> azureStorages = new ArrayList<>();
-
-    @JsonIgnore
-    @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    List<AzureVM> azureVMS = new ArrayList<>();
 
     @JsonIgnore
     @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
@@ -86,6 +70,23 @@ public class AzureTenant {
     @JsonIgnore
     @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     List<CustomRoleAssignment> customRoleAssignments = new ArrayList<>();
+
+
+//    @JsonIgnore
+//    @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+//    List<AzureResourceGroup> azureResourceGroups = new ArrayList<>();
+//
+//    @JsonIgnore
+//    @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+//    List<AzureServer> azureServers = new ArrayList<>();
+//
+//    @JsonIgnore
+//    @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+//    List<AzureStorageAccount> azureStorages = new ArrayList<>();
+//
+//    @JsonIgnore
+//    @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+//    List<AzureVM> azureVMS = new ArrayList<>();
 }
 
 

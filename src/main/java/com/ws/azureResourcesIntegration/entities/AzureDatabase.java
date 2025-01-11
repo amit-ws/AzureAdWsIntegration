@@ -41,18 +41,18 @@ public class AzureDatabase extends BaseAzureResource{
     String defaultSecondaryLocation;
     String resourceType;
 
-    @JsonIgnore
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "ws_azure_resource_group_id", referencedColumnName = "id")
-    AzureResourceGroup azureResourceGroup;
-
-    @JsonIgnore
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "ws_azure_tenant_id", referencedColumnName = "id")
-    AzureTenant azureTenant;
+//    @JsonIgnore
+//    @ManyToOne(fetch = FetchType.LAZY)
+//    @JoinColumn(name = "ws_azure_resource_group_id", referencedColumnName = "id")
+//    AzureResourceGroup azureResourceGroup;
 
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ws_azure_server_id", referencedColumnName = "id")
     AzureServer azureServer;
+
+//    @JsonIgnore
+//    @ManyToOne(fetch = FetchType.LAZY)
+//    @JoinColumn(name = "ws_azure_tenant_id", referencedColumnName = "id")
+//    AzureTenant azureTenant;
 }

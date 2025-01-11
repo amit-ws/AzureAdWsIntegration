@@ -10,6 +10,5 @@ import java.util.Optional;
 @Repository
 public interface AzureDatabaseRepository extends JpaRepository<AzureDatabase, Integer> {
     List<AzureDatabase> findAllByWsTenantNameAndIsPublishedTrue(String wsTenantName);
-    Optional<AzureDatabase> findByIdAndResourceType(Integer id, String resourceType);
 
 }

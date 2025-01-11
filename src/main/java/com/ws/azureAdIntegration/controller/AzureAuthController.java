@@ -1,5 +1,6 @@
 package com.ws.azureAdIntegration.controller;
 
+import com.ws.azureAdIntegration.dto.AzureUserCredentialDTO;
 import com.ws.azureAdIntegration.dto.CreateAzureConfiguration;
 import com.ws.azureAdIntegration.entity.AzureUserCredential;
 import com.ws.azureAdIntegration.service.AzureADJwtValidationService;
@@ -65,7 +66,7 @@ public class AzureAuthController {
     }
 
     @PatchMapping("/update/subscriptionId")
-    public ResponseEntity<AzureUserCredential> updateSubscriptionIdHandler(@RequestParam Integer credId, @RequestParam String subscriptionId) {
+    public ResponseEntity<AzureUserCredentialDTO> updateSubscriptionIdHandler(@RequestParam Integer credId, @RequestParam String subscriptionId) {
         return ResponseEntity
                 .status(HttpStatus.OK)
                 .body(azureAuthService.updateSubscriptionId(credId, subscriptionId));

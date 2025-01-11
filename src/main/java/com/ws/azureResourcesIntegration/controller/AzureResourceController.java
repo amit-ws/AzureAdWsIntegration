@@ -87,10 +87,9 @@ public class AzureResourceController {
     }
 
     @GetMapping("/v1/applicableRoles")
-    public ResponseEntity<List<ApplicableRoleDefinition>> getAllApplicableRoleDefinitionsForResourceHandler(@RequestParam String resourceType,
-                                                                                                            @RequestParam Integer resourceId,
+    public ResponseEntity<List<ApplicableRoleDefinition>> getAllApplicableRoleDefinitionsForResourceHandler(@RequestParam Integer resourceId,
                                                                                                             @RequestParam AzureResourcesType type) {
-        return ResponseEntity.ok(azureResourceService.getAllApplicableRoleDefinitionsForResource(resourceType, resourceId, type));
+        return ResponseEntity.ok(azureResourceService.getAllApplicableRoleDefinitionsForResource(resourceId, type));
     }
 
     @PostMapping("/v1/requests/raise")
@@ -112,12 +111,6 @@ public class AzureResourceController {
                 .body((azureResourceService.processResourceRequestForPrinciple(customRoleAssignmentId, updatedStatus)));
     }
 
-    @DeleteMapping("/v1/")
-    public ResponseEntity<Void> revokeRoleAssignmentOfPrincipleHandler(@RequestParam String azureId,  @RequestParam("status") CustomRoleAssignmentStatus status) {
-        azureResourceService.revokeRoleAssignmentOfPrinciple(azureId, status);
-        return ResponseEntity.ok().build();
-    }
-
     @PostMapping("/v1/assignRole")
     public ResponseEntity<AzureRoleAssignment> assignRoleToResourceForUserHandler(@Valid @RequestBody AssignRoleRequest request) {
         return ResponseEntity
@@ -126,9 +119,8 @@ public class AzureResourceController {
     }
 
     @DeleteMapping("/v1/removeRole")
-    public ResponseEntity<Boolean> revokeRoleAssignmentHandler(String azureId) {
+    public ResponseEntity<Boolean> revokeRoleAssignmentHandler(@RequestParam String azureId) {
         return ResponseEntity.ok(azureResourceService.revokeRoleAssignment(azureId));
     }
-
 
 }

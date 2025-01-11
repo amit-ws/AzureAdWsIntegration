@@ -23,7 +23,7 @@ public interface AzureRoleDefinitionRepository extends JpaRepository<AzureRoleDe
             "WITH rd_id AS " +
                     "( " +
                     "SELECT DISTINCT ws_azure_role_definition_id AS id  FROM azure_role_definition_action a " +
-                    "WHERE a.ws_azure_tenant_id = :tenantId AND upper(a.\"action\") ILIKE ANY (ARRAY[CONCAT(upper(:action), '/%'), '*']) " +
+                    "WHERE a.ws_tenant_name = :tenantName AND upper(a.\"action\") ILIKE ANY (ARRAY[CONCAT(upper(:action), '/%'), '*']) " +
                     ") " +
                     "SELECT ard.role_path_id AS azureRolePathId, ard.role_name AS roleName, ard.role_type AS roleType, STRING_AGG(arda.\"action\", ', ') AS actionList   " +
                     "FROM rd_id " +
@@ -34,6 +34,6 @@ public interface AzureRoleDefinitionRepository extends JpaRepository<AzureRoleDe
                     "GROUP BY ard.id, ard.role_name, ard.role_type " +
                     "ORDER BY ard.role_name"
             , nativeQuery = true)
-    List<ApplicableRoleDefinitionProjection> findAllSuitableRolesForResource(@Param("tenantId") Integer azureTenantId, String action, String assignableScope);
+    List<ApplicableRoleDefinitionProjection> findAllSuitableRolesForResource(@Param("tenantName") String wsTenantName, String action, String assignableScope);
 
 }

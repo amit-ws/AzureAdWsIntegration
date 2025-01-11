@@ -137,7 +137,7 @@ public final class AzureEntityUtil {
         customRoleAssignment.setCreatedAt(new Date());
         customRoleAssignment.setExpiryTimeAmount(request.getExpiryTimeAmount());
         customRoleAssignment.setWsTenantName(request.getTenantName().trim());
-        customRoleAssignment.setSubscriptionId(request.getSubscriptionId().trim());
+//        customRoleAssignment.setAzureSubscription(request.getSubscriptionId().trim());
         return customRoleAssignment;
     }
 

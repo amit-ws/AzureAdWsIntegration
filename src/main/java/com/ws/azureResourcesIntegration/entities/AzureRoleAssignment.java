@@ -34,7 +34,11 @@ public class AzureRoleAssignment {
     String createdBy;
     Date syncedAt;
     String wsTenantName; // WhiteSwan account organization name
-    String subscriptionId;
+
+    @JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "ws_azure_subscription_id", referencedColumnName = "id")
+    AzureSubscription azureSubscription;
 
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)

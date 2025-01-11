@@ -37,12 +37,17 @@ public class AzureRoleDefinition {
 
     Date syncedAt;
     String wsTenantName; // WhiteSwan account organization name
-    String subscriptionId;
+
+    @JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "ws_azure_subscription_id", referencedColumnName = "id")
+    AzureSubscription azureSubscription;
 
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ws_azure_tenant_id", referencedColumnName = "id")
     AzureTenant azureTenant;
+
 
     @OneToMany(mappedBy = "azureRoleDefinition", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     Set<AzureRoleDefinitionPermission> azureRoleDefinitionPermissions = new LinkedHashSet<>();
