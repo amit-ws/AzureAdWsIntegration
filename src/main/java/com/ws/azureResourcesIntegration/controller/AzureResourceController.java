@@ -32,18 +32,23 @@ public class AzureResourceController {
     }
 
     @GetMapping("/v1/getAllVirtualMachines")
-    public ResponseEntity<List<AzureVM>> getAllVirtualMachinesHandler(@RequestParam("tenantName") String wsTenantName) {
-        return ResponseEntity.ok(azureResourceService.getAllVirtualMachines(wsTenantName));
+    public ResponseEntity<List<?>> getAllVirtualMachinesHandler(@RequestParam("tenantName") String wsTenantName) {
+        return ResponseEntity.ok(azureResourceService.getAzureResourcesUsingType(wsTenantName, AzureResourcesType.VM));
     }
 
     @GetMapping("/v1/getStorages")
-    public ResponseEntity<List<AzureStorageAccount>> getStoragesHandler(@RequestParam("tenantName") String wsTenantName) {
-        return ResponseEntity.ok(azureResourceService.getStorages(wsTenantName));
+    public ResponseEntity<List<?>> getStoragesHandler(@RequestParam("tenantName") String wsTenantName) {
+        return ResponseEntity.ok(azureResourceService.getAzureResourcesUsingType(wsTenantName, AzureResourcesType.STORAGE_ACCOUNT));
     }
 
     @GetMapping("/v1/getServersWithDatabases")
-    public ResponseEntity<List<AzureServer>> getServersWithDatavsesHandler(@RequestParam("tenantName") String wsTenantName) {
-        return ResponseEntity.ok(azureResourceService.getServersWithDatavses(wsTenantName));
+    public ResponseEntity<List<?>> getServersWithDatabasesHandler(@RequestParam("tenantName") String wsTenantName) {
+        return ResponseEntity.ok(azureResourceService.getAzureResourcesUsingType(wsTenantName, AzureResourcesType.SERVER));
+    }
+
+    @GetMapping("/v1/getSubscriptions")
+    public ResponseEntity<List<?>> getSubscriptionsHandler(@RequestParam("tenantName") String wsTenantName) {
+        return ResponseEntity.ok(azureResourceService.getAzureResourcesUsingType(wsTenantName, AzureResourcesType.SUBSCRIPTION));
     }
 
     @GetMapping("/v1/getRoleDefinitionsName")

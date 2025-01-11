@@ -13,10 +13,8 @@ import java.util.Optional;
 public interface AzureRoleAssignmentRepository extends JpaRepository<AzureRoleAssignment, Integer> {
     void deleteAllByAzureTenant(AzureTenant azureTenant);
 
-    Optional<AzureRoleAssignment> findByAzureId(String pathId);
-
     @Modifying
     void deleteByAzureRoleAssignmentPathId(String pathId);
 
-    List<AzureRoleAssignment> findAllByWsTenantName(String wsTenantName);
+    List<AzureRoleAssignment> findAllByWsTenantNameOrderByCreatedOnDesc(String wsTenantName);
 }

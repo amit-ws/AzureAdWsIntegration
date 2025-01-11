@@ -57,9 +57,7 @@ public class AzureSyncControlService {
     @Transactional
     public void syncAzureResourcesData(AzureUserCredentialDTO azureUserCredentialDTO) {
         log.info("Thread name for syncAzureResourcesData: {}", Thread.currentThread().getName());
-        AzureTenant azureTenant = azureTenantRepository
-                .findByWsTenantName(azureUserCredentialDTO.getWsTenantName())
-                .orElseGet(() -> azureADSyncService.initializeGraphClientAndSyncAzureTenant(azureUserCredentialDTO, null));
+        AzureTenant azureTenant = findAzureTenantOrSync(azureUserCredentialDTO);
         azureResourceSyncService.syncAzureResourceData(azureTenant, azureUserCredentialDTO);
     }
 
@@ -75,5 +73,20 @@ public class AzureSyncControlService {
                 .ifPresentOrElse(subscriptionId -> azureResourceSyncService.syncAzureResourceData(azureTenant, azureUserCredentialDTO),
                         () -> backendApplicationLogservice.saveAuditLog(
                                 wsTenantName, "demo@gmail.com", "ADD", Constant.AZURE_RESOURCE_DATA_SYNC_SKIPPED, "Info"));
+    }
+
+
+    /* Sync only the Role Assignment from Azure for the Tenant*/
+    @Transactional
+    public void syncAzureRoleAssignments(String wsTenantName) {
+        AzureUserCredentialDTO azureUserCredentialDTO = azureUserCredentialService.findWSTenantIdWithDecryptedSecret(wsTenantName);
+        AzureTenant azureTenant = findAzureTenantOrSync(azureUserCredentialDTO);
+        azureResourceSyncService.syncAzureRoleAssignmentData(azureTenant, azureUserCredentialDTO);
+    }
+
+    private AzureTenant findAzureTenantOrSync(AzureUserCredentialDTO azureUserCredentialDTO) {
+        return azureTenantRepository
+                .findByWsTenantName(azureUserCredentialDTO.getWsTenantName())
+                .orElseGet(() -> azureADSyncService.initializeGraphClientAndSyncAzureTenant(azureUserCredentialDTO, null));
     }
 }

@@ -59,8 +59,7 @@ public class AzureResourceSyncService {
 
     public void syncAzureResourceData(AzureTenant azureTenant, AzureUserCredentialDTO azureUserCredentialDTO) {
         try {
-            this.wsTenantName = azureUserCredentialDTO.getWsTenantName();
-            this.azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredentialDTO);
+            initializeWsTenantNameAndAzureResourceManager(azureUserCredentialDTO);
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_RESOURCE_DATA_SYNC_START, "Info");
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_RESOURCE_DATA_TRUNCATED, "Info");
             log.info("0");
@@ -82,6 +81,16 @@ public class AzureResourceSyncService {
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.wsTenantName, Constant.AZURE_SYNC_FAILURE, ex.getMessage(), "Error");
             throw new RuntimeException(ex.getMessage());
         }
+    }
+
+    public void syncAzureRoleAssignmentData(AzureTenant azureTenant, AzureUserCredentialDTO azureUserCredentialDTO) {
+        initializeWsTenantNameAndAzureResourceManager(azureUserCredentialDTO);
+        syncRoleAssignments(azureTenant, azureTenant.getAzureSubscriptions().get(0));
+    }
+
+    private void initializeWsTenantNameAndAzureResourceManager(AzureUserCredentialDTO azureUserCredentialDTO) {
+        this.wsTenantName = azureUserCredentialDTO.getWsTenantName();
+        this.azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredentialDTO);
     }
 
     /* Source parent for all azure resource models like AzureVM, Storages => AzureSubscription */

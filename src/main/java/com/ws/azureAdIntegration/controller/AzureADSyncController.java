@@ -32,4 +32,12 @@ public class AzureADSyncController {
                 .status(HttpStatus.ACCEPTED)
                 .body(Collections.singletonMap("message", "Data synced successfully!"));
     }
+
+    @GetMapping("v1/onDemand/assignedRoles")
+    public ResponseEntity syncAzureRoleAssignmentsHandler(@RequestParam String tenantName) {
+        azureSyncControlService.syncAzureRoleAssignments(tenantName);
+        return ResponseEntity
+                .status(HttpStatus.ACCEPTED)
+                .body(Collections.singletonMap("message", "Azure role assignments synced successfully!"));
+    }
 }

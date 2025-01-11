@@ -8,6 +8,7 @@ import com.ws.azureResourcesIntegration.dto.AssignRoleRequest;
 import com.ws.azureResourcesIntegration.entities.AzureRoleAssignment;
 import com.ws.azureResourcesIntegration.entities.CustomRoleAssignment;
 
+import java.time.OffsetDateTime;
 import java.util.Date;
 import java.util.UUID;
 
@@ -121,6 +122,8 @@ public final class AzureEntityUtil {
         azureRoleAssignment.setIsRoleInherited(false);
         azureRoleAssignment.setCreatedOn(GenericUtil.getOrNull(() -> roleAssignment.innerModel().createdOn()));
         azureRoleAssignment.setCreatedBy(GenericUtil.getOrNull(() -> roleAssignment.innerModel().createdBy()));
+        azureRoleAssignment.setUpdatedOn(GenericUtil.getOrNull(() -> roleAssignment.innerModel().updatedOn()));
+        azureRoleAssignment.setUpdatedBy(GenericUtil.getOrNull(() -> roleAssignment.innerModel().updatedBy()));
         azureRoleAssignment.setSyncedAt(new Date());
         return azureRoleAssignment;
     }
@@ -134,7 +137,7 @@ public final class AzureEntityUtil {
         customRoleAssignment.setScopeType(GenericUtil.determineScopeType(request.getResourceScope()));
         customRoleAssignment.setDescription(request.getDescription());
         customRoleAssignment.setStatus(CustomRoleAssignmentStatus.REQUESTED);
-        customRoleAssignment.setCreatedAt(new Date());
+        customRoleAssignment.setCreatedOn(OffsetDateTime.now());
         customRoleAssignment.setExpiryTimeAmount(request.getExpiryTimeAmount());
         customRoleAssignment.setWsTenantName(request.getTenantName().trim());
 //        customRoleAssignment.setAzureSubscription(request.getSubscriptionId().trim());

@@ -4,6 +4,7 @@ import com.microsoft.graph.requests.GraphServiceClient;
 import com.ws.azureAdIntegration.constants.Constant;
 import com.ws.azureAdIntegration.dto.AzureUserCredentialDTO;
 import com.ws.azureAdIntegration.dto.CreateAzureConfiguration;
+import com.ws.azureAdIntegration.entity.AzureTenant;
 import com.ws.azureAdIntegration.entity.AzureUser;
 import com.ws.azureAdIntegration.entity.AzureUserCredential;
 import com.ws.azureAdIntegration.repository.AzureUserCredentialRepository;
@@ -143,5 +144,4 @@ public class AzureAuthService {
                 })
                 .orElseThrow(() -> new RuntimeException(String.format("No Azure User found with provided email: %s", email)));
     }
-
 }
