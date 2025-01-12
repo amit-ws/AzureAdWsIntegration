@@ -40,6 +40,7 @@ public class AzureDatabase extends BaseAzureResource{
     OffsetDateTime resumedDate;
     String defaultSecondaryLocation;
     String resourceType;
+    String resourceGroupName;
 
 //    @JsonIgnore
 //    @ManyToOne(fetch = FetchType.LAZY)

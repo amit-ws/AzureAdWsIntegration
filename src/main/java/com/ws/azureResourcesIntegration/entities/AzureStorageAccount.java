@@ -38,6 +38,8 @@ public class AzureStorageAccount extends BaseAzureResource{
     String skuTier;
     String accessTier;
     String resourceType;
+    String resourceGroupName;
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(
             name = "azure_storage_account_tags",

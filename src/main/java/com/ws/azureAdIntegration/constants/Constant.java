@@ -63,4 +63,7 @@ public class Constant {
     // Azure resource scopes
     public static final String SUBSCRIPTION_LEVEL_SCOPE = "/subscriptions/%s";
     public static final String RESOURCE_GROUP_LEVEL_SCOPE = "/subscriptions/%s/resourceGroups/%s";
+    public static final String VM_LEVEL_SCOPE = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/virtualMachines/%s";
+    public static final String STORAGE_ACCOUNT_LEVEL_SCOPE = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Storage/storageAccounts/%s";
+    public static final String DATABASE_LEVEL_SCOPE = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Sql/servers/%s/databases/%s";
 }

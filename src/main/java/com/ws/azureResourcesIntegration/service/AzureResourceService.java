@@ -19,12 +19,11 @@ import com.ws.azureResourcesIntegration.dto.*;
 import com.ws.azureResourcesIntegration.entities.*;
 import com.ws.azureResourcesIntegration.repository.*;
 import com.ws.mapper.AzureEntitiesMapper;
-import io.micrometer.common.util.StringUtils;
 import com.ws.azureAdIntegration.constants.Constant;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.tuple.Triple;
+import org.apache.commons.lang3.tuple.Pair;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.repository.CrudRepository;
 import org.springframework.stereotype.Service;
@@ -215,27 +214,39 @@ public class AzureResourceService {
     // 3. Get all raised requests (of all types) ✅
     // 4. DENY | APPROVE actions -> if approved then call Azure_API for transaction ✅
     public List<ApplicableRoleDefinition> getAllApplicableRoleDefinitionsForResource(Integer resourceId, AzureResourcesType type) {
-        Triple<String, String, String> idTriplet = switch (type) {
+        List<String> scopes = new ArrayList<>();
+        Pair<String, String> idPair = switch (type) {
             case VM -> {
                 AzureVM vm = azureVMRepository.findById(resourceId).orElseThrow(() -> new RuntimeException("No resource found with provided id: " + resourceId));
-                yield Triple.of(vm.getWsTenantName(), vm.getAzureSubscription().getAzureSubscriptionId(), vm.getResourceType());
+                String subsId = vm.getAzureSubscription().getAzureSubscriptionId();
+                String rGName = vm.getResourceGroupName();
+                scopes.add(String.format(Constant.SUBSCRIPTION_LEVEL_SCOPE, subsId));
+                scopes.add(String.format(Constant.RESOURCE_GROUP_LEVEL_SCOPE, subsId, rGName));
+                scopes.add(String.format(Constant.VM_LEVEL_SCOPE, subsId, rGName, vm.getName()));
+                yield Pair.of(vm.getWsTenantName(), vm.getResourceType());
             }
             case STORAGE_ACCOUNT -> {
                 AzureStorageAccount storageAccount = azureStorageRepository.findById(resourceId).orElseThrow(() -> new RuntimeException("No resource found with provided id: " + resourceId));
-                yield Triple.of(storageAccount.getWsTenantName(), storageAccount.getAzureSubscription().getAzureSubscriptionId(), storageAccount.getResourceType());
+                String subsId = storageAccount.getAzureSubscription().getAzureSubscriptionId();
+                String rGName = storageAccount.getResourceGroupName();
+                scopes.add(String.format(Constant.SUBSCRIPTION_LEVEL_SCOPE, subsId));
+                scopes.add(String.format(Constant.RESOURCE_GROUP_LEVEL_SCOPE, subsId, rGName));
+                scopes.add(String.format(Constant.STORAGE_ACCOUNT_LEVEL_SCOPE, subsId, rGName, storageAccount.getStorageAccountName()));
+                yield Pair.of(storageAccount.getWsTenantName(), storageAccount.getResourceType());
             }
             case DATABASE -> {
                 AzureDatabase database = azureDatabaseRepository.findById(resourceId).orElseThrow(() -> new RuntimeException("No resource found with provided id: " + resourceId));
-                yield Triple.of(database.getWsTenantName(), database.getAzureServer().getAzureSubscription().getAzureSubscriptionId(), database.getResourceType());
+                String subsId = database.getAzureServer().getAzureSubscription().getAzureSubscriptionId();
+                String rGName = database.getResourceGroupName();
+                scopes.add(String.format(Constant.SUBSCRIPTION_LEVEL_SCOPE, subsId));
+                scopes.add(String.format(Constant.RESOURCE_GROUP_LEVEL_SCOPE, subsId, rGName));
+                scopes.add(String.format(Constant.DATABASE_LEVEL_SCOPE, subsId, rGName, database.getAzureServer().getServerName(), database.getDatabaseName()));
+                yield Pair.of(database.getWsTenantName(), database.getResourceType());
             }
             default -> throw new RuntimeException("Invalid azure resource type provided: " + type.name());
         };
-        Optional.ofNullable(idTriplet.getMiddle()).filter(StringUtils::isNotEmpty).orElseThrow(() -> {
-            log.error("No parentSubscriptionId found with provided data from User side. Value: {}", idTriplet.getMiddle());
-            return new RuntimeException("Invalid details provided..");
-        });
 
-        return Optional.ofNullable(azureRoleDefinitionRepository.findAllSuitableRolesForResource(idTriplet.getLeft(), idTriplet.getRight(), String.format(Constant.SUBSCRIPTION_LEVEL_SCOPE, idTriplet.getMiddle())))
+        return Optional.ofNullable(azureRoleDefinitionRepository.findAllSuitableRolesForResource(idPair.getLeft(), idPair.getRight(), scopes))
                 .filter(resultSets -> !resultSets.isEmpty())
                 .map(resultSets -> resultSets.stream()
                         .map(resultSet -> ApplicableRoleDefinition.builder()

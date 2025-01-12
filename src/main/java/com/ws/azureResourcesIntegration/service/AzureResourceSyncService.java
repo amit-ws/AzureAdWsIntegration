@@ -64,10 +64,10 @@ public class AzureResourceSyncService {
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_RESOURCE_DATA_TRUNCATED, "Info");
             truncateAzureResourcesDataThroughAzureTenant(azureTenant);
             AzureSubscription azureSubscription = syncSubscription(azureTenant);
-            syncResourceGroups(azureSubscription);
-            syncAzureVMs(azureSubscription);
-            syncStorageData(azureSubscription);
-            syncServersAndDatabases(azureSubscription);
+            Map<String, AzureResourceGroup> azureResourceGroupMap = createAzureResourceGroupMap(syncResourceGroups(azureSubscription));
+            syncAzureVMs(azureSubscription, azureResourceGroupMap);
+            syncStorageData(azureSubscription, azureResourceGroupMap);
+            syncServersAndDatabases(azureSubscription, azureResourceGroupMap);
             syncRoleDefinitions(azureTenant, azureSubscription);
             syncRoleAssignments(azureTenant, azureSubscription);
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_RESOURCE_DATA_SYNC_END, "Info");
@@ -95,6 +95,12 @@ public class AzureResourceSyncService {
     /* Source parent for all azure resource models like AzureVM, Storages => AzureSubscription */
     private void truncateAzureResourcesDataThroughAzureTenant(AzureTenant azureTenant) {
         azureSubscriptionRepository.deleteByAzureTenant(azureTenant);
+    }
+
+    private Map<String, AzureResourceGroup> createAzureResourceGroupMap(List<AzureResourceGroup> azureResourceGroups) {
+        return azureResourceGroups.stream().collect(Collectors.toMap(
+                azureResourceGroup -> azureResourceGroup.getName().toUpperCase(),
+                azureResourceGroup -> azureResourceGroup));
     }
 
 
@@ -128,10 +134,11 @@ public class AzureResourceSyncService {
     }
 
 
-    private void syncResourceGroups(AzureSubscription azureSubscription) {
+    private List<AzureResourceGroup> syncResourceGroups(AzureSubscription azureSubscription) {
+        List<AzureResourceGroup> azureResourceGroups = null;
         try {
             PagedIterable<ResourceGroup> resourceGroups = this.azureResourceManager.resourceGroups().list();
-            List<AzureResourceGroup> azureResourceGroups = resourceGroups.stream()
+            azureResourceGroups = azureResourceGroupRepository.saveAllAndFlush(resourceGroups.stream()
                     .map(resourceGroup -> AzureResourceGroup.builder()
                             .azureResourceId(resourceGroup.id())
                             .name(resourceGroup.name())
@@ -143,17 +150,21 @@ public class AzureResourceSyncService {
                             .azureSubscription(azureSubscription)
                             .build()
                     )
-                    .collect(Collectors.toList());
-            azureResourceGroupRepository.saveAll(azureResourceGroups);
+                    .collect(Collectors.toList()));
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_RESOURCE_GROUPS_SYNCED, "Info");
         } catch (Exception ignored) {
             log.error(String.format("Error in syncing %s with message: %s", ResourceGroup.class.getName(), ignored.getMessage()));
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, (Constant.ERROR_IN_SYNCING_AZURE_RESOURCES + ResourceGroup.class.getName()), "Info");
         }
+
+        if (CollectionUtils.isEmpty(azureResourceGroups)) {
+            throw new RuntimeException("Failed to sync resource groups data");
+        }
+        return azureResourceGroups;
     }
 
 
-    private void syncAzureVMs(AzureSubscription azureSubscription) {
+    private void syncAzureVMs(AzureSubscription azureSubscription, Map<String, AzureResourceGroup> azureResourceGroupMap) {
         try {
             List<AzureVM> azureVMs = this.azureResourceManager.virtualMachines().list().stream()
                     .map(vm -> AzureVM.builder()
@@ -173,6 +184,7 @@ public class AzureResourceSyncService {
                             .resourceIdentityType(GenericUtil.getOrNull(() -> vm.innerModel().identity().type().name()))
                             .ipAddress(GenericUtil.getOrNull(() -> vm.getPrimaryPublicIPAddress().ipAddress()))
                             .syncedAt(new Date())
+                            .azureResourceGroup(azureResourceGroupMap.get(vm.resourceGroupName().toUpperCase()))
                             .azureSubscription(azureSubscription)
                             .wsTenantName(wsTenantName)
                             .build())
@@ -187,7 +199,7 @@ public class AzureResourceSyncService {
     }
 
 
-    private void syncStorageData(AzureSubscription azureSubscription) {
+    private void syncStorageData(AzureSubscription azureSubscription, Map<String, AzureResourceGroup> azureResourceGroupMap) {
         try {
             List<AzureStorageAccount> azureStorageAccounts = this.azureResourceManager.storageAccounts().list().stream().map(storageAccount -> AzureStorageAccount.builder()
                             .azureStorageAccountId(storageAccount.id())
@@ -203,7 +215,9 @@ public class AzureResourceSyncService {
                             .accessTier(GenericUtil.getOrNull(() -> storageAccount.accessTier().name()))
                             .skuTier(GenericUtil.getOrNull(() -> storageAccount.innerModel().sku().tier().name()))
                             .resourceType(storageAccount.type())
+                            .resourceGroupName(storageAccount.resourceGroupName())
                             .tags(storageAccount.tags())
+                            .azureResourceGroup(azureResourceGroupMap.get(storageAccount.resourceGroupName().toUpperCase()))
                             .azureSubscription(azureSubscription)
                             .wsTenantName(this.wsTenantName)
                             .syncedAt(new Date())
@@ -217,7 +231,7 @@ public class AzureResourceSyncService {
         }
     }
 
-    private void syncServersAndDatabases(AzureSubscription azureSubscription) {
+    private void syncServersAndDatabases(AzureSubscription azureSubscription, Map<String, AzureResourceGroup> azureResourceGroupMap) {
         try {
             List<AzureServer> azureServers = this.azureResourceManager.sqlServers().list().stream()
                     .map(sqlServer -> {
@@ -236,6 +250,7 @@ public class AzureResourceSyncService {
                                         .minCapacity(GenericUtil.getOrNull(() -> sqlDatabase.innerModel().minCapacity()))
                                         .pausedDate(GenericUtil.getOrNull(() -> sqlDatabase.innerModel().pausedDate()))
                                         .resumedDate(GenericUtil.getOrNull(() -> sqlDatabase.innerModel().resumedDate()))
+                                        .resourceGroupName(sqlDatabase.resourceGroupName())
                                         .resourceType(GenericUtil.getOrNull(() -> sqlDatabase.innerModel().type()))
                                         .syncedAt(new Date())
                                         .wsTenantName(this.wsTenantName)
@@ -259,6 +274,7 @@ public class AzureResourceSyncService {
                                 .administratorId(GenericUtil.getOrNull(() -> sqlServer.getActiveDirectoryAdministrator().id()))
                                 .resourceType(sqlServer.type())
                                 .syncedAt(new Date())
+                                .azureResourceGroup(azureResourceGroupMap.get(sqlServer.resourceGroupName().toUpperCase()))
                                 .azureSubscription(azureSubscription)
                                 .wsTenantName(this.wsTenantName)
                                 .location(GenericUtil.getOrNull(() -> sqlServer.innerModel().location()))
