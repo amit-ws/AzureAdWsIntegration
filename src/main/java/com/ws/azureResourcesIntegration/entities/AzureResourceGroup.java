@@ -1,7 +1,6 @@
 package com.ws.azureResourcesIntegration.entities;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.ws.azureAdIntegration.entity.AzureTenant;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
@@ -38,10 +37,6 @@ public class AzureResourceGroup {
     @Column(name = "tag_value")
     Map<String, String> tags;
 
-//    @JsonIgnore
-//    @OneToMany(mappedBy = "azureResourceGroup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-//    List<AzureDatabase> azureDatabases = new ArrayList<>();
-
     @JsonIgnore
     @OneToMany(mappedBy = "azureResourceGroup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     List<AzureServer> azureServers = new ArrayList<>();
@@ -58,6 +53,10 @@ public class AzureResourceGroup {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ws_azure_subscription_id", referencedColumnName = "id")
     AzureSubscription azureSubscription;
+
+    //    @JsonIgnore
+//    @OneToMany(mappedBy = "azureResourceGroup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+//    List<AzureDatabase> azureDatabases = new ArrayList<>();
 
 //    @JsonIgnore
 //    @ManyToOne(fetch = FetchType.LAZY)

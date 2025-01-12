@@ -62,17 +62,12 @@ public class AzureResourceSyncService {
             initializeWsTenantNameAndAzureResourceManager(azureUserCredentialDTO);
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_RESOURCE_DATA_SYNC_START, "Info");
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_RESOURCE_DATA_TRUNCATED, "Info");
-            log.info("0");
             truncateAzureResourcesDataThroughAzureTenant(azureTenant);
-            log.info("0.1");
             AzureSubscription azureSubscription = syncSubscription(azureTenant);
-            log.info("1");
-            syncResourceGroups(azureTenant, azureSubscription);
-            log.info("2");
-            syncAzureVMs(azureTenant, azureSubscription);
-            syncStorageData(azureTenant, azureSubscription);
-            log.info("3");
-            syncServersAndDatabases(azureTenant, azureSubscription);
+            syncResourceGroups(azureSubscription);
+            syncAzureVMs(azureSubscription);
+            syncStorageData(azureSubscription);
+            syncServersAndDatabases(azureSubscription);
             syncRoleDefinitions(azureTenant, azureSubscription);
             syncRoleAssignments(azureTenant, azureSubscription);
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_RESOURCE_DATA_SYNC_END, "Info");
@@ -133,7 +128,7 @@ public class AzureResourceSyncService {
     }
 
 
-    private void syncResourceGroups(AzureTenant azureTenant, AzureSubscription azureSubscription) {
+    private void syncResourceGroups(AzureSubscription azureSubscription) {
         try {
             PagedIterable<ResourceGroup> resourceGroups = this.azureResourceManager.resourceGroups().list();
             List<AzureResourceGroup> azureResourceGroups = resourceGroups.stream()
@@ -158,9 +153,8 @@ public class AzureResourceSyncService {
     }
 
 
-    private void syncAzureVMs(AzureTenant azureTenant, AzureSubscription azureSubscription) {
+    private void syncAzureVMs(AzureSubscription azureSubscription) {
         try {
-            log.info("v.1");
             List<AzureVM> azureVMs = this.azureResourceManager.virtualMachines().list().stream()
                     .map(vm -> AzureVM.builder()
                             .azureVmId(vm.vmId())
@@ -183,14 +177,8 @@ public class AzureResourceSyncService {
                             .wsTenantName(wsTenantName)
                             .build())
                     .collect(Collectors.toList());
-            log.info("v.2");
-
             azureVMRepository.saveAll(azureVMs);
-            log.info("v.3");
-
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_VMS_SYNCED, "Info");
-            log.info("v.4");
-
         } catch (Exception ignored) {
             log.info("v -> Error");
             log.error(String.format("Error in syncing %s with message: %s", VirtualMachine.class.getName(), ignored.getMessage()));
@@ -199,7 +187,7 @@ public class AzureResourceSyncService {
     }
 
 
-    private void syncStorageData(AzureTenant azureTenant, AzureSubscription azureSubscription) {
+    private void syncStorageData(AzureSubscription azureSubscription) {
         try {
             List<AzureStorageAccount> azureStorageAccounts = this.azureResourceManager.storageAccounts().list().stream().map(storageAccount -> AzureStorageAccount.builder()
                             .azureStorageAccountId(storageAccount.id())
@@ -229,7 +217,7 @@ public class AzureResourceSyncService {
         }
     }
 
-    private void syncServersAndDatabases(AzureTenant azureTenant, AzureSubscription azureSubscription) {
+    private void syncServersAndDatabases(AzureSubscription azureSubscription) {
         try {
             List<AzureServer> azureServers = this.azureResourceManager.sqlServers().list().stream()
                     .map(sqlServer -> {
