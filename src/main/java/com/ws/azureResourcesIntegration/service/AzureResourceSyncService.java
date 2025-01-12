@@ -85,7 +85,11 @@ public class AzureResourceSyncService {
 
     public void syncAzureRoleAssignmentData(AzureTenant azureTenant, AzureUserCredentialDTO azureUserCredentialDTO) {
         initializeWsTenantNameAndAzureResourceManager(azureUserCredentialDTO);
-        syncRoleAssignments(azureTenant, azureTenant.getAzureSubscriptions().get(0));
+        AzureSubscription azureSubscription = Optional.ofNullable(azureTenant.getAzureSubscriptions())
+                .filter(subscriptions -> !subscriptions.isEmpty())
+                .map(subscriptions -> subscriptions.get(0))
+                .orElseGet(() -> syncSubscription(azureTenant));
+        syncRoleAssignments(azureTenant, azureSubscription);
     }
 
     private void initializeWsTenantNameAndAzureResourceManager(AzureUserCredentialDTO azureUserCredentialDTO) {
