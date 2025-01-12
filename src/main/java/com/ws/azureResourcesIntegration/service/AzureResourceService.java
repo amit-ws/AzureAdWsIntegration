@@ -14,6 +14,7 @@ import com.ws.azureAdIntegration.util.AzureEntityUtil;
 import com.ws.azureAdIntegration.util.GenericUtil;
 import com.ws.azureResourcesIntegration.constant.AzureResourcesType;
 import com.ws.azureResourcesIntegration.constant.CustomRoleAssignmentStatus;
+import com.ws.azureResourcesIntegration.constant.StateChangeConstants;
 import com.ws.azureResourcesIntegration.dto.*;
 import com.ws.azureResourcesIntegration.entities.*;
 import com.ws.azureResourcesIntegration.repository.*;
@@ -43,11 +44,6 @@ import java.util.stream.Stream;
 @Slf4j
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class AzureResourceService {
-    static final Map<CustomRoleAssignmentStatus, Set<CustomRoleAssignmentStatus>> VALID_TRANSITIONS = Map.of(
-            CustomRoleAssignmentStatus.REQUESTED, Set.of(CustomRoleAssignmentStatus.DENIED, CustomRoleAssignmentStatus.APPROVED),
-            CustomRoleAssignmentStatus.DENIED, Set.of(CustomRoleAssignmentStatus.APPROVED),
-            CustomRoleAssignmentStatus.APPROVED, Set.of(CustomRoleAssignmentStatus.EXPIRED)
-    );
     final AzureVMRepository azureVMRepository;
     final AzureStorageRepository azureStorageRepository;
     final AzureServerRepository azureServerRepository;
@@ -300,8 +296,8 @@ public class AzureResourceService {
         CustomRoleAssignment customRoleAssignment = customRoleAssignmentRepository.findById(customRoleAssignmentId).orElseThrow(() -> new RuntimeException("No raised resource details found with provided id: " + customRoleAssignmentId));
         CustomRoleAssignmentStatus currentStatus = customRoleAssignment.getStatus();
 
-        // Validate the transition
-        if (!VALID_TRANSITIONS.getOrDefault(currentStatus, Set.of()).contains(updatedStatus)) {
+        // Validate the state transition
+        if (!StateChangeConstants.CUSTOM_ROLE_ASSIGNMENT_VALID_STATE_TRANSITIONS.getOrDefault(currentStatus, Set.of()).contains(updatedStatus)) {
             throw new IllegalStateException(String.format("Invalid state transition from %s to %s", currentStatus, updatedStatus));
         }
 
