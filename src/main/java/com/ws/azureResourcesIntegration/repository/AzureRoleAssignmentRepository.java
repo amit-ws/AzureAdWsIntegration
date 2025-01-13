@@ -17,4 +17,6 @@ public interface AzureRoleAssignmentRepository extends JpaRepository<AzureRoleAs
     void deleteByAzureRoleAssignmentPathId(String pathId);
 
     List<AzureRoleAssignment> findAllByWsTenantNameOrderByCreatedOnDesc(String wsTenantName);
+
+    Optional<AzureRoleAssignment> findByAzureId(String azureId);
 }

@@ -391,6 +391,7 @@ public class AzureResourceSyncService {
             }
 
             azureRoleAssignmentRepository.saveAll(azureRoleAssignments);
+            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_SERVER_ROLE_ASSIGNMENT_SYNCED, "Info");
         } catch (Exception ignored) {
             log.error(String.format("Error in syncing %s with message: %s", RoleDefinition.class.getName(), ignored.getMessage()));
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, (Constant.ERROR_IN_SYNCING_AZURE_RESOURCES + RoleDefinition.class.getName()), "Error");

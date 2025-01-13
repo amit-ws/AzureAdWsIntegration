@@ -380,12 +380,12 @@ public class AzureResourceService {
         azureRoleAssignmentRepository.save(azureRoleAssignment);
     }
 
-    private void revokeRoleToPrincipalForResourceInAzure(String roleAssignmentId, String wsTenantName) {
+    private void revokeRoleToPrincipalForResourceInAzure(String roleAssignmentPathId, String wsTenantName) {
         AzureResourceManager azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredentialService.findWSTenantIdWithDecryptedSecret(wsTenantName));
         azureResourceManager.accessManagement()
                 .roleAssignments()
-                .deleteById(roleAssignmentId);
-        azureRoleAssignmentRepository.deleteByAzureRoleAssignmentPathId(roleAssignmentId);
+                .deleteById(roleAssignmentPathId);
+        azureRoleAssignmentRepository.deleteByAzureRoleAssignmentPathId(roleAssignmentPathId);
     }
 
 
@@ -429,18 +429,27 @@ public class AzureResourceService {
     public Boolean revokeRoleAssignment(String azureId) {
 //        String fullRoleAssignmentId = scope + "/providers/Microsoft.Authorization/roleAssignments/" + roleAssignmentId;
         try {
-//            AzureRoleAssignment assignment = azureRoleAssignmentRepository.findByAzureId(azureId).orElseThrow(() -> new RuntimeException("No Role assignment found with provided azure-id: " + azureId));
-            AzureResourceManager azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredentialService.findWSTenantIdWithDecryptedSecret("amitdev.local"));
-//            azureResourceManager.accessManagement()
-//                    .roleAssignments()
-//                    .deleteById(assignment.getAzureRoleAssignmentPathId());
-//            azureRoleAssignmentRepository.deleteByAzureRoleAssignmentPathId(assignment.getAzureRoleDefinitionPathId());
+            AzureRoleAssignment assignment = azureRoleAssignmentRepository.findByAzureId(azureId).orElseThrow(() -> new RuntimeException("No Role assignment found with provided azure-id: " + azureId));
+            log.info("tenant: {}", assignment.getWsTenantName());
+            log.info("azure id: {}", assignment.getAzureId());
+            log.info("RA path id: {}", assignment.getAzureRoleAssignmentPathId());
+            AzureResourceManager azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredentialService.findWSTenantIdWithDecryptedSecret(assignment.getWsTenantName()));
+            log.info("started");
+            azureResourceManager.accessManagement()
+                    .roleAssignments()
+                    .deleteById(assignment.getAzureRoleAssignmentPathId());
+            azureRoleAssignmentRepository.deleteByAzureRoleAssignmentPathId(assignment.getAzureRoleAssignmentPathId());
+            log.info("deleted");
             return Boolean.TRUE;
         } catch (Exception ex) {
             log.error("Error: {}", ex.getMessage());
+            if (ex.getMessage().contains("401")) {
+                throw new RuntimeException("UnAuthorized access token");
+            }
             throw new RuntimeException(ex.getMessage());
         }
     }
+
 
 
     //    @Transactional

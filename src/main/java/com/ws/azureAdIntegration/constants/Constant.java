@@ -31,6 +31,7 @@ public class Constant {
     public static final String AZURE_STORAGES_SYNCED = "Azure storages related data synced";
     public static final String AZURE_SERVER_DATABASES_SYNCED = "Azure Servers and associated DBs related data synced";
     public static final String AZURE_SERVER_ROLE_DEFINITION_SYNCED = "Azure RoleDefinitions and associated permissions, actions/notActions data synced";
+    public static final String AZURE_SERVER_ROLE_ASSIGNMENT_SYNCED = "Azure Role assignment data synced";
 
     /*Azure resource error related*/
     public static final String ERROR_IN_SYNCING_AZURE_RESOURCES = "Error in syncing azure ";
