@@ -378,7 +378,7 @@ public class AzureResourceSyncService {
     private void syncRoleAssignments(AzureTenant azureTenant, AzureSubscription azureSubscription) {
         try {
             azureRoleAssignmentRepository.deleteAllByAzureTenant(azureTenant);
-            PagedIterable<RoleAssignment> roleAssignmentPage = this.azureResourceManager.accessManagement().roleAssignments().listByScope(String.format("/subscriptions/%s", this.azureResourceManager.subscriptionId()));
+            PagedIterable<RoleAssignment> roleAssignmentPage = this.azureResourceManager.accessManagement().roleAssignments().listByScope(String.format(Constant.SUBSCRIPTION_LEVEL_SCOPE, this.azureResourceManager.subscriptionId()));
             List<AzureRoleAssignment> azureRoleAssignments = new ArrayList<>();
             for (RoleAssignment roleAssignment : roleAssignmentPage) {
                 AzureRoleAssignment azureRoleAssignment = AzureEntityUtil.createAzureRoleAssignmentFromResourceEntity(roleAssignment,
