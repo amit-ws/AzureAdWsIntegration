@@ -2,6 +2,7 @@ package com.ws.azureAdIntegration.constants;
 
 public class Constant {
     public static final String ADD = "Add";
+    public static final String UPDATE = "Update";
     public static final String AZURE_AD_DATA_SYNC_START = "Azure-AD data sync started";
     public static final String AZURE_RESOURCE_DATA_SYNC_START = "Azure resources related data sync started";
     public static final String AZURE_RESOURCE_DATA_TRUNCATED = "Azure resources related data successfully truncated";
@@ -67,4 +68,8 @@ public class Constant {
     public static final String VM_LEVEL_SCOPE = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/virtualMachines/%s";
     public static final String STORAGE_ACCOUNT_LEVEL_SCOPE = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Storage/storageAccounts/%s";
     public static final String DATABASE_LEVEL_SCOPE = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Sql/servers/%s/databases/%s";
+
+
+    //Azure Scheduler
+    public static final String TOTAL_FOUND_ROLE_ASSIGNMENTS_TO_BE_REMOVED = "Total %s AzureRoleAssignments found to be removed";
 }

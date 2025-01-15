@@ -10,9 +10,6 @@ import org.springframework.data.repository.query.Param;
 import java.util.Optional;
 
 public interface AzureTenantRepository extends JpaRepository<AzureTenant, Integer> {
-    Optional<AzureTenant> findByAzureId(String azureTenantId);
-
-    Optional<AzureTenant> findByAzureIdAndWsTenantName(String azureTenantId, String wsTenantName);
 
     Optional<AzureTenant> findByWsTenantName(String wsTenantName);
 

@@ -103,7 +103,6 @@ public class AzureAuthUtil {
 
     public GraphServiceClient<Request> validateAzureCredentials(AzureUserCredentialDTO azureUserCredentialDTO) {
         try {
-            log.info("secret 2: {}", azureUserCredentialDTO.getClientSecret());
             return azureAuthConfigurationFactory.createAzureGraphServiceClient(azureUserCredentialDTO.getClientId(), azureUserCredentialDTO.getClientSecret(), azureUserCredentialDTO.getTenantId());
         } catch (Exception e) {
             log.error("Error in verifying Azure credentials: {}", e.getMessage());

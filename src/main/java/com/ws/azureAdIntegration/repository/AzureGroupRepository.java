@@ -9,7 +9,6 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
-import java.util.Map;
 
 @Repository
 public interface AzureGroupRepository extends JpaRepository<AzureGroup, Integer> {
@@ -18,8 +17,10 @@ public interface AzureGroupRepository extends JpaRepository<AzureGroup, Integer>
 
     void deleteAllByAzureTenant(AzureTenant azureTenant);
 
-    @Query("SELECT new com.ws.azureResourcesIntegration.dto.AzureRolePrincipleAssociationResponse(ag.id, ag.displayName) FROM AzureRoleAssignment ara LEFT JOIN AzureGroup ag ON ara.assignee = ag.azureId " +
-            "WHERE ara.wsTenantName= :wsTenantName and ara.principalType = 'Group' and ara.azureRoleDefinitionPathId = :wsRoleId " +
+    @Query("SELECT new com.ws.azureResourcesIntegration.dto.AzureRolePrincipleAssociationResponse(ag.id, ag.displayName) " +
+            "FROM AzureRoleAssignment ara " +
+            "INNER JOIN AzureGroup ag ON ara.assignee = ag.azureId " +
+            "WHERE ara.wsTenantName= :wsTenantName and ara.principalType = 'Group' and ara.azureRoleDefinitionPathId ILIKE :wsRoleId " +
             "ORDER BY ag.displayName")
     List<AzureRolePrincipleAssociationResponse> getAzureUserNameAndIdAssociatedWithRoleId(String wsRoleId, String wsTenantName);
 

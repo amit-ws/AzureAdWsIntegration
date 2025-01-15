@@ -3,7 +3,7 @@ package com.ws.azureAdIntegration.util;
 import com.azure.resourcemanager.authorization.models.RoleAssignment;
 import com.microsoft.graph.models.*;
 import com.ws.azureAdIntegration.entity.*;
-import com.ws.azureResourcesIntegration.constant.CustomRoleAssignmentStatus;
+import com.ws.azureResourcesIntegration.constant.RequestStatus;
 import com.ws.azureResourcesIntegration.dto.AssignRoleRequest;
 import com.ws.azureResourcesIntegration.entities.AzureRoleAssignment;
 import com.ws.azureResourcesIntegration.entities.CustomRoleAssignment;
@@ -136,7 +136,7 @@ public final class AzureEntityUtil {
         customRoleAssignment.setPrincipalType(request.getPrincipleType().getValue());
         customRoleAssignment.setScopeType(GenericUtil.determineScopeType(request.getResourceScope()));
         customRoleAssignment.setDescription(request.getDescription());
-        customRoleAssignment.setStatus(CustomRoleAssignmentStatus.REQUESTED);
+        customRoleAssignment.setStatus(RequestStatus.PENDING);
         customRoleAssignment.setCreatedOn(OffsetDateTime.now());
         customRoleAssignment.setExpiryTimeAmount(request.getExpiryTimeAmount());
         customRoleAssignment.setWsTenantName(request.getTenantName().trim());

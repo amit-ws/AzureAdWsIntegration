@@ -23,8 +23,10 @@ public interface AzureUserRepository extends JpaRepository<AzureUser, Integer> {
 
     List<AzureUser> findAllByWsTenantName(String tenantName);
 
-    @Query("SELECT new com.ws.azureResourcesIntegration.dto.AzureRolePrincipleAssociationResponse(au.id, au.displayName) FROM AzureRoleAssignment ara LEFT JOIN AzureUser au ON ara.assignee = au.azureId " +
-            "WHERE ara.wsTenantName= :wsTenantName and ara.principalType = 'User' and ara.azureRoleDefinitionPathId = :wsRoleId " +
+    @Query("SELECT DISTINCT new com.ws.azureResourcesIntegration.dto.AzureRolePrincipleAssociationResponse(au.id, au.displayName) " +
+            "FROM AzureRoleAssignment ara " +
+            "INNER JOIN AzureUser au ON ara.assignee = au.azureId " +
+            "WHERE ara.wsTenantName= :wsTenantName and ara.principalType = 'User' and ara.azureRoleDefinitionPathId ILIKE %:wsRoleId " +
             "ORDER BY au.displayName")
     List<AzureRolePrincipleAssociationResponse> getAzureUserNameAndIdAssociatedWithRoleDefinitionId(String wsRoleId, String wsTenantName);
 
@@ -35,7 +37,7 @@ public interface AzureUserRepository extends JpaRepository<AzureUser, Integer> {
                     "LEFT JOIN azure_user_group_membership augm on au.id = augm.user_id " +
                     "LEFT JOIN azure_group ag on augm.group_id = ag.id " +
                     "LEFT JOIN azure_role_assignment ara on ara.assignee = au.azure_id " +
-                    "LEFT JOIN azure_role_definition ard on ara.azure_role_definition_id = ard.azure_id " +
+                    "LEFT JOIN azure_role_definition ard on ara.azure_role_definition_path_id = ard.role_path_id " +
                     "WHERE ara.principal_type = 'User' AND au.ws_tenant_name = :wsTenantName AND au.ws_azure_tenant_id = :azureTenantId  " +
                     "GROUP BY au.id, au.azure_id, au.display_name, au.synced_at " +
                     "ORDER BY au.display_name",

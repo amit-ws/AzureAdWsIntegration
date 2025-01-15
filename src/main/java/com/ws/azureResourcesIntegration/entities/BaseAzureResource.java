@@ -1,5 +1,6 @@
 package com.ws.azureResourcesIntegration.entities;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.MappedSuperclass;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
@@ -15,6 +16,8 @@ import java.util.Date;
 @MappedSuperclass
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class BaseAzureResource {
+    @Column(columnDefinition = "boolean default false")
+    @Builder.Default
     Boolean isPublished = Boolean.FALSE;
     Date updatedAt;
     Date syncedAt;

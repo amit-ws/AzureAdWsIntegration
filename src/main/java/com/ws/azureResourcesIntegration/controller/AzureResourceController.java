@@ -1,7 +1,7 @@
 package com.ws.azureResourcesIntegration.controller;
 
 import com.ws.azureResourcesIntegration.constant.AzureResourcesType;
-import com.ws.azureResourcesIntegration.constant.CustomRoleAssignmentStatus;
+import com.ws.azureResourcesIntegration.constant.RequestStatus;
 import com.ws.azureResourcesIntegration.dto.AssignRoleRequest;
 import com.ws.azureResourcesIntegration.dto.AzureRoleDefinitionDTO;
 import com.ws.azureResourcesIntegration.dto.AzureRolePrincipleAssociationResponse;
@@ -105,12 +105,12 @@ public class AzureResourceController {
     }
 
     @GetMapping("/v1/requests/all")
-    public ResponseEntity<Collection<?>> getAllRaiseRoleAssignmentRequestHandler(@RequestParam("tenantName") String wsTenantName, @RequestParam("state") CustomRoleAssignmentStatus status) {
+    public ResponseEntity<Collection<?>> getAllRaiseRoleAssignmentRequestHandler(@RequestParam("tenantName") String wsTenantName, @RequestParam("state") RequestStatus status) {
         return ResponseEntity.ok(azureResourceService.getAllRaisedRoleAssignmentRequest(wsTenantName, status));
     }
 
     @PatchMapping("/v1/requests/process")
-    public ResponseEntity<Boolean> processResourceRequestForPrincipleHandler(@RequestParam("id") Integer customRoleAssignmentId, @RequestParam("status") CustomRoleAssignmentStatus updatedStatus) {
+    public ResponseEntity<Boolean> processResourceRequestForPrincipleHandler(@RequestParam("id") Integer customRoleAssignmentId, @RequestParam("status") RequestStatus updatedStatus) {
         return ResponseEntity
                 .status(HttpStatus.OK)
                 .body((azureResourceService.processResourceRequestForPrinciple(customRoleAssignmentId, updatedStatus)));

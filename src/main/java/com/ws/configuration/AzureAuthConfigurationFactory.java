@@ -28,19 +28,15 @@ public class AzureAuthConfigurationFactory {
      */
     public GraphServiceClient<Request> createAzureGraphServiceClient(String clientId, String clientSecret, String tenantId) {
         ClientSecretCredential clientSecretCredential = createAzureClientSecretCredential(clientId, clientSecret, tenantId);
+        String token;
+        try {
+            TokenRequestContext requestContext = new TokenRequestContext().addScopes("https://graph.microsoft.com/.default");
+            token = Objects.requireNonNull(clientSecretCredential.getToken(requestContext).block()).getToken();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
         return GraphServiceClient.builder()
-                .authenticationProvider(new IAuthenticationProvider() {
-                    @NotNull
-                    @Override
-                    public CompletableFuture<String> getAuthorizationTokenAsync(URL requestUrl) {
-                        return CompletableFuture.completedFuture(getAccessToken());
-                    }
-
-                    private String getAccessToken() {
-                        TokenRequestContext requestContext = new TokenRequestContext().addScopes("https://graph.microsoft.com/.default");
-                        return Objects.requireNonNull(clientSecretCredential.getToken(requestContext).block()).getToken();
-                    }
-                })
+                .authenticationProvider(requestUrl -> CompletableFuture.completedFuture(token))
                 .buildClient();
     }
 

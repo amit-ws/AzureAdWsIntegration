@@ -14,5 +14,6 @@ public class ApplicableRoleDefinition {
     String azureRolePathId;
     String roleName;
     String roleType;
-    List<String> actionList;
+    List<?> actionList;
+    List<?> notActionList;
 }

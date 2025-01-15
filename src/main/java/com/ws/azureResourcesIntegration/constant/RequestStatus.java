@@ -1,8 +1,8 @@
 package com.ws.azureResourcesIntegration.constant;
 
-public enum CustomRoleAssignmentStatus {
-    REQUESTED,
-    DENIED,
+public enum RequestStatus {
+    PENDING,
+    DECLINE,
     APPROVED,
     EXPIRED;
 }

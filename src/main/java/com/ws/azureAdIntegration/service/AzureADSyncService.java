@@ -10,8 +10,6 @@ import com.ws.azureAdIntegration.entity.*;
 import com.ws.azureAdIntegration.repository.*;
 import com.ws.azureAdIntegration.util.AzureAuthUtil;
 import com.ws.azureAdIntegration.util.AzureEntityUtil;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
@@ -28,7 +26,7 @@ import java.util.stream.Collectors;
 public class AzureADSyncService {
     String wsTenantName;
     String tenantEmail = "dummy@gmail.com";
-    GraphServiceClient graphClient;
+    GraphServiceClient<Request> graphClient;
     final AzureUserRepository azureUserRepository;
     final AzureGroupRepository azureGroupRepository;
     final AzureDeviceRepository azureDeviceRepository;

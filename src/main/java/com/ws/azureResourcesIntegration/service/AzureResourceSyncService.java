@@ -189,6 +189,7 @@ public class AzureResourceSyncService {
                             .wsTenantName(wsTenantName)
                             .build())
                     .collect(Collectors.toList());
+            log.info("azureVMs: {}", azureVMs.get(0).getIsPublished());
             azureVMRepository.saveAll(azureVMs);
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_VMS_SYNCED, "Info");
         } catch (Exception ignored) {

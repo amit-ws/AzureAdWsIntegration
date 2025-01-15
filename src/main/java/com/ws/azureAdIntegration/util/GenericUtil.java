@@ -2,6 +2,8 @@ package com.ws.azureAdIntegration.util;
 
 import com.ws.azureResourcesIntegration.constant.AzureResourcesType;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
 
@@ -16,6 +18,14 @@ public class GenericUtil {
             return supplier != null ? supplier.get() : null;
         } catch (NullPointerException e) {
             return null;
+        }
+    }
+
+    public static <T> List<T> getOrEmptyList(Supplier<List<T>> supplier) {
+        try {
+            return supplier != null ? supplier.get() : Collections.emptyList();
+        } catch (NullPointerException e) {
+            return Collections.emptyList();
         }
     }
 

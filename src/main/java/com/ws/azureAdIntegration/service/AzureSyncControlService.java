@@ -42,7 +42,7 @@ public class AzureSyncControlService {
 
     @Async
     @Transactional
-    public void syncAzureData(GraphServiceClient<Request> graphClient, AzureUserCredentialDTO azureUserCredentialDTO) {
+    public void syncAzureData(GraphServiceClient graphClient, AzureUserCredentialDTO azureUserCredentialDTO) {
         log.info("Thread name: {}", Thread.currentThread().getName());
         AzureTenant azureTenant = azureADSyncService.initializeGraphClientAndSyncAzureTenant(azureUserCredentialDTO, graphClient);
         azureADSyncService.syncAzureADData(azureTenant);

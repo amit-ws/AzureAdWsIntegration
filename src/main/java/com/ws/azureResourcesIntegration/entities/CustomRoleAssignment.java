@@ -2,7 +2,7 @@ package com.ws.azureResourcesIntegration.entities;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.ws.azureAdIntegration.entity.AzureTenant;
-import com.ws.azureResourcesIntegration.constant.CustomRoleAssignmentStatus;
+import com.ws.azureResourcesIntegration.constant.RequestStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
@@ -16,10 +16,7 @@ import java.time.OffsetDateTime;
 @Data
 @Entity
 @FieldDefaults(level = AccessLevel.PRIVATE)
-@Table(name = "custom_azure_role_assignment", schema = "azure_test",
-        uniqueConstraints = {
-                @UniqueConstraint(columnNames = {"assignee", "scope", "azureRoleDefinitionPathId"})
-        })
+@Table(name = "custom_azure_role_assignment", schema = "azure_test")
 public class CustomRoleAssignment {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -36,7 +33,7 @@ public class CustomRoleAssignment {
     String wsTenantName;
 
     @Enumerated(EnumType.STRING)
-    CustomRoleAssignmentStatus status;
+    RequestStatus status;
 
     OffsetDateTime createdOn;
     OffsetDateTime updatedOn;
