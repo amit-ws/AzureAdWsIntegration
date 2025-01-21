@@ -33,7 +33,7 @@ public class AzureResourceController {
 
     @GetMapping("/v1/getAllVirtualMachines")
     public ResponseEntity<List<?>> getAllVirtualMachinesHandler(@RequestParam("tenantName") String wsTenantName) {
-        return ResponseEntity.ok(azureResourceService.getAzureResourcesUsingType(wsTenantName, AzureResourcesType.VM));
+        return ResponseEntity.ok(azureResourceService.getAzureResourcesUsingType(wsTenantName, AzureResourcesType.VIRTUAL_MACHINE));
     }
 
     @GetMapping("/v1/getStorages")
@@ -105,9 +105,16 @@ public class AzureResourceController {
     }
 
     @GetMapping("/v1/requests/all")
-    public ResponseEntity<Collection<?>> getAllRaiseRoleAssignmentRequestHandler(@RequestParam("tenantName") String wsTenantName, @RequestParam("state") RequestStatus status) {
-        return ResponseEntity.ok(azureResourceService.getAllRaisedRoleAssignmentRequest(wsTenantName, status));
+    public ResponseEntity<Collection<?>> getAllRaiseRoleAssignmentRequestHandler(@RequestParam("tenantName") String wsTenantName,
+                                                                                 @RequestParam(value = "state", required = false) RequestStatus status,
+                                                                                 @RequestParam(value = "email", required = false) String userEmail) {
+        return ResponseEntity.ok(azureResourceService.getAllRaisedRoleAssignmentRequest(wsTenantName, status, userEmail));
     }
+
+//    @GetMapping("/v1/requests/allData")
+//    public ResponseEntity<Collection<?>> getAllRaisedRoleAssignmentRequestALLHandler(@RequestParam("tenantName") String wsTenantName, @RequestParam(value = "state", required = false) RequestStatus status) {
+//        return ResponseEntity.ok(azureResourceService.getAllRaisedRoleAssignmentRequestALL(wsTenantName, status));
+//    }
 
     @PatchMapping("/v1/requests/process")
     public ResponseEntity<Boolean> processResourceRequestForPrincipleHandler(@RequestParam("id") Integer customRoleAssignmentId, @RequestParam("status") RequestStatus updatedStatus) {

@@ -21,7 +21,8 @@ public class AzureDatabase extends BaseAzureResource{
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Integer id;
-    String azureDatabaseId;
+    String instanceId;  /* Path (instance) ID  */
+    String azureDatabaseId; /* UUID of the database (sent by azure) */
     String databaseName;
     String azureServerId;
     String databaseType;
@@ -41,6 +42,7 @@ public class AzureDatabase extends BaseAzureResource{
     String defaultSecondaryLocation;
     String resourceType;
     String resourceGroupName;
+
 
 //    @JsonIgnore
 //    @ManyToOne(fetch = FetchType.LAZY)

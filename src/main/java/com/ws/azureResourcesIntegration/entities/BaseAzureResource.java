@@ -2,6 +2,7 @@ package com.ws.azureResourcesIntegration.entities;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.MappedSuperclass;
+import jakarta.persistence.Transient;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 import lombok.experimental.SuperBuilder;
@@ -22,4 +23,7 @@ public class BaseAzureResource {
     Date updatedAt;
     Date syncedAt;
     String wsTenantName; // WhiteSwan account organization name
+
+    @Transient
+    Integer azureSubscriptionId;
 }

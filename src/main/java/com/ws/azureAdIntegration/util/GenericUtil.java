@@ -2,6 +2,7 @@ package com.ws.azureAdIntegration.util;
 
 import com.ws.azureResourcesIntegration.constant.AzureResourcesType;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -26,6 +27,14 @@ public class GenericUtil {
             return supplier != null ? supplier.get() : Collections.emptyList();
         } catch (NullPointerException e) {
             return Collections.emptyList();
+        }
+    }
+
+    public static List<String> splitStringConvertToList(String input) {
+        if (input != null && !input.equals("null")) {
+            return new ArrayList<>(List.of(input.split(",")));
+        } else {
+            return new ArrayList<>();
         }
     }
 
@@ -57,7 +66,7 @@ public class GenericUtil {
                 if (providersIndex != -1 && pathSegments.length > providersIndex + 3) {
                     // Check for VM
                     if (pathSegments[providersIndex + 1].equalsIgnoreCase("Microsoft.Compute") && pathSegments[providersIndex + 2].equalsIgnoreCase("virtualMachines")) {
-                        return AzureResourcesType.VM.name();
+                        return AzureResourcesType.VIRTUAL_MACHINE.name();
                     }
 
                     // Check for Storage Account

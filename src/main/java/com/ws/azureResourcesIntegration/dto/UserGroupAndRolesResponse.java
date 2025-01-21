@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
+import java.time.OffsetDateTime;
 import java.util.Date;
 import java.util.List;
 
@@ -15,7 +16,9 @@ import java.util.List;
 public class UserGroupAndRolesResponse {
     Integer id;
     String azureUserId;
+    String userPrincipalName;
     String displayName;
+    OffsetDateTime createdDateTime;
     Date syncedAt;
     List<String> groups;
     List<String> roleDefinitions;

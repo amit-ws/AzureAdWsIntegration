@@ -73,6 +73,7 @@ public final class AzureEntityUtil {
         azureUser.setDepartment(user.department);
         azureUser.setUserType(user.userType);
         azureUser.setOfficeLocation(user.officeLocation);
+        azureUser.setCreatedDateTime(user.createdDateTime);
         azureUser.setSyncedAt(new Date());
         azureUser.setIsSSOEnabled(true);
         return azureUser;

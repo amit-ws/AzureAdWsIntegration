@@ -1,11 +1,14 @@
 package com.ws.azureResourcesIntegration.dto;
 
 import com.ws.azureAdIntegration.constants.AzurePrincipleType;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
+import java.util.List;
 
 @NoArgsConstructor
 @AllArgsConstructor
@@ -19,6 +22,8 @@ public class AssignRoleRequest {
     String resourceScope;
     @NotNull(message = "Role definition ID is required")
     String roleDefinitionPathId;
+    @NotEmpty(message = "Role definition ID(s) is required")
+    List<String> roleDefinitionPathIds;
     @NotNull(message = "Principle (assignee) ID is required")
     String principleId;
     @NotNull(message = "Principle (assignee) type is required")

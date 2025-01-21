@@ -11,4 +11,12 @@ import java.util.Optional;
 public interface AzureDatabaseRepository extends JpaRepository<AzureDatabase, Integer> {
     List<AzureDatabase> findAllByWsTenantNameAndIsPublishedTrue(String wsTenantName);
 
+//    @Query("SELECT new com.ws.azureResourcesIntegration.dto.AzureDatabaseDTO(db.id, db.azureDatabaseId, db.databaseName, db.azureServerId, db.databaseType, db.version, db.status, db.sizeInGb," +
+//            "db.lastBackupTime, db.lastBackupTime, db.edition, db.maxSizeBytes, db.region, db.dbStatus, db.readScale, db.minCapacity, db.pausedDate, db.resumedDate, " +
+//            "db.defaultSecondaryLocation, db.resourceType, db.resourceGroupName, db.azureServer.id, db.azureServer.azureResourceGroup.id, db.azureServer.azureSubscription.id," +
+//            "db.isPublished, db.updatedAt, db.syncedAt, db.wsTenantName) " +
+//            "FROM AzureDatabase db WHERE db.wsTenantName = :wsTenantName and db.isPublished")
+//    List<AzureDatabaseDTO> findAllAzureDatabasesByName(String wsTenantName);
+
+
 }

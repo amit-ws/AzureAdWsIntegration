@@ -1,8 +1,6 @@
 package com.ws.azureResourcesIntegration.repository;
 
-import com.ws.azureAdIntegration.entity.AzureTenant;
 import com.ws.azureResourcesIntegration.entities.AzureStorageAccount;
-import com.ws.azureResourcesIntegration.entities.AzureVM;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
@@ -19,5 +17,15 @@ public interface AzureStorageRepository extends JpaRepository<AzureStorageAccoun
     List<AzureStorageAccount> getAzureStorageAccountsForPrinciple(String scopeType, String principalType, String assignee, String tenantName);
 
     List<AzureStorageAccount> findAllByWsTenantNameAndIsPublishedTrue(String wsTenantName);
+
+//    @Query("SELECT new com.ws.azureResourcesIntegration.dto.AzureStorageAccountDTO(" +
+//            "sa.id, sa.azureStorageAccountId, sa.storageAccountName, sa.region, sa.createdDate, sa.kind, " +
+//            "sa.customDomainName, sa.blobPublicAccessAllowed, sa.sharedKeyAccessAllowed, sa.isAccessAllowedFromAllNetworks, " +
+//            "sa.publicNetworkAccess, sa.publicAccess, sa.skuTier, sa.accessTier, sa.resourceType, sa.resourceGroupName, " +
+//            "sa.azureResourceGroup.id, sa.azureSubscription.id, sa.isPublished, sa.updatedAt, sa.syncedAt, sa.wsTenantName) " +
+//            "FROM AzureStorageAccount sa " +
+//            "WHERE sa.wsTenantName = :wsTenantName and sa.isPublished")
+//    List<AzureStorageAccountDTO> findAllAzureStorageAccountsByName(String wsTenantName);
+
 
 }

@@ -27,8 +27,8 @@ public class AzureGroup {
     String description;
     String mail;
     String mailNickname;
-    boolean mailEnabled;
-    boolean securityEnabled;
+    Boolean mailEnabled;
+    Boolean securityEnabled;
     String visibility;
     OffsetDateTime azureCreatedDateTime;
     String securityIdentifier;

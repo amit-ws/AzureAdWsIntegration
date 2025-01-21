@@ -86,10 +86,10 @@ public class AzureAuthService {
                         .build()
         );
         backendApplicationLogservice.saveAuditLog(wsTenantName, "dummy@gmail.com", Constant.ADD, Constant.AZURE_CREDENTIALS_SAVED, "Info");
-        AzureUserCredentialDTO azureUserCredentialDTO = azureUserCredentialService.mapFromAzureUserCredentialAndDecryptSecretKey(azureUserCredential);
-        log.info("Thread name: {}", Thread.currentThread().getName());
-        azureSyncControlService.syncAzureData(graphClient, azureUserCredentialDTO);
-        return Collections.singletonMap("message", "Credentials configured successfully and Data sync started!");
+//        AzureUserCredentialDTO azureUserCredentialDTO = azureUserCredentialService.mapFromAzureUserCredentialAndDecryptSecretKey(azureUserCredential);
+//        log.info("Thread name: {}", Thread.currentThread().getName());
+//        azureSyncControlService.syncAzureData(graphClient, azureUserCredentialDTO);
+        return Collections.singletonMap("message", "Credentials configured successfully");
     }
 
 

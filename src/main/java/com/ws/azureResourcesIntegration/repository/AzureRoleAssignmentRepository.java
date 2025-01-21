@@ -4,6 +4,7 @@ import com.ws.azureAdIntegration.entity.AzureTenant;
 import com.ws.azureResourcesIntegration.entities.AzureRoleAssignment;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -17,6 +18,9 @@ public interface AzureRoleAssignmentRepository extends JpaRepository<AzureRoleAs
     void deleteByAzureRoleAssignmentPathId(String pathId);
 
     List<AzureRoleAssignment> findAllByWsTenantNameOrderByCreatedOnDesc(String wsTenantName);
+
+    @Query("SELECT a FROM AzureRoleAssignment a WHERE a.wsTenantName = :wsTenantName AND (:assignee IS NULL OR a.assignee = :assignee) ORDER BY a.createdOn DESC")
+    List<AzureRoleAssignment> findAllByWsTenantNameAndAssignee(String wsTenantName, String assignee);
 
     Optional<AzureRoleAssignment> findByAzureId(String azureId);
 }

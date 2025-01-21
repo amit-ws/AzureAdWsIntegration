@@ -8,7 +8,6 @@ import com.ws.azureAdIntegration.constants.Constant;
 import com.ws.azureAdIntegration.dto.AzureUserCredentialDTO;
 import com.ws.azureAdIntegration.entity.*;
 import com.ws.azureAdIntegration.repository.*;
-import com.ws.azureAdIntegration.util.AzureAuthUtil;
 import com.ws.azureAdIntegration.util.AzureEntityUtil;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
@@ -25,8 +24,7 @@ import java.util.stream.Collectors;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class AzureADSyncService {
     String wsTenantName;
-    String tenantEmail = "dummy@gmail.com";
-    GraphServiceClient<Request> graphClient;
+    final String tenantEmail = "dummy@gmail.com";
     final AzureUserRepository azureUserRepository;
     final AzureGroupRepository azureGroupRepository;
     final AzureDeviceRepository azureDeviceRepository;
@@ -34,14 +32,14 @@ public class AzureADSyncService {
     final AzureApplicationRepository azureApplicationRepository;
     final AzureUserGroupMembershipRepository azureUserGroupMembershipRepository;
     final AzureUserDeviceRelationshipRepository azureUserDeviceRelationshipRepository;
-    final AzureUserCredentialRepository azureUserCredentialRepository;
     final BackendApplicationLogservice backendApplicationLogservice;
-    final AzureAuthUtil azureAuthUtil;
+    final AzureADInitializerService azureADInitializerService;
 
     @Autowired
     public AzureADSyncService(AzureUserRepository azureUserRepository, AzureGroupRepository azureGroupRepository, AzureDeviceRepository azureDeviceRepository,
                               AzureTenantRepository azureTenantRepository, AzureApplicationRepository azureApplicationRepository, AzureUserGroupMembershipRepository azureUserGroupMembershipRepository,
-                              AzureUserDeviceRelationshipRepository azureUserDeviceRelationshipRepository, AzureUserCredentialRepository azureUserCredentialRepository, BackendApplicationLogservice backendApplicationLogservice, AzureAuthUtil azureAuthUtil
+                              AzureUserDeviceRelationshipRepository azureUserDeviceRelationshipRepository, AzureUserCredentialRepository azureUserCredentialRepository,
+                              BackendApplicationLogservice backendApplicationLogservice, AzureADInitializerService azureADInitializerService
     ) {
         this.azureUserRepository = azureUserRepository;
         this.azureGroupRepository = azureGroupRepository;
@@ -50,18 +48,13 @@ public class AzureADSyncService {
         this.azureApplicationRepository = azureApplicationRepository;
         this.azureUserGroupMembershipRepository = azureUserGroupMembershipRepository;
         this.azureUserDeviceRelationshipRepository = azureUserDeviceRelationshipRepository;
-        this.azureUserCredentialRepository = azureUserCredentialRepository;
         this.backendApplicationLogservice = backendApplicationLogservice;
-        this.azureAuthUtil = azureAuthUtil;
+        this.azureADInitializerService = azureADInitializerService;
     }
 
     public AzureTenant initializeGraphClientAndSyncAzureTenant(AzureUserCredentialDTO azureUserCredentialDTO, GraphServiceClient<Request> graphClient) {
         this.wsTenantName = azureUserCredentialDTO.getWsTenantName();
-        this.graphClient = Optional.ofNullable(graphClient)
-                .orElseGet(() -> {
-                    log.info("Validating user's Azure-AD credentials..");
-                    return azureAuthUtil.validateAzureCredentials(azureUserCredentialDTO);
-                });
+        azureADInitializerService.initializeGraphClient(azureUserCredentialDTO, graphClient);
         backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_AD_DATA_SYNC_START, "INFO");
         return syncTenantData(azureUserCredentialDTO.getTenantId());
     }
@@ -83,27 +76,17 @@ public class AzureADSyncService {
     }
 
     private AzureTenant syncTenantData(String tenantId) {
-        Organization organization = this.graphClient.organization(tenantId)
-                .buildRequest()
-                .get();
-
         // delete the existing tenant and re-create whatever has been fetched this time
         azureTenantRepository.deleteByAzureId(tenantId);
         azureTenantRepository.flush();
-
+        Organization organization = azureADInitializerService.getOrganizationUsingTenantId(tenantId);
         AzureTenant azureTenant = AzureEntityUtil.createAzureTenantFromGraphOrganization(organization, AzureTenant.builder().wsTenantName(this.wsTenantName).build());
         backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_TENANT_SAVED, "INFO");
         return azureTenantRepository.save(azureTenant);
     }
 
     private void syncApplications(AzureTenant azureTenant) {
-        ApplicationCollectionPage result = this.graphClient.applications()
-                .buildRequest()
-                .get();
-
-        // Delete all applications for this azureTenant and re-create the new ones
-        azureApplicationRepository.deleteAllByAzureTenant(azureTenant);
-
+        ApplicationCollectionPage result = azureADInitializerService.getApplicationCollection();
         List<AzureApplication> azureApplications = result.getCurrentPage().stream()
                 .map(graphApp -> {
                     AzureApplication azureApp = AzureEntityUtil.createAzureApplicationFromGraphApplication(
@@ -131,13 +114,7 @@ public class AzureADSyncService {
     }
 
     private List<AzureUser> syncUsersData(AzureTenant azureTenant) {
-        UserCollectionPage result = this.graphClient.users()
-                .buildRequest()
-                .get();
-
-        // delete all the users associated with azureTenant
-        azureUserRepository.deleteAllByAzureTenant(azureTenant);
-
+        UserCollectionPage result = azureADInitializerService.getUsersCollection();
         List<AzureUser> azureUsers = result.getCurrentPage().stream()
                 .map(graphUser -> AzureEntityUtil.createAzureUserFromGraphUser(graphUser, AzureUser.builder()
                         .wsTenantName(this.wsTenantName)
@@ -151,13 +128,7 @@ public class AzureADSyncService {
 
 
     private List<AzureGroup> syncGroupsData(AzureTenant azureTenant) {
-        GroupCollectionPage result = this.graphClient.groups()
-                .buildRequest()
-                .get();
-
-        // Delete the existing groups and create a fresh ones from whatever has been fetched
-        azureGroupRepository.deleteAllByAzureTenant(azureTenant);
-
+        GroupCollectionPage result = azureADInitializerService.getGroupCollection();
         List<AzureGroup> azureGroups = result.getCurrentPage().stream()
                 .map(group -> AzureEntityUtil.createAzureGroupFromGraphGroup(group, AzureGroup.builder()
                         .wsTenantName(this.wsTenantName)
@@ -177,22 +148,10 @@ public class AzureADSyncService {
 
     private void mapUsersGroupsMembershipData(Map<String, AzureUser> azureUserMap, Map<String, AzureGroup> azureGroupMap) {
         List<AzureUserGroupMembership> memberships = new ArrayList<>();
-
-        List<String> azureUserIds = azureUserMap.keySet().stream().collect(Collectors.toList());
-        azureUserIds.stream().forEach((userId) -> {
-            List<DirectoryObject> groups = this.graphClient.users(userId)
-                    .memberOf()
-                    .buildRequest()
-                    .get()
-                    .getCurrentPage()
-                    .stream()
-                    .filter(member -> "#microsoft.graph.group".equals(member.oDataType))
-                    .collect(Collectors.toList());
-
-            // Delete the existing user-group mappings of this userId and create a fresh mappings instead
-            azureUserGroupMembershipRepository.deleteByAzureUser(azureUserMap.get(userId));
-
-            groups.stream().forEach((group) -> {
+        List<String> azureUserIds = azureUserMap.keySet().stream().toList();
+        azureUserIds.forEach((userId) -> {
+            List<DirectoryObject> groups = azureADInitializerService.getGroupsOfUser(userId);
+            groups.forEach((group) -> {
                 AzureUserGroupMembership userGroup = AzureUserGroupMembership.builder()
                         .azureUser(azureUserMap.get(userId))
                         .azureUserId(userId)
@@ -209,13 +168,7 @@ public class AzureADSyncService {
 
 
     private List<AzureDevice> syncDevicesData(AzureTenant azureTenant) {
-        DeviceCollectionPage result = this.graphClient.devices()
-                .buildRequest()
-                .get();
-
-        // Delete the existing devices for this azureTenant and re-create the fresh ones
-        azureDeviceRepository.deleteAllByAzureTenant(azureTenant);
-
+        DeviceCollectionPage result = azureADInitializerService.getDeviceCollection();
         List<AzureDevice> azureDevices = result.getCurrentPage().stream()
                 .map(device -> AzureEntityUtil.createAzureDeviceFromGraphDevice(device, AzureDevice.builder()
                         .wsTenantName(this.wsTenantName)
@@ -236,21 +189,10 @@ public class AzureADSyncService {
 
     private void mapUsersDeviceRelationshipData(Map<String, AzureUser> azureUserMap, Map<String, AzureDevice> azureDeviceMap) {
         List<AzureUserDeviceRelationship> userDevices = new ArrayList<>();
-
-        List<String> azureUserIds = azureUserMap.keySet().stream().collect(Collectors.toList());
+        List<String> azureUserIds = azureUserMap.keySet().stream().toList();
         azureUserIds.forEach((userId) -> {
-            List<DirectoryObject> devices = this.graphClient.users(userId)
-                    .registeredDevices()
-                    .buildRequest()
-                    .get()
-                    .getCurrentPage()
-                    .stream()
-                    .collect(Collectors.toList());
-
-            // Delete the existing user-device mappings of this userId and create a fresh mappings instead
-            azureUserDeviceRelationshipRepository.deleteByAzureUser(azureUserMap.get(userId));
-
-            devices.stream().forEach((device) -> {
+            List<DirectoryObject> devices = azureADInitializerService.getDevicesOfUser(userId);
+            devices.forEach((device) -> {
                 AzureUserDeviceRelationship userDevice = AzureUserDeviceRelationship.builder()
                         .azureUser(azureUserMap.get(userId))
                         .azureUserId(userId)

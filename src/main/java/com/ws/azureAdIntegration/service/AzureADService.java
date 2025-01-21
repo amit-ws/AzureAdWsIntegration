@@ -2,7 +2,10 @@ package com.ws.azureAdIntegration.service;
 
 import com.ws.azureAdIntegration.entity.*;
 import com.ws.azureAdIntegration.repository.*;
+import com.ws.azureAdIntegration.util.GenericUtil;
 import com.ws.azureResourcesIntegration.dto.UserGroupAndRolesResponse;
+import com.ws.azureResourcesIntegration.entities.AzureUserConfigure;
+import com.ws.azureResourcesIntegration.repository.AzureUserConfigureRepository;
 import com.ws.projection.UserGroupAndRolesProjection;
 import com.ws.projection.UserGroupsNameProjection;
 import lombok.AccessLevel;
@@ -29,10 +32,11 @@ public class AzureADService {
     final AzureUserGroupMembershipRepository azureUserGroupMembershipRepository;
     final AzureUserDeviceRelationshipRepository azureUserDeviceRelationshipRepository;
     final AzureUserCredentialRepository azureUserCredentialRepository;
+    final AzureUserConfigureRepository azureUserConfigureRepository;
     final BackendApplicationLogservice backendApplicationLogservice;
 
     @Autowired
-    public AzureADService(AzureUserRepository azureUserRepository, AzureApplicationRepository azureApplicationRepository, AzureAppRolesRepository azureAppRolesRepository, AzureTenantRepository azureTenantRepository, AzureGroupRepository azureGroupRepository, AzureUserGroupMembershipRepository azureUserGroupMembershipRepository, AzureDeviceRepository azureDeviceRepository, AzureUserDeviceRelationshipRepository azureUserDeviceRelationshipRepository, AzureUserCredentialRepository azureUserCredentialRepository, BackendApplicationLogservice backendApplicationLogservice) {
+    public AzureADService(AzureUserRepository azureUserRepository, AzureApplicationRepository azureApplicationRepository, AzureAppRolesRepository azureAppRolesRepository, AzureTenantRepository azureTenantRepository, AzureGroupRepository azureGroupRepository, AzureUserGroupMembershipRepository azureUserGroupMembershipRepository, AzureDeviceRepository azureDeviceRepository, AzureUserDeviceRelationshipRepository azureUserDeviceRelationshipRepository, AzureUserCredentialRepository azureUserCredentialRepository, AzureUserConfigureRepository azureUserConfigureRepository, BackendApplicationLogservice backendApplicationLogservice) {
         this.azureUserRepository = azureUserRepository;
         this.azureApplicationRepository = azureApplicationRepository;
         this.azureAppRolesRepository = azureAppRolesRepository;
@@ -42,6 +46,7 @@ public class AzureADService {
         this.azureDeviceRepository = azureDeviceRepository;
         this.azureUserDeviceRelationshipRepository = azureUserDeviceRelationshipRepository;
         this.azureUserCredentialRepository = azureUserCredentialRepository;
+        this.azureUserConfigureRepository = azureUserConfigureRepository;
         this.backendApplicationLogservice = backendApplicationLogservice;
     }
 
@@ -98,22 +103,27 @@ public class AzureADService {
         azureTenantRepository.deleteByAzureId(tenantId);
     }
 
-    public List<UserGroupAndRolesResponse> getUserDetailsWithGroupNamesAndRoleNamesUsingTenantName(String wsTenantName) {
+    public List<UserGroupAndRolesResponse> getUserDetailsWithGroupNamesAndRoleNamesUsingTenantName(String wsTenantName, String azureId) {
         AzureTenant azureTenant = getAzureTenantUsingWsTenantName(wsTenantName);
-        List<UserGroupAndRolesProjection> resultSets = azureUserRepository.getUserDetailsWithGroupNamesAndRoleNamesUsingTenantName(wsTenantName, azureTenant.getId());
+        List<UserGroupAndRolesProjection> resultSets = azureUserRepository.getUserDetailsWithGroupNamesAndRoleNamesUsingTenantName(wsTenantName, azureTenant.getId(), azureId);
         if (CollectionUtils.isEmpty(resultSets)) {
             throw new RuntimeException("No data found");
         }
         return resultSets.stream()
-                .map((resultSet -> UserGroupAndRolesResponse.builder()
+                .map(resultSet -> UserGroupAndRolesResponse.builder()
                         .id(resultSet.getId())
                         .azureUserId(resultSet.getAzureUserId())
+                        .userPrincipalName(resultSet.getUserPrincipalName())
                         .displayName(resultSet.getDisplayName())
+                        .createdDateTime(resultSet.getCreatedDateTime())
                         .syncedAt(resultSet.getSyncedAt())
-                        .groups(new ArrayList<>(List.of(resultSet.getGroups().split(","))))
-                        .roleDefinitions(new ArrayList<>(List.of(resultSet.getRoles().split(","))))
-                        .build())).collect(Collectors.toList());
+                        .groups(GenericUtil.splitStringConvertToList(resultSet.getGroups()))
+                        .roleDefinitions(GenericUtil.splitStringConvertToList(resultSet.getRoles()))
+                        .build())
+                .collect(Collectors.toList());
+
     }
+
 
     public AzureUser getAzureUserById(String azureUserId) {
         return azureUserRepository.findByAzureId(azureUserId).orElseThrow(() -> new RuntimeException("No azure user found with provided id: " + azureUserId));
@@ -144,6 +154,4 @@ public class AzureADService {
         return azureGroupRepository.findById(groupId)
                 .orElseThrow(() -> new RuntimeException("No Azure User found with provided id: " + groupId));
     }
-
-
 }

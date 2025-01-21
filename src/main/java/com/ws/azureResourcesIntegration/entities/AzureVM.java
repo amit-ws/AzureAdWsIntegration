@@ -19,7 +19,7 @@ import lombok.experimental.SuperBuilder;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @Table(name = "azure_vm", schema = "azure_test")
-public class AzureVM extends BaseAzureResource{
+public class AzureVM extends BaseAzureResource {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Integer id;
@@ -45,8 +45,7 @@ public class AzureVM extends BaseAzureResource{
     @JoinColumn(name = "ws_azure_resource_group_id", referencedColumnName = "id")
     AzureResourceGroup azureResourceGroup;
 
-    @JsonIgnore
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "ws_azure_subscription_id", referencedColumnName = "id")
     AzureSubscription azureSubscription;
 

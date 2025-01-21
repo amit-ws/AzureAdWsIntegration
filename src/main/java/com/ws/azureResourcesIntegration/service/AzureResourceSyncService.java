@@ -238,6 +238,7 @@ public class AzureResourceSyncService {
                     .map(sqlServer -> {
                         List<AzureDatabase> azureDatabases = sqlServer.databases().list().stream()
                                 .map(sqlDatabase -> AzureDatabase.builder()
+                                        .instanceId(sqlDatabase.id())
                                         .azureDatabaseId(sqlDatabase.databaseId())
                                         .databaseName(sqlDatabase.name())
                                         .azureServerId(sqlServer.id())
