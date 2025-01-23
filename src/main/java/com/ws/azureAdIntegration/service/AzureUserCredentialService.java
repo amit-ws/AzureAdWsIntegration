@@ -10,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.util.Date;
 import java.util.Optional;
 
 @Service
@@ -23,8 +24,7 @@ public class AzureUserCredentialService {
     }
 
     public AzureUserCredentialDTO findWSTenantIdWithDecryptedSecret(String wsTenantName) {
-        return mapFromAzureUserCredentialAndDecryptSecretKey(azureUserCredentialRepository.findByWsTenantName(wsTenantName)
-                .orElseThrow(() -> new RuntimeException("No Azure AD configuration found for tenant: " + wsTenantName)));
+        return mapFromAzureUserCredentialAndDecryptSecretKey(findByWSTenantName(wsTenantName));
     }
 
     public AzureUserCredentialDTO mapFromAzureUserCredentialAndDecryptSecretKey(AzureUserCredential azureUserCredential) {
@@ -32,4 +32,22 @@ public class AzureUserCredentialService {
         azureUserCredentialDTO.setClientSecret(EncryptionUtil.getDecryptedKey(azureUserCredentialDTO.getClientSecret(), Constant.AZURE_CLIENT_SECRET));
         return azureUserCredentialDTO;
     }
+
+    public AzureUserCredential findByWSTenantName(String wsTenantName) {
+        AzureUserCredential azureUserCredential = azureUserCredentialRepository.findByWsTenantName(wsTenantName)
+                .orElseThrow(() -> new RuntimeException("No Azure AD configuration found for tenant: " + wsTenantName));
+        log.info("status -> {}", azureUserCredential.isSyncStatus());
+        return azureUserCredential;
+    }
+
+    public AzureUserCredential updateAzureUserCredentialSyncStatus(String wsTenantName) {
+        AzureUserCredential azureUserCredential = findByWSTenantName(wsTenantName);
+        if (azureUserCredential.isSyncStatus()) {
+            throw new RuntimeException("Sync is already in progress. It may take some time depending on your data size");
+        }
+        azureUserCredential.setSyncStatus(true);
+        azureUserCredential.setUpdatedAt(new Date());
+        return azureUserCredentialRepository.saveAndFlush(azureUserCredential);
+    }
+
 }

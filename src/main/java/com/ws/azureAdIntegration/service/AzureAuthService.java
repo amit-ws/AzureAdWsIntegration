@@ -4,7 +4,7 @@ import com.microsoft.graph.requests.GraphServiceClient;
 import com.ws.azureAdIntegration.constants.Constant;
 import com.ws.azureAdIntegration.dto.AzureUserCredentialDTO;
 import com.ws.azureAdIntegration.dto.CreateAzureConfiguration;
-import com.ws.azureAdIntegration.entity.AzureTenant;
+import com.ws.azureAdIntegration.dto.AzureDataResponse;
 import com.ws.azureAdIntegration.entity.AzureUser;
 import com.ws.azureAdIntegration.entity.AzureUserCredential;
 import com.ws.azureAdIntegration.repository.AzureUserCredentialRepository;
@@ -12,7 +12,6 @@ import com.ws.azureAdIntegration.repository.AzureUserRepository;
 import com.ws.azureAdIntegration.util.AzureAuthUtil;
 import com.ws.azureAdIntegration.util.EncryptionUtil;
 import com.ws.azureResourcesIntegration.service.AzureResourceSyncService;
-import com.ws.mapper.AzureEntitiesMapper;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import okhttp3.Request;
@@ -82,13 +81,15 @@ public class AzureAuthService {
                         .tenantId(tenantId)
                         .subscriptionId(subscriptionId)
                         .wsTenantName(wsTenantName)
+                        .syncStatus(true)
                         .createdAt(new Date())
                         .build()
         );
         backendApplicationLogservice.saveAuditLog(wsTenantName, "dummy@gmail.com", Constant.ADD, Constant.AZURE_CREDENTIALS_SAVED, "Info");
-//        AzureUserCredentialDTO azureUserCredentialDTO = azureUserCredentialService.mapFromAzureUserCredentialAndDecryptSecretKey(azureUserCredential);
-//        log.info("Thread name: {}", Thread.currentThread().getName());
-//        azureSyncControlService.syncAzureData(graphClient, azureUserCredentialDTO);
+        AzureUserCredentialDTO azureUserCredentialDTO = azureUserCredentialService.mapFromAzureUserCredentialAndDecryptSecretKey(azureUserCredential);
+        log.info("Thread name: {}", Thread.currentThread().getName());
+        backendApplicationLogservice.saveAuditLog(wsTenantName, "dummy@gmail.com", Constant.ADD, Constant.AZURE_AD_DATA_SYNC_START, "INFO");
+        azureSyncControlService.syncAzureData(graphClient, azureUserCredentialDTO);
         return Collections.singletonMap("message", "Credentials configured successfully");
     }
 
@@ -113,7 +114,7 @@ public class AzureAuthService {
     }
 
     @Transactional
-    public AzureUserCredentialDTO updateSubscriptionId(Integer credId, String subscriptionId) {
+    public AzureUserCredentialDTO updateSubscriptionId1(Integer credId, String subscriptionId) {
         AzureUserCredential updatedCredential = updateSubscriptionIdInCredential(subscriptionId,
                 azureUserCredentialRepository.findById(credId).orElseThrow(() -> new RuntimeException("No azure credentials found with provided id: " + credId)));
         backendApplicationLogservice.saveAuditLog(updatedCredential.getWsTenantName(), "demo@gmail.com", "UPDATE", Constant.AZURE_SUBSCRIPTION_ID_UPDATED, "Info");
@@ -122,6 +123,52 @@ public class AzureAuthService {
         azureSyncControlService.syncAzureResourcesData(azureUserCredentialDTO);
         return azureUserCredentialDTO;
     }
+
+    @Transactional
+    public AzureDataResponse updateSubscriptionId2(Integer credId, String subscriptionId) {
+        AzureDataResponse response = new AzureDataResponse();
+        AzureUserCredential updatedCredential = updateSubscriptionIdInCredential(subscriptionId,
+                azureUserCredentialRepository.findById(credId).orElseThrow(() -> new RuntimeException("No azure credentials found with provided id: " + credId)));
+        backendApplicationLogservice.saveAuditLog(updatedCredential.getWsTenantName(), "demo@gmail.com", "UPDATE", Constant.AZURE_SUBSCRIPTION_ID_UPDATED, "Info");
+        backendApplicationLogservice.saveAuditLog(updatedCredential.getWsTenantName(), "demo@gmail.com", "ADD", Constant.AZURE_RESOURCE_DATA_SYNC_START, "Info");
+        response.setData(updatedCredential);
+        if (updatedCredential.isSyncStatus()) {
+            response.setMessage("Subscription ID has been updated. Azure resources data sync has been paused as an earlier sync process is currently in progress");
+        } else {
+            updatedCredential.setSyncStatus(true);
+            azureUserCredentialRepository.save(updatedCredential);
+            response.setMessage("Subscription ID updated and Azure resources data sync started");
+            azureSyncControlService.syncAzureResourcesData(azureUserCredentialService.mapFromAzureUserCredentialAndDecryptSecretKey(updatedCredential));
+        }
+        return response;
+    }
+
+
+    @Transactional
+    public AzureDataResponse updateSubscriptionId(Integer credId, String subscriptionId) {
+        log.info("Thread name for updateSubscriptionId: {}", Thread.currentThread().getName());
+        AzureDataResponse response = new AzureDataResponse();
+        boolean flag = false;
+        AzureUserCredential azureUserCredential = azureUserCredentialRepository.findById(credId).orElseThrow(() -> new RuntimeException("No azure credentials found with provided id: " + credId));
+        log.info("azureUserCredential status: {}", azureUserCredential.isSyncStatus());
+        if (azureUserCredential.isSyncStatus()) {
+            flag = true;
+            response.setMessage("Subscription ID has been updated. Azure resources data sync has been paused as an earlier sync process is currently in progress");
+        } else {
+            azureUserCredential.setSyncStatus(true);
+            response.setMessage("Subscription ID updated and Azure resources data sync started");
+        }
+
+        azureUserCredential.setSubscriptionId(subscriptionId);
+        azureUserCredential.setUpdatedAt(new Date());
+        azureUserCredentialRepository.saveAndFlush(azureUserCredential);
+        if (!flag) {
+            azureSyncControlService.syncAzureResourcesData(azureUserCredentialService.mapFromAzureUserCredentialAndDecryptSecretKey(azureUserCredential));
+        }
+        response.setData(azureUserCredential);
+        return response;
+    }
+
 
     private AzureUserCredential updateSubscriptionIdInCredential(String subscriptionId, AzureUserCredential azureUserCredential) {
         azureUserCredential.setSubscriptionId(subscriptionId);

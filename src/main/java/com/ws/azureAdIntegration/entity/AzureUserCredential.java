@@ -26,6 +26,9 @@ public class AzureUserCredential {
     @Column(unique = true)
     String subscriptionId;
 
+    @Column(columnDefinition = "boolean default false")
+    boolean syncStatus;
+
     Date createdAt;
     Date updatedAt;
     String wsTenantName; // Whiteswan account organization name

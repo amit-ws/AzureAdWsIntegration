@@ -5,6 +5,8 @@ import com.azure.resourcemanager.AzureResourceManager;
 import com.azure.resourcemanager.authorization.models.RoleAssignment;
 import com.azure.resourcemanager.authorization.models.RoleDefinition;
 import com.azure.resourcemanager.compute.models.VirtualMachine;
+import com.azure.resourcemanager.containerservice.models.CredentialResult;
+import com.azure.resourcemanager.containerservice.models.KubernetesCluster;
 import com.azure.resourcemanager.resources.models.PolicyAssignment;
 import com.azure.resourcemanager.resources.models.PolicyDefinition;
 import com.azure.resourcemanager.resources.models.ResourceGroup;
@@ -15,12 +17,23 @@ import com.azure.resourcemanager.sql.models.SqlServer;
 import com.ws.azureAdIntegration.util.GenericUtil;
 import com.ws.configuration.AzureAuthConfigurationFactory;
 import com.ws.azureResourcesIntegration.dto.*;
+import io.kubernetes.client.openapi.ApiClient;
+import io.kubernetes.client.openapi.ApiException;
+import io.kubernetes.client.openapi.Configuration;
+import io.kubernetes.client.openapi.apis.CoreV1Api;
+import io.kubernetes.client.openapi.models.V1NamespaceList;
+import io.kubernetes.client.openapi.models.V1PodList;
+import io.kubernetes.client.util.Config;
+import io.kubernetes.client.util.KubeConfig;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.StringReader;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
@@ -29,10 +42,10 @@ import java.util.stream.StreamSupport;
 @Slf4j
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class AzureResourcesTestService {
-//    final String clientId = "f741d2f8-8ec5-4246-9051-96fd8f041267";
-//    final String clientSecret = "C6n8Q~Pe3lYUXaRp6gLNOZUK~uM5UUSkqP~9JbuY";
-//    final String tenantId = "0079de83-6146-45cb-a189-5d5b03507ce8";
-//    final String subscriptionId = "15b85f1d-1983-469c-a593-46fe8fc514f7";
+    final String clientId2 = "f741d2f8-8ec5-4246-9051-96fd8f041267";
+    final String clientSecret2 = "C6n8Q~Pe3lYUXaRp6gLNOZUK~uM5UUSkqP~9JbuY";
+    final String tenantId2 = "0079de83-6146-45cb-a189-5d5b03507ce8";
+    final String subscriptionId2 = "15b85f1d-1983-469c-a593-46fe8fc514f7";
     final String clientId = "cb51e8d1-519c-4e18-9b2f-28d53e6badd1";
     final String clientSecret = "3F18Q~iM8DjCXg7rL~2.BZZPtdGNAzfOf2qXRdhC";
     final String tenantId = "f875ebf8-f5f0-4915-a2c9-4442e0118fd2";
@@ -325,6 +338,87 @@ public class AzureResourcesTestService {
         return response;
     }
 
+
+    public Map<String, String> listK8Clusters() {
+//        AzureResourceManager azureResourceManager = getAzureResourceManager(clientId2, clientSecret2, tenantId2, subscriptionId2);
+        AzureResourceManager azureResourceManager = getAzureResourceManager();
+        PagedIterable<KubernetesCluster> aksClusters = azureResourceManager.kubernetesClusters().list();
+        Map<String, String> clusterDetailsMap = new HashMap<>();
+
+        log.info("total: {}", aksClusters.stream().count());
+
+        for (KubernetesCluster k8Cluster : aksClusters) {
+            clusterDetailsMap.put("ID", k8Cluster.id());
+            clusterDetailsMap.put("Cluster Name", k8Cluster.name());
+            clusterDetailsMap.put("Region", k8Cluster.regionName());
+            clusterDetailsMap.put("Resource Group", k8Cluster.resourceGroupName());
+            clusterDetailsMap.put("Kubernetes Version", k8Cluster.version());
+            clusterDetailsMap.put("Region name", k8Cluster.region().name());
+            clusterDetailsMap.put("Region label", k8Cluster.region().label());
+            clusterDetailsMap.put("Service Principal Client ID", k8Cluster.servicePrincipalClientId());
+            clusterDetailsMap.put("Disk Encryption Set ID", k8Cluster.diskEncryptionSetId());
+            clusterDetailsMap.put("Power State", GenericUtil.getOrNull(() -> k8Cluster.powerState().code().getValue()));
+            clusterDetailsMap.put("Provisioning State", k8Cluster.provisioningState());
+            clusterDetailsMap.put("Type", GenericUtil.getOrNull(k8Cluster::type));
+            clusterDetailsMap.put("SKU name", GenericUtil.getOrNull(() -> k8Cluster.sku().name().getValue()));
+            clusterDetailsMap.put("SKU tier", GenericUtil.getOrNull(() -> k8Cluster.sku().tier().getValue()));
+            clusterDetailsMap.put("Is Azure RBAC Enabled", String.valueOf(k8Cluster.isAzureRbacEnabled()));
+            clusterDetailsMap.put("Public Network Access", GenericUtil.getOrNull(() -> k8Cluster.publicNetworkAccess().getValue()));
+            clusterDetailsMap.put("Node Resource Group", k8Cluster.nodeResourceGroup());
+            clusterDetailsMap.put("Is Local Accounts Enabled", String.valueOf(k8Cluster.isLocalAccountsEnabled()));
+            clusterDetailsMap.put("ManagedClusterIdentity type", GenericUtil.getOrNull(() -> k8Cluster.innerModel().identity().type().name()));
+
+            //            clusterDetailsMap.put("Tags", GenericUtil.getOrNull(() -> k8Cluster.tags().values()));
+            //            clusterDetailsMap.put("Network Profile", GenericUtil.getOrNull(() -> k8Cluster.networkProfile().toString()));
+
+        }
+
+        return clusterDetailsMap;
+    }
+
+
+    /**
+     * 1. Fetch all k8 clusters from the Azure using Azure SDK
+     * 2. Get the credentials from the k8 clusters
+     * 3. Use the credentials for these clusters and Interact with the K8 aoi client to fetch the resources within
+     */
+    public void listDownK8Resources() {
+        try {
+            // Fetch the Azure AKS cluster's admin kubeconfig credentials
+            AzureResourceManager azureResourceManager = getAzureResourceManager();
+            KubernetesCluster cluster = azureResourceManager
+                    .kubernetesClusters()
+                    .getByResourceGroup("resourceGroupName", "aksClusterName");
+
+            // Get the admin kubeconfig credentials (returns a List of CredentialResult)
+            List<CredentialResult> credentials = cluster.adminKubeConfigs();
+            if (credentials == null || credentials.isEmpty()) {
+                log.error("Error: No credentials found for the AKS cluster.");
+                return;
+            }
+
+            // Extract the kubeconfig content as byte array and convert it into a String
+            byte[] kubeConfigContent = credentials.get(0).value();
+            String kubeConfigString = new String(kubeConfigContent); // Convert byte[] to String
+            // Use Config.fromConfig() to get ApiClient from the kubeconfig string
+            ApiClient client = Config.fromConfig(new StringReader(kubeConfigString));
+            // Set the default API client
+            Configuration.setDefaultApiClient(client);
+            // Create the CoreV1Api instance to interact with Kubernetes
+            CoreV1Api api = new CoreV1Api();
+
+            // List down all the Namespaces
+            V1NamespaceList namespaceList = api.listNamespace().execute();
+            // List all pods in a namespace
+            V1PodList podList = api.listNamespacedPod(Objects.requireNonNull(namespaceList.getItems().get(0).getMetadata()).getName()).execute();
+            // Print the names of all pods in the 'default' namespace
+            podList.getItems().forEach(pod -> System.out.println("Pod name: " + Objects.requireNonNull(pod.getMetadata()).getName()));
+        } catch (IOException exp) {
+            log.error("Error interacting with AKS resources: {}", exp.getMessage(), exp);
+        } catch (Exception exp) {
+            log.error("Unexpected error: {}", exp.getMessage(), exp);
+        }
+    }
 
 
 

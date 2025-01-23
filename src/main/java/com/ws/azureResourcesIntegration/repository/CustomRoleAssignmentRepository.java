@@ -1,6 +1,7 @@
 package com.ws.azureResourcesIntegration.repository;
 
 import com.ws.azureResourcesIntegration.constant.RequestStatus;
+import com.ws.azureResourcesIntegration.dto.CustomRoleAssignmentDTO;
 import com.ws.azureResourcesIntegration.entities.CustomRoleAssignment;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -17,12 +18,18 @@ public interface CustomRoleAssignmentRepository extends JpaRepository<CustomRole
     //    List<CustomRoleAssignment> findAllByWsTenantNameAndStatusOrderByCreatedOnDesc(String wsTenantName, RequestStatus status);
     List<CustomRoleAssignment> findAllByStatus(RequestStatus status);
 
-    @Query("SELECT c FROM CustomRoleAssignment c WHERE c.wsTenantName = :wsTenantName AND (:status IS NULL OR c.status = :status) ORDER BY c.createdOn DESC")
+    @Query("SELECT c FROM CustomRoleAssignment c WHERE c.wsTenantName = :wsTenantName AND (:status IS NULL OR c.status = :status) ORDER BY c.requestedAt DESC")
     List<CustomRoleAssignment> findAllByWsTenantNameAndStatus(@Param("wsTenantName") String wsTenantName, @Param("status") RequestStatus status);
 
-    @Query("SELECT c FROM CustomRoleAssignment c WHERE c.wsTenantName = :wsTenantName AND (:status IS NULL OR c.status = :status)  " +
-            "AND (:assignee IS NULL OR c.assignee = :assignee) ORDER BY c.createdOn DESC")
-    List<CustomRoleAssignment> findAllByWsTenantNameAndStatus2(@Param("wsTenantName") String wsTenantName, @Param("status") RequestStatus status, String assignee);
+    @Query("SELECT new com.ws.azureResourcesIntegration.dto.CustomRoleAssignmentDTO(c.id, c.azureId, c.azureRoleAssignmentPathId, c.description, c.assignee, " +
+            "c.principalType, c.scope, c.scopeType, c.condition, c.azureRoleDefinitionPathId, c.wsTenantName, c.status, c.requestedAt, c.updatedAt, c.validFrom," +
+            " c.validTo, c.expiryTimeAmount, c.userEmail, au.displayName, ard.roleName) " +
+            "FROM CustomRoleAssignment c " +
+            "LEFT JOIN AzureRoleDefinition ard ON c.azureRoleDefinitionPathId = ard.rolePathId " +
+            "LEFT JOIN AzureUser au ON c.assignee = au.azureId " +
+            "WHERE c.wsTenantName = :wsTenantName AND (:status IS NULL OR c.status = :status)  AND (:assignee IS NULL OR c.assignee = :assignee) " +
+            "ORDER BY c.requestedAt DESC")
+    List<CustomRoleAssignmentDTO> findAllByWsTenantNameAndStatus2(@Param("wsTenantName") String wsTenantName, @Param("status") RequestStatus status, String assignee);
 
 
 }

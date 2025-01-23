@@ -303,7 +303,7 @@ public class AzureResourceService {
 
     private CustomRoleAssignment updateCustomRoleAssignment(CustomRoleAssignment customRoleAssignment, AssignRoleRequest request) {
         customRoleAssignment.setStatus(RequestStatus.PENDING);
-        customRoleAssignment.setUpdatedOn(OffsetDateTime.now());
+        customRoleAssignment.setUpdatedAt(new Date());
         customRoleAssignment.setExpiryTimeAmount(request.getExpiryTimeAmount());
         customRoleAssignment.setDescription(GenericUtil.getOrNull(() -> request.getDescription().trim()));
         return customRoleAssignmentRepository.save(customRoleAssignment);
@@ -319,26 +319,34 @@ public class AzureResourceService {
     }
 
 
-    public Collection<?> getAllRaisedRoleAssignmentRequest(String wsTenantName, RequestStatus status, String userEmail) {
+    public Collection<CustomRoleAssignmentDTO> getAllRaisedRoleAssignmentRequest(String wsTenantName, RequestStatus status, String userEmail) {
         String azureId = Optional.ofNullable(userEmail)
                 .map(email -> azureUserConfigureRepository.findByEmailAndWsTenantName(email.trim(), wsTenantName)
                         .orElseThrow(() -> new RuntimeException("No data found for provided email: " + email)))
                 .map(AzureUserConfigure::getAzureId)
                 .orElse(null);
-        List<CustomRoleAssignment> customRoleAssignments = customRoleAssignmentRepository.findAllByWsTenantNameAndStatus2(wsTenantName, status, azureId);
-        if (RequestStatus.APPROVED.equals(status) || status == null) {
-            Map<String, CustomRoleAssignment> customRoleAssignmentMap = new LinkedHashMap<>();
-            customRoleAssignments.forEach(customRoleAssignment -> customRoleAssignmentMap.put(customRoleAssignment.getAzureId(), customRoleAssignment));
-            List<CustomRoleAssignment> mappedCustomRoleAssignments = AzureEntitiesMapper.INSTANCE.fromAzureRoleAssignments(azureRoleAssignmentRepository.findAllByWsTenantNameAndAssignee(wsTenantName, azureId));
-            mappedCustomRoleAssignments.forEach(customRoleAssignment -> customRoleAssignment.setStatus(RequestStatus.APPROVED));
-            mappedCustomRoleAssignments.stream()
-                    .filter(customRoleAssignment -> !customRoleAssignmentMap.containsKey(customRoleAssignment.getAzureId()))
-                    .forEach(customRoleAssignment -> customRoleAssignmentMap.put(customRoleAssignment.getAzureId(), customRoleAssignment));
-            log.info("1 size: {}", customRoleAssignmentMap.values().size());
-            return customRoleAssignmentMap.values();
-        }
+        List<CustomRoleAssignmentDTO> customRoleAssignments = customRoleAssignmentRepository.findAllByWsTenantNameAndStatus2(wsTenantName, status, azureId);
+//        if (RequestStatus.APPROVED.equals(status) || status == null) {
+//            Map<String, CustomRoleAssignmentDTO> customRoleAssignmentMap = new LinkedHashMap<>();
+//            customRoleAssignments.forEach(customRoleAssignment -> customRoleAssignmentMap.put(customRoleAssignment.getAzureId(), customRoleAssignment));
+//            List<CustomRoleAssignmentDTO> mappedCustomRoleAssignments = azureRoleAssignmentRepository.findAllByWsTenantNameAndAssignee(wsTenantName, azureId);
+//            mappedCustomRoleAssignments.forEach(customRoleAssignment -> customRoleAssignment.setStatus(RequestStatus.APPROVED));
+//            mappedCustomRoleAssignments.stream()
+//                    .filter(customRoleAssignment -> !customRoleAssignmentMap.containsKey(customRoleAssignment.getAzureId()))
+//                    .forEach(customRoleAssignment -> customRoleAssignmentMap.put(customRoleAssignment.getAzureId(), customRoleAssignment));
+//            log.info("1 size: {}", customRoleAssignmentMap.values().size());
+//            setResourceName(customRoleAssignmentMap.values());
+//            return customRoleAssignmentMap.values();
+//        }
         log.info("2 size: {}", customRoleAssignments.size());
+        setResourceName(customRoleAssignments);
         return customRoleAssignments;
+    }
+
+    private void setResourceName(Collection<CustomRoleAssignmentDTO> dtos) {
+        dtos.forEach((dto -> {
+            dto.setResourceName(GenericUtil.extractLastValue(dto.getScope()));
+        }));
     }
 
 
@@ -438,7 +446,7 @@ public class AzureResourceService {
 
     private void updateCustomRoleAssignmentCommonFields(CustomRoleAssignment customRoleAssignment, RequestStatus status) {
         customRoleAssignment.setStatus(status);
-        customRoleAssignment.setUpdatedOn(OffsetDateTime.now());
+        customRoleAssignment.setUpdatedAt(new Date());
         customRoleAssignmentRepository.save(customRoleAssignment);
     }
 

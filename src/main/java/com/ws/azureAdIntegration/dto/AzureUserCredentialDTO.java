@@ -18,5 +18,6 @@ public class AzureUserCredentialDTO {
     String subscriptionId;
     Date createdAt;
     Date updatedAt;
+    boolean syncStatus;
     String wsTenantName;
 }

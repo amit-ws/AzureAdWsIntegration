@@ -36,4 +36,13 @@ public class AzureUserConfigureController {
                 .status(HttpStatus.CREATED)
                 .body(azureUserConfigureService.configureAzureUser(request));
     }
+
+
+    @GetMapping("/get")
+    public ResponseEntity dataGet(@RequestParam String  id, @RequestParam String  tenantName){
+        return ResponseEntity
+                .status(HttpStatus.OK)
+                .body(azureUserConfigureService.findUser(id.trim(), tenantName.trim()));
+    }
+
 }

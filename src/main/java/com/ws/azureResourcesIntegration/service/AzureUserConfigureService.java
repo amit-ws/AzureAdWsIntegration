@@ -60,6 +60,7 @@ public class AzureUserConfigureService {
         if (azureUserConfigureRepository.existsByAzureIdOrEmail(azureId, userEmail)) {
             throw new RuntimeException(String.format("User already configured with the provided email: %s Or azure-id: %s", userEmail, azureId));
         }
+
         if (azureUserRepository.findByAzureId(azureId).isEmpty()) {
             AzureUserCredentialDTO credentialDTO = azureUserCredentialService.findWSTenantIdWithDecryptedSecret(wsTenantName);
             try {
@@ -84,6 +85,14 @@ public class AzureUserConfigureService {
                 .build());
         backendApplicationLogservice.saveAuditLog(wsTenantName, displayName, Constant.ADD, String.format("Added aws user config with username: %s and azure-id: %s", displayName, azureId), "Info");
         return savedUserConfig;
+    }
+
+
+    public Object findUser(String id, String tenantName) {
+        AzureUserCredentialDTO credentialDTO = azureUserCredentialService.findWSTenantIdWithDecryptedSecret(tenantName);
+        azureADInitializerService.initializeGraphClient(credentialDTO, null);
+        User user = azureADInitializerService.findUserByUserId(id);
+        return user.displayName;
     }
 
 

@@ -136,10 +136,11 @@ public final class AzureEntityUtil {
         customRoleAssignment.setAssignee(request.getPrincipleId().trim());
         customRoleAssignment.setPrincipalType(request.getPrincipleType().getValue());
         customRoleAssignment.setScopeType(GenericUtil.determineScopeType(request.getResourceScope()));
-        customRoleAssignment.setDescription(request.getDescription());
+        customRoleAssignment.setDescription(GenericUtil.getOrNull(() -> request.getDescription().trim()));
         customRoleAssignment.setStatus(RequestStatus.PENDING);
-        customRoleAssignment.setCreatedOn(OffsetDateTime.now());
+        customRoleAssignment.setRequestedAt(new Date());
         customRoleAssignment.setExpiryTimeAmount(request.getExpiryTimeAmount());
+        customRoleAssignment.setUserEmail(request.getUserEmail().trim());
         customRoleAssignment.setWsTenantName(request.getTenantName().trim());
 //        customRoleAssignment.setAzureSubscription(request.getSubscriptionId().trim());
         return customRoleAssignment;

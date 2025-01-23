@@ -102,4 +102,13 @@ public class AzureResourcesTestController {
 //    public void fetchRoleDefinitionEntityHandler() {
 //        azureResourcesTestService.fetchRoleDefinitionEntity();
 //    }
+
+
+    @GetMapping("/k8")
+    public ResponseEntity k8ClustersHandler() {
+        return ResponseEntity
+                .status(HttpStatus.OK)
+                .body(azureResourcesTestService.listK8Clusters());
+    }
+
 }

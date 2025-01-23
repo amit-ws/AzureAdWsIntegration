@@ -55,7 +55,6 @@ public class AzureADSyncService {
     public AzureTenant initializeGraphClientAndSyncAzureTenant(AzureUserCredentialDTO azureUserCredentialDTO, GraphServiceClient<Request> graphClient) {
         this.wsTenantName = azureUserCredentialDTO.getWsTenantName();
         azureADInitializerService.initializeGraphClient(azureUserCredentialDTO, graphClient);
-        backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_AD_DATA_SYNC_START, "INFO");
         return syncTenantData(azureUserCredentialDTO.getTenantId());
     }
 

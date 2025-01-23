@@ -2,10 +2,7 @@ package com.ws.azureAdIntegration.util;
 
 import com.ws.azureResourcesIntegration.constant.AzureResourcesType;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 import java.util.function.Supplier;
 
 public class GenericUtil {
@@ -36,6 +33,27 @@ public class GenericUtil {
         } else {
             return new ArrayList<>();
         }
+    }
+
+    public static String extractLastValue(String input) {
+        if (input == null) {
+            return null;
+        }
+        String[] parts = input.split("/");
+        if (parts.length == 0) {
+            return null;
+        }
+        return parts[parts.length - 1];
+    }
+
+    public static String extractLastValueOld(String input) {
+        if (input == null) {
+            return null;
+        }
+        return Arrays.stream(input.split("/"))
+                .filter(part -> !part.isEmpty())
+                .reduce((first, second) -> second)
+                .orElse(null);
     }
 
     public static String determineScopeType(String scope) {

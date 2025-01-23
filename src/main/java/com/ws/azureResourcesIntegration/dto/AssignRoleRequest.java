@@ -30,5 +30,7 @@ public class AssignRoleRequest {
     AzurePrincipleType principleType;
     @Positive(message = "Expiry time amount must be greater than 0 if specified")
     Long expiryTimeAmount;  /* null -> means, unlimited time*/
+    @NotNull(message = "User email is required")
+    String userEmail; /* Person who raised the request (from AzureUserConfigure Entity)*/
     String description;
 }

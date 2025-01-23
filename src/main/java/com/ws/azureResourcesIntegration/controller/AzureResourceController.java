@@ -2,10 +2,7 @@ package com.ws.azureResourcesIntegration.controller;
 
 import com.ws.azureResourcesIntegration.constant.AzureResourcesType;
 import com.ws.azureResourcesIntegration.constant.RequestStatus;
-import com.ws.azureResourcesIntegration.dto.AssignRoleRequest;
-import com.ws.azureResourcesIntegration.dto.AzureRoleDefinitionDTO;
-import com.ws.azureResourcesIntegration.dto.AzureRolePrincipleAssociationResponse;
-import com.ws.azureResourcesIntegration.dto.ApplicableRoleDefinition;
+import com.ws.azureResourcesIntegration.dto.*;
 import com.ws.azureResourcesIntegration.entities.*;
 import com.ws.azureResourcesIntegration.service.AzureResourceService;
 import jakarta.validation.Valid;
@@ -105,7 +102,7 @@ public class AzureResourceController {
     }
 
     @GetMapping("/v1/requests/all")
-    public ResponseEntity<Collection<?>> getAllRaiseRoleAssignmentRequestHandler(@RequestParam("tenantName") String wsTenantName,
+    public ResponseEntity<Collection<CustomRoleAssignmentDTO>> getAllRaiseRoleAssignmentRequestHandler(@RequestParam("tenantName") String wsTenantName,
                                                                                  @RequestParam(value = "state", required = false) RequestStatus status,
                                                                                  @RequestParam(value = "email", required = false) String userEmail) {
         return ResponseEntity.ok(azureResourceService.getAllRaisedRoleAssignmentRequest(wsTenantName, status, userEmail));

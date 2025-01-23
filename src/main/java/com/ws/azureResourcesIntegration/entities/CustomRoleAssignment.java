@@ -9,6 +9,7 @@ import lombok.experimental.FieldDefaults;
 
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.util.Date;
 
 @Builder
 @NoArgsConstructor
@@ -21,7 +22,7 @@ public class CustomRoleAssignment {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Integer id;
-    String azureId; /* Azure ID of RoleAssignment*/
+    String azureId; /* Azure ID of RoleAssignment */
     String azureRoleAssignmentPathId;
     String description;
     String assignee;
@@ -35,16 +36,24 @@ public class CustomRoleAssignment {
     @Enumerated(EnumType.STRING)
     RequestStatus status;
 
-    OffsetDateTime createdOn;
-    OffsetDateTime updatedOn;
+    Date requestedAt;
+    Date updatedAt;
+
     LocalDateTime validFrom;
     LocalDateTime validTo;
     Long expiryTimeAmount;
 
-    @Transient
-    String updatedBy;
-    @Transient
-    String createdBy;
+    String userEmail; /*From AzureUserConfigure*/
+
+//    /*From Azure*/
+//    @Transient
+//    String updatedBy;
+//    @Transient
+//    String createdBy;
+//    @Transient
+//    OffsetDateTime createdOn;
+//    @Transient
+//    OffsetDateTime updatedOn;
 
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
