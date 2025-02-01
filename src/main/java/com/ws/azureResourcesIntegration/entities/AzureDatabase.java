@@ -42,6 +42,7 @@ public class AzureDatabase extends BaseAzureResource{
     String defaultSecondaryLocation;
     String resourceType;
     String resourceGroupName;
+    String subscriptionId;
 
 
 //    @JsonIgnore

@@ -1,6 +1,7 @@
 package com.ws.service;
 
 import lombok.AccessLevel;
+import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.experimental.FieldDefaults;
@@ -9,6 +10,7 @@ import java.util.Map;
 
 @Getter
 @Setter
+@Data
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class TokenManager {
     String accessToken;

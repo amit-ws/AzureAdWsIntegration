@@ -2,13 +2,15 @@ package com.ws.azureAdIntegration.util;
 
 import com.azure.resourcemanager.authorization.models.RoleAssignment;
 import com.microsoft.graph.models.*;
+import com.ws.azureAdIntegration.constants.CloudProviderType;
 import com.ws.azureAdIntegration.entity.*;
 import com.ws.azureResourcesIntegration.constant.RequestStatus;
 import com.ws.azureResourcesIntegration.dto.AssignRoleRequest;
+import com.ws.azureResourcesIntegration.dto.PublishResourceRequest;
 import com.ws.azureResourcesIntegration.entities.AzureRoleAssignment;
 import com.ws.azureResourcesIntegration.entities.CustomRoleAssignment;
+import com.ws.azureResourcesIntegration.entities.PublishedResource;
 
-import java.time.OffsetDateTime;
 import java.util.Date;
 import java.util.UUID;
 
@@ -129,7 +131,9 @@ public final class AzureEntityUtil {
         return azureRoleAssignment;
     }
 
-    public static CustomRoleAssignment createCustomRoleAssignmentFromAssignRoleRequestPayload(AssignRoleRequest request, CustomRoleAssignment customRoleAssignment) {
+    public static CustomRoleAssignment createFromAssignRoleRequestPayload(AssignRoleRequest request) {
+        GenericUtil.ensureNotNull(request, "Payload cannot be null");
+        CustomRoleAssignment customRoleAssignment = new CustomRoleAssignment();
         customRoleAssignment.setAzureId(UUID.randomUUID().toString());
         customRoleAssignment.setScope(request.getResourceScope().trim());
         customRoleAssignment.setAzureRoleDefinitionPathId(request.getRoleDefinitionPathId().trim());
@@ -141,9 +145,18 @@ public final class AzureEntityUtil {
         customRoleAssignment.setRequestedAt(new Date());
         customRoleAssignment.setExpiryTimeAmount(request.getExpiryTimeAmount());
         customRoleAssignment.setUserEmail(request.getUserEmail().trim());
+        customRoleAssignment.setSubscriptionId(request.getSubscriptionId().trim());
         customRoleAssignment.setWsTenantName(request.getTenantName().trim());
-//        customRoleAssignment.setAzureSubscription(request.getSubscriptionId().trim());
         return customRoleAssignment;
     }
 
+
+    public static PublishedResource createPublishedResourcesFromRequest(PublishResourceRequest request) {
+        PublishedResource resource = new PublishedResource();
+        resource.setResourceId(request.getAzureId().trim());
+        resource.setWsTenantName(request.getWsTenantName().trim());
+        resource.setResourceType(request.getType());
+        resource.setCloudProviderType(CloudProviderType.AZURE);
+        return resource;
+    }
 }

@@ -4,10 +4,12 @@ package com.ws.azureResourcesIntegration.service;
 import com.azure.resourcemanager.AzureResourceManager;
 import com.azure.resourcemanager.authorization.models.PrincipalType;
 import com.azure.resourcemanager.authorization.models.RoleAssignment;
+import com.ws.azureAdIntegration.dto.AzureUserCredentialDTO;
 import com.ws.azureAdIntegration.entity.AzureTenant;
 import com.ws.azureAdIntegration.repository.AzureGroupRepository;
 import com.ws.azureAdIntegration.repository.AzureUserRepository;
 import com.ws.azureAdIntegration.service.AzureADService;
+import com.ws.azureAdIntegration.service.AzureTenantService;
 import com.ws.azureAdIntegration.service.AzureUserCredentialService;
 import com.ws.azureAdIntegration.util.AzureAuthUtil;
 import com.ws.azureAdIntegration.util.AzureEntityUtil;
@@ -18,7 +20,6 @@ import com.ws.azureResourcesIntegration.constant.StateChangeConstants;
 import com.ws.azureResourcesIntegration.dto.*;
 import com.ws.azureResourcesIntegration.entities.*;
 import com.ws.azureResourcesIntegration.repository.*;
-import com.ws.mapper.AzureEntitiesMapper;
 import com.ws.azureAdIntegration.constants.Constant;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
@@ -31,7 +32,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
 import java.time.LocalDateTime;
-import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -55,14 +55,16 @@ public class AzureResourceService {
     final CustomRoleAssignmentRepository customRoleAssignmentRepository;
     final AzureSubscriptionRepository azureSubscriptionRepository;
     final AzureUserConfigureRepository azureUserConfigureRepository;
-    final AzureADService azureADService;
+    final PublishedResourcesRepository publishedResourcesRepository;
+    final AzureTenantService azureTenantService;
     final AzureAuthUtil azureAuthUtil;
     final AzureUserCredentialService azureUserCredentialService;
+
 
     @Autowired
     public AzureResourceService(AzureVMRepository azureVMRepository, AzureStorageRepository azureStorageRepository, AzureServerRepository azureServerRepository, AzureDatabaseRepository azureDatabaseRepository,
                                 AzureRoleDefinitionRepository azureRoleDefinitionRepository, AzureRoleDefinitionActionRepository azureRoleDefinitionActionRepository, AzureRoleAssignmentRepository azureRoleAssignmentRepository, AzureUserRepository azureUserRepository,
-                                AzureGroupRepository azureGroupRepository, CustomRoleAssignmentRepository customRoleAssignmentRepository, AzureSubscriptionRepository azureSubscriptionRepository, AzureUserConfigureRepository azureUserConfigureRepository, AzureADService azureADService,
+                                AzureGroupRepository azureGroupRepository, CustomRoleAssignmentRepository customRoleAssignmentRepository, AzureSubscriptionRepository azureSubscriptionRepository, AzureUserConfigureRepository azureUserConfigureRepository, PublishedResourcesRepository publishedResourcesRepository, AzureTenantService azureTenantService,
                                 AzureAuthUtil azureAuthUtil, AzureUserCredentialService azureUserCredentialService) {
         this.azureVMRepository = azureVMRepository;
         this.azureStorageRepository = azureStorageRepository;
@@ -76,29 +78,36 @@ public class AzureResourceService {
         this.customRoleAssignmentRepository = customRoleAssignmentRepository;
         this.azureSubscriptionRepository = azureSubscriptionRepository;
         this.azureUserConfigureRepository = azureUserConfigureRepository;
-        this.azureADService = azureADService;
+        this.publishedResourcesRepository = publishedResourcesRepository;
+        this.azureTenantService = azureTenantService;
         this.azureAuthUtil = azureAuthUtil;
         this.azureUserCredentialService = azureUserCredentialService;
     }
 
     public List<?> getAzureResourcesUsingType(String wsTenantName, AzureResourcesType type) {
-        switch (type) {
-            case VIRTUAL_MACHINE:
-                return azureVMRepository.findAllByWsTenantName(wsTenantName);
-            case STORAGE_ACCOUNT:
-                return azureStorageRepository.findAllByWsTenantName(wsTenantName);
-            case SERVER:
-                return azureServerRepository.findAllByWsTenantName(wsTenantName);
-            case SUBSCRIPTION:
-                return azureSubscriptionRepository.findAllByWsTenantName(wsTenantName);
-            default:
-                throw new RuntimeException("Invalid azure resource type provided: " + type);
-        }
+        return switch (type) {
+            case VIRTUAL_MACHINE -> azureVMRepository.findAllByWsTenantName(wsTenantName);
+            case STORAGE_ACCOUNT -> azureStorageRepository.findAllByWsTenantName(wsTenantName);
+            case SERVER -> azureServerRepository.findAllByWsTenantName(wsTenantName);
+            case SUBSCRIPTION -> azureSubscriptionRepository.findAllByWsTenantName(wsTenantName);
+            default -> throw new RuntimeException("Invalid azure resource type provided: " + type);
+        };
+    }
+
+
+    public List<?> getAzureResourcesUsingType(AzureResourcesType type, String wsTenantName) {
+        return switch (type) {
+            case VIRTUAL_MACHINE -> azureVMRepository.findAllAzureVMUsingTenantName(wsTenantName);
+            case STORAGE_ACCOUNT -> azureStorageRepository.findAllAzureStorageAccountsUsingTenantName(wsTenantName);
+            case DATABASE -> azureDatabaseRepository.findAllAzureDatabasesUsingWsTenantName(wsTenantName);
+            case SUBSCRIPTION -> azureSubscriptionRepository.findAllByWsTenantName(wsTenantName);
+            default -> throw new RuntimeException("Invalid azure resource type provided: " + type);
+        };
     }
 
 
     public List<Map<String, Object>> getRoleDefinitionsNameWithId(String tenantName) {
-        List<AzureRoleDefinition> azureRoleDefinitions = azureRoleDefinitionRepository.findAllByAzureTenant(azureADService.getAzureTenantUsingWsTenantName(tenantName));
+        List<AzureRoleDefinition> azureRoleDefinitions = azureRoleDefinitionRepository.findAllByAzureTenant(azureTenantService.getAzureTenantUsingWsTenantName(tenantName));
         if (CollectionUtils.isEmpty(azureRoleDefinitions)) {
             return Collections.emptyList();
         }
@@ -115,7 +124,7 @@ public class AzureResourceService {
     }
 
     public AzureRoleDefinitionDTO getAzureRoleDefinitionDetailsUsingId(Integer azureRoleId, String tenantName) {
-        AzureTenant azureTenant = azureADService.getAzureTenantUsingWsTenantName(tenantName);
+        AzureTenant azureTenant = azureTenantService.getAzureTenantUsingWsTenantName(tenantName);
         AzureRoleDefinition azureRoleDefinition = azureRoleDefinitionRepository.findByIdAndAzureTenant(azureRoleId, azureTenant)
                 .orElseThrow(() -> new RuntimeException("No Azure Role found with provided id: " + azureRoleId));
 
@@ -156,7 +165,7 @@ public class AzureResourceService {
 
 
     public List<?> getAzureAzureResourcesForPrinciple(AzureResourcesType scopeType, String principleType, String assignee, String wsTenantName) {
-        AzureTenant azureTenant = azureADService.getAzureTenantUsingWsTenantName(wsTenantName);
+        AzureTenant azureTenant = azureTenantService.getAzureTenantUsingWsTenantName(wsTenantName);
         return switch (scopeType) {
             case VIRTUAL_MACHINE ->
                     azureVMRepository.getAzureVMsForPrinciple(scopeType.name(), principleType, assignee, azureTenant.getWsTenantName());
@@ -169,29 +178,66 @@ public class AzureResourceService {
         };
     }
 
+//    @Transactional
+//    public void publishResourceByResourceIdAndType(Integer resourceId, AzureResourcesType type) {
+//        switch (type) {
+//            case VIRTUAL_MACHINE:
+//                getByIdAndPublish(resourceId, azureVMRepository, type);
+//                break;
+//            case STORAGE_ACCOUNT:
+//                getByIdAndPublish(resourceId, azureStorageRepository, type);
+//                break;
+//            case DATABASE:
+//                getByIdAndPublish(resourceId, azureDatabaseRepository, type);
+//                break;
+//            default:
+//                throw new RuntimeException(String.format("Invalid type: %s provided", type));
+//        }
+//    }
+
+
     @Transactional
-    public void publishResourceByResourceIdAndType(Integer resourceId, AzureResourcesType type) {
-        switch (type) {
-            case VIRTUAL_MACHINE:
-                getByIdAndPublish(resourceId, azureVMRepository, type);
-                break;
-            case STORAGE_ACCOUNT:
-                getByIdAndPublish(resourceId, azureStorageRepository, type);
-                break;
-            case DATABASE:
-                getByIdAndPublish(resourceId, azureDatabaseRepository, type);
-                break;
-            default:
-                throw new RuntimeException(String.format("Invalid type: %s provided", type));
+    public void publishResourceByResourceIdAndType(PublishResourceRequest request) {
+        if (request.isFlag()) {
+            try {
+                publishedResourcesRepository.save(AzureEntityUtil.createPublishedResourcesFromRequest(request));
+            } catch (Exception ex) {
+                if (ex.getMessage().contains("duplicate key")) {
+                    throw new RuntimeException("Resource already published");
+                }
+            }
+        } else {
+            publishedResourcesRepository.deleteByResourceIdAndWsTenantName(request.getAzureId(), request.getWsTenantName());
         }
     }
 
+
+//    public void validateRequestType(PublishResourceType type) {
+//        if (type == null || !EnumUtils.isValidEnum(PublishResourceType.class, type.name())) {
+//            throw new IllegalArgumentException("Invalid or Unsupported resource type provided in the request.");
+//        }
+//    }
+
+
+//    public List<?> getPublishedResourcesV1(String wsTenantName, AzureResourcesType type) {
+//        List<?> resources = switch (type) {
+//            case VIRTUAL_MACHINE -> azureVMRepository.findAllByWsTenantNameAndIsPublishedTrue(wsTenantName);
+//            case STORAGE_ACCOUNT -> azureStorageRepository.findAllByWsTenantNameAndIsPublishedTrue(wsTenantName);
+//            case DATABASE -> azureDatabaseRepository.findAllByWsTenantNameAndIsPublishedTrue(wsTenantName);
+//            default -> throw new RuntimeException(String.format("Invalid type: %s provided", type));
+//        };
+//        if (!resources.isEmpty()) {
+//            setSubscriptionIdForResources(resources);
+//        }
+//        return resources;
+//    }
+
     public List<?> getPublishedResources(String wsTenantName, AzureResourcesType type) {
         List<?> resources = switch (type) {
-            case VIRTUAL_MACHINE -> azureVMRepository.findAllByWsTenantNameAndIsPublishedTrue(wsTenantName);
-            case STORAGE_ACCOUNT -> azureStorageRepository.findAllByWsTenantNameAndIsPublishedTrue(wsTenantName);
-            case DATABASE -> azureDatabaseRepository.findAllByWsTenantNameAndIsPublishedTrue(wsTenantName);
-            default -> throw new RuntimeException(String.format("Invalid type: %s provided", type));
+            case VIRTUAL_MACHINE -> azureVMRepository.findAllPublishedAzureVM(wsTenantName);
+            case STORAGE_ACCOUNT -> azureStorageRepository.findAllPublishedAzureStorageAccounts(wsTenantName);
+            case DATABASE -> azureDatabaseRepository.findAllPublishedAzureDatabase(wsTenantName);
+            default -> throw new RuntimeException(String.format("Invalid type provided. Type: %s", type));
         };
         if (!resources.isEmpty()) {
             setSubscriptionIdForResources(resources);
@@ -213,19 +259,19 @@ public class AzureResourceService {
     }
 
 
-    private <T> void getByIdAndPublish(Integer resourceId, CrudRepository<T, Integer> repository, AzureResourcesType type) {
-        T resource = repository.findById(resourceId)
-                .orElseThrow(() -> new RuntimeException(String.format("No resource of type %s found with provided resource id: %s", type, resourceId)));
-        updateCommonFields(resource, repository);
-    }
+//    private <T> void getByIdAndPublish(Integer resourceId, CrudRepository<T, Integer> repository, AzureResourcesType type) {
+//        T resource = repository.findById(resourceId)
+//                .orElseThrow(() -> new RuntimeException(String.format("No resource of type %s found with provided resource id: %s", type, resourceId)));
+//        updateCommonFields(resource, repository);
+//    }
 
-    private <T> void updateCommonFields(T resource, CrudRepository<T, Integer> repository) {
-        if (resource instanceof BaseAzureResource baseResource) {
-            baseResource.setIsPublished(Optional.ofNullable(baseResource.getIsPublished()).map(p -> !p).orElse(true));
-            baseResource.setUpdatedAt(new Date());
-        }
-        repository.save(resource);
-    }
+//    private <T> void updateCommonFields(T resource, CrudRepository<T, Integer> repository) {
+//        if (resource instanceof BaseAzureResource baseResource) {
+//            baseResource.setIsPublished(Optional.ofNullable(baseResource.getIsPublished()).map(p -> !p).orElse(true));
+//            baseResource.setUpdatedAt(new Date());
+//        }
+//        repository.save(resource);
+//    }
 
 
     /* JIT FEATURE */
@@ -284,21 +330,35 @@ public class AzureResourceService {
 
     @Transactional
     public CustomRoleAssignment raiseResourceAssignmentRequest(AssignRoleRequest request) {
-        Optional<CustomRoleAssignment> existingRoleAssignment = customRoleAssignmentRepository.findByAssigneeAndScopeAndAzureRoleDefinitionPathIdAndStatusNot(
-                request.getPrincipleId().trim(), request.getResourceScope().trim(), request.getRoleDefinitionPathId().trim(), RequestStatus.EXPIRED);
+        Optional<CustomRoleAssignment> existingRoleAssignment = customRoleAssignmentRepository.findByAssigneeAndScopeAndAzureRoleDefinitionPathIdAndStatusNotIn(
+                request.getPrincipleId().trim(), request.getResourceScope().trim(), request.getRoleDefinitionPathId().trim(), Arrays.asList(RequestStatus.DECLINE, RequestStatus.EXPIRED));
         return existingRoleAssignment.map(roleAssignment -> handleExistingRoleAssignment(roleAssignment, request))
                 .orElseGet(() -> createNewRoleAssignment(request));
     }
 
+    public CustomRoleAssignment raiseResourceAssignmentRequestV2(AssignRoleRequest request) {
+        Optional<CustomRoleAssignment> existingRoleAssignmentOpt = customRoleAssignmentRepository.findByAssigneeAndScopeAndAzureRoleDefinitionPathIdAndStatusNotIn(
+                request.getPrincipleId().trim(), request.getResourceScope().trim(), request.getRoleDefinitionPathId().trim(), Arrays.asList(RequestStatus.DECLINE, RequestStatus.EXPIRED));
+        existingRoleAssignmentOpt.ifPresent(this::handleExistingRoleAssignment);
+        return createNewRoleAssignment(request);
+    }
+
+
+    private void handleExistingRoleAssignment(CustomRoleAssignment customRoleAssignment) {
+        RequestStatus status = customRoleAssignment.getStatus();
+        switch (status) {
+            case PENDING, APPROVED ->
+                    throw new IllegalArgumentException(String.format("Your request is already in %s state", status));
+        }
+    }
+
     private CustomRoleAssignment handleExistingRoleAssignment(CustomRoleAssignment roleAssignment, AssignRoleRequest request) {
         RequestStatus status = roleAssignment.getStatus();
-        switch (status) {
-            case PENDING:
-            case APPROVED:
-                throw new IllegalArgumentException(String.format("Your request is already in %s state", status));
-            default:
-                return updateCustomRoleAssignment(roleAssignment, request);
-        }
+        return switch (status) {
+            case PENDING, APPROVED ->
+                    throw new IllegalArgumentException(String.format("Your request is already in %s state", status));
+            default -> updateCustomRoleAssignment(roleAssignment, request);
+        };
     }
 
     private CustomRoleAssignment updateCustomRoleAssignment(CustomRoleAssignment customRoleAssignment, AssignRoleRequest request) {
@@ -310,11 +370,7 @@ public class AzureResourceService {
     }
 
     private CustomRoleAssignment createNewRoleAssignment(AssignRoleRequest request) {
-        CustomRoleAssignment newRoleAssignment = AzureEntityUtil.createCustomRoleAssignmentFromAssignRoleRequestPayload(
-                request, CustomRoleAssignment.builder()
-                        .azureSubscription(azureSubscriptionRepository.findById(request.getSubscriptionId()).orElseThrow(() -> new RuntimeException("No subscription found with provided")))
-                        .azureTenant(azureADService.getAzureTenantUsingWsTenantName(request.getTenantName().trim()))
-                        .build());
+        CustomRoleAssignment newRoleAssignment = AzureEntityUtil.createFromAssignRoleRequestPayload(request);
         return customRoleAssignmentRepository.save(newRoleAssignment);
     }
 
@@ -434,8 +490,15 @@ public class AzureResourceService {
         processExpiration(customRoleAssignment);
     }
 
+    public void revokeAzureResourceAccess(List<CustomRoleAssignment> customRoleAssignments, AzureUserCredentialDTO azureUserCredentialDTO) {
+        AzureResourceManager azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredentialDTO);
+        revokeRoleToPrincipalForResourceInAzure(customRoleAssignments, azureResourceManager);
+    }
+
+
     private void processExpiration(CustomRoleAssignment customRoleAssignment) {
-        revokeRoleToPrincipalForResourceInAzure(customRoleAssignment.getAzureRoleAssignmentPathId(), customRoleAssignment.getWsTenantName());
+        AzureResourceManager azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredentialService.findWSTenantIdWithDecryptedSecret(customRoleAssignment.getWsTenantName()));
+        revokeRoleToPrincipalForResourceInAzure(customRoleAssignment.getAzureRoleAssignmentPathId(), azureResourceManager);
         azureRoleAssignmentRepository.deleteByAzureRoleAssignmentPathId(customRoleAssignment.getAzureRoleAssignmentPathId());
         updateCustomRoleAssignmentCommonFields(customRoleAssignment, RequestStatus.EXPIRED);
     }
@@ -467,8 +530,10 @@ public class AzureResourceService {
             log.error("Azure error during assigning role. Message: {}", ex.getMessage());
             if (ex.getMessage().contains("403")) {
                 throw new RuntimeException("Insufficient privilege. Please review your permissions in Azure");
+            } else if (ex.getMessage().contains("RoleAssignmentExists")) {
+                throw new RuntimeException("The RoleAssignment already exists in Azure. Please allow some time for the changes to be reflected then try again");
             }
-            throw new RuntimeException("Failed to create role assignment in Azure");
+            throw new RuntimeException("Unexpected Error: " + ex.getMessage());
         }
     }
 
@@ -476,19 +541,54 @@ public class AzureResourceService {
         AzureRoleAssignment azureRoleAssignment = AzureEntityUtil.createAzureRoleAssignmentFromResourceEntity(
                 roleAssignment, AzureRoleAssignment.builder()
                         .wsTenantName(customRoleAssignment.getWsTenantName())
-                        .azureSubscription(customRoleAssignment.getAzureSubscription())
-                        .azureTenant(customRoleAssignment.getAzureTenant())
+                        .azureSubscription(findAzureSubscriptionByAzureIdAndWsTenantName(customRoleAssignment.getSubscriptionId(), customRoleAssignment.getWsTenantName()))
+                        .azureTenant(azureTenantService.getAzureTenantUsingWsTenantName(customRoleAssignment.getWsTenantName()))
                         .build());
         azureRoleAssignmentRepository.save(azureRoleAssignment);
     }
 
-    private void revokeRoleToPrincipalForResourceInAzure(String roleAssignmentPathId, String wsTenantName) {
-        AzureResourceManager azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredentialService.findWSTenantIdWithDecryptedSecret(wsTenantName));
-        azureResourceManager.accessManagement()
-                .roleAssignments()
-                .deleteById(roleAssignmentPathId);
-        azureRoleAssignmentRepository.deleteByAzureRoleAssignmentPathId(roleAssignmentPathId);
+    private AzureSubscription findAzureSubscriptionByAzureIdAndWsTenantName(String subscriptionId, String wsTenantName) {
+        return azureSubscriptionRepository.findByAzureSubscriptionIdAndWsTenantName(subscriptionId, wsTenantName)
+                .orElseThrow(() -> new RuntimeException(String.format("Invalid subscription Id found: %s", subscriptionId)));
+
     }
+
+    private void revokeRoleToPrincipalForResourceInAzure(String roleAssignmentPathId, AzureResourceManager azureResourceManager) {
+        try {
+            azureResourceManager.accessManagement()
+                    .roleAssignments()
+                    .deleteById(roleAssignmentPathId);
+        } catch (Exception e) {
+            if (e.getMessage().contains("404")) {
+                log.error("No data found for provided Role in Azure");
+                log.info("Role-path-id: {}", roleAssignmentPathId);
+            }
+        }
+    }
+
+
+    private void revokeRoleToPrincipalForResourceInAzure(List<CustomRoleAssignment> customRoleAssignments, AzureResourceManager azureResourceManager) {
+        customRoleAssignments
+                .forEach(customRoleAssignment -> revokeRoleToPrincipalForResourceInAzure(customRoleAssignment.getAzureRoleAssignmentPathId(), azureResourceManager));
+    }
+
+
+    public void revokeRoleToPrincipalForResourceInAzure(String wsTenantName) {
+        AzureResourceManager azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredentialService.findWSTenantIdWithDecryptedSecret(wsTenantName));
+        log.info("total: {}", azureResourceManager.storageAccounts().list().stream().count());
+        try {
+            azureResourceManager.accessManagement()
+                    .roleAssignments()
+                    .deleteById("/subscriptions/4769af8e-ca3d-448d-bd1a-80e03ed94158/resourceGroups/centos-test01_group/providers/Microsoft.Storage/storageAccounts/whiteswanstorage/providers/Microsoft.Authorization/roleAssignments/0bc96654-891a-4692-a011-c5441055956f");
+        } catch (Exception exp) {
+            if (exp.getMessage().contains("404")) {
+                log.error("No data found for provided Role in Azure");
+            }
+            throw exp;
+        }
+    }
+
+
 
 
 
@@ -517,7 +617,7 @@ public class AzureResourceService {
                             .azureRoleDefinitionPathId(createdRoleAssignment.roleDefinitionId())
 //                            .subscriptionId(request.getSubscriptionId())
                             .wsTenantName(request.getTenantName())
-                            .azureTenant(azureADService.getAzureTenantUsingWsTenantName(request.getTenantName()))
+                            .azureTenant(azureTenantService.getAzureTenantUsingWsTenantName(request.getTenantName()))
                             .build());
             log.info("Role Assignment saved locally");
             return azureRoleAssignmentRepository.save(azureRoleAssignment);

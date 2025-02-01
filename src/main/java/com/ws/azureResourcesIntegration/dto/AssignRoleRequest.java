@@ -16,14 +16,16 @@ import java.util.List;
 public class AssignRoleRequest {
     @NotNull(message = "tenant name is required")
     String tenantName;
-    @NotNull(message = "Subscription ID is required")
-    Integer subscriptionId;
+//    @NotNull(message = "Subscription ID is required")
+//    Integer subscriptionId;
+    @NotNull(message = "Subscription ID cannot be null")
+    String subscriptionId;
     @NotNull(message = "Resource Scope is required")
     String resourceScope;
     @NotNull(message = "Role definition ID is required")
     String roleDefinitionPathId;
-    @NotEmpty(message = "Role definition ID(s) is required")
-    List<String> roleDefinitionPathIds;
+//    @NotEmpty(message = "Role definition ID(s) is required")
+//    List<String> roleDefinitionPathIds;
     @NotNull(message = "Principle (assignee) ID is required")
     String principleId;
     @NotNull(message = "Principle (assignee) type is required")

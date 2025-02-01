@@ -14,6 +14,10 @@ import com.azure.resourcemanager.resources.models.Subscription;
 import com.azure.resourcemanager.sql.models.ServerPrivateEndpointConnection;
 import com.azure.resourcemanager.sql.models.SqlDatabase;
 import com.azure.resourcemanager.sql.models.SqlServer;
+import com.microsoft.aad.msal4j.ClientCredentialFactory;
+import com.microsoft.aad.msal4j.ClientCredentialParameters;
+import com.microsoft.aad.msal4j.ConfidentialClientApplication;
+import com.microsoft.aad.msal4j.IAuthenticationResult;
 import com.ws.azureAdIntegration.util.GenericUtil;
 import com.ws.configuration.AzureAuthConfigurationFactory;
 import com.ws.azureResourcesIntegration.dto.*;
@@ -29,12 +33,17 @@ import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.RestTemplate;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.StringReader;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
@@ -51,10 +60,12 @@ public class AzureResourcesTestService {
     final String tenantId = "f875ebf8-f5f0-4915-a2c9-4442e0118fd2";
     final String subscriptionId = "4769af8e-ca3d-448d-bd1a-80e03ed94158";
     final AzureAuthConfigurationFactory azureAuthConfigurationFactory;
+    final RestTemplate restTemplate;
 
     @Autowired
-    public AzureResourcesTestService(AzureAuthConfigurationFactory azureAuthConfigurationFactory) {
+    public AzureResourcesTestService(AzureAuthConfigurationFactory azureAuthConfigurationFactory, RestTemplate restTemplate) {
         this.azureAuthConfigurationFactory = azureAuthConfigurationFactory;
+        this.restTemplate = restTemplate;
     }
 
     private AzureResourceManager getAzureResourceManager() {
@@ -418,6 +429,69 @@ public class AzureResourcesTestService {
         } catch (Exception exp) {
             log.error("Unexpected error: {}", exp.getMessage(), exp);
         }
+    }
+
+
+    /**
+     * CHECK:
+     * 1. Does this token belongs to the Application level itself because there is no use of a azure-user in here
+     * 2. Is it alternative of getting token of Azure AD SSO (here we are bypassing the login flow)
+     *
+     */
+    public String generateConsoleURL() {
+        try {
+            ConfidentialClientApplication app = ConfidentialClientApplication.builder(
+                            clientId,
+                            ClientCredentialFactory.createFromSecret(clientSecret))
+                    .authority("https://login.microsoftonline.com/" + tenantId)
+                    .build();
+
+            ClientCredentialParameters parameters = ClientCredentialParameters.builder(
+                            Collections.singleton("https://management.azure.com/.default"))
+                    .build();
+
+            CompletableFuture<IAuthenticationResult> future = app.acquireToken(parameters);
+            IAuthenticationResult result = future.get();
+            String token = result.idToken();
+
+            long expirationTime = System.currentTimeMillis() / 1000 + 3600;
+
+            return "https://portal.azure.com?login_hint=" + "amit@whiteswansecurity.com" + "&sessionIdToken=" + result.idToken() + "&exp=" + expirationTime;
+
+//            return "https://portal.azure.com/?token=" + result.accessToken() + "&exp=" + expirationTime;
+        } catch (Exception exp) {
+            throw new RuntimeException(exp.getMessage());
+        }
+    }
+
+
+    public String getAzureFederatedSSOUrl(String userPrincipalName, String code) throws Exception {
+        String tokenUrl = "https://login.microsoftonline.com/" + tenantId + "/oauth2/token";
+
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("grant_type", "client_credentials");
+        body.add("client_id", clientId);
+        body.add("client_secret", clientSecret);
+        body.add("resource", "https://management.azure.com/");
+        body.add("code", code);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
+
+        ResponseEntity<Map> response = restTemplate.exchange(tokenUrl, HttpMethod.POST, request, Map.class);
+        if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+            throw new RuntimeException("Failed to get access token");
+        }
+
+        String accessToken = (String) response.getBody().get("access_token");
+
+        // Step 2: Exchange this token for a session token
+        String s = "https://portal.azure.com/?token=" + accessToken ;
+
+        String federatedTokenUrl = "https://portal.azure.com/" + tenantId + "/federation?user=" + userPrincipalName + "&token=" + accessToken;
+
+        return federatedTokenUrl;
     }
 
 

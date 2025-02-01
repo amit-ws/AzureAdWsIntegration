@@ -184,12 +184,13 @@ public class AzureResourceSyncService {
                             .resourceIdentityType(GenericUtil.getOrNull(() -> vm.innerModel().identity().type().name()))
                             .ipAddress(GenericUtil.getOrNull(() -> vm.getPrimaryPublicIPAddress().ipAddress()))
                             .syncedAt(new Date())
+                            .subscriptionId(azureSubscription.getAzureSubscriptionId())
                             .azureResourceGroup(azureResourceGroupMap.get(vm.resourceGroupName().toUpperCase()))
                             .azureSubscription(azureSubscription)
                             .wsTenantName(wsTenantName)
                             .build())
                     .collect(Collectors.toList());
-            log.info("azureVMs: {}", azureVMs.get(0).getIsPublished());
+            log.info("vm synced");
             azureVMRepository.saveAll(azureVMs);
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_VMS_SYNCED, "Info");
         } catch (Exception ignored) {
@@ -218,6 +219,7 @@ public class AzureResourceSyncService {
                             .resourceType(storageAccount.type())
                             .resourceGroupName(storageAccount.resourceGroupName())
                             .tags(storageAccount.tags())
+                            .subscriptionId(azureSubscription.getAzureSubscriptionId())
                             .azureResourceGroup(azureResourceGroupMap.get(storageAccount.resourceGroupName().toUpperCase()))
                             .azureSubscription(azureSubscription)
                             .wsTenantName(this.wsTenantName)
@@ -253,6 +255,7 @@ public class AzureResourceSyncService {
                                         .pausedDate(GenericUtil.getOrNull(() -> sqlDatabase.innerModel().pausedDate()))
                                         .resumedDate(GenericUtil.getOrNull(() -> sqlDatabase.innerModel().resumedDate()))
                                         .resourceGroupName(sqlDatabase.resourceGroupName())
+                                        .subscriptionId(azureSubscription.getAzureSubscriptionId())
                                         .resourceType(GenericUtil.getOrNull(() -> sqlDatabase.innerModel().type()))
                                         .syncedAt(new Date())
                                         .wsTenantName(this.wsTenantName)
@@ -276,6 +279,7 @@ public class AzureResourceSyncService {
                                 .administratorId(GenericUtil.getOrNull(() -> sqlServer.getActiveDirectoryAdministrator().id()))
                                 .resourceType(sqlServer.type())
                                 .syncedAt(new Date())
+                                .subscriptionId(azureSubscription.getAzureSubscriptionId())
                                 .azureResourceGroup(azureResourceGroupMap.get(sqlServer.resourceGroupName().toUpperCase()))
                                 .azureSubscription(azureSubscription)
                                 .wsTenantName(this.wsTenantName)

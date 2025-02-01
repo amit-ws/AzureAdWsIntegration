@@ -1,6 +1,7 @@
 package com.ws.azureResourcesIntegration.repository;
 
 import com.ws.azureAdIntegration.entity.AzureTenant;
+import com.ws.azureResourcesIntegration.dto.AzureStorageAccountDTO;
 import com.ws.azureResourcesIntegration.entities.AzureServer;
 import com.ws.azureResourcesIntegration.entities.AzureStorageAccount;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -18,4 +19,5 @@ public interface AzureServerRepository extends JpaRepository<AzureServer, Intege
             "INNER JOIN AzureRoleAssignment ara ON UPPER(asv.azureServerId) = UPPER(ara.scope) " +
             "WHERE ara.scopeType IN :scopeTypes AND ara.principalType = :principalType and ara.assignee = :assignee and asv.wsTenantName = :tenantName")
     List<AzureServer> getAzureServersWithDatabasesForPrinciple(List<String> scopeTypes, String principalType, String assignee, String tenantName);
+
 }

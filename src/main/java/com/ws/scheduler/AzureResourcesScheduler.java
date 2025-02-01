@@ -32,7 +32,7 @@ public class AzureResourcesScheduler {
     }
 
 
-    @Scheduled(cron = "*/20 * * * * *")
+//    @Scheduled(cron = "*/20 * * * * *")
     private void removeAzureResourcesAccess() {
         List<CustomRoleAssignment> customRoleAssignments = customRoleAssignmentRepository.findAllByStatus(RequestStatus.APPROVED);
         long count = customRoleAssignments.stream()

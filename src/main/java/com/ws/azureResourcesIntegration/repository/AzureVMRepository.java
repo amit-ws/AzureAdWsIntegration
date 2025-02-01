@@ -1,10 +1,12 @@
 package com.ws.azureResourcesIntegration.repository;
 
+import com.ws.azureResourcesIntegration.dto.AzureVmDTO;
 import com.ws.azureResourcesIntegration.entities.AzureVM;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
+import java.util.Date;
 import java.util.List;
 
 @Repository
@@ -15,7 +17,7 @@ public interface AzureVMRepository extends JpaRepository<AzureVM, Integer> {
             "WHERE ara.scopeType = :scopeType AND ara.principalType = :principalType and ara.assignee = :assignee and av.wsTenantName = :tenantName")
     List<AzureVM> getAzureVMsForPrinciple(String scopeType, String principalType, String assignee, String tenantName);
 
-        List<AzureVM> findAllByWsTenantNameAndIsPublishedTrue(String wsTenantName);
+//    List<AzureVM> findAllByWsTenantNameAndIsPublishedTrue(String wsTenantName);
 
 //    @Query("SELECT new com.ws.azureResourcesIntegration.dto.AzureVMDTO(av.id, av.azureVmId, av.instanceId, av.name, av.computerName, " +
 //            "av.powerState, av.size, av.osType, av.publicIpInstanceId, av.resourceGroupName, " +
@@ -25,6 +27,27 @@ public interface AzureVMRepository extends JpaRepository<AzureVM, Integer> {
 //            "FROM AzureVM av " +
 //            "WHERE av.wsTenantName = :wsTenantName and av.isPublished")
 //    List<AzureVMDTO> findAllAzureVmsUsingTenantName(String wsTenantName);
+
+
+//    String wsTenantName;
+//    Date syncedAt;
+//    Date updatedAt;
+//    String subscriptionId;
+//    boolean isPublished;
+    @Query("SELECT new com.ws.azureResourcesIntegration.dto.AzureVmDTO(av.id, av.azureVmId, av.instanceId, av.name, av.computerName, av.powerState, " +
+            "av.size, av.osType, av.publicIpInstanceId, av.resourceGroupName, av.osDiskSize, av.region, av.securityType, av.resourceType, av.zones, av. resourceIdentityType, " +
+            "av.ipAddress, av.wsTenantName, av.syncedAt, av.updatedAt, av.subscriptionId, CASE WHEN pr.resourceId IS NULL THEN FALSE ELSE TRUE END) " +
+            "FROM AzureVM av " +
+            "LEFT JOIN PublishedResource pr ON upper(av.azureVmId) = upper(pr.resourceId) " +
+            "WHERE av.wsTenantName = :wsTenantName " +
+            "ORDER BY av.name")
+    List<AzureVmDTO> findAllAzureVMUsingTenantName(String wsTenantName);
+
+    @Query("SELECT av FROM AzureVM av " +
+            "INNER JOIN PublishedResource pr ON av.azureVmId = pr.resourceId " +
+            "WHERE av.wsTenantName = :wsTenantName " +
+            "ORDER BY av.name")
+    List<AzureVM> findAllPublishedAzureVM(String wsTenantName);
 
 }
 

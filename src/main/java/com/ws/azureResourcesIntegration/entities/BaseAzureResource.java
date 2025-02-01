@@ -17,9 +17,9 @@ import java.util.Date;
 @MappedSuperclass
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class BaseAzureResource {
-    @Column(columnDefinition = "boolean default false")
-    @Builder.Default
-    Boolean isPublished = Boolean.FALSE;
+//    @Column(columnDefinition = "boolean default false")
+//    @Builder.Default
+//    Boolean isPublished = Boolean.FALSE;
     Date updatedAt;
     Date syncedAt;
     String wsTenantName; // WhiteSwan account organization name

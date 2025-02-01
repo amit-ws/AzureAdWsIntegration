@@ -26,6 +26,7 @@ import org.springframework.web.client.RestTemplate;
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -66,48 +67,117 @@ public class AzureAdWsIntegrationController {
         this.azureUserCredentialRepository = azureUserCredentialRepository;
     }
 
+//    @GetMapping("/login")
+//    public String login() throws UnsupportedEncodingException {
+//        return "https://login.microsoftonline.com/" + tenantId + "/oauth2/v2.0/authorize"
+//                + "?client_id=" + clientId
+//                + "&response_type=code"
+//                + "&redirect_uri=" + URLEncoder.encode(redirectUri, StandardCharsets.UTF_8)
+//                + "&response_mode=query"
+//                + "&scope=" + URLEncoder.encode("offline_access User.Read Mail.Read Directory.Read.All", StandardCharsets.UTF_8)
+//                + "&state=" + stateCode;
+////        offline_access User.Read Mail.Read
+////        offline_access User.Read Mail.Read Directory.Read.All
+//
+//    }
+
     @GetMapping("/login")
     public String login() throws UnsupportedEncodingException {
         return "https://login.microsoftonline.com/" + tenantId + "/oauth2/v2.0/authorize"
                 + "?client_id=" + clientId
-                + "&response_type=code"
-                + "&redirect_uri=" + URLEncoder.encode(redirectUri, "UTF-8")
-                + "&response_mode=query"
-                + "&scope=" + URLEncoder.encode("offline_access User.Read Mail.Read", "UTF-8")
-                + "&state=" + stateCode;
+                + "&response_type=code id_token"
+                + "&redirect_uri=" + URLEncoder.encode(redirectUri, StandardCharsets.UTF_8)
+                + "&response_mode=form_post"
+                + "&scope=" + URLEncoder.encode("openid profile email User.Read Mail.Read Directory.Read.All", StandardCharsets.UTF_8)
+                + "&nonce=" + UUID.randomUUID();
     }
 
+
+    @PostMapping("/callback")
+    public ResponseEntity callback(
+            @RequestParam("code") String code) throws Exception {
+        Map<String, String> tokens = exchangeCodeForTokens(code);
+        String loginUrl = generateAzureSignInUrl(tokens.get("id_token"));
+        return ResponseEntity.ok(loginUrl);
+    }
+
+
+    private Map<String, String> exchangeCodeForTokens(String code)  {
+        log.info("exchangeCodeForTokens");
+        String url = "https://login.microsoftonline.com/" + tenantId + "/oauth2/v2.0/token";
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(org.springframework.http.MediaType.APPLICATION_FORM_URLENCODED);
+
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("client_id", clientId);
+        body.add("scope", "openid profile email User.Read Mail.Read");
+        body.add("code", code);
+        body.add("redirect_uri", redirectUri);
+        body.add("grant_type", "authorization_code");
+        body.add("client_secret", clientSecret);
+
+        HttpEntity<MultiValueMap<String, String>> requestEntity = new HttpEntity<>(body, headers);
+        ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, requestEntity, Map.class);
+
+        if (response.getStatusCode().is2xxSuccessful()) {
+            Map<String, String> tokenMap = new HashMap<>();
+//            tokenMap.put("access_token", (String) response.getBody().get("access_token"));
+            tokenMap.put("id_token", (String) response.getBody().get("id_token"));
+            log.info("Tokens: {}", tokenMap);
+            return tokenMap;
+        } else {
+            log.error("Error fetching tokens: {}", response.getStatusCode());
+            throw new RuntimeException("Failed to fetch tokens");
+        }
+    }
+
+    private static String generateAzureSignInUrl(String idToken) {
+        try {
+            String signInUrl = "https://portal.azure.com/?id_token="
+                    + URLEncoder.encode(idToken, StandardCharsets.UTF_8)
+                    + "&session_mode=always";
+            return signInUrl;
+        } catch (Exception e) {
+            System.err.println("Error generating Azure Sign-In URL: " + e.getMessage());
+        }
+        return null;
+    }
+
+
 //    @GetMapping("/callback")
-//    public ResponseEntity callback(@RequestParam("code") String code, @RequestParam("state") String state) {
+//    public ResponseEntity callback(@RequestParam("code") String code, @RequestParam("state") String state) throws Exception {
 //        if (!state.equals(stateCode.toString())) {
 //            log.info(String.format("State didn't match with what client return. Original: %s Response: %s", stateCode, state));
 //            throw new RuntimeException("Invalid request");
 //        }
 //
-//        Map tokenResponse = exchangeCodeForAccessToken(code);
-//        TokenManager tokenManager = TokenManager.getInstance();
-//        tokenManager.setFieldValues(tokenResponse);
-//        return ResponseEntity.ok(tokenResponse);
+////        Map tokenResponse = exchangeCodeForAccessToken(code);
+////        TokenManager tokenManager = TokenManager.getInstance();
+////        tokenManager.setFieldValues(tokenResponse);
+////        return ResponseEntity.ok(tokenManager.getAccessToken());
+//
+//        String url = getAzureFederatedSSOUrl("amit@whiteswansecurity.com", code);
+//        return ResponseEntity.ok(url);
 //    }
 
-    @GetMapping("/callback")
-    public ResponseEntity callback(@RequestParam("code") String code) {
-//        Map tokenResponse = exchangeCodeForAccessToken(code);
-
-        try {
-//            Map tokenResponse = exchangeCodeForAccessToken(code);
-//            log.info("token: {}", tokenResponse.get("access_token"));
-
-            exchangeCodeForToken("ramki@wsazuread.onmicrosoft.com", code);
-
-        } catch (Exception e) {
-            throw new RuntimeException(e.getMessage());
-        }
+//    @GetMapping("/callback")
+//    public ResponseEntity callback(@RequestParam("code") String code) {
+////        Map tokenResponse = exchangeCodeForAccessToken(code);
 //
-//        TokenManager tokenManager = TokenManager.getInstance();
-//        tokenManager.setFieldValues(tokenResponse);
-        return ResponseEntity.ok().build();
-    }
+//        try {
+////            Map tokenResponse = exchangeCodeForAccessToken(code);
+////            log.info("token: {}", tokenResponse.get("access_token"));
+//
+//            exchangeCodeForToken("ramki@wsazuread.onmicrosoft.com", code);
+//
+//        } catch (Exception e) {
+//            throw new RuntimeException(e.getMessage());
+//        }
+////
+////        TokenManager tokenManager = TokenManager.getInstance();
+////        tokenManager.setFieldValues(tokenResponse);
+//        return ResponseEntity.ok().build();
+//    }
 
 
     @GetMapping("/getToken")
@@ -123,29 +193,63 @@ public class AzureAdWsIntegrationController {
 
 
     private Map exchangeCodeForAccessToken(String code) throws Exception {
-        AzureUserCredential azureUserCredential = getAzureUserCredentialForWSTenant(getAzureUserUsingEmail("ramki@wsazuread.onmicrosoft.com").getWsTenantName());
+        log.info("Into exchangeCodeForAccessToken");
+//        AzureUserCredential azureUserCredential = getAzureUserCredentialForWSTenant(getAzureUserUsingEmail("ramki@wsazuread.onmicrosoft.com").getWsTenantName());
 
-        String url = authBaseUrl + azureUserCredential.getTenantId() + tokeUri;
+        String url = authBaseUrl + tenantId + tokeUri;
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(org.springframework.http.MediaType.APPLICATION_FORM_URLENCODED);
 
         MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
-        body.add("client_id", azureUserCredential.getClientId());
+        body.add("client_id", clientId);
         body.add("scope", "User.Read Mail.Read");
         body.add("code", code);
         body.add("redirect_uri", redirectUri);
         body.add("grant_type", "authorization_code");
-        body.add("client_secret", EncryptionUtil.getDecryptedKey(azureUserCredential.getClientSecret(), Constant.AZURE_CLIENT_SECRET));
+        body.add("client_secret", clientSecret);
 
         HttpEntity<MultiValueMap<String, String>> requestEntity = new HttpEntity<>(body, headers);
         ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, requestEntity, Map.class);
 
         if (response.getStatusCode().is2xxSuccessful()) {
+            log.info("token: {}", response.getBody().get("access_token"));
             return response.getBody();
         } else {
             log.error("Error fetching access token: {}", response.getStatusCode());
             throw new RuntimeException("Failed to fetch access token");
         }
+    }
+
+
+    public String getAzureFederatedSSOUrl(String userPrincipalName, String code) throws Exception {
+        log.info("Inside getAzureFederatedSSOUrl.........");
+        String tokenUrl = "https://login.microsoftonline.com/" + tenantId + "/oauth2/token";
+
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("grant_type", "client_credentials");
+        body.add("client_id", clientId);
+        body.add("client_secret", clientSecret);
+        body.add("resource", "https://management.azure.com/");
+        body.add("code", code);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
+
+        ResponseEntity<Map> response = restTemplate.exchange(tokenUrl, HttpMethod.POST, request, Map.class);
+        if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+            throw new RuntimeException("Failed to get access token");
+        }
+
+        String accessToken = (String) response.getBody().get("access_token");
+        return accessToken;
+
+//        // Step 2: Exchange this token for a session token
+//        String federatedTokenUrl = "https://portal.azure.com/" + tenantId + "/federation?user=" + userPrincipalName + "&token=" + accessToken;
+//
+//        return "https://portal.azure.com?login_hint=" + "amit@whiteswansecurity.com" + "&sessionIdToken=" + accessToken + "&exp=" + (System.currentTimeMillis() / 1000 + 3600);
+
+//        return federatedTokenUrl;
     }
 
     private Map refreshAccessToken() {
@@ -207,11 +311,11 @@ public class AzureAdWsIntegrationController {
 
 
     public void exchangeCodeForToken(String email, String code) throws Exception {
-        AzureUserCredential azureUserCredential = getAzureUserCredentialForWSTenant(getAzureUserUsingEmail(email).getWsTenantName());
-        String tokenUrl = "https://login.microsoftonline.com/" + azureUserCredential.getTenantId() + "/oauth2/v2.0/token";
+//        AzureUserCredential azureUserCredential = getAzureUserCredentialForWSTenant(getAzureUserUsingEmail(email).getWsTenantName());
+        String tokenUrl = "https://login.microsoftonline.com/" + tenantId + "/oauth2/v2.0/token";
         MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
-        body.add("client_id", azureUserCredential.getClientId());
-        body.add("client_secret", EncryptionUtil.getDecryptedKey(azureUserCredential.getClientSecret(), Constant.AZURE_CLIENT_SECRET));
+        body.add("client_id", clientId);
+        body.add("client_secret", clientSecret);
         body.add("code", code);
         body.add("redirect_uri", "http://localhost:9495/api/callback");
         body.add("grant_type", "authorization_code");

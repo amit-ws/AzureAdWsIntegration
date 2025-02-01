@@ -4,6 +4,7 @@ import com.ws.azureResourcesIntegration.constant.RequestStatus;
 import com.ws.azureResourcesIntegration.dto.CustomRoleAssignmentDTO;
 import com.ws.azureResourcesIntegration.entities.CustomRoleAssignment;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -14,6 +15,7 @@ import java.util.Optional;
 @Repository
 public interface CustomRoleAssignmentRepository extends JpaRepository<CustomRoleAssignment, Integer> {
     Optional<CustomRoleAssignment> findByAssigneeAndScopeAndAzureRoleDefinitionPathIdAndStatusNot(String assignee, String scope, String roleDefPathId, RequestStatus status);
+    Optional<CustomRoleAssignment> findByAssigneeAndScopeAndAzureRoleDefinitionPathIdAndStatusNotIn(String assignee, String scope, String roleDefPathId, List<RequestStatus> status);
 
     //    List<CustomRoleAssignment> findAllByWsTenantNameAndStatusOrderByCreatedOnDesc(String wsTenantName, RequestStatus status);
     List<CustomRoleAssignment> findAllByStatus(RequestStatus status);
@@ -31,5 +33,7 @@ public interface CustomRoleAssignmentRepository extends JpaRepository<CustomRole
             "ORDER BY c.requestedAt DESC")
     List<CustomRoleAssignmentDTO> findAllByWsTenantNameAndStatus2(@Param("wsTenantName") String wsTenantName, @Param("status") RequestStatus status, String assignee);
 
+    @Modifying
+    void deleteAllByWsTenantName(String wsTenantMame);
 
 }

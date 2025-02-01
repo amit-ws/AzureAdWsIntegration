@@ -4,8 +4,9 @@ import com.ws.azureAdIntegration.entity.*;
 import com.ws.azureAdIntegration.repository.*;
 import com.ws.azureAdIntegration.util.GenericUtil;
 import com.ws.azureResourcesIntegration.dto.UserGroupAndRolesResponse;
-import com.ws.azureResourcesIntegration.entities.AzureUserConfigure;
 import com.ws.azureResourcesIntegration.repository.AzureUserConfigureRepository;
+import com.ws.azureResourcesIntegration.repository.PublishedResourcesRepository;
+import com.ws.azureResourcesIntegration.service.CustomRoleAssignmentService;
 import com.ws.projection.UserGroupAndRolesProjection;
 import com.ws.projection.UserGroupsNameProjection;
 import lombok.AccessLevel;
@@ -32,11 +33,14 @@ public class AzureADService {
     final AzureUserGroupMembershipRepository azureUserGroupMembershipRepository;
     final AzureUserDeviceRelationshipRepository azureUserDeviceRelationshipRepository;
     final AzureUserCredentialRepository azureUserCredentialRepository;
+    final CustomRoleAssignmentService customRoleAssignmentService;
+    final PublishedResourcesRepository publishedResourcesRepository;
     final AzureUserConfigureRepository azureUserConfigureRepository;
     final BackendApplicationLogservice backendApplicationLogservice;
+    final AzureTenantService azureTenantService;
 
     @Autowired
-    public AzureADService(AzureUserRepository azureUserRepository, AzureApplicationRepository azureApplicationRepository, AzureAppRolesRepository azureAppRolesRepository, AzureTenantRepository azureTenantRepository, AzureGroupRepository azureGroupRepository, AzureUserGroupMembershipRepository azureUserGroupMembershipRepository, AzureDeviceRepository azureDeviceRepository, AzureUserDeviceRelationshipRepository azureUserDeviceRelationshipRepository, AzureUserCredentialRepository azureUserCredentialRepository, AzureUserConfigureRepository azureUserConfigureRepository, BackendApplicationLogservice backendApplicationLogservice) {
+    public AzureADService(AzureUserRepository azureUserRepository, AzureApplicationRepository azureApplicationRepository, AzureAppRolesRepository azureAppRolesRepository, AzureTenantRepository azureTenantRepository, AzureGroupRepository azureGroupRepository, AzureUserGroupMembershipRepository azureUserGroupMembershipRepository, AzureDeviceRepository azureDeviceRepository, AzureUserDeviceRelationshipRepository azureUserDeviceRelationshipRepository, AzureUserCredentialRepository azureUserCredentialRepository, CustomRoleAssignmentService customRoleAssignmentService, PublishedResourcesRepository publishedResourcesRepository, AzureUserConfigureRepository azureUserConfigureRepository, BackendApplicationLogservice backendApplicationLogservice, AzureTenantService azureTenantService) {
         this.azureUserRepository = azureUserRepository;
         this.azureApplicationRepository = azureApplicationRepository;
         this.azureAppRolesRepository = azureAppRolesRepository;
@@ -46,16 +50,19 @@ public class AzureADService {
         this.azureDeviceRepository = azureDeviceRepository;
         this.azureUserDeviceRelationshipRepository = azureUserDeviceRelationshipRepository;
         this.azureUserCredentialRepository = azureUserCredentialRepository;
+        this.customRoleAssignmentService = customRoleAssignmentService;
+        this.publishedResourcesRepository = publishedResourcesRepository;
         this.azureUserConfigureRepository = azureUserConfigureRepository;
         this.backendApplicationLogservice = backendApplicationLogservice;
+        this.azureTenantService = azureTenantService;
     }
 
     public List<AzureUser> fetchUsers(String wsTenantName) {
-        return azureUserRepository.findAllByAzureTenant(getAzureTenantUsingWsTenantName(wsTenantName));
+        return azureUserRepository.findAllByAzureTenant(azureTenantService.getAzureTenantUsingWsTenantName(wsTenantName));
     }
 
     public List<AzureGroup> fetchGroups(String wsTenantName) {
-        return azureGroupRepository.findAllByAzureTenant(getAzureTenantUsingWsTenantName(wsTenantName));
+        return azureGroupRepository.findAllByAzureTenant(azureTenantService.getAzureTenantUsingWsTenantName(wsTenantName));
     }
 //
 //    @Transactional
@@ -68,7 +75,7 @@ public class AzureADService {
 
     @Transactional(readOnly = true)
     public List<AzureApplication> fetchApplications(String wsTenantName) {
-        return azureApplicationRepository.findAllByAzureTenant(getAzureTenantUsingWsTenantName(wsTenantName));
+        return azureApplicationRepository.findAllByAzureTenant(azureTenantService.getAzureTenantUsingWsTenantName(wsTenantName));
     }
 
 
@@ -78,12 +85,12 @@ public class AzureADService {
     }
 
     public List<AzureDevice> fetchAzureDevices(String wsTenantName) {
-        return azureDeviceRepository.findAllByAzureTenant(getAzureTenantUsingWsTenantName(wsTenantName));
+        return azureDeviceRepository.findAllByAzureTenant(azureTenantService.getAzureTenantUsingWsTenantName(wsTenantName));
     }
 
-    public AzureTenant getAzureTenantUsingWsTenantName(String wsTenantName) {
-        return azureTenantRepository.findByWsTenantName(wsTenantName).orElseThrow(() -> new RuntimeException("No tenant found with provided tenantName: " + wsTenantName));
-    }
+//    public AzureTenant getAzureTenantUsingWsTenantName(String wsTenantName) {
+//        return azureTenantService.getAzureTenantUsingWsTenantName(wsTenantName);
+//    }
 
     public List<AzureUser> fetchUsersOfGroup(Integer groupId) {
         return azureUserGroupMembershipRepository.fetchUsersForGroup(getAzureGroupUsingId(groupId));
@@ -103,8 +110,20 @@ public class AzureADService {
         azureTenantRepository.deleteByAzureId(tenantId);
     }
 
+    @Transactional
+    public void deleteTenantV2(String wsTenantName) {
+        GenericUtil.ensureNotNull(wsTenantName, "WhiteSwan tenant name cannot be null");
+        azureTenantService.getAzureTenantUsingWsTenantName(wsTenantName);
+        customRoleAssignmentService.revokeApprovedRolesInAzureAndDeleteAllForWsTenant(wsTenantName);
+        publishedResourcesRepository.deleteAllByWsTenantName(wsTenantName);
+        azureUserConfigureRepository.deleteAllByWsTenantName(wsTenantName);
+        azureUserCredentialRepository.deleteByWsTenantName(wsTenantName);
+        azureTenantRepository.deleteByWsTenantName(wsTenantName);
+        backendApplicationLogservice.deleteLogsForTenant(wsTenantName);
+    }
+
     public List<UserGroupAndRolesResponse> getUserDetailsWithGroupNamesAndRoleNamesUsingTenantName(String wsTenantName, String azureId) {
-        AzureTenant azureTenant = getAzureTenantUsingWsTenantName(wsTenantName);
+        AzureTenant azureTenant = azureTenantService.getAzureTenantUsingWsTenantName(wsTenantName);
         List<UserGroupAndRolesProjection> resultSets = azureUserRepository.getUserDetailsWithGroupNamesAndRoleNamesUsingTenantName(wsTenantName, azureTenant.getId(), azureId);
         if (CollectionUtils.isEmpty(resultSets)) {
             throw new RuntimeException("No data found");

@@ -31,6 +31,7 @@ public class CustomRoleAssignment {
     String scopeType;
     String condition;
     String azureRoleDefinitionPathId;
+    String subscriptionId;
     String wsTenantName;
 
     @Enumerated(EnumType.STRING)
@@ -45,6 +46,7 @@ public class CustomRoleAssignment {
 
     String userEmail; /*From AzureUserConfigure*/
 
+
 //    /*From Azure*/
 //    @Transient
 //    String updatedBy;
@@ -55,13 +57,13 @@ public class CustomRoleAssignment {
 //    @Transient
 //    OffsetDateTime updatedOn;
 
-    @JsonIgnore
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "ws_azure_subscription_id", referencedColumnName = "id")
-    AzureSubscription azureSubscription; /* subscription-id associated for this Resource (scope) on which role has been assigned */
+//    @JsonIgnore
+//    @ManyToOne(fetch = FetchType.LAZY)
+//    @JoinColumn(name = "ws_azure_subscription_id", referencedColumnName = "id")
+//    AzureSubscription azureSubscription; /* subscription-id associated for this Resource (scope) on which role has been assigned */
 
-    @JsonIgnore
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "ws_azure_tenant_id", referencedColumnName = "id")
-    AzureTenant azureTenant;
+//    @JsonIgnore
+//    @ManyToOne(fetch = FetchType.LAZY)
+//    @JoinColumn(name = "ws_azure_tenant_id", referencedColumnName = "id")
+//    AzureTenant azureTenant;
 }

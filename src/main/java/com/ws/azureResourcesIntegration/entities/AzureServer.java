@@ -44,6 +44,7 @@ public class AzureServer extends BaseAzureResource{
     String administratorLogin;
     String endpointId;
     String resourceType;
+    String subscriptionId;
 
     @OneToMany(mappedBy = "azureServer", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     List<AzureDatabase> azureDatabases = new ArrayList<>();

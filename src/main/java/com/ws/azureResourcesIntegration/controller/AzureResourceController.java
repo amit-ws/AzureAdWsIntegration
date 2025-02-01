@@ -48,6 +48,12 @@ public class AzureResourceController {
         return ResponseEntity.ok(azureResourceService.getAzureResourcesUsingType(wsTenantName, AzureResourcesType.SUBSCRIPTION));
     }
 
+    @GetMapping("/v1/all")
+    public ResponseEntity<List<?>> getAzureResourcesUsingType_v2(@RequestParam("type") AzureResourcesType type,
+                                                                 @RequestParam("tenantName") String wsTenantName) {
+        return ResponseEntity.ok(azureResourceService.getAzureResourcesUsingType(type, wsTenantName));
+    }
+
     @GetMapping("/v1/getRoleDefinitionsName")
     public ResponseEntity<List<Map<String, Object>>> getRoleDefinitionsNameWithIdHandler(@RequestParam("tenantName") String wsTenantName) {
         return ResponseEntity.ok(azureResourceService.getRoleDefinitionsNameWithId(wsTenantName));
@@ -75,10 +81,17 @@ public class AzureResourceController {
         return ResponseEntity.ok(azureResourceService.getAzureAzureResourcesForPrinciple(scopeType, principleType, assignee, wsTenantName));
     }
 
+    // OLDER CODE
+//    @PatchMapping("/v1/publish")
+//    public ResponseEntity<Void> publishResourceHandler(@RequestParam("type") AzureResourcesType type,
+//                                                       @RequestParam("id") Integer resourceId) {
+//        azureResourceService.publishResourceByResourceIdAndType(resourceId, type);
+//        return ResponseEntity.ok().build();
+//    }
+
     @PatchMapping("/v1/publish")
-    public ResponseEntity<Void> publishResourceHandler(@RequestParam("type") AzureResourcesType type,
-                                                       @RequestParam("id") Integer resourceId) {
-        azureResourceService.publishResourceByResourceIdAndType(resourceId, type);
+    public ResponseEntity<Void> publishResourceByResourceIdAndTypeHandler(@Valid @RequestBody PublishResourceRequest request) {
+        azureResourceService.publishResourceByResourceIdAndType(request);
         return ResponseEntity.ok().build();
     }
 
@@ -87,6 +100,14 @@ public class AzureResourceController {
                                                                 @RequestParam("tenantName") String wsTenantName) {
         return ResponseEntity.ok(azureResourceService.getPublishedResources(wsTenantName, type));
     }
+
+
+    // OLDER CODE
+//    @GetMapping("/v1/publish")
+//    public ResponseEntity<List<?>> getPublishedResourcesV2Handler(@RequestParam("type") AzureResourcesType type,
+//                                                                  @RequestParam("tenantName") String wsTenantName) {
+//        return ResponseEntity.ok(azureResourceService.getPublishedResourcesV1(wsTenantName, type));
+//    }
 
     @GetMapping("/v1/applicableRoles")
     public ResponseEntity<List<ApplicableRoleDefinition>> getAllApplicableRoleDefinitionsForResourceHandler(@RequestParam Integer resourceId,
@@ -98,13 +119,13 @@ public class AzureResourceController {
     public ResponseEntity<CustomRoleAssignment> raiseResourceAssignmentRequestHandler(@Valid @RequestBody AssignRoleRequest request) {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
-                .body((azureResourceService.raiseResourceAssignmentRequest(request)));
+                .body((azureResourceService.raiseResourceAssignmentRequestV2(request)));
     }
 
     @GetMapping("/v1/requests/all")
     public ResponseEntity<Collection<CustomRoleAssignmentDTO>> getAllRaiseRoleAssignmentRequestHandler(@RequestParam("tenantName") String wsTenantName,
-                                                                                 @RequestParam(value = "state", required = false) RequestStatus status,
-                                                                                 @RequestParam(value = "email", required = false) String userEmail) {
+                                                                                                       @RequestParam(value = "state", required = false) RequestStatus status,
+                                                                                                       @RequestParam(value = "email", required = false) String userEmail) {
         return ResponseEntity.ok(azureResourceService.getAllRaisedRoleAssignmentRequest(wsTenantName, status, userEmail));
     }
 
@@ -132,4 +153,10 @@ public class AzureResourceController {
         return ResponseEntity.ok(azureResourceService.revokeRoleAssignment(azureId));
     }
 
+
+    @GetMapping("/v1/revokeData")
+    public ResponseEntity revokeRoleToPrincipalForResourceInAzure(@RequestParam("tenantName") String wsTenantName){
+        azureResourceService.revokeRoleToPrincipalForResourceInAzure(wsTenantName.trim());
+        return ResponseEntity.noContent().build();
+    }
 }

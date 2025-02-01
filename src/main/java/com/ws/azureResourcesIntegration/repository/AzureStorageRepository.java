@@ -1,12 +1,12 @@
 package com.ws.azureResourcesIntegration.repository;
 
+import com.ws.azureResourcesIntegration.dto.AzureStorageAccountDTO;
 import com.ws.azureResourcesIntegration.entities.AzureStorageAccount;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
-import java.util.Optional;
 
 @Repository
 public interface AzureStorageRepository extends JpaRepository<AzureStorageAccount, Integer> {
@@ -16,7 +16,7 @@ public interface AzureStorageRepository extends JpaRepository<AzureStorageAccoun
             "WHERE ara.scopeType = :scopeType AND ara.principalType = :principalType and ara.assignee = :assignee and asa.wsTenantName = :tenantName")
     List<AzureStorageAccount> getAzureStorageAccountsForPrinciple(String scopeType, String principalType, String assignee, String tenantName);
 
-    List<AzureStorageAccount> findAllByWsTenantNameAndIsPublishedTrue(String wsTenantName);
+//    List<AzureStorageAccount> findAllByWsTenantNameAndIsPublishedTrue(String wsTenantName);
 
 //    @Query("SELECT new com.ws.azureResourcesIntegration.dto.AzureStorageAccountDTO(" +
 //            "sa.id, sa.azureStorageAccountId, sa.storageAccountName, sa.region, sa.createdDate, sa.kind, " +
@@ -26,6 +26,32 @@ public interface AzureStorageRepository extends JpaRepository<AzureStorageAccoun
 //            "FROM AzureStorageAccount sa " +
 //            "WHERE sa.wsTenantName = :wsTenantName and sa.isPublished")
 //    List<AzureStorageAccountDTO> findAllAzureStorageAccountsByName(String wsTenantName);
+
+
+//    Integer id, String azureStorageAccountId, String storageAccountName, String region,
+//    OffsetDateTime createdDate, String kind, String customDomainName,
+//    Boolean blobPublicAccessAllowed, Boolean sharedKeyAccessAllowed,
+//    Boolean isAccessAllowedFromAllNetworks, String publicNetworkAccess,
+//    String publicAccess, String skuTier, String accessTier,
+//    String resourceType, String resourceGroupName,
+//    boolean isPublished, Date updatedAt, Date syncedAt, String wsTenantName
+
+
+    @Query("SELECT new com.ws.azureResourcesIntegration.dto.AzureStorageAccountDTO(asa.id, asa.azureStorageAccountId, asa.storageAccountName, asa.region, " +
+            "asa.createdDate, asa.kind, asa.customDomainName, asa.blobPublicAccessAllowed, asa.sharedKeyAccessAllowed, asa.isAccessAllowedFromAllNetworks, asa.publicNetworkAccess, " +
+            "asa.publicAccess, asa.skuTier, asa.accessTier, asa.resourceType, asa.resourceGroupName, " +
+            "asa.wsTenantName, asa.syncedAt, asa.updatedAt, asa.subscriptionId, CASE WHEN pr.resourceId IS NULL THEN FALSE ELSE TRUE END) " +
+            "FROM AzureStorageAccount asa " +
+            "LEFT JOIN PublishedResource pr ON upper(asa.storageAccountName) = upper(pr.resourceId) " +
+            "WHERE asa.wsTenantName = :wsTenantName " +
+            "ORDER BY asa.storageAccountName")
+    List<AzureStorageAccountDTO> findAllAzureStorageAccountsUsingTenantName(String wsTenantName);
+
+    @Query("SELECT asa FROM AzureStorageAccount asa " +
+            "INNER JOIN PublishedResource pr ON asa.storageAccountName = pr.resourceId " +
+            "WHERE asa.wsTenantName = :wsTenantName " +
+            "ORDER BY asa.storageAccountName")
+    List<AzureStorageAccount> findAllPublishedAzureStorageAccounts(String wsTenantName);
 
 
 }

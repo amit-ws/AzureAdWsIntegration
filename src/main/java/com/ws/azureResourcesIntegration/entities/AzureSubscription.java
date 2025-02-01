@@ -61,9 +61,9 @@ public class AzureSubscription {
     @OneToMany(mappedBy = "azureSubscription", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     List<AzureRoleDefinition> azureRoleDefinitions = new ArrayList<>();
 
-    @JsonIgnore
-    @OneToMany(mappedBy = "azureSubscription", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    List<CustomRoleAssignment> customRoleAssignments = new ArrayList<>();
+//    @JsonIgnore
+//    @OneToMany(mappedBy = "azureSubscription", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+//    List<CustomRoleAssignment> customRoleAssignments = new ArrayList<>();
 
     @JsonIgnore
     @OneToMany(mappedBy = "azureSubscription", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)

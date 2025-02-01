@@ -38,6 +38,7 @@ public class AzureStorageAccount extends BaseAzureResource{
     String accessTier;
     String resourceType;
     String resourceGroupName;
+    String subscriptionId;
 
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(

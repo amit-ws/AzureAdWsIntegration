@@ -111,4 +111,9 @@ public class AzureResourcesTestController {
                 .body(azureResourcesTestService.listK8Clusters());
     }
 
+    @GetMapping("/console")
+    public ResponseEntity generateConsoleURLHandler() {
+        return ResponseEntity.status(HttpStatus.OK).body(azureResourcesTestService.generateConsoleURL());
+    }
+
 }

@@ -39,6 +39,7 @@ public class AzureVM extends BaseAzureResource {
     String zones;
     String resourceIdentityType;
     String ipAddress;
+    String subscriptionId;
 
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)

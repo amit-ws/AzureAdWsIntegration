@@ -67,7 +67,7 @@ public class AzureADJwtValidationService {
             String kid = signedJWT.getHeader().getKeyID();
 
             return Optional.ofNullable(kid)
-                    .map(k -> rsaPublicKeyMap.containsKey(k))
+                    .map(rsaPublicKeyMap::containsKey)
                     .orElse(false);
 
         } catch (Exception e) {
