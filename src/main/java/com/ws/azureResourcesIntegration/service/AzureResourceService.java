@@ -21,6 +21,7 @@ import com.ws.azureResourcesIntegration.dto.*;
 import com.ws.azureResourcesIntegration.entities.*;
 import com.ws.azureResourcesIntegration.repository.*;
 import com.ws.azureAdIntegration.constants.Constant;
+import com.ws.projection.CustomRoleAssignmentProjection;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
@@ -207,7 +208,7 @@ public class AzureResourceService {
                 }
             }
         } else {
-            publishedResourcesRepository.deleteByResourceIdAndWsTenantName(request.getAzureId(), request.getWsTenantName());
+            publishedResourcesRepository.deleteByResourceIdAndWsTenantName(request.getResourceId(), request.getWsTenantName());
         }
     }
 
@@ -348,9 +349,39 @@ public class AzureResourceService {
         RequestStatus status = customRoleAssignment.getStatus();
         switch (status) {
             case PENDING, APPROVED ->
-                    throw new IllegalArgumentException(String.format("Your request is already in %s state", status));
+                    throw new IllegalArgumentException(String.format("Your request is already in %s state for the same resource with the same role", status));
         }
     }
+
+    @Transactional
+    public List<CustomRoleAssignment> raiseResourceAssignmentRequestInList(AssignRoleRequest request) {
+        if (CollectionUtils.isEmpty(request.getRoleDefinitionPathIds())) {
+            throw new RuntimeException("Please provide roles to assign");
+        }
+        List<CustomRoleAssignment> customRoleAssignments = new ArrayList<>();
+        List<CustomRoleAssignment> foundCustomRoles = customRoleAssignmentRepository.findAllByAssigneeAndScopeAndAzureRoleDefinitionPathIdInAndStatusIn(request.getPrincipleId().trim(), request.getResourceScope().trim(),
+                request.getRoleDefinitionPathIds(), Arrays.asList(RequestStatus.APPROVED, RequestStatus.PENDING));
+        if (CollectionUtils.isEmpty(foundCustomRoles)) {
+            request.getRoleDefinitionPathIds().forEach((id) -> customRoleAssignments.add(AzureEntityUtil.createFromAssignRoleRequestPayload(request, id.trim())));
+        } else {
+            Set<String> foundRoleIds = foundCustomRoles.stream().map(CustomRoleAssignment::getAzureRoleDefinitionPathId).collect(Collectors.toSet());
+            Set<String> uniqueRoleIds = request.getRoleDefinitionPathIds().stream()
+                    .filter(requestRoleId -> !foundRoleIds.contains(requestRoleId))
+                    .collect(Collectors.toSet());
+            if (CollectionUtils.isEmpty(uniqueRoleIds)) {
+                throw new RuntimeException(String.format("The following roles have already been requested: %s. Please review your request to avoid duplicate role assignments.", request.getRoleDefinitionPathIds()));
+            }
+            uniqueRoleIds.forEach((uniqueRoleId) -> customRoleAssignments.add(AzureEntityUtil.createFromAssignRoleRequestPayload(request, uniqueRoleId)));
+        }
+        return customRoleAssignmentRepository.saveAll(customRoleAssignments);
+    }
+
+
+    @Transactional(readOnly = true)
+    public List<CustomRoleAssignment> findByAssigneeAndScope(String assignee, String scope) {
+        return customRoleAssignmentRepository.findAllByAssigneeAndScope(assignee.trim(), scope.trim());
+    }
+
 
     private CustomRoleAssignment handleExistingRoleAssignment(CustomRoleAssignment roleAssignment, AssignRoleRequest request) {
         RequestStatus status = roleAssignment.getStatus();
@@ -398,6 +429,37 @@ public class AzureResourceService {
         setResourceName(customRoleAssignments);
         return customRoleAssignments;
     }
+
+
+    public Collection<CustomRoleAssignmentDTO> filterAllByWsTenantNameAndParams(String wsTenantName, RequestStatus status, String userEmail) {
+        String azureId = Optional.ofNullable(userEmail)
+                .map(email -> azureUserConfigureRepository.findByEmailAndWsTenantName(email.trim(), wsTenantName)
+                        .orElseThrow(() -> new RuntimeException("No data found for provided email: " + email)))
+                .map(AzureUserConfigure::getAzureId)
+                .orElse(null);
+        String statusStr = null;
+        if (status != null) {
+            statusStr = status.name();
+        }
+        List<CustomRoleAssignmentProjection> customRoleAssignments = customRoleAssignmentRepository.filterAllByWsTenantNameAndParams(wsTenantName, statusStr, azureId);
+        return customRoleAssignments.stream()
+                .map(customRoleAssignment -> CustomRoleAssignmentDTO.builder()
+                        .wsTenantName(customRoleAssignment.getWsTenantName())
+                        .requestedAt(customRoleAssignment.getRequestedAt())
+                        .resourceName(GenericUtil.extractLastValue(customRoleAssignment.getScope()))
+                        .assigneeName(customRoleAssignment.getDisplayName())
+                        .assignee(customRoleAssignment.getAssignee())
+                        .userEmail(customRoleAssignment.getUserEmail())
+                        .status(RequestStatus.valueOf(customRoleAssignment.getStatus()))
+                        .roleNames(customRoleAssignment.getRoles())
+                        .assignmentIds(customRoleAssignment.getAssignmentIds())
+                        .expiryTimeAmount(customRoleAssignment.getExpirtyTime())
+                        .validFrom(customRoleAssignment.getValidFrom())
+                        .validTo(customRoleAssignment.getValidTo())
+                        .build())
+                .collect(Collectors.toList());
+    }
+
 
     private void setResourceName(Collection<CustomRoleAssignmentDTO> dtos) {
         dtos.forEach((dto -> {
@@ -597,6 +659,41 @@ public class AzureResourceService {
     @Transactional
     public AzureRoleAssignment assignRoleToPrincipalForResourceInAzure(AssignRoleRequest request) {
         AzureResourceManager azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredentialService.findWSTenantIdWithDecryptedSecret(request.getTenantName()));
+//        String id = UUID.randomUUID().toString();
+//        String assignee = "c30c5b8e-f883-42a9-a7ff-4d16cd0f7ec8";
+//        String roleId1 = "/subscriptions/4769af8e-ca3d-448d-bd1a-80e03ed94158/providers/Microsoft.Authorization/roleDefinitions/0f37683f-2463-46b6-9ce7-9b788b988ba2";
+//        String roleId2 = "/subscriptions/4769af8e-ca3d-448d-bd1a-80e03ed94158/providers/Microsoft.Authorization/roleDefinitions/c025889f-8102-4ebf-b32c-fc0c6f0c6bd9";
+//        String scope = "/subscriptions/4769af8e-ca3d-448d-bd1a-80e03ed94158/resourceGroups/centos-test01_group/providers/Microsoft.Storage/storageAccounts/whiteswanstorage";
+//
+//        try {
+//            log.info("For roleId1");
+//            RoleAssignment createdRoleAssignment = azureResourceManager.accessManagement()
+//                    .roleAssignments()
+//                    .define(id)
+//                    .forObjectId(assignee)
+//                    .withRoleDefinition(roleId1)
+//                    .withScope(scope)
+//                    .create();
+//        } catch (Exception e) {
+//            log.error("Failure for 1");
+//            log.error("message1: {}", e.getMessage());
+//        }
+//        log.info("Success1");
+//
+//        try {
+//            log.info("For roleId2");
+//            RoleAssignment createdRoleAssignment = azureResourceManager.accessManagement()
+//                    .roleAssignments()
+//                    .define(id)
+//                    .forObjectId(assignee)
+//                    .withRoleDefinition(roleId2)
+//                    .withScope(scope)
+//                    .create();
+//        } catch (Exception e) {
+//            log.error("Failure for 2");
+//            log.error("message2: {}", e.getMessage());
+//        }
+//        log.info("Success2");
         try {
             log.info("Started...");
             RoleAssignment createdRoleAssignment = azureResourceManager.accessManagement()

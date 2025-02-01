@@ -9,6 +9,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.List;
+import java.util.Set;
 
 @NoArgsConstructor
 @AllArgsConstructor
@@ -16,18 +17,14 @@ import java.util.List;
 public class AssignRoleRequest {
     @NotNull(message = "tenant name is required")
     String tenantName;
-//    @NotNull(message = "Subscription ID is required")
-//    Integer subscriptionId;
     @NotNull(message = "Subscription ID cannot be null")
     String subscriptionId;
     @NotNull(message = "Resource Scope is required")
     String resourceScope;
-    @NotNull(message = "Role definition ID is required")
-    String roleDefinitionPathId;
-//    @NotEmpty(message = "Role definition ID(s) is required")
-//    List<String> roleDefinitionPathIds;
     @NotNull(message = "Principle (assignee) ID is required")
     String principleId;
+    @NotEmpty(message = "Role definition ID(s) is required")
+    Set<String> roleDefinitionPathIds;
     @NotNull(message = "Principle (assignee) type is required")
     AzurePrincipleType principleType;
     @Positive(message = "Expiry time amount must be greater than 0 if specified")
@@ -35,4 +32,11 @@ public class AssignRoleRequest {
     @NotNull(message = "User email is required")
     String userEmail; /* Person who raised the request (from AzureUserConfigure Entity)*/
     String description;
+
+
+
+    String roleDefinitionPathId;
+
+    //    @NotNull(message = "Subscription ID is required")
+//    Integer subscriptionId;
 }

@@ -1,17 +1,17 @@
 package com.ws.azureResourcesIntegration.dto;
 
 import com.ws.azureResourcesIntegration.constant.RequestStatus;
-import lombok.AccessLevel;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 import lombok.experimental.FieldDefaults;
 
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.Date;
+import java.util.List;
 
 
+@Builder
+@AllArgsConstructor
 @NoArgsConstructor
 @Data
 @FieldDefaults(level = AccessLevel.PRIVATE)
@@ -42,6 +42,9 @@ public class CustomRoleAssignmentDTO {
     OffsetDateTime createdOn;
     OffsetDateTime updatedOn;
     String resourceName; /* name of the Scope (basically the resource itself) */
+
+    List<String> roleNames;
+    List<String> assignmentIds;
 
 
     public CustomRoleAssignmentDTO(Integer id, String azureId, String azureRoleAssignmentPathId,

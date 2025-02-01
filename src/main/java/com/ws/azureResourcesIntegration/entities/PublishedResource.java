@@ -23,6 +23,7 @@ public class PublishedResource {
     Integer id;
     String resourceId; /* For Azure: azure_id*/
     String wsTenantName;
+    String subscriptionId;
     @Enumerated(EnumType.STRING)
     PublishResourceType resourceType; /* eg: VIRTUAL_MACHINE */
     @Builder.Default

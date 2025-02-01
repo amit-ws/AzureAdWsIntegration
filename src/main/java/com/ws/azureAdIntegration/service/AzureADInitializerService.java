@@ -99,4 +99,13 @@ public class AzureADInitializerService {
             throw new RuntimeException(exp.getMessage());
         }
     }
+
+    public void removeUserGroupMembership(String azureUserId, String azureGroupId) {
+        String membershipUrl = String.format("/groups/%s/members/%s/$ref", azureGroupId, azureUserId);
+        log.info("membershipUrl {}", membershipUrl);
+        this.graphClient
+                .customRequest(membershipUrl, DirectoryObject.class)
+                .buildRequest()
+                .delete();
+    }
 }

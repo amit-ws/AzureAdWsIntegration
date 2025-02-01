@@ -10,10 +10,12 @@ import com.ws.azureResourcesIntegration.dto.PublishResourceRequest;
 import com.ws.azureResourcesIntegration.entities.AzureRoleAssignment;
 import com.ws.azureResourcesIntegration.entities.CustomRoleAssignment;
 import com.ws.azureResourcesIntegration.entities.PublishedResource;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.Date;
 import java.util.UUID;
 
+@Slf4j
 public final class AzureEntityUtil {
     private AzureEntityUtil() {
     }
@@ -150,10 +152,29 @@ public final class AzureEntityUtil {
         return customRoleAssignment;
     }
 
+    public static CustomRoleAssignment createFromAssignRoleRequestPayload(AssignRoleRequest request, String rolePathId) {
+        GenericUtil.ensureNotNull(request, "Payload cannot be null");
+        CustomRoleAssignment customRoleAssignment = new CustomRoleAssignment();
+        customRoleAssignment.setAzureId(UUID.randomUUID().toString());
+        customRoleAssignment.setScope(request.getResourceScope().trim());
+        customRoleAssignment.setAzureRoleDefinitionPathId(rolePathId);
+        customRoleAssignment.setAssignee(request.getPrincipleId().trim());
+        customRoleAssignment.setPrincipalType(request.getPrincipleType().getValue());
+        customRoleAssignment.setScopeType(GenericUtil.determineScopeType(request.getResourceScope()));
+        customRoleAssignment.setDescription(GenericUtil.getOrNull(() -> request.getDescription().trim()));
+        customRoleAssignment.setStatus(RequestStatus.PENDING);
+        customRoleAssignment.setRequestedAt(new Date());
+        customRoleAssignment.setExpiryTimeAmount(request.getExpiryTimeAmount());
+        customRoleAssignment.setUserEmail(request.getUserEmail().trim());
+        customRoleAssignment.setSubscriptionId(request.getSubscriptionId().trim());
+        customRoleAssignment.setWsTenantName(request.getTenantName().trim());
+        return customRoleAssignment;
+    }
+
 
     public static PublishedResource createPublishedResourcesFromRequest(PublishResourceRequest request) {
         PublishedResource resource = new PublishedResource();
-        resource.setResourceId(request.getAzureId().trim());
+        resource.setResourceId(request.getResourceId().trim());
         resource.setWsTenantName(request.getWsTenantName().trim());
         resource.setResourceType(request.getType());
         resource.setCloudProviderType(CloudProviderType.AZURE);

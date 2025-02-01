@@ -1,5 +1,6 @@
 package com.ws.azureAdIntegration.service;
 
+import com.ws.azureAdIntegration.dto.AzureUserCredentialDTO;
 import com.ws.azureAdIntegration.entity.*;
 import com.ws.azureAdIntegration.repository.*;
 import com.ws.azureAdIntegration.util.GenericUtil;
@@ -9,6 +10,7 @@ import com.ws.azureResourcesIntegration.repository.PublishedResourcesRepository;
 import com.ws.azureResourcesIntegration.service.CustomRoleAssignmentService;
 import com.ws.projection.UserGroupAndRolesProjection;
 import com.ws.projection.UserGroupsNameProjection;
+import jakarta.persistence.EntityNotFoundException;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
@@ -38,9 +40,11 @@ public class AzureADService {
     final AzureUserConfigureRepository azureUserConfigureRepository;
     final BackendApplicationLogservice backendApplicationLogservice;
     final AzureTenantService azureTenantService;
+    final AzureUserCredentialService azureUserCredentialService;
+    final AzureADInitializerService azureADInitializerService;
 
     @Autowired
-    public AzureADService(AzureUserRepository azureUserRepository, AzureApplicationRepository azureApplicationRepository, AzureAppRolesRepository azureAppRolesRepository, AzureTenantRepository azureTenantRepository, AzureGroupRepository azureGroupRepository, AzureUserGroupMembershipRepository azureUserGroupMembershipRepository, AzureDeviceRepository azureDeviceRepository, AzureUserDeviceRelationshipRepository azureUserDeviceRelationshipRepository, AzureUserCredentialRepository azureUserCredentialRepository, CustomRoleAssignmentService customRoleAssignmentService, PublishedResourcesRepository publishedResourcesRepository, AzureUserConfigureRepository azureUserConfigureRepository, BackendApplicationLogservice backendApplicationLogservice, AzureTenantService azureTenantService) {
+    public AzureADService(AzureUserRepository azureUserRepository, AzureApplicationRepository azureApplicationRepository, AzureAppRolesRepository azureAppRolesRepository, AzureTenantRepository azureTenantRepository, AzureGroupRepository azureGroupRepository, AzureUserGroupMembershipRepository azureUserGroupMembershipRepository, AzureDeviceRepository azureDeviceRepository, AzureUserDeviceRelationshipRepository azureUserDeviceRelationshipRepository, AzureUserCredentialRepository azureUserCredentialRepository, CustomRoleAssignmentService customRoleAssignmentService, PublishedResourcesRepository publishedResourcesRepository, AzureUserConfigureRepository azureUserConfigureRepository, BackendApplicationLogservice backendApplicationLogservice, AzureTenantService azureTenantService, AzureUserCredentialService azureUserCredentialService, AzureADInitializerService azureADInitializerService) {
         this.azureUserRepository = azureUserRepository;
         this.azureApplicationRepository = azureApplicationRepository;
         this.azureAppRolesRepository = azureAppRolesRepository;
@@ -55,6 +59,8 @@ public class AzureADService {
         this.azureUserConfigureRepository = azureUserConfigureRepository;
         this.backendApplicationLogservice = backendApplicationLogservice;
         this.azureTenantService = azureTenantService;
+        this.azureUserCredentialService = azureUserCredentialService;
+        this.azureADInitializerService = azureADInitializerService;
     }
 
     public List<AzureUser> fetchUsers(String wsTenantName) {
@@ -163,6 +169,28 @@ public class AzureADService {
                 })
                 .collect(Collectors.toList());
     }
+
+    @Transactional
+    public void removeUserGroupMembership(String userId, String groupId, String wsTenantName) {
+        AzureUserCredentialDTO credentialDTO = azureUserCredentialService.findWSTenantIdWithDecryptedSecret(wsTenantName);
+        Integer id = azureUserGroupMembershipRepository
+                .findMemberShipUsingAzureUserIdAndAzureGroupId(userId, groupId)
+                .map(AzureUserGroupMembership::getId)
+                .orElseThrow(() -> new RuntimeException(String.format("No membership found for User ID: %s and Group ID: %s", userId, groupId)));
+        try {
+            azureADInitializerService.initializeGraphClient(credentialDTO, null);
+            azureADInitializerService.removeUserGroupMembership(userId, groupId);
+            azureUserGroupMembershipRepository.deleteById(id);
+        } catch (Exception exp) {
+            if (exp.getMessage().contains("404")) {
+                throw new RuntimeException(String.format("No group membership found in Azure for provided user: %s and group: %s details", userId, groupId));
+            } else if (exp.getMessage().contains("403")) {
+                throw new RuntimeException(String.format("Insufficient privileges to perform this action. Please ensure that your Azure account has the required permission: %s", "Group.ReadWrite.All"));
+            }
+            throw exp;
+        }
+    }
+
 
     private AzureUser getAzureUserUsingId(Integer userId) {
         return azureUserRepository.findById(userId)

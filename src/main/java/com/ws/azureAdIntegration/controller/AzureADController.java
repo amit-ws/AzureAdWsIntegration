@@ -92,5 +92,10 @@ public class AzureADController {
         return ResponseEntity.ok(azureADService.getGroupNamesForUser(userId));
     }
 
+    @DeleteMapping("/v1/groupMembership")
+    public ResponseEntity<Void> removeUserGroupMembershipHandler(@RequestParam String userId, @RequestParam String groupId, @RequestParam(value = "tenantName") String wsTenantName) {
+        azureADService.removeUserGroupMembership(userId.trim(), groupId.trim(), wsTenantName.trim());
+        return ResponseEntity.ok().build();
+    }
 
 }

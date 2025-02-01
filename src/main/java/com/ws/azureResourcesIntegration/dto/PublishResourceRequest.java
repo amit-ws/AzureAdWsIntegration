@@ -11,10 +11,13 @@ import lombok.NoArgsConstructor;
 @Data
 public class PublishResourceRequest {
     @NotNull
-    String azureId;
+    String resourceId;
     @NotNull
     String wsTenantName;
     boolean flag;
     @NotNull
     PublishResourceType type;
+
+//    @NotNull
+//    String subscriptionId;
 }

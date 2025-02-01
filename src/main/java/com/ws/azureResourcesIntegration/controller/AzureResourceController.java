@@ -122,11 +122,31 @@ public class AzureResourceController {
                 .body((azureResourceService.raiseResourceAssignmentRequestV2(request)));
     }
 
+    @PostMapping("/v2/requests/raise")
+    public ResponseEntity<List<CustomRoleAssignment>> raiseResourceAssignmentRequestInListHandler(@Valid @RequestBody AssignRoleRequest request) {
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body((azureResourceService.raiseResourceAssignmentRequestInList(request)));
+    }
+    @GetMapping("/v1/requests/get")
+    public ResponseEntity<List<CustomRoleAssignment>> findByAssigneeAndScopeHandler(@RequestParam String assignee, @RequestParam String scope) {
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body((azureResourceService.findByAssigneeAndScope(assignee, scope)));
+    }
+
     @GetMapping("/v1/requests/all")
     public ResponseEntity<Collection<CustomRoleAssignmentDTO>> getAllRaiseRoleAssignmentRequestHandler(@RequestParam("tenantName") String wsTenantName,
                                                                                                        @RequestParam(value = "state", required = false) RequestStatus status,
                                                                                                        @RequestParam(value = "email", required = false) String userEmail) {
         return ResponseEntity.ok(azureResourceService.getAllRaisedRoleAssignmentRequest(wsTenantName, status, userEmail));
+    }
+
+    @GetMapping("/v2/requests/all")
+    public ResponseEntity<Collection<CustomRoleAssignmentDTO>> filterAllByWsTenantNameAndParamsHandler(@RequestParam("tenantName") String wsTenantName,
+                                                                                                       @RequestParam(value = "state", required = false) RequestStatus status,
+                                                                                                       @RequestParam(value = "email", required = false) String userEmail) {
+        return ResponseEntity.ok(azureResourceService.filterAllByWsTenantNameAndParams(wsTenantName, status, userEmail));
     }
 
 //    @GetMapping("/v1/requests/allData")

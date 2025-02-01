@@ -30,6 +30,7 @@ public interface AzureRoleDefinitionRepository extends JpaRepository<AzureRoleDe
                     "FROM azure_role_definition_action arda   " +
                     "INNER JOIN azure_role_definition ard ON arda.ws_azure_role_definition_id = ard.id   " +
                     "INNER JOIN azure_role_definition_assignable_scopes ardas ON ard.id = ardas.ws_azure_role_definition_id   " +
+                    "INNER JOIN published_resource pr on ard.azure_id = pr.resource_id " +
                     "WHERE   " +
                     "    (ardas.assignable_scope = ANY (:assignableScopes) OR ardas.assignable_scope = '/' )   " +
                     "    AND UPPER(arda.\"action\") ILIKE ANY (ARRAY[CONCAT(UPPER(:action), '/%'), '*'])   " +
