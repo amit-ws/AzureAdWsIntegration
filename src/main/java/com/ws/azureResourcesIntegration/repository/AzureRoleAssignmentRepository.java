@@ -1,6 +1,7 @@
 package com.ws.azureResourcesIntegration.repository;
 
 import com.ws.azureAdIntegration.entity.AzureTenant;
+import com.ws.azureResourcesIntegration.dto.AzureRoleDefinitionDTO;
 import com.ws.azureResourcesIntegration.dto.CustomRoleAssignmentDTO;
 import com.ws.azureResourcesIntegration.entities.AzureRoleAssignment;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -29,4 +30,10 @@ public interface AzureRoleAssignmentRepository extends JpaRepository<AzureRoleAs
     List<CustomRoleAssignmentDTO> findAllByWsTenantNameAndAssignee(String wsTenantName, String assignee);
 
     Optional<AzureRoleAssignment> findByAzureId(String azureId);
+
+    @Query("SELECT new com.ws.azureResourcesIntegration.dto.AzureRoleDefinitionDTO(ard.rolePathId, ard.roleName) " +
+            "FROM AzureRoleAssignment ara INNER JOIN AzureRoleDefinition ard ON ara.azureRoleDefinitionPathId = ard.rolePathId " +
+            "WHERE ara.assignee = :assignee AND ara.scope = :scope AND ara.wsTenantName = :wsTenantName")
+    List<AzureRoleDefinitionDTO> findAllAssignedRolesForPrinciple(String assignee, String wsTenantName, String scope);
+
 }

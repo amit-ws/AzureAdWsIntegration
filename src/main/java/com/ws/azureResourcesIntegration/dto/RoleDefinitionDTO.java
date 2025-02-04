@@ -12,6 +12,8 @@ import java.util.Set;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @Builder
 public class RoleDefinitionDTO {
+    Integer id;
+    String azureId;
     String roleId;
     String name;
     String roleName;
@@ -22,4 +24,14 @@ public class RoleDefinitionDTO {
     String type;
     String roleType;
     String createdBy;
+    boolean isPublished;
+
+
+    public RoleDefinitionDTO(Integer id, String azureId, String roleName, String roleType, boolean isPublished) {
+        this.id = id;
+        this.azureId = azureId;
+        this.roleName = roleName;
+        this.roleType = roleType;
+        this.isPublished = isPublished;
+    }
 }

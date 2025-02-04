@@ -16,4 +16,5 @@ public class ApplicableRoleDefinition {
     String roleType;
     List<?> actionList;
     List<?> notActionList;
+//    boolean flag;
 }

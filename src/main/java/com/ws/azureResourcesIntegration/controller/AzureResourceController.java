@@ -55,7 +55,7 @@ public class AzureResourceController {
     }
 
     @GetMapping("/v1/getRoleDefinitionsName")
-    public ResponseEntity<List<Map<String, Object>>> getRoleDefinitionsNameWithIdHandler(@RequestParam("tenantName") String wsTenantName) {
+    public ResponseEntity<List<RoleDefinitionDTO>> getRoleDefinitionsNameWithIdHandler(@RequestParam("tenantName") String wsTenantName) {
         return ResponseEntity.ok(azureResourceService.getRoleDefinitionsNameWithId(wsTenantName));
     }
 
@@ -111,8 +111,15 @@ public class AzureResourceController {
 
     @GetMapping("/v1/applicableRoles")
     public ResponseEntity<List<ApplicableRoleDefinition>> getAllApplicableRoleDefinitionsForResourceHandler(@RequestParam Integer resourceId,
+                                                                                                            @RequestParam AzureResourcesType type,
+                                                                                                            @RequestParam String assignee) {
+        return ResponseEntity.ok(azureResourceService.getAllApplicableRoleDefinitionsForResource(resourceId, type, assignee));
+    }
+
+    @GetMapping("/v2/applicableRoles")
+    public ResponseEntity<List<ApplicableRoleDefinition>> getAllApplicableRoleDefinitionsForResource2(@RequestParam Integer resourceId,
                                                                                                             @RequestParam AzureResourcesType type) {
-        return ResponseEntity.ok(azureResourceService.getAllApplicableRoleDefinitionsForResource(resourceId, type));
+        return ResponseEntity.ok(azureResourceService.getAllApplicableRoleDefinitionsForResource2(resourceId, type));
     }
 
     @PostMapping("/v1/requests/raise")
@@ -159,6 +166,13 @@ public class AzureResourceController {
         return ResponseEntity
                 .status(HttpStatus.OK)
                 .body((azureResourceService.processResourceRequestForPrinciple(customRoleAssignmentId, updatedStatus)));
+    }
+
+    @PatchMapping("/v2/requests/process")
+    public ResponseEntity<Boolean> processResourceRequestForPrincipleHandler(@RequestBody ProcessAccessRequest request, @RequestParam("tenantName") String wsTenantName) {
+        return ResponseEntity
+                .status(HttpStatus.OK)
+                .body((azureResourceService.processResourceRequestForPrinciple(request, wsTenantName.trim())));
     }
 
     @PostMapping("/v1/assignRole")

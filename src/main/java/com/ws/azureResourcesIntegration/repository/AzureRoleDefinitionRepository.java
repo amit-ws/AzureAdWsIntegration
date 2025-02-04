@@ -1,6 +1,7 @@
 package com.ws.azureResourcesIntegration.repository;
 
 import com.ws.azureAdIntegration.entity.AzureTenant;
+import com.ws.azureResourcesIntegration.dto.RoleDefinitionDTO;
 import com.ws.azureResourcesIntegration.entities.AzureRoleDefinition;
 import com.ws.azureResourcesIntegration.entities.AzureRoleDefinitionAction;
 import com.ws.projection.ApplicableRoleDefinitionProjection;
@@ -17,7 +18,11 @@ public interface AzureRoleDefinitionRepository extends JpaRepository<AzureRoleDe
     void deleteAllByAzureTenant(AzureTenant azureTenant);
 
     List<AzureRoleDefinition> findAllByAzureTenant(AzureTenant azureTenant);
-
+    @Query("SELECT new com.ws.azureResourcesIntegration.dto.RoleDefinitionDTO(ard.id, ard.azureId, ard.roleName, ard.roleType, CASE WHEN pr.resourceId IS NULL THEN FALSE ELSE TRUE END) " +
+            "FROM AzureRoleDefinition ard " +
+            "LEFT JOIN PublishedResource pr ON UPPER(ard.azureId) = UPPER(pr.resourceId) " +
+            "WHERE ard.wsTenantName = :wsTenantName")
+    List<RoleDefinitionDTO> findAllRolesUsingWsTenantName(String wsTenantName);
     Optional<AzureRoleDefinition> findByIdAndAzureTenant(Integer id, AzureTenant azureTenant);
 
     @Query(value =
@@ -39,6 +44,26 @@ public interface AzureRoleDefinitionRepository extends JpaRepository<AzureRoleDe
                     "ORDER BY ard.role_name "
             , nativeQuery = true)
     List<ApplicableRoleDefinitionProjection> findAllSuitableRolesForResource(@Param("wsTenantName") String wsTenantName,
+                                                                             @Param("action") String resourceType,
+                                                                             @Param("assignableScopes") String[] assignableScopes);
+    @Query(value =
+            "SELECT DISTINCT  " +
+                    "    ard.role_path_id AS azureRolePathId,   " +
+                    "    ard.role_name AS roleName,   " +
+                    "    ard.role_type AS roleType,   " +
+                    "    STRING_AGG(CASE WHEN arda.\"type\" = 'ACTION' THEN arda.\"action\" END, ', ') AS actionList,  " +
+                    "    STRING_AGG(CASE WHEN arda.\"type\" = 'NOT ACTION' THEN arda.\"action\" END, ', ') AS notActionList " +
+                    "FROM azure_role_definition_action arda   " +
+                    "INNER JOIN azure_role_definition ard ON arda.ws_azure_role_definition_id = ard.id   " +
+                    "INNER JOIN azure_role_definition_assignable_scopes ardas ON ard.id = ardas.ws_azure_role_definition_id   " +
+                    "WHERE   " +
+                    "    (ardas.assignable_scope = ANY (:assignableScopes) OR ardas.assignable_scope = '/' )   " +
+                    "    AND UPPER(arda.\"action\") ILIKE ANY (ARRAY[CONCAT(UPPER(:action), '/%'), '*'])   " +
+                    "    AND arda.ws_tenant_name = :wsTenantName  " +
+                    "GROUP BY ard.id, ard.role_name, ard.role_type   " +
+                    "ORDER BY ard.role_name "
+            , nativeQuery = true)
+    List<ApplicableRoleDefinitionProjection> findAllSuitableRolesForResource2(@Param("wsTenantName") String wsTenantName,
                                                                              @Param("action") String resourceType,
                                                                              @Param("assignableScopes") String[] assignableScopes);
 

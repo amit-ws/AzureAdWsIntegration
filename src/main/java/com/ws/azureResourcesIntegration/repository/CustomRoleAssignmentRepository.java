@@ -57,5 +57,7 @@ public interface CustomRoleAssignmentRepository extends JpaRepository<CustomRole
 
     List<CustomRoleAssignment> findAllByAssigneeAndScopeAndAzureRoleDefinitionPathIdInAndStatusIn(String assignee, String scope, Set<String> roleDefPathIds, List<RequestStatus> status);
 
+    List<CustomRoleAssignment> findAllByWsTenantNameAndAzureIdIn(String wsTenantName, List<String> azureIDs);
+
 
 }
