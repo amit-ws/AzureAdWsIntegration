@@ -7,6 +7,7 @@ import com.azure.resourcemanager.authorization.models.RoleDefinition;
 import com.azure.resourcemanager.compute.models.VirtualMachine;
 import com.azure.resourcemanager.containerservice.models.CredentialResult;
 import com.azure.resourcemanager.containerservice.models.KubernetesCluster;
+import com.azure.resourcemanager.containerservice.models.KubernetesClusters;
 import com.azure.resourcemanager.resources.models.PolicyAssignment;
 import com.azure.resourcemanager.resources.models.PolicyDefinition;
 import com.azure.resourcemanager.resources.models.ResourceGroup;
@@ -24,11 +25,9 @@ import com.ws.azureResourcesIntegration.dto.*;
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.ApiException;
 import io.kubernetes.client.openapi.Configuration;
-import io.kubernetes.client.openapi.apis.CoreV1Api;
-import io.kubernetes.client.openapi.models.V1NamespaceList;
-import io.kubernetes.client.openapi.models.V1PodList;
+import io.kubernetes.client.openapi.apis.*;
+import io.kubernetes.client.openapi.models.*;
 import io.kubernetes.client.util.Config;
-import io.kubernetes.client.util.KubeConfig;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
@@ -39,7 +38,6 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.StringReader;
 import java.util.*;
@@ -388,55 +386,11 @@ public class AzureResourcesTestService {
     }
 
 
-    /**
-     * 1. Fetch all k8 clusters from the Azure using Azure SDK
-     * 2. Get the credentials from the k8 clusters
-     * 3. Use the credentials for these clusters and Interact with the K8 aoi client to fetch the resources within
-     */
-    public void listDownK8Resources() {
-        try {
-            // Fetch the Azure AKS cluster's admin kubeconfig credentials
-            AzureResourceManager azureResourceManager = getAzureResourceManager();
-            KubernetesCluster cluster = azureResourceManager
-                    .kubernetesClusters()
-                    .getByResourceGroup("resourceGroupName", "aksClusterName");
-
-            // Get the admin kubeconfig credentials (returns a List of CredentialResult)
-            List<CredentialResult> credentials = cluster.adminKubeConfigs();
-            if (credentials == null || credentials.isEmpty()) {
-                log.error("Error: No credentials found for the AKS cluster.");
-                return;
-            }
-
-            // Extract the kubeconfig content as byte array and convert it into a String
-            byte[] kubeConfigContent = credentials.get(0).value();
-            String kubeConfigString = new String(kubeConfigContent); // Convert byte[] to String
-            // Use Config.fromConfig() to get ApiClient from the kubeconfig string
-            ApiClient client = Config.fromConfig(new StringReader(kubeConfigString));
-            // Set the default API client
-            Configuration.setDefaultApiClient(client);
-            // Create the CoreV1Api instance to interact with Kubernetes
-            CoreV1Api api = new CoreV1Api();
-
-            // List down all the Namespaces
-            V1NamespaceList namespaceList = api.listNamespace().execute();
-            // List all pods in a namespace
-            V1PodList podList = api.listNamespacedPod(Objects.requireNonNull(namespaceList.getItems().get(0).getMetadata()).getName()).execute();
-            // Print the names of all pods in the 'default' namespace
-            podList.getItems().forEach(pod -> System.out.println("Pod name: " + Objects.requireNonNull(pod.getMetadata()).getName()));
-        } catch (IOException exp) {
-            log.error("Error interacting with AKS resources: {}", exp.getMessage(), exp);
-        } catch (Exception exp) {
-            log.error("Unexpected error: {}", exp.getMessage(), exp);
-        }
-    }
-
 
     /**
      * CHECK:
      * 1. Does this token belongs to the Application level itself because there is no use of a azure-user in here
      * 2. Is it alternative of getting token of Azure AD SSO (here we are bypassing the login flow)
-     *
      */
     public String generateConsoleURL() {
         try {
@@ -487,7 +441,7 @@ public class AzureResourcesTestService {
         String accessToken = (String) response.getBody().get("access_token");
 
         // Step 2: Exchange this token for a session token
-        String s = "https://portal.azure.com/?token=" + accessToken ;
+        String s = "https://portal.azure.com/?token=" + accessToken;
 
         String federatedTokenUrl = "https://portal.azure.com/" + tenantId + "/federation?user=" + userPrincipalName + "&token=" + accessToken;
 

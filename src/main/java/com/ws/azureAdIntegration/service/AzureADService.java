@@ -1,5 +1,6 @@
 package com.ws.azureAdIntegration.service;
 
+import com.ws.azureAdIntegration.dto.AzureGroupResponse;
 import com.ws.azureAdIntegration.dto.AzureUserCredentialDTO;
 import com.ws.azureAdIntegration.entity.*;
 import com.ws.azureAdIntegration.repository.*;
@@ -142,11 +143,25 @@ public class AzureADService {
                         .displayName(resultSet.getDisplayName())
                         .createdDateTime(resultSet.getCreatedDateTime())
                         .syncedAt(resultSet.getSyncedAt())
-                        .groups(GenericUtil.splitStringConvertToList(resultSet.getGroups()))
+//                        .groups(GenericUtil.splitStringConvertToList(resultSet.getGroups()))
+                        .groupResponses(Optional.ofNullable(resultSet.getGroups()).map(this::convertGroupsToDTO).orElse(Collections.emptyList()))
+//                        .groups(GenericUtil.getOrEmptyList(() -> Collections.singletonList(resultSet.getGroups())))
                         .roleDefinitions(GenericUtil.splitStringConvertToList(resultSet.getRoles()))
                         .build())
                 .collect(Collectors.toList());
 
+    }
+
+    private List<AzureGroupResponse> convertGroupsToDTO(String groupsString) {
+        List<AzureGroupResponse> groupDTOs = new ArrayList<>();
+        String[] groupEntries = groupsString.split(",");
+        for (String groupEntry : groupEntries) {
+            String[] parts = groupEntry.split(":");
+            if (parts.length == 2) {
+                groupDTOs.add(AzureGroupResponse.builder().azureId(parts[0]).displayName(parts[1]).build());
+            }
+        }
+        return groupDTOs;
     }
 
 

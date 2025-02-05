@@ -34,7 +34,7 @@ public interface AzureUserRepository extends JpaRepository<AzureUser, Integer> {
     @Query(value =
             "SELECT DISTINCT au.id AS id , au.azure_id AS azureUserId , au.display_name AS displayName , au.synced_at AS syncedAt, " +
                     "au.user_principal_name as userPrincipalName, au.created_date_time as createdDateTime, " +
-                    "ARRAY_AGG(DISTINCT ag.display_name) AS groups, ARRAY_AGG(DISTINCT ard.role_name) AS roles  " +
+                    "ARRAY_AGG(DISTINCT CONCAT(ag.azure_id, ':', ag.display_name)) AS groups, ARRAY_AGG(DISTINCT ard.role_name) AS roles  " +
                     "FROM azure_user au " +
                     "LEFT JOIN azure_user_group_membership augm on au.id = augm.user_id " +
                     "LEFT JOIN azure_group ag on augm.group_id = ag.id " +
