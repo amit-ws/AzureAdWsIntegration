@@ -9,6 +9,8 @@ import com.ws.mapper.AzureEntitiesMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Date;
 import java.util.Optional;
@@ -48,4 +50,8 @@ public class AzureUserCredentialService {
         return azureUserCredentialRepository.saveAndFlush(azureUserCredential);
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void updateSyncStatusData(boolean status, Integer id){
+        azureUserCredentialRepository.updateSyncStatusData(status, id);
+    }
 }

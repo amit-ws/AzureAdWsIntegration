@@ -1,5 +1,6 @@
 package com.ws.azureKuberntesJIT.service;
 
+import com.azure.core.http.rest.PagedIterable;
 import com.azure.resourcemanager.AzureResourceManager;
 import com.azure.resourcemanager.containerservice.models.CredentialResult;
 import com.azure.resourcemanager.containerservice.models.KubernetesCluster;
@@ -10,10 +11,7 @@ import com.ws.configuration.AzureAuthConfigurationFactory;
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.ApiException;
 import io.kubernetes.client.openapi.Configuration;
-import io.kubernetes.client.openapi.apis.AppsV1Api;
-import io.kubernetes.client.openapi.apis.CoreV1Api;
-import io.kubernetes.client.openapi.apis.RbacAuthorizationV1Api;
-import io.kubernetes.client.openapi.apis.StorageV1Api;
+import io.kubernetes.client.openapi.apis.*;
 import io.kubernetes.client.openapi.models.*;
 import io.kubernetes.client.util.Config;
 import lombok.extern.slf4j.Slf4j;
@@ -83,7 +81,7 @@ public class K8TestService {
                     .getByResourceGroup(rgName, clusterName);
             setK8ClusterCredential(cluster);
             CoreV1Api api = new CoreV1Api();
-            V1NamespaceList namespaceList =  listNamespaces(api);
+            V1NamespaceList namespaceList = listNamespaces(api);
             for (V1Namespace item : namespaceList.getItems()) {
                 log.info("Name: {}", GenericUtil.getOrNull(() -> item.getMetadata().getName()));
                 log.info("Namespace: {}", GenericUtil.getOrNull(() -> item.getMetadata().getNamespace()));
@@ -124,11 +122,11 @@ public class K8TestService {
             // Fetch the Azure AKS cluster's admin kubeconfig credentials
             AzureResourceManager azureResourceManager = getAzureResourceManager(clientId2, clientSecret2, tenantId2, subscriptionId2);
 
-//            PagedIterable<KubernetesCluster> kubernetesClusters = azureResourceManager.kubernetesClusters().list();
-//            kubernetesClusters.stream().forEach((kubernetesCluster -> {
-//                String name = kubernetesCluster.name();
-//                String rgName = kubernetesCluster.resourceGroupName();
-//            }));
+            PagedIterable<KubernetesCluster> kubernetesClusters = azureResourceManager.kubernetesClusters().listByResourceGroup("rgGroup");
+            kubernetesClusters.stream().forEach((kubernetesCluster -> {
+                String name = kubernetesCluster.name();
+                String rgName = kubernetesCluster.resourceGroupName();
+            }));
 
             KubernetesCluster cluster = azureResourceManager
                     .kubernetesClusters()
@@ -151,41 +149,47 @@ public class K8TestService {
 
 
             // Create the CoreV1Api instance to interact with Kubernetes
-            CoreV1Api api = new CoreV1Api();
-            // Create RBAC api to interact with Roles
+            CoreV1Api coreV1Api = new CoreV1Api();
+            // Create RBAC coreV1Api to interact with Roles
             RbacAuthorizationV1Api rbacApi = new RbacAuthorizationV1Api();
-            // Create APP api client to interact with Deployments, ReplicaSets
+            // Create APP coreV1Api client to interact with Deployments, ReplicaSets
             AppsV1Api appsApi = new AppsV1Api();
-            // Create Storage api client to interact with Storages related resources like StorageClass
+            // Create Storage coreV1Api client to interact with Storages related resources like StorageClass
             StorageV1Api storageV1Api = new StorageV1Api();
+            // To be used to fetch Custom Resource Definitions (CRD)
+            ApiextensionsV1Api apiextensionsV1Api = new ApiextensionsV1Api();
 
+
+            // List custom resources
+            V1CustomResourceDefinitionList v1CustomResourceDefinitionList = listCustomResourceDefinition(apiextensionsV1Api);
 
             // List down storage classes
             V1StorageClassList v1StorageClassList = listStorageClasses(storageV1Api);
 
             // List down persistent volume
-            V1PersistentVolumeList v1PersistentVolumeList = listPV(api);
+            V1PersistentVolumeList v1PersistentVolumeList = listPV(coreV1Api);
 
             // List down Nodes
-            V1NodeList viNodeList = listNodes(api);
+            V1NodeList viNodeList = listNodes(coreV1Api);
 
             // List down all the Namespaces
-            V1NamespaceList namespaceList = listNamespaces(api);
+            V1NamespaceList namespaceList = listNamespaces(coreV1Api);
 
             // LIst down service accounts
-            V1ServiceAccountList v1ServiceAccountList = listServiceAccounts(namespaceList, api);
+            V1ServiceAccountList v1ServiceAccountList = listServiceAccounts(namespaceList, coreV1Api);
 
             // List all pods in a namespace
-            V1PodList podList = listPods(namespaceList, api);
+            V1PodList podList = listPods(namespaceList, coreV1Api);
 
             // List down secrets
-            V1SecretList v1SecretList = listSecrestForNamespace(namespaceList, api);
+            V1SecretList v1SecretList = listSecrestForNamespace(namespaceList, coreV1Api);
 
             // List down PVCs
-            V1PersistentVolumeClaimList v1PersistentVolumeClaimList = listPVC(api, namespaceList);
+            V1PersistentVolumeClaimList v1PersistentVolumeClaimList = listPVC(coreV1Api, namespaceList);
 
             // List down roles
             V1RoleList v1RoleList = listNamespaceRoles(rbacApi, namespaceList);
+
 
             // List dowm Namespace roles-binding
             V1RoleBindingList v1RoleBindingList = listNamespaceRoleBindings(rbacApi, namespaceList);
@@ -199,6 +203,11 @@ public class K8TestService {
             // List down deployment
             V1DeploymentList v1DeploymentList = listDeployments(appsApi, namespaceList);
 
+            // Fetch POD SECURITY POLICIES via Namespace annotations
+            fetchPodSecurityPolciies(namespaceList.getItems().get(0));
+
+            // Fetch other resources
+            fetchOtherResources(client);
 
             // Print the names of all pods in the 'default' namespace
             podList.getItems().forEach(pod -> System.out.println("Pod name: " + Objects.requireNonNull(pod.getMetadata()).getName()));
@@ -260,6 +269,75 @@ public class K8TestService {
 
     private static V1StorageClassList listStorageClasses(StorageV1Api api) throws ApiException {
         return api.listStorageClass().execute();
+    }
+
+    private V1CustomResourceDefinitionList listCustomResourceDefinition(ApiextensionsV1Api apiextensionsV1Api) throws ApiException {
+        return apiextensionsV1Api.listCustomResourceDefinition().execute();
+    }
+
+    /*
+     * There is no dedicated API resource to fetch PodSecurity policies directly in Kubernetes 1.25 and beyond. PodSecurity policies are enforced via
+     * namespace annotations, which are part of the PodSecurityAdmission controller, and Kubernetes does not expose a separate "PodSecurity" API resource.
+     * The three main annotations are:
+     *      enforce: To enforce the PodSecurity standard.
+     *      audit: To audit the namespace for PodSecurity policy compliance.
+     *      warn: To generate warnings for non-compliant pods.
+     *
+     * And then we have 3 levels:
+     *      privileged
+     *      baseline
+     *      restricted
+     *   */
+    private void fetchPodSecurityPolciies(V1Namespace v1Namespace) {
+        // Check for PodSecurity annotations
+        String enforcePolicy = v1Namespace.getMetadata().getAnnotations().get("pod-security.kubernetes.io/enforce");
+        String auditPolicy = v1Namespace.getMetadata().getAnnotations().get("pod-security.kubernetes.io/audit");
+        String warnPolicy = v1Namespace.getMetadata().getAnnotations().get("pod-security.kubernetes.io/warn");
+
+        // Output the PodSecurity policies (if configured)
+        if (enforcePolicy != null) {
+            System.out.println("Enforce Policy: " + enforcePolicy);
+        }
+        if (auditPolicy != null) {
+            System.out.println("Audit Policy: " + auditPolicy);
+        }
+        if (warnPolicy != null) {
+            System.out.println("Warn Policy: " + warnPolicy);
+        }
+    }
+
+
+    private void fetchOtherResources(ApiClient client) throws ApiException {
+        AppsV1Api appsApi = new AppsV1Api(client);
+        BatchV1Api batchApi = new BatchV1Api(client);
+        CoreV1Api coreApi = new CoreV1Api(client);
+        NetworkingV1Api networkingApi = new NetworkingV1Api(client);
+        StorageV1Api storageApi = new StorageV1Api(client);
+
+        // Fetch ReplicaSets
+        V1ReplicaSetList replicaSets = appsApi.listNamespacedReplicaSet("").execute();
+
+        // Fetch StatefulSets (using the same AppsV1Api)
+        V1StatefulSetList statefulSets = appsApi.listNamespacedStatefulSet("").execute();
+
+        // Fetch Jobs
+        V1JobList jobs = batchApi.listNamespacedJob("").execute();
+
+        // Fetch CronJobs
+        V1CronJobList cronJobs = batchApi.listNamespacedCronJob("").execute();
+
+        // Fetch ConfigMaps
+        V1ConfigMapList configMaps = coreApi.listNamespacedConfigMap("").execute();
+
+        // Fetch Ingress
+        V1IngressList ingresses = networkingApi.listNamespacedIngress("").execute();
+
+        // Fetch NetworkPolicies
+        V1NetworkPolicyList networkPolicies = networkingApi.listNamespacedNetworkPolicy("").execute();
+
+        // Fetch StorageClasses
+        V1StorageClassList storageClasses = storageApi.listStorageClass().execute();
+
     }
 
 

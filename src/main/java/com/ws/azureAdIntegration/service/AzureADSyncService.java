@@ -15,8 +15,11 @@ import lombok.extern.slf4j.Slf4j;
 import okhttp3.Request;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -52,6 +55,7 @@ public class AzureADSyncService {
         this.azureADInitializerService = azureADInitializerService;
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public AzureTenant initializeGraphClientAndSyncAzureTenant(AzureUserCredentialDTO azureUserCredentialDTO, GraphServiceClient<Request> graphClient) {
         this.wsTenantName = azureUserCredentialDTO.getWsTenantName();
         azureADInitializerService.initializeGraphClient(azureUserCredentialDTO, graphClient);
@@ -62,14 +66,17 @@ public class AzureADSyncService {
         try {
             syncApplications(azureTenant);
             List<AzureUser> azureUsers = syncUsersData(azureTenant);
+            log.info("azureUsers synced....");
             List<AzureGroup> azureGroups = syncGroupsData(azureTenant);
+            log.info("azureGroups synced....");
             List<AzureDevice> azureDevices = syncDevicesData(azureTenant);
             syncUsersGroupsMembershipData(azureUsers, azureGroups);
+            log.info("azureGroups mapped");
             syncUsersDeviceRelationshipData(azureUsers, azureDevices);
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_AD_DATA_SYNC_END, "Info");
         } catch (Exception ex) {
-            log.error("Error occurred in syncing data from Azure AD");
-            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.wsTenantName, Constant.AZURE_SYNC_FAILURE, ex.getMessage(), "Error");
+            log.error("Error occurred in syncing data from Azure AD: {}", ex.getMessage());
+            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.wsTenantName, Constant.ADD, String.format(Constant.AZURE_SYNC_FAILURE, ex.getMessage()), "Error");
             throw new RuntimeException(ex.getMessage());
         }
     }

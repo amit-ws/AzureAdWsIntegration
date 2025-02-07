@@ -1,6 +1,7 @@
 package com.ws.azureResourcesIntegration.entities;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.ws.azureKuberntesJIT.enttity.AzureKubernetesCluster;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
@@ -62,5 +63,10 @@ public class AzureResourceGroup {
 //    @ManyToOne(fetch = FetchType.LAZY)
 //    @JoinColumn(name = "ws_azure_tenant_id", referencedColumnName = "id")
 //    AzureTenant azureTenant;
+
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "azureResourceGroup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    List<AzureKubernetesCluster> azureKubernetesClusters = new ArrayList<>();
 
 }

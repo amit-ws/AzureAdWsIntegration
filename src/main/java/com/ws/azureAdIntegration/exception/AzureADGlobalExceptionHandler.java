@@ -11,6 +11,14 @@ import java.util.Collections;
 @ControllerAdvice
 public class AzureADGlobalExceptionHandler {
 
+    @ExceptionHandler(AzureDataException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ResponseEntity handleRuntimeException(AzureDataException ex) {
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(Collections.singletonMap("message", ex.getMessage()));
+    }
+
     @ExceptionHandler(RuntimeException.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public ResponseEntity handleRuntimeException(RuntimeException ex) {

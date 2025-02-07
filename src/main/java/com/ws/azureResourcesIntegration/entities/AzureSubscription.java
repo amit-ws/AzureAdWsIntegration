@@ -2,6 +2,7 @@ package com.ws.azureResourcesIntegration.entities;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.ws.azureAdIntegration.entity.AzureTenant;
+import com.ws.azureKuberntesJIT.enttity.AzureKubernetesCluster;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
@@ -68,4 +69,10 @@ public class AzureSubscription {
     @JsonIgnore
     @OneToMany(mappedBy = "azureSubscription", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     List<AzureRoleAssignment> azureRoleAssignments = new ArrayList<>();
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "azureSubscription", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    List<AzureKubernetesCluster> azureKubernetesClusters = new ArrayList<>();
+
+
 }
