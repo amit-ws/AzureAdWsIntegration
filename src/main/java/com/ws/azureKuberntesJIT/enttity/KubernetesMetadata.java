@@ -1,9 +1,10 @@
-package com.ws.azureKuberntesJIT.dto;
+package com.ws.azureKuberntesJIT.enttity;
 
 import com.ws.azureAdIntegration.constants.CloudProviderType;
+import jakarta.persistence.CollectionTable;
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.*;
 import lombok.*;
-import lombok.experimental.FieldDefaults;
-import lombok.experimental.SuperBuilder;
 
 import java.time.OffsetDateTime;
 import java.util.Map;
@@ -12,8 +13,8 @@ import java.util.Map;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
-@FieldDefaults(level = AccessLevel.PRIVATE)
-public class MetadataDTO {
+@MappedSuperclass
+public class KubernetesMetadata {
     String apiVersion;
     String clusterId;
     String selfLink;
@@ -25,8 +26,15 @@ public class MetadataDTO {
     String uid;
     String namespace;
     String generateName;
-    Map<String, String> annotations;
     OffsetDateTime creationTimestamp;
     OffsetDateTime deletionTimestamp;
+
+    @ElementCollection
+    @CollectionTable(name = "kubernetes_metadata_annotations", joinColumns = @JoinColumn(name = "metadata_id"))
+    @MapKeyColumn(name = "annotation_key")
+    @Column(name = "annotation_value")
+    Map<String, String> annotations;
+
+    @Enumerated(EnumType.STRING)
     CloudProviderType cloudProviderType;
 }

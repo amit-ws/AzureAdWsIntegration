@@ -204,7 +204,7 @@ public class K8TestService {
             V1DeploymentList v1DeploymentList = listDeployments(appsApi, namespaceList);
 
             // Fetch POD SECURITY POLICIES via Namespace annotations
-            fetchPodSecurityPolciies(namespaceList.getItems().get(0));
+            fetchPodSecurityPolicies(namespaceList.getItems().get(0));
 
             // Fetch other resources
             fetchOtherResources(client);
@@ -288,7 +288,7 @@ public class K8TestService {
      *      baseline
      *      restricted
      *   */
-    private void fetchPodSecurityPolciies(V1Namespace v1Namespace) {
+    private void fetchPodSecurityPolicies(V1Namespace v1Namespace) {
         // Check for PodSecurity annotations
         String enforcePolicy = v1Namespace.getMetadata().getAnnotations().get("pod-security.kubernetes.io/enforce");
         String auditPolicy = v1Namespace.getMetadata().getAnnotations().get("pod-security.kubernetes.io/audit");
@@ -312,7 +312,6 @@ public class K8TestService {
         BatchV1Api batchApi = new BatchV1Api(client);
         CoreV1Api coreApi = new CoreV1Api(client);
         NetworkingV1Api networkingApi = new NetworkingV1Api(client);
-        StorageV1Api storageApi = new StorageV1Api(client);
 
         // Fetch ReplicaSets
         V1ReplicaSetList replicaSets = appsApi.listNamespacedReplicaSet("").execute();
@@ -335,8 +334,6 @@ public class K8TestService {
         // Fetch NetworkPolicies
         V1NetworkPolicyList networkPolicies = networkingApi.listNamespacedNetworkPolicy("").execute();
 
-        // Fetch StorageClasses
-        V1StorageClassList storageClasses = storageApi.listStorageClass().execute();
 
     }
 

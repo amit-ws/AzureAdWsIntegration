@@ -1,18 +1,16 @@
 package com.ws.azureKuberntesJIT.dto;
 
-import lombok.*;
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.experimental.SuperBuilder;
 
-@EqualsAndHashCode(callSuper = true)
 @Data
 @SuperBuilder
 @AllArgsConstructor
 @NoArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
-public class NodeDTO extends MetadataDTO{
-    String externalID;
-    String podCIDR;
-    Boolean unschedulable;
-    String providerID;
+public class CustomResourceDefinitionDTO extends MetadataDTO{
 }

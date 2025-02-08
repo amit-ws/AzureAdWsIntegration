@@ -10,9 +10,5 @@ import lombok.experimental.SuperBuilder;
 @AllArgsConstructor
 @NoArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
-public class NodeDTO extends MetadataDTO{
-    String externalID;
-    String podCIDR;
-    Boolean unschedulable;
-    String providerID;
+public class PersistentVolumeDTO extends MetadataDTO{
 }

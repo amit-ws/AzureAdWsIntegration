@@ -4,15 +4,18 @@ import lombok.*;
 import lombok.experimental.FieldDefaults;
 import lombok.experimental.SuperBuilder;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @EqualsAndHashCode(callSuper = true)
 @Data
 @SuperBuilder
 @AllArgsConstructor
 @NoArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
-public class NodeDTO extends MetadataDTO{
-    String externalID;
-    String podCIDR;
-    Boolean unschedulable;
-    String providerID;
+public class ClusterRoleDTO extends MetadataDTO {
+    AggregationRuleDTO aggregationRuleDTO;
+    List<PolicyRuleDTO> policyRuleDTOS = new ArrayList<>();
 }
+
+
