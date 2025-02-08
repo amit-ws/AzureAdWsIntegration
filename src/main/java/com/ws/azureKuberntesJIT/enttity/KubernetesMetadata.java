@@ -16,7 +16,6 @@ import java.util.Map;
 @MappedSuperclass
 public class KubernetesMetadata {
     String apiVersion;
-    String clusterId;
     String selfLink;
     String kind;
     String phase;
@@ -24,7 +23,6 @@ public class KubernetesMetadata {
     Long generation;
     String name;
     String uid;
-    String namespace;
     String generateName;
     OffsetDateTime creationTimestamp;
     OffsetDateTime deletionTimestamp;
@@ -35,6 +33,8 @@ public class KubernetesMetadata {
     @Column(name = "annotation_value")
     Map<String, String> annotations;
 
+    String clusterId;
+    String namespace;
     @Enumerated(EnumType.STRING)
     CloudProviderType cloudProviderType;
 }
