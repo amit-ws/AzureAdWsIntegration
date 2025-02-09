@@ -5,5 +5,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public interface LabelSelectorRequirementRepository extends JpaRepository<K8LabelSelectorRequirement, Long> {
+public interface K8LabelSelectorRequirementRepository extends JpaRepository<K8LabelSelectorRequirement, Long> {
 }

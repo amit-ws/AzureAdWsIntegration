@@ -1,6 +1,6 @@
 package com.ws.azureKuberntesJIT.enttity;
 
-import com.ws.azureKuberntesJIT.constant.RoleBindingType;
+import com.ws.azureKuberntesJIT.constant.RoleLevelType;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -31,5 +31,5 @@ public class K8RoleBind extends K8Metadata {
     List<K8RbacSubject> rbacSubjects;
 
     @Enumerated(EnumType.STRING)
-    RoleBindingType roleBindingType;
+    RoleLevelType roleLevelType;
 }

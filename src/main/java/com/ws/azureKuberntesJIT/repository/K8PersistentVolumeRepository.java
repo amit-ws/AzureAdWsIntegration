@@ -1,9 +1,9 @@
 package com.ws.azureKuberntesJIT.repository;
 
-import com.ws.azureKuberntesJIT.enttity.K8LabelSelector;
+import com.ws.azureKuberntesJIT.enttity.K8PersistentVolume;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public interface LabelSelectorRepository extends JpaRepository<K8LabelSelector, Long> {
+public interface K8PersistentVolumeRepository extends JpaRepository<K8PersistentVolume, Long> {
 }

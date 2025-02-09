@@ -3,7 +3,7 @@ package com.ws.azureKuberntesJIT.service;
 import com.ws.azureAdIntegration.constants.CloudProviderType;
 import com.ws.azureAdIntegration.exception.AzureDataException;
 import com.ws.azureAdIntegration.service.BackendApplicationLogservice;
-import com.ws.azureKuberntesJIT.constant.RoleBindingType;
+import com.ws.azureKuberntesJIT.constant.RoleLevelType;
 import com.ws.azureKuberntesJIT.dto.*;
 import com.ws.azureKuberntesJIT.enttity.*;
 import com.ws.azureKuberntesJIT.repository.*;
@@ -43,46 +43,46 @@ public class K8ResourcesSyncService {
     RbacAuthorizationV1Api rbacApi;
     ApiextensionsV1Api apiextensionsV1Api;
     CloudProviderType cloudProviderType;
-    final ClusterRoleRepository clusterRoleRepository;
-    final KubernetesConfigMapRepository kubernetesConfigMapRepository;
-    final KubernetesCustomResourceDefinitionRepository kubernetesCustomResourceDefinitionRepository;
-    final KubernetesDeploymentRepository kubernetesDeploymentRepository;
-    final KubernetesNetworkPolicyRepository kubernetesNetworkPolicyRepository;
-    final KubernetesNodeRepository kubernetesNodeRepository;
-    final KubernetesRoleBindRepository kubernetesRoleBindRepository;
-    final KubernetesSecretRepository kubernetesSecretRepository;
-    final KubernetesServiceAccountRepository kubernetesServiceAccountRepository;
-    final KubernetesNamespaceRepository kubernetesNamespaceRepository;
-    final KubernetesNamespaceRoleRepository kubernetesNamespaceRoleRepository;
-    final KubernetesPersistentVolumeRepository kubernetesPersistentVolumeRepository;
-    final KubernetesPersistentVolumeClaimRepository kubernetesPersistentVolumeClaimRepository;
-    final kubernetesStorageClassRepository kubernetesStorageClassRepository;
+    final K8ClusterRoleRepository k8ClusterRoleRepository;
+    final K8ConfigMapRepository k8ConfigMapRepository;
+    final K8CustomResourceDefinitionRepository k8CustomResourceDefinitionRepository;
+    final K8DeploymentRepository k8DeploymentRepository;
+    final K8NetworkPolicyRepository k8NetworkPolicyRepository;
+    final K8NodeRepository k8NodeRepository;
+    final K8RoleBindRepository k8RoleBindRepository;
+    final K8SecretRepository k8SecretRepository;
+    final K8ServiceAccountRepository k8ServiceAccountRepository;
+    final K8NamespaceRepository k8NamespaceRepository;
+    final K8NamespaceRoleRepository k8NamespaceRoleRepository;
+    final K8PersistentVolumeRepository k8PersistentVolumeRepository;
+    final K8PersistentVolumeClaimRepository k8PersistentVolumeClaimRepository;
+    final K8StorageClassRepository K8StorageClassRepository;
     final BackendApplicationLogservice backendApplicationLogservice;
 
     @Autowired
-    public K8ResourcesSyncService(ClusterRoleRepository clusterRoleRepository, KubernetesConfigMapRepository
-            kubernetesConfigMapRepository, KubernetesCustomResourceDefinitionRepository kubernetesCustomResourceDefinitionRepository,
-                                  KubernetesDeploymentRepository kubernetesDeploymentRepository, KubernetesNetworkPolicyRepository kubernetesNetworkPolicyRepository,
-                                  KubernetesNodeRepository kubernetesNodeRepository, KubernetesRoleBindRepository kubernetesRoleBindRepository,
-                                  KubernetesSecretRepository kubernetesSecretRepository, KubernetesServiceAccountRepository kubernetesServiceAccountRepository,
-                                  KubernetesNamespaceRepository kubernetesNamespaceRepository, KubernetesNamespaceRoleRepository kubernetesNamespaceRoleRepository,
-                                  KubernetesPersistentVolumeRepository kubernetesPersistentVolumeRepository, KubernetesPersistentVolumeClaimRepository kubernetesPersistentVolumeClaimRepository,
-                                  kubernetesStorageClassRepository kubernetesStorageClassRepository, BackendApplicationLogservice backendApplicationLogservice
+    public K8ResourcesSyncService(K8ClusterRoleRepository k8ClusterRoleRepository, K8ConfigMapRepository
+            k8ConfigMapRepository, K8CustomResourceDefinitionRepository k8CustomResourceDefinitionRepository,
+                                  K8DeploymentRepository k8DeploymentRepository, K8NetworkPolicyRepository k8NetworkPolicyRepository,
+                                  K8NodeRepository k8NodeRepository, K8RoleBindRepository k8RoleBindRepository,
+                                  K8SecretRepository k8SecretRepository, K8ServiceAccountRepository k8ServiceAccountRepository,
+                                  K8NamespaceRepository k8NamespaceRepository, K8NamespaceRoleRepository k8NamespaceRoleRepository,
+                                  K8PersistentVolumeRepository k8PersistentVolumeRepository, K8PersistentVolumeClaimRepository k8PersistentVolumeClaimRepository,
+                                  K8StorageClassRepository K8StorageClassRepository, BackendApplicationLogservice backendApplicationLogservice
     ) {
-        this.clusterRoleRepository = clusterRoleRepository;
-        this.kubernetesConfigMapRepository = kubernetesConfigMapRepository;
-        this.kubernetesCustomResourceDefinitionRepository = kubernetesCustomResourceDefinitionRepository;
-        this.kubernetesDeploymentRepository = kubernetesDeploymentRepository;
-        this.kubernetesNetworkPolicyRepository = kubernetesNetworkPolicyRepository;
-        this.kubernetesNodeRepository = kubernetesNodeRepository;
-        this.kubernetesRoleBindRepository = kubernetesRoleBindRepository;
-        this.kubernetesSecretRepository = kubernetesSecretRepository;
-        this.kubernetesServiceAccountRepository = kubernetesServiceAccountRepository;
-        this.kubernetesNamespaceRepository = kubernetesNamespaceRepository;
-        this.kubernetesNamespaceRoleRepository = kubernetesNamespaceRoleRepository;
-        this.kubernetesPersistentVolumeRepository = kubernetesPersistentVolumeRepository;
-        this.kubernetesPersistentVolumeClaimRepository = kubernetesPersistentVolumeClaimRepository;
-        this.kubernetesStorageClassRepository = kubernetesStorageClassRepository;
+        this.k8ClusterRoleRepository = k8ClusterRoleRepository;
+        this.k8ConfigMapRepository = k8ConfigMapRepository;
+        this.k8CustomResourceDefinitionRepository = k8CustomResourceDefinitionRepository;
+        this.k8DeploymentRepository = k8DeploymentRepository;
+        this.k8NetworkPolicyRepository = k8NetworkPolicyRepository;
+        this.k8NodeRepository = k8NodeRepository;
+        this.k8RoleBindRepository = k8RoleBindRepository;
+        this.k8SecretRepository = k8SecretRepository;
+        this.k8ServiceAccountRepository = k8ServiceAccountRepository;
+        this.k8NamespaceRepository = k8NamespaceRepository;
+        this.k8NamespaceRoleRepository = k8NamespaceRoleRepository;
+        this.k8PersistentVolumeRepository = k8PersistentVolumeRepository;
+        this.k8PersistentVolumeClaimRepository = k8PersistentVolumeClaimRepository;
+        this.K8StorageClassRepository = K8StorageClassRepository;
         this.backendApplicationLogservice = backendApplicationLogservice;
     }
 
@@ -164,7 +164,7 @@ public class K8ResourcesSyncService {
                     return builder.build();
                 })
                 .toList();
-        kubernetesNamespaceRepository.saveAll(kubernetesNamespaces);
+        k8NamespaceRepository.saveAll(kubernetesNamespaces);
     }
 
     private void fetchNodes(String clusterId) throws ApiException {
@@ -191,7 +191,7 @@ public class K8ResourcesSyncService {
                     return builder.build();
                 })
                 .toList();
-        kubernetesNodeRepository.saveAll(kubernetesNodes);
+        k8NodeRepository.saveAll(kubernetesNodes);
     }
 
     private void fetchCustomResourceDefinition(String clusterId) throws ApiException {
@@ -209,7 +209,7 @@ public class K8ResourcesSyncService {
                 })
                 .collect(Collectors.toList());
 
-        kubernetesCustomResourceDefinitionRepository.saveAll(k8CustomResourceDefinitions);
+        k8CustomResourceDefinitionRepository.saveAll(k8CustomResourceDefinitions);
     }
 
     private void fetchClusterRoles(String clusterId) throws ApiException {
@@ -266,7 +266,7 @@ public class K8ResourcesSyncService {
                 })
                 .toList();
 
-        clusterRoleRepository.saveAll(k8ClusterRoles);
+        k8ClusterRoleRepository.saveAll(k8ClusterRoles);
     }
 
     private void fetchClusterRoleBinding(String clusterId) throws ApiException {
@@ -279,7 +279,7 @@ public class K8ResourcesSyncService {
                 .map(item -> {
                     K8RoleBind.K8RoleBindBuilder builder = K8RoleBind.builder();
 
-                    builder.roleBindingType(RoleBindingType.CLUSTER);
+                    builder.roleLevelType(RoleLevelType.CLUSTER);
 
                     // Set metadata fields
                     if (!ObjectUtils.isEmpty(item.getMetadata())) {
@@ -307,7 +307,7 @@ public class K8ResourcesSyncService {
                 })
                 .toList();
 
-        kubernetesRoleBindRepository.saveAll(kubernetesRoleBinds);
+        k8RoleBindRepository.saveAll(kubernetesRoleBinds);
     }
 
     private void fetchNamespaceRoles(String clusterId) throws ApiException {
@@ -341,7 +341,7 @@ public class K8ResourcesSyncService {
                 })
                 .toList();
 
-        kubernetesNamespaceRoleRepository.saveAll(kubernetesNamespaceRoles);
+        k8NamespaceRoleRepository.saveAll(kubernetesNamespaceRoles);
     }
 
     private void fetchNamespaceRoleBinding(String clusterId) throws ApiException {
@@ -355,7 +355,7 @@ public class K8ResourcesSyncService {
                 .map(item -> {
                     K8RoleBind.K8RoleBindBuilder builder = K8RoleBind.builder();
 
-                    builder.roleBindingType(RoleBindingType.NAMESPACE);
+                    builder.roleLevelType(RoleLevelType.NAMESPACE);
                     if (!ObjectUtils.isEmpty(item.getMetadata())) {
                         setMetadataFields(builder, item.getMetadata(), clusterId);
                     }
@@ -381,7 +381,7 @@ public class K8ResourcesSyncService {
                 })
                 .toList();
 
-        kubernetesRoleBindRepository.saveAll(kubernetesNamespaceRoleBinds);
+        k8RoleBindRepository.saveAll(kubernetesNamespaceRoleBinds);
     }
 
     private void fetchDeployments(String clusterId) throws ApiException {
@@ -399,7 +399,7 @@ public class K8ResourcesSyncService {
                 })
                 .collect(Collectors.toList());
 
-        kubernetesDeploymentRepository.saveAll(k8Deployments);
+        k8DeploymentRepository.saveAll(k8Deployments);
     }
 
     private void fetchSecrets(String clusterId) throws ApiException {
@@ -421,7 +421,7 @@ public class K8ResourcesSyncService {
                 })
                 .toList();
 
-        kubernetesSecretRepository.saveAll(kubernetesSecrets);
+        k8SecretRepository.saveAll(kubernetesSecrets);
     }
 
     private void fetchServiceAccounts(String clusterId) throws ApiException {
@@ -441,7 +441,7 @@ public class K8ResourcesSyncService {
                 })
                 .toList();
 
-        kubernetesServiceAccountRepository.saveAll(kubernetesServiceAccounts);
+        k8ServiceAccountRepository.saveAll(kubernetesServiceAccounts);
     }
 
     private void fetchPersistentVolumes(String clusterId) throws ApiException {
@@ -459,7 +459,7 @@ public class K8ResourcesSyncService {
                 })
                 .toList();
 
-        kubernetesPersistentVolumeRepository.saveAll(persistentVolumes);
+        k8PersistentVolumeRepository.saveAll(persistentVolumes);
     }
 
     private void fetchPersistentVolumeClaims(String clusterId) throws ApiException {
@@ -477,7 +477,7 @@ public class K8ResourcesSyncService {
                 })
                 .toList();
 
-        kubernetesPersistentVolumeClaimRepository.saveAll(persistentVolumeClaims);
+        k8PersistentVolumeClaimRepository.saveAll(persistentVolumeClaims);
     }
 
     private void fetchStorageClasses(String clusterId) throws ApiException {
@@ -502,7 +502,7 @@ public class K8ResourcesSyncService {
                 })
                 .toList();
 
-        kubernetesStorageClassRepository.saveAll(kubernetesStorageClasses);
+        K8StorageClassRepository.saveAll(kubernetesStorageClasses);
 
     }
 
@@ -523,7 +523,7 @@ public class K8ResourcesSyncService {
                 })
                 .toList();
 
-        kubernetesConfigMapRepository.saveAll(configMaps);
+        k8ConfigMapRepository.saveAll(configMaps);
     }
 
     private void fetchNetworkPolicies(String clusterId) throws ApiException {
@@ -544,7 +544,7 @@ public class K8ResourcesSyncService {
                 })
                 .toList();
 
-        kubernetesNetworkPolicyRepository.saveAll(kubernetesNetworkPolicies);
+        k8NetworkPolicyRepository.saveAll(kubernetesNetworkPolicies);
     }
 
 

@@ -35,10 +35,13 @@ public class K8Metadata {
     @Column(name = "annotation_value")
     Map<String, String> annotations = new HashMap<>();
 
+    @Column(nullable = false)
     String clusterId;
     String namespace;
+    @Column(nullable = false)
     @Enumerated(EnumType.STRING)
     CloudProviderType cloudProviderType;
 
     String wsTenantName;
+    String parentResourceId; /* for Azure = subscritpion_id.  For GCP = Project_id*/
 }

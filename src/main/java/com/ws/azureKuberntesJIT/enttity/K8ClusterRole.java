@@ -23,13 +23,6 @@ public class K8ClusterRole extends K8Metadata {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Long id;
 
-    @Column(nullable = false)
-    String clusterId;
-
-    @Column(nullable = false)
-    @Enumerated(EnumType.STRING)
-    CloudProviderType cloudType;
-
     @OneToOne
     @JoinColumn(name = "aggregation_rule_id")
     K8AggregationRule k8AggregationRule;

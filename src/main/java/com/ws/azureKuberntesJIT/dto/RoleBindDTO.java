@@ -1,6 +1,6 @@
 package com.ws.azureKuberntesJIT.dto;
 
-import com.ws.azureKuberntesJIT.constant.RoleBindingType;
+import com.ws.azureKuberntesJIT.constant.RoleLevelType;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 import lombok.experimental.SuperBuilder;
@@ -16,5 +16,5 @@ import java.util.List;
 public class RoleBindDTO extends MetadataDTO{
     RoleRefDTO roleRefDTO;
     List<RbacSubjectDTO> rbacSubjectDTOS;
-    RoleBindingType roleBindingType;
+    RoleLevelType roleLevelType;
 }

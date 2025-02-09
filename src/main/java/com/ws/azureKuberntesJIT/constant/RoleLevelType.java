@@ -1,5 +1,5 @@
 package com.ws.azureKuberntesJIT.constant;
 
-public enum RoleBindingType {
+public enum RoleLevelType {
     CLUSTER, NAMESPACE;
 }
