@@ -3,14 +3,18 @@ package com.ws.azureKuberntesJIT.service;
 
 import com.ws.azureAdIntegration.constants.CloudProviderType;
 import com.ws.azureAdIntegration.exception.AzureDataException;
+import com.ws.azureAdIntegration.util.AzureEntityUtil;
 import com.ws.azureKuberntesJIT.constant.K8ResourceType;
 import com.ws.azureKuberntesJIT.constant.RoleLevelType;
 import com.ws.azureKuberntesJIT.projection.K8RoleProjection;
 import com.ws.azureKuberntesJIT.repository.*;
 import com.ws.azureKuberntesJIT.response.K8RoleResponse;
+import com.ws.azureResourcesIntegration.dto.PublishResourceRequest;
+import com.ws.azureResourcesIntegration.repository.PublishedResourcesRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -27,13 +31,14 @@ public class K8ResourceService {
     final K8NetworkPolicyRepository k8NetworkPolicyRepository;
     final K8ClusterRoleRepository clusterRoleRepository;
     final K8NamespaceRoleRepository namespaceRoleRepository;
+    final PublishedResourcesRepository publishedResourcesRepository;
 
 
     @Autowired
     public K8ResourceService(K8NamespaceRepository k8NamespaceRepository, K8NodeRepository k8NodeRepository,
                              K8DeploymentRepository k8DeploymentRepository, K8ServiceAccountRepository k8ServiceAccountRepository,
                              K8SecretRepository k8SecretRepository, K8ConfigMapRepository k8ConfigMapRepository,
-                             K8CustomResourceDefinitionRepository k8CustomResourceDefinitionRepository, K8NetworkPolicyRepository k8NetworkPolicyRepository, K8ClusterRoleRepository clusterRoleRepository, K8NamespaceRoleRepository namespaceRoleRepository) {
+                             K8CustomResourceDefinitionRepository k8CustomResourceDefinitionRepository, K8NetworkPolicyRepository k8NetworkPolicyRepository, K8ClusterRoleRepository clusterRoleRepository, K8NamespaceRoleRepository namespaceRoleRepository, PublishedResourcesRepository publishedResourcesRepository) {
         this.k8NamespaceRepository = k8NamespaceRepository;
         this.k8NodeRepository = k8NodeRepository;
         this.k8DeploymentRepository = k8DeploymentRepository;
@@ -44,6 +49,7 @@ public class K8ResourceService {
         this.k8NetworkPolicyRepository = k8NetworkPolicyRepository;
         this.clusterRoleRepository = clusterRoleRepository;
         this.namespaceRoleRepository = namespaceRoleRepository;
+        this.publishedResourcesRepository = publishedResourcesRepository;
     }
 
 
@@ -107,6 +113,23 @@ public class K8ResourceService {
                 .build();
     }
 
+
+    @Transactional
+    public Boolean publishK8Resourcc(PublishResourceRequest request) {
+        if (request.isFlag()) {
+            try {
+                publishedResourcesRepository.save(AzureEntityUtil.createPublishedResourcesFromRequest(request));
+            } catch (Exception ex) {
+                if (ex.getMessage().contains("duplicate key")) {
+                    throw new RuntimeException("Resource already published");
+                }
+            }
+        } else {
+            publishedResourcesRepository.deleteByResourceIdAndWsTenantName(request.getResourceId(), request.getWsTenantName());
+        }
+
+        return Boolean.TRUE;
+    }
 }
 
 
