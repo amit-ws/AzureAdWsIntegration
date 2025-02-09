@@ -14,7 +14,7 @@ import java.util.Map;
 @NoArgsConstructor
 @Entity
 @Table(name = "kubernetes_label_selector", schema = "azure_test")
-public class LabelSelector {
+public class K8LabelSelector {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Long id;
@@ -26,10 +26,10 @@ public class LabelSelector {
     Map<String, String> matchLabels;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    AggregationRule aggregationRule;
+    K8AggregationRule k8AggregationRule;
 
-    @OneToMany(mappedBy = "labelSelector")
-    List<LabelSelectorRequirement> matchExpressions;
+    @OneToMany(mappedBy = "k8LabelSelector")
+    List<K8LabelSelectorRequirement> matchExpressions;
 
     @Column(nullable = false)
     String clusterRoleUID;

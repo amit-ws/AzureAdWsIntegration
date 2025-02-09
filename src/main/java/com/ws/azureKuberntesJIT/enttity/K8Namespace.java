@@ -2,23 +2,19 @@ package com.ws.azureKuberntesJIT.enttity;
 
 import com.ws.azureAdIntegration.constants.CloudProviderType;
 import jakarta.persistence.*;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
 import lombok.*;
-import lombok.EqualsAndHashCode;
+import lombok.experimental.FieldDefaults;
 import lombok.experimental.SuperBuilder;
-
-import java.util.ArrayList;
-import java.util.List;
 
 @EqualsAndHashCode(callSuper = true)
 @Data
 @SuperBuilder
 @AllArgsConstructor
 @NoArgsConstructor
+@FieldDefaults(level = AccessLevel.PRIVATE)
 @Entity
-@Table(name = "kubernetes_cluster_role", schema = "azure_test")
-public class ClusterRole extends KubernetesMetadata {
+@Table(name = "kubernetes_namespace", schema = "azure_test")
+public class K8Namespace extends K8Metadata {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Long id;
@@ -30,10 +26,7 @@ public class ClusterRole extends KubernetesMetadata {
     @Enumerated(EnumType.STRING)
     CloudProviderType cloudType;
 
-    @OneToOne
-    @JoinColumn(name = "aggregation_rule_id")
-    AggregationRule aggregationRule;
-
-    @OneToMany(mappedBy = "clusterRole", orphanRemoval = true, fetch = FetchType.LAZY)
-    List<PolicyRule> policyRules = new ArrayList<>();
+    String generateName;
 }
+
+

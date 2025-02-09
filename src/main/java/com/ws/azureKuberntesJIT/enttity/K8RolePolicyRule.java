@@ -1,10 +1,10 @@
 package com.ws.azureKuberntesJIT.enttity;
 
+import com.ws.azureAdIntegration.constants.CloudProviderType;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.NoArgsConstructor;
 
-import javax.annotation.Nullable;
 import java.util.List;
 
 @Data
@@ -13,7 +13,7 @@ import java.util.List;
 @NoArgsConstructor
 @Entity
 @Table(name = "kubernetes_policy_rule", schema = "azure_test")
-public class PolicyRule {
+public class K8RolePolicyRule {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Long id;
@@ -48,7 +48,13 @@ public class PolicyRule {
 
     String namespace;
 
+    @Enumerated(EnumType.STRING)
+    CloudProviderType cloudProviderType;
+
     @ManyToOne(fetch = FetchType.LAZY)
-    ClusterRole clusterRole;
+    K8ClusterRole k8ClusterRole;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    K8NamespaceRole kubernetesNamespaceRole;
 
 }

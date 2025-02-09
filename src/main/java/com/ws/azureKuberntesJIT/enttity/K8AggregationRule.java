@@ -1,6 +1,5 @@
 package com.ws.azureKuberntesJIT.enttity;
 
-import com.ws.azureAdIntegration.constants.CloudProviderType;
 import jakarta.persistence.*;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.OneToMany;
@@ -16,7 +15,7 @@ import java.util.List;
 @NoArgsConstructor
 @Entity
 @Table(name = "kubernetes_aggregation_rule", schema = "azure_test")
-public class AggregationRule {
+public class K8AggregationRule {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Long id;
@@ -26,6 +25,6 @@ public class AggregationRule {
 
     String namespace;
 
-    @OneToMany(mappedBy = "aggregationRule")
-    List<LabelSelector> labelSelectors;
+    @OneToMany(mappedBy = "k8AggregationRule")
+    List<K8LabelSelector> k8LabelSelectors;
 }

@@ -13,7 +13,7 @@ import java.util.List;
 @NoArgsConstructor
 @Entity
 @Table(name = "kubernetes_label_selector_requirement", schema = "azure_test")
-public class LabelSelectorRequirement {
+public class K8LabelSelectorRequirement {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Long id;
@@ -27,5 +27,5 @@ public class LabelSelectorRequirement {
     List<String> values;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    LabelSelector labelSelector;
+    K8LabelSelector k8LabelSelector;
 }
