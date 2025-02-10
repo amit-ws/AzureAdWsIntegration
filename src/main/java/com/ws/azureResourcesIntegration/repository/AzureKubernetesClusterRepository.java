@@ -1,6 +1,6 @@
-package com.ws.azureKuberntesJIT.repository;
+package com.ws.azureResourcesIntegration.repository;
 
-import com.ws.azureKuberntesJIT.enttity.AzureKubernetesCluster;
+import com.ws.azureResourcesIntegration.entities.AzureKubernetesCluster;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

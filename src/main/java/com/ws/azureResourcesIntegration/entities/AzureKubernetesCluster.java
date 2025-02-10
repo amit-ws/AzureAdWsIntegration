@@ -1,11 +1,11 @@
-package com.ws.azureKuberntesJIT.enttity;
+package com.ws.azureResourcesIntegration.entities;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.ws.azureResourcesIntegration.entities.AzureResourceGroup;
-import com.ws.azureResourcesIntegration.entities.AzureSubscription;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
+
+import java.util.List;
 
 @Data
 @Builder
@@ -20,11 +20,18 @@ public class AzureKubernetesCluster {
     Integer id;
     @Column(nullable = false)
     String azureId;
+    String name;
+    String regionName;
+    boolean isAzureRbacEnabled;
+    String type;
     @Column(nullable = false)
     String subscriptionId;
     @Column(nullable = false)
     String resourceGroupName;
 
+
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY, mappedBy = "azureKubernetesCluster")
+    List<AzureK8ClusterCredential> azureK8ClusterCredentials;
 
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)

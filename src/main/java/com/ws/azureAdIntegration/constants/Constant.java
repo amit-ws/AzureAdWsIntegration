@@ -74,4 +74,13 @@ public class Constant {
 
     //Azure Scheduler
     public static final String TOTAL_FOUND_ROLE_ASSIGNMENTS_TO_BE_REMOVED = "Total %s AzureRoleAssignments found to be removed";
+
+    // AKS and K8 resources
+    public static final String AZURE_KUBERNETES_CLUSTERS_SYNCED = "Azure kubernetes clusters data synced";
+    public static final String INSUFFICIENT_PRIVILEGEE_FOR_AKS_ADMIN_CONFIG_FETCH = "InSufficient Privilege to fetch AKS cluster admin credential configs";
+    public static final String KUBERNETES_RESOURCES_SYNCED = "Azure kubernetes resources data synced";
+    public static final String ERROR_IN_SYNCING_KUBERNETES_DATA = "Error in syncing kubernetes resources data ";
+    public static final String KUBERNETES_RESOURCES_DATA_SYNC_SKIPPED = "Skipped Kubernetes-Resources data sync as no Azure Kubernetes (AKS) was found";
+
+
 }

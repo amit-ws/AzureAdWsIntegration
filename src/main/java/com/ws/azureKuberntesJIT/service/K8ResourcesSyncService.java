@@ -2,6 +2,7 @@ package com.ws.azureKuberntesJIT.service;
 
 import com.ws.azureAdIntegration.constants.CloudProviderType;
 import com.ws.azureAdIntegration.exception.AzureDataException;
+import com.ws.azureAdIntegration.exception.K8DataException;
 import com.ws.azureAdIntegration.service.BackendApplicationLogservice;
 import com.ws.azureKuberntesJIT.constant.RoleLevelType;
 import com.ws.azureKuberntesJIT.dto.*;
@@ -35,6 +36,7 @@ import java.util.stream.Collectors;
 public class K8ResourcesSyncService {
     String wsTenantName;
     String tenantEmail;
+    String resourceAccountId;
     CoreV1Api coreV1Api;
     AppsV1Api appsV1Api;
     BatchV1Api batchApi;
@@ -88,20 +90,20 @@ public class K8ResourcesSyncService {
 
 
     @Transactional
-    public void syncKubernetesData(Map<String, String> clusterIdAndKubeConfigMap, CloudProviderType cloudProviderType,
-                                   String wsTenantName, String tenantEmail) {
-        if (CollectionUtils.isEmpty(clusterIdAndKubeConfigMap)) {
-            throw new AzureDataException("No kubernetes configurations provided");
+    public void syncKubernetesData(K8ResourceDataSyncRequest k8ResourceDataSyncRequest) {
+        if (ObjectUtils.isEmpty(k8ResourceDataSyncRequest)) {
+            throw new K8DataException("Please provide payload to start K8 resources data sync");
         }
-        this.cloudProviderType = cloudProviderType;
-        this.wsTenantName = wsTenantName;
-        this.tenantEmail = tenantEmail;
-        for (Map.Entry<String, String> stringStringEntry : clusterIdAndKubeConfigMap.entrySet()) {
-            initializeK8Clients(stringStringEntry.getValue());
+        this.cloudProviderType = k8ResourceDataSyncRequest.getCloudProviderType();
+        this.wsTenantName = k8ResourceDataSyncRequest.getWsTenantName();
+        this.tenantEmail = k8ResourceDataSyncRequest.getTenantEmail();
+        this.resourceAccountId = k8ResourceDataSyncRequest.getResourceAccountId();
+        for (Map.Entry<String, String> clusterIdAndKubeConfigMapEntry : k8ResourceDataSyncRequest.getClusterIdAndKubeConfigMap().entrySet()) {
+            initializeK8Clients(clusterIdAndKubeConfigMapEntry.getValue());
             log.info("K8 clients initialized successfully");
-            log.info(String.format("K8 resources data sync STARTED for cluster id: %s of type: %s at: %s", stringStringEntry.getKey(), cloudProviderType, LocalDateTime.now()));
-            executeSync(stringStringEntry.getKey());
-            log.info(String.format("K8 resources data sync COMPLETED for cluster id: %s of type: %s at: %s", stringStringEntry.getKey(), cloudProviderType, LocalDateTime.now()));
+            log.info(String.format("K8 resources data sync STARTED for cluster id: %s of type: %s at: %s", clusterIdAndKubeConfigMapEntry.getKey(), cloudProviderType, LocalDateTime.now()));
+            executeSync(clusterIdAndKubeConfigMapEntry.getKey());
+            log.info(String.format("K8 resources data sync COMPLETED for cluster id: %s of type: %s at: %s", clusterIdAndKubeConfigMapEntry.getKey(), cloudProviderType, LocalDateTime.now()));
         }
     }
 
@@ -293,8 +295,8 @@ public class K8ResourcesSyncService {
                                     .apiGroup(roleRef.getApiGroup())
                                     .build()));
 
-                    List<RbacSubjectDTO> subjectDTOS = item.getSubjects().stream()
-                            .map(rbacV1Subject -> RbacSubjectDTO.builder()
+                    List<K8RbacSubject> k8RbacSubjects = item.getSubjects().stream()
+                            .map(rbacV1Subject -> K8RbacSubject.builder()
                                     .kind(rbacV1Subject.getKind())
                                     .apiGroup(rbacV1Subject.getApiGroup())
                                     .name(rbacV1Subject.getName())
@@ -302,7 +304,7 @@ public class K8ResourcesSyncService {
                                     .build())
                             .collect(Collectors.toList());
 
-                    builder.rbacSubjects(subjectDTOS);
+                    builder.rbacSubjects(k8RbacSubjects);
                     return builder.build();
                 })
                 .toList();
@@ -325,8 +327,8 @@ public class K8ResourcesSyncService {
                         setMetadataFields(builder, item.getMetadata(), clusterId);
                     }
 
-                    List<PolicyRuleDTO> policyRuleDTOS = item.getRules().stream()
-                            .map(rule -> PolicyRuleDTO.builder()
+                    List<K8RolePolicyRule> policyRules = item.getRules().stream()
+                            .map(rule -> K8RolePolicyRule.builder()
                                     .verbs(rule.getVerbs())
                                     .apiGroups(rule.getApiGroups())
                                     .resources(rule.getResources())
@@ -335,7 +337,7 @@ public class K8ResourcesSyncService {
                                     .build())
                             .collect(Collectors.toList());
 
-                    builder.k8RolePolicyRules(policyRuleDTOS);
+                    builder.k8RolePolicyRules(policyRules);
 
                     return builder.build();
                 })
@@ -563,6 +565,7 @@ public class K8ResourcesSyncService {
         builder.cloudProviderType(this.cloudProviderType);
         builder.wsTenantName(this.wsTenantName);
         builder.cloudProviderType(this.cloudProviderType);
+        builder.resourceAccountId(this.resourceAccountId);
     }
 
 }

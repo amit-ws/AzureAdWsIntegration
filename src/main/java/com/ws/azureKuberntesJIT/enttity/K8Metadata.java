@@ -43,5 +43,6 @@ public class K8Metadata {
     CloudProviderType cloudProviderType;
 
     String wsTenantName;
-    String parentResourceId; /* for Azure = subscritpion_id.  For GCP = Project_id*/
+    @Column(nullable = false)
+    String resourceAccountId; /* for Azure = subscritpion_id.  For GCP = Project_id*/
 }

@@ -2,7 +2,6 @@ package com.ws.azureResourcesIntegration.entities;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.ws.azureAdIntegration.entity.AzureTenant;
-import com.ws.azureKuberntesJIT.enttity.AzureKubernetesCluster;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
