@@ -6,7 +6,11 @@ import com.azure.resourcemanager.containerservice.models.CredentialResult;
 import com.azure.resourcemanager.containerservice.models.KubernetesCluster;
 import com.azure.resourcemanager.resources.fluentcore.arm.models.HasName;
 import com.azure.resourcemanager.resources.models.ResourceGroup;
+import com.ws.azureAdIntegration.constants.Constant;
 import com.ws.azureAdIntegration.repository.AzureApplicationRepository;
+import com.ws.azureAdIntegration.service.AzureUserCredentialService;
+import com.ws.azureAdIntegration.service.BackendApplicationLogservice;
+import com.ws.azureAdIntegration.util.EncryptionUtil;
 import com.ws.azureKuberntesJIT.constant.K8ResourceLevel;
 import com.ws.azureKuberntesJIT.enttity.K8LabelSelector;
 import com.ws.azureKuberntesJIT.enttity.K8Role;
@@ -50,14 +54,18 @@ public class K8TestService {
     final TestEntityRepo testEntityRepo;
     final TestListEntityRepo testListEntityRepo;
     final AzureApplicationRepository azureApplicationRepository;
+    final AzureUserCredentialService azureUserCredentialService;
+    final BackendApplicationLogservice backendApplicationLogservice;
 
     @Autowired
-    public K8TestService(AzureAuthConfigurationFactory azureAuthConfigurationFactory, K8RoleRepository k8RoleRepository, TestEntityRepo testEntityRepo, TestListEntityRepo testListEntityRepo, AzureApplicationRepository azureApplicationRepository) {
+    public K8TestService(AzureAuthConfigurationFactory azureAuthConfigurationFactory, K8RoleRepository k8RoleRepository, TestEntityRepo testEntityRepo, TestListEntityRepo testListEntityRepo, AzureApplicationRepository azureApplicationRepository, AzureUserCredentialService azureUserCredentialService, BackendApplicationLogservice backendApplicationLogservice) {
         this.azureAuthConfigurationFactory = azureAuthConfigurationFactory;
         this.k8RoleRepository = k8RoleRepository;
         this.testEntityRepo = testEntityRepo;
         this.testListEntityRepo = testListEntityRepo;
         this.azureApplicationRepository = azureApplicationRepository;
+        this.azureUserCredentialService = azureUserCredentialService;
+        this.backendApplicationLogservice = backendApplicationLogservice;
     }
 
     private AzureResourceManager getAzureResourceManager(String clientId, String clientSecret, String tenantId, String subscriptionId) {
@@ -122,6 +130,20 @@ public class K8TestService {
             String kubeConfigContent = new String(cluster.adminKubeConfigs().get(0).value());
 //            System.out.println(kubeConfigContent);
             String[] extractedValues = extractServerAndTokenFromKubeConfigYAML(kubeConfigContent);
+
+            System.out.println("Original URL: " + extractedValues[0]);
+            System.out.println("Original Token: " + extractedValues[1]);
+//            log.info(" ");
+//
+//            String encryptedURL = EncryptionUtil.getEncryptedKey(extractedValues[0], "AKS cluster url");
+//            String encryptedToken = EncryptionUtil.getEncryptedKey(extractedValues[1], "AKS Token");
+//
+//            System.out.println("Encrypted URL: " + encryptedURL);
+//            System.out.println("Encrypted Token: " + encryptedToken);
+//            log.info(" ");
+//
+//            System.out.println("Decrypted URL: " + EncryptionUtil.getDecryptedKey(encryptedURL, ""));
+//            System.out.println("Decrypted token: " + EncryptionUtil.getDecryptedKey(encryptedToken, ""));
 
 //            System.out.println("Server: " + extractedValues[0]);
 //            System.out.println("Token: " + extractedValues[1]);
@@ -224,12 +246,22 @@ public class K8TestService {
                 clusterRoles.add(k8Role);
                 break;
             }
-//            log.info("clusterRoles: {}", clusterRoles);
-//            log.info("clusterRoles: {}",clusterRoles.size());
+            log.info("saving......");
             k8RoleRepository.saveAll(clusterRoles);
+            log.info("saved......");
         } catch (Exception exp) {
-            throw new RuntimeException(exp.getMessage());
+            log.error("Error occurred in creation");
+            log.info("Message: {}", exp.getMessage());
+            log.info("Audit log saving...");
+            backendApplicationLogservice.saveAuditLog("wsTenantName", "tenantEmail", Constant.ADD, Constant.ERROR_IN_SYNCING_KUBERNETES_DATA, "Info");
+            log.info("Audit log saved...");
+
         }
+
+        backendApplicationLogservice.saveAuditLog("wsTenantName", "tenantEmail", Constant.ADD, Constant.ERROR_IN_SYNCING_KUBERNETES_DATA, "Info");
+        log.info("Outside code.........");
+        azureUserCredentialService.updateSyncStatusData(false, 64);
+        log.info("Updated Status.........");
     }
 
     private void initialiseK8Client(String clusterURL, String clusterStaticToken) {
@@ -238,6 +270,7 @@ public class K8TestService {
             client.setVerifyingSsl(false);
             Configuration.setDefaultApiClient(client);
 
+            log.info("Initialiased.........");
             CoreV1Api coreV1Api = new CoreV1Api();
             AppsV1Api appsV1Api = new AppsV1Api();
             ApiextensionsV1Api apiextensionsV1Api = new ApiextensionsV1Api();
@@ -245,6 +278,9 @@ public class K8TestService {
             RbacAuthorizationV1Api rbacApi = new RbacAuthorizationV1Api();
 
             V1NamespaceList namespaceList = coreV1Api.listNamespace().execute();
+
+            log.info("namespaceList fetched.........");
+
             V1NodeList nodesList = coreV1Api.listNode().execute();
             V1PersistentVolumeClaimList persistentVolumeClaimListList = coreV1Api.listPersistentVolumeClaimForAllNamespaces().execute();
             V1ServiceAccountList serviceAccountList = coreV1Api.listServiceAccountForAllNamespaces().execute();
@@ -315,60 +351,80 @@ public class K8TestService {
                     .map(V1ObjectMeta::getName)
                     .toList();
 
-            int totalClusterRules = 0;
-            int counet = 0;
-            log.info(" ");
-            for (V1ClusterRole item : clusterRoleList.getItems()) {
-                V1AggregationRule v1AggregationRule = item.getAggregationRule();
-                if (!ObjectUtils.isEmpty(v1AggregationRule)) {
-                    List<V1LabelSelector> k8LabelSelectors = v1AggregationRule.getClusterRoleSelectors();
-                    for (V1LabelSelector k8LabelSelector : k8LabelSelectors) {
-                        if (!CollectionUtils.isEmpty(k8LabelSelector.getMatchExpressions())) {
 
-                            log.info("map: {}",  k8LabelSelector.getMatchExpressions());
-                            counet += k8LabelSelector.getMatchLabels().size();
-                        }
-                    }
-                }
+//            log.info("---------------------");
+//            for (V1Secret item : secretList.getItems()) {
+//                log.info("dataMap byte: {}", item.getData());
+//                log.info("dataMap decoded: {}", item.getStringData());  //<------ will return the empty object
+//            }
+//            log.info("---------------------");
+//
+//            for (V1Secret item : secretList.getItems()) {
+//                decodeSecretData(item);
+//            }
+//            log.info("---------------------");
 
+//            int totalClusterRules = 0;
+//            int counet = 0;
+//            log.info(" ");
+//            for (V1ClusterRole item : clusterRoleList.getItems()) {
+//                V1AggregationRule v1AggregationRule = item.getAggregationRule();
+//                if (!ObjectUtils.isEmpty(v1AggregationRule)) {
+//                    List<V1LabelSelector> k8LabelSelectors = v1AggregationRule.getClusterRoleSelectors();
+//                    for (V1LabelSelector k8LabelSelector : k8LabelSelectors) {
+//                        if (!CollectionUtils.isEmpty(k8LabelSelector.getMatchExpressions())) {
+//
+//                            log.info("map: {}",  k8LabelSelector.getMatchExpressions());
+//                            counet += k8LabelSelector.getMatchLabels().size();
+//                        }
+//                    }
+//                }
+//
+//
+//                if (!CollectionUtils.isEmpty(item.getRules())) {
+//                    totalClusterRules += item.getRules().size();
+//                }
+//            }
+//            log.info(" ");
+//            log.info("counet: {}", counet);
+//            log.info("totalClusterRules: {}", totalClusterRules);
+//
+//            int totalNameSpaceRules = 0;
+//            for (V1Role item : namespaceList1.getItems()) {
+//                if (!CollectionUtils.isEmpty(item.getRules())) {
+//                    totalNameSpaceRules += item.getRules().size();
+//                }
+//            }
+//            log.info("totalNameSpaceRules: {}", totalNameSpaceRules);
+//
 
-                if (!CollectionUtils.isEmpty(item.getRules())) {
-                    totalClusterRules += item.getRules().size();
-                }
-            }
-            log.info(" ");
-            log.info("counet: {}", counet);
-            log.info("totalClusterRules: {}", totalClusterRules);
+//            log.info("-----------------------");
+//            for (V1Node item : nodesList.getItems()) {
+//                item.getKind();
+//                item.getApiVersion();
+//            }
+//            log.info("-----------------------");
 
-            int totalNameSpaceRules = 0;
-            for (V1Role item : namespaceList1.getItems()) {
-                if (!CollectionUtils.isEmpty(item.getRules())) {
-                    totalNameSpaceRules += item.getRules().size();
-                }
-            }
-            log.info("totalNameSpaceRules: {}", totalNameSpaceRules);
+//            List<String> namespaceRoles = namespaceList1.getItems().stream()
+//                    .map(V1Role::getMetadata).filter(Objects::nonNull)
+//                    .map(V1ObjectMeta::getName)
+//                    .toList();
+//
+//            List<String> clusterRoleBindings = clusterRoleBindingList.getItems().stream()
+//                    .map(V1ClusterRoleBinding::getMetadata).filter(Objects::nonNull)
+//                    .map(V1ObjectMeta::getName)
+//                    .toList();
+//
+//            List<String> namespaceRoleBindings = namespaceRoleHindingList.getItems().stream()
+//                    .map(V1RoleBinding::getMetadata).filter(Objects::nonNull)
+//                    .map(V1ObjectMeta::getName)
+//                    .toList();
 
-
-            List<String> namespaceRoles = namespaceList1.getItems().stream()
-                    .map(V1Role::getMetadata).filter(Objects::nonNull)
-                    .map(V1ObjectMeta::getName)
-                    .toList();
-
-            List<String> clusterRoleBindings = clusterRoleBindingList.getItems().stream()
-                    .map(V1ClusterRoleBinding::getMetadata).filter(Objects::nonNull)
-                    .map(V1ObjectMeta::getName)
-                    .toList();
-
-            List<String> namespaceRoleBindings = namespaceRoleHindingList.getItems().stream()
-                    .map(V1RoleBinding::getMetadata).filter(Objects::nonNull)
-                    .map(V1ObjectMeta::getName)
-                    .toList();
-
-            log.info(" ");
-            log.info("clusterRoles size: {}", clusterRoles.size());
-            log.info("NamespaceRoles size: {}", namespaceRoles.size());
-            log.info(" ");
-
+//            log.info(" ");
+//            log.info("clusterRoles size: {}", clusterRoles.size());
+//            log.info("NamespaceRoles size: {}", namespaceRoles.size());
+//            log.info(" ");
+//
             log.info("Namespaces: {}", namespaces);
             log.info("Deployments: {}", deployments);
             log.info("Nodes: {}", nodes);
@@ -380,12 +436,46 @@ public class K8TestService {
             log.info("NetworkPolicies: {}", networkPolicies);
             log.info("configMaps: {}", configMaps);
             log.info("ClusterRoles: {}", clusterRoles);
-            log.info("NamespaceRoles: {}", namespaceRoles);
-            log.info("ClusterRoleBindings: {}", clusterRoleBindings);
-            log.info("NamespaceRoleBindings: {}", namespaceRoleBindings);
+//            log.info("NamespaceRoles: {}", namespaceRoles);
+//            log.info("ClusterRoleBindings: {}", clusterRoleBindings);
+//            log.info("NamespaceRoleBindings: {}", namespaceRoleBindings);
         } catch (Exception e) {
             log.error("Error: {}", e.getMessage());
             throw new RuntimeException(e.getMessage());
+        }
+    }
+
+
+    /**
+     * DECODE K8 SECRET (V1Secret) data
+     *
+     * @param secret
+     */
+    public static void decodeSecretData(V1Secret secret) {
+        Map<String, byte[]> secretData = secret.getData();
+        if (secretData != null && !secretData.isEmpty()) {
+            for (Map.Entry<String, byte[]> entry : secretData.entrySet()) {
+                String key = entry.getKey();
+                byte[] base64Value = entry.getValue();
+//                String decodedValue = new String(Base64.getDecoder().decode(base64Value));
+//                String decodedValue = new String(Base64.getUrlDecoder().decode(base64Value));
+//                System.out.println(key + ": " + decodedValue);
+                try {
+                    // Clean the Base64 value (remove spaces, line breaks, etc.)
+                    String cleanedBase64 = new String(base64Value).replaceAll("[^A-Za-z0-9+/=]", "");
+                    // Try decoding using the standard Base64
+                    String decodedValue = new String(Base64.getDecoder().decode(cleanedBase64));
+                    // If decoding fails, try URL-safe Base64 decoding
+                    if (decodedValue.isEmpty()) {
+                        decodedValue = new String(Base64.getUrlDecoder().decode(cleanedBase64));
+                    }
+                    System.out.println(key + ": " + decodedValue);
+                } catch (IllegalArgumentException e) {
+                    System.out.println("Failed to decode Base64 for key: " + key + ". Error: " + e.getMessage());
+                }
+            }
+        } else {
+            log.warn("No secret data available.");
         }
     }
 
@@ -841,6 +931,68 @@ public class K8TestService {
         } catch (Exception e) {
             System.err.println("Error modifying and assigning role to user: " + e.getMessage());
             throw new RuntimeException(e.getMessage());
+        }
+    }
+
+
+    public void initializeK8Client() {
+        String rgName = "ws-test-aks-rg";
+        String clusterName = "ws-test-aks-cluster-1";
+        AzureResourceManager azureResourceManager = getAzureResourceManager(clientId, clientSecret, tenantId, subscriptionId);
+        KubernetesCluster cluster = azureResourceManager
+                .kubernetesClusters()
+                .getByResourceGroup(rgName, clusterName);
+        String kubeConfigContent = new String(cluster.adminKubeConfigs().get(0).value());
+        String[] extractedValues = extractServerAndTokenFromKubeConfigYAML(kubeConfigContent);
+
+        ApiClient client = Config.fromToken(extractedValues[0], extractedValues[1]);
+        client.setVerifyingSsl(false);
+        Configuration.setDefaultApiClient(client);
+    }
+
+
+    public void createK8ResourcesWithSampleData() {
+        initializeK8Client();
+//        createV1Secret("default", "my-dummy-secret-1", "dummyUser10", "dummyPass10");
+        createNamespaceRole("default", "sample-role-1");
+    }
+
+    public void createV1Secret(String namespace, String secretName, String username, String password) {
+        try {
+            CoreV1Api api = new CoreV1Api();
+
+            Map<String, String> secretData = new HashMap<>();
+            secretData.put("username", Base64.getEncoder().encodeToString(username.getBytes()));
+            secretData.put("password", Base64.getEncoder().encodeToString(password.getBytes()));
+
+            V1Secret secret = new V1Secret()
+                    .type("Opaque")  // <---------- Default type
+                    .stringData(secretData)
+                    .metadata(new V1ObjectMeta().name(secretName).namespace(namespace));
+
+            secret = api.createNamespacedSecret(namespace, secret).execute();
+            log.info("Secret created successfully with UID: {}", Objects.requireNonNull(secret.getMetadata()).getUid());
+        } catch (Exception exp) {
+            throw new RuntimeException(exp.getMessage());
+        }
+    }
+
+    public void createNamespaceRole(String namespace, String roleName) {
+        try {
+            V1Role role = new V1Role()
+                    .metadata(new V1ObjectMeta().name(roleName).namespace(namespace))
+                    .rules(Arrays.asList(
+                            new V1PolicyRule()
+                                    .verbs(Arrays.asList("get", "list", "create", "update"))
+                                    .resources(Arrays.asList("pods"))
+                                    .apiGroups(Arrays.asList(""))
+                    ));
+
+            RbacAuthorizationV1Api rbacApi = new RbacAuthorizationV1Api();
+            role = rbacApi.createNamespacedRole(namespace, role).execute();
+            log.info("Namespace Role created successfully with UID: {}", Objects.requireNonNull(role.getMetadata()).getUid());
+        } catch (Exception exp) {
+            throw new RuntimeException(exp.getMessage());
         }
     }
 }

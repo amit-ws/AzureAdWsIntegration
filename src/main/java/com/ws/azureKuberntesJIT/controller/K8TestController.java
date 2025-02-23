@@ -45,4 +45,10 @@ public class K8TestController {
         k8TestService.savingData();
         return ResponseEntity.ok().build();
     }
+
+    @GetMapping("/createK8Resources")
+    public ResponseEntity createK8ResourcesWithSampleData() {
+        k8TestService.createK8ResourcesWithSampleData();
+        return ResponseEntity.ok().build();
+    }
 }

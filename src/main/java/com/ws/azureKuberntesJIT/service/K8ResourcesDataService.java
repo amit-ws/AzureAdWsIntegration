@@ -21,7 +21,7 @@ public class K8ResourcesDataService {
     final K8PersistentVolumeClaimRepository k8PersistentVolumeClaimRepository;
     final K8RoleRepository k8RoleRepository;
     final K8RoleBindRepository k8RoleBindRepository;
-    final K8ResourceAnnotationRepository k8ResourceAnnotationRepository;
+    final K8RoleReferenceRepository k8RoleReferenceRepository;
 
 
     @Autowired
@@ -31,7 +31,7 @@ public class K8ResourcesDataService {
                                   K8ServiceAccountRepository k8ServiceAccountRepository, K8SecretRepository k8SecretRepository,
                                   K8ConfigMapRepository k8ConfigMapRepository, K8NetworkPolicyRepository k8NetworkPolicyRepository,
                                   K8PersistentVolumeClaimRepository k8PersistentVolumeClaimRepository, K8RoleRepository k8RoleRepository,
-                                  K8RoleBindRepository k8RoleBindRepository, K8ResourceAnnotationRepository k8ResourceAnnotationRepository) {
+                                  K8RoleBindRepository k8RoleBindRepository, K8RoleReferenceRepository k8RoleReferenceRepository) {
         this.k8NamespaceRepository = k8NamespaceRepository;
         this.k8CustomResourceDefinitionRepository = k8CustomResourceDefinitionRepository;
         this.k8StorageClassRepository = k8StorageClassRepository;
@@ -45,7 +45,7 @@ public class K8ResourcesDataService {
         this.k8PersistentVolumeClaimRepository = k8PersistentVolumeClaimRepository;
         this.k8RoleRepository = k8RoleRepository;
         this.k8RoleBindRepository = k8RoleBindRepository;
-        this.k8ResourceAnnotationRepository = k8ResourceAnnotationRepository;
+        this.k8RoleReferenceRepository = k8RoleReferenceRepository;
     }
 
 
@@ -67,7 +67,7 @@ public class K8ResourcesDataService {
         k8PersistentVolumeClaimRepository.deleteAllByWsTenantName(wsTenantName);
         k8RoleRepository.deleteAllByWsTenantName(wsTenantName);
         k8RoleBindRepository.deleteAllByWsTenantName(wsTenantName);
-        k8ResourceAnnotationRepository.deleteAllByWsTenantName(wsTenantName);
+        k8RoleReferenceRepository.deleteAllByWsTenantName(wsTenantName);
     }
 
 

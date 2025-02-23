@@ -25,6 +25,7 @@ public class AzureSubscription {
     String authorizationSource;
     String spendingLimit;
     Date syncedAt;
+    @Column(nullable = false)
     String wsTenantName; // WhiteSwan account organization name
 
     @ElementCollection(fetch = FetchType.EAGER)

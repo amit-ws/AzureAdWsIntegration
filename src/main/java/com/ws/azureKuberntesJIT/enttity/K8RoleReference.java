@@ -31,6 +31,9 @@ public class K8RoleReference {
     @Column(nullable = false)
     String clusterId;
 
+    @Column(nullable = false)
+    String cloudResourceAccountId;
+
     @Enumerated(EnumType.STRING)
     CloudProviderType cloudProviderType;
 

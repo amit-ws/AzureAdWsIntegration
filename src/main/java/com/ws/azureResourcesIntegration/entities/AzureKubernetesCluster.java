@@ -4,17 +4,19 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
+import lombok.experimental.SuperBuilder;
 
 import java.util.List;
 
+@EqualsAndHashCode(callSuper = true)
 @Data
-@Builder
+@SuperBuilder
 @AllArgsConstructor
 @NoArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @Entity
 @Table(name = "azure_kubernetes_cluster", schema = "azure_test")
-public class AzureKubernetesCluster {
+public class AzureKubernetesCluster extends BaseAzureResource{
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Integer id;
@@ -33,8 +35,6 @@ public class AzureKubernetesCluster {
     String subscriptionId;
     @Column(nullable = false)
     String resourceGroupName;
-    @Column(nullable = false)
-    String wsTenantName;
 
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY, mappedBy = "azureKubernetesCluster")
     List<AzureK8ClusterCredential> azureK8ClusterCredentials;

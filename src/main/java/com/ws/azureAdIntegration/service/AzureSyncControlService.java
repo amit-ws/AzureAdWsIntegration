@@ -62,7 +62,7 @@ public class AzureSyncControlService {
         } catch (Exception exp) {
             log.error(String.format("Failure in %s thread while fetching azure data asynchronously", Thread.currentThread().getName()));
         }
-        azureUserCredentialRepository.updateSyncStatusData(false, azureUserCredentialDTO.getId());
+        azureUserCredentialService.updateSyncStatusData(false, azureUserCredentialDTO.getId());
     }
 
 
@@ -77,7 +77,7 @@ public class AzureSyncControlService {
         } catch (Exception exp) {
             log.error(String.format("Failure in %s thread while fetching azure data asynchronously", Thread.currentThread().getName()));
         }
-        azureUserCredentialRepository.updateSyncStatusData(false, azureUserCredentialDTO.getId());
+        azureUserCredentialService.updateSyncStatusData(false, azureUserCredentialDTO.getId());
     }
 
     /* on demand sync */
@@ -96,7 +96,7 @@ public class AzureSyncControlService {
         } catch (Exception exp) {
             log.error(String.format("Failure in %s thread while fetching azure data asynchronously", Thread.currentThread().getName()));
         }
-        azureUserCredentialRepository.updateSyncStatusData(false, azureUserCredentialDTO.getId());
+        azureUserCredentialService.updateSyncStatusData(false, azureUserCredentialDTO.getId());
     }
 
 //    @Async

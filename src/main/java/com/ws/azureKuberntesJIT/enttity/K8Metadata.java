@@ -34,15 +34,15 @@ public class K8Metadata {
     Date syncedAt;
     Date updatedAt;
 
-//    @Column(nullable = false)
+    @Column(nullable = false)
     String clusterId;
     String namespace;
-//    @Column(nullable = false)
+    @Column(nullable = false)
     @Enumerated(EnumType.STRING)
     CloudProviderType cloudProviderType;
 
-//    @Column(nullable = false)
+    @Column(nullable = false)
     String wsTenantName;
-//    @Column(nullable = false)
-    String cloudResourceAccountId; /* for Azure = subscritpion_id.  For GCP = Project_id*/
+    @Column(nullable = false)
+    String cloudResourceAccountId; /* for Azure = subscription_id.  For GCP = Project_id*/
 }

@@ -25,6 +25,8 @@ public class Constant {
     /* Secret related */
     public static final String AZURE_CLIENT_SECRET = "Azure client secret";
     public static final String GCP_PRIVATE_KEY = "GCP private key";
+    public static final String AKS_CLUSTER_SERVER_URL = "Azure kubernetes cluster server url";
+    public static final String AKS_CLUSTER_TOKEN = "Azure kubernetes cluster token";
 
 
     /*Azure resource related*/
@@ -76,11 +78,31 @@ public class Constant {
     public static final String TOTAL_FOUND_ROLE_ASSIGNMENTS_TO_BE_REMOVED = "Total %s AzureRoleAssignments found to be removed";
 
     // AKS and K8 resources
+    public static final String AZURE_KUBERNETES_RESOURCE_DATA_SYNC_STARTED = "K8 resources data sync STARTED for cluster: %s of type: %s at: %s";
+    public static final String AZURE_KUBERNETES_RESOURCE_DATA_SYNC_ENDED = "K8 resources data sync COMPLETED for cluster: %s of type: %s at: %s";
     public static final String AZURE_KUBERNETES_CLUSTERS_SYNCED = "Azure kubernetes clusters data synced";
     public static final String INSUFFICIENT_PRIVILEGEE_FOR_AKS_ADMIN_CONFIG_FETCH = "InSufficient Privilege to fetch AKS cluster admin credential configs";
     public static final String KUBERNETES_RESOURCES_SYNCED = "Azure kubernetes resources data synced";
     public static final String ERROR_IN_SYNCING_KUBERNETES_DATA = "Error in syncing kubernetes resources data ";
     public static final String KUBERNETES_RESOURCES_DATA_SYNC_SKIPPED = "Skipped Kubernetes-Resources data sync as no Azure Kubernetes (AKS) was found";
+    public static final String KUBERNETES_RESOURCES_DATA_TRUNCATED = "Kubernetes resources related data successfully truncated";
+    public static final String KUBERNETES_NAMESPACE_DATA_SYNCED = "Kubernetes namespace data synced for cluster: %s of type: %s";
+
+
+    public static final String KUBERNETES_NODE_DATA_SYNCED = "Kubernetes node data synced for cluster: %s of type: %s";
+    public static final String KUBERNETES_CUSTOM_RESOURCE_DEFINITION_DATA_SYNCED = "Kubernetes custom resource definitions data synced for cluster: %s of type: %s";
+    public static final String KUBERNETES_DEPLOYMENT_DATA_SYNCED = "Kubernetes deployment data synced for cluster: %s of type: %s";
+    public static final String KUBERNETES_NETWORK_POLICY_DATA_SYNCED = "Kubernetes network policy data synced for cluster: %s of type: %s";
+    public static final String KUBERNETES_PERSISTENT_VOLUME_DATA_SYNCED = "Kubernetes persistent volume data synced for cluster: %s of type: %s";
+    public static final String KUBERNETES_PERSISTENT_VOLUME_CLAIM_DATA_SYNCED = "Kubernetes persistent volume claim data synced for cluster: %s of type: %s";
+    public static final String KUBERNETES_SERVICE_ACCOUNT_DATA_SYNCED = "Kubernetes service account data synced for cluster: %s of type: %s";
+    public static final String KUBERNETES_SECRET_DATA_SYNCED = "Kubernetes secret data synced for cluster: %s of type: %s";
+    public static final String KUBERNETES_CONFIG_MAP_DATA_SYNCED = "Kubernetes config map data synced for cluster: %s of type: %s";
+    public static final String KUBERNETES_NAMESPACE_ROLE_DATA_SYNCED = "Kubernetes namespace role data synced for cluster: %s of type: %s";
+    public static final String KUBERNETES_CLUSTER_ROLE_DATA_SYNCED = "Kubernetes cluster role data synced for cluster: %s of type: %s";
+    public static final String KUBERNETES_NAMESPACE_ROLE_BINDING_DATA_SYNCED = "Kubernetes namespace role binding data synced for cluster: %s of type: %s";
+    public static final String KUBERNETES_CLUSTER_ROLE_BINDING_DATA_SYNCED = "Kubernetes cluster role binding data synced for cluster: %s of type: %s";
+    public static final String KUBERNETES_STORAGE_CLASS_DATA_SYNCED = "Kubernetes storage class data synced for cluster: %s of type: %s";
 
 
 }

@@ -16,7 +16,9 @@ import com.ws.azureAdIntegration.entity.*;
 import com.ws.azureAdIntegration.service.BackendApplicationLogservice;
 import com.ws.azureAdIntegration.util.AzureAuthUtil;
 import com.ws.azureAdIntegration.util.AzureEntityUtil;
+import com.ws.azureAdIntegration.util.EncryptionUtil;
 import com.ws.azureAdIntegration.util.GenericUtil;
+import com.ws.azureKuberntesJIT.dto.ClusterConfigurationRequest;
 import com.ws.azureKuberntesJIT.dto.K8ResourceDataSyncRequest;
 import com.ws.azureKuberntesJIT.service.K8ResourcesDataService;
 import com.ws.azureKuberntesJIT.service.K8ResourcesSyncService;
@@ -75,9 +77,10 @@ public class AzureResourceSyncService {
         try {
             initializeWsTenantNameAndAzureResourceManager(azureUserCredentialDTO);
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_RESOURCE_DATA_SYNC_START, "Info");
-            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_RESOURCE_DATA_TRUNCATED, "Info");
             truncateAzureResourcesDataThroughAzureTenant(azureTenant);
+            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_RESOURCE_DATA_TRUNCATED, "Info");
             k8ResourcesDataService.deleteK8ResourcesByWsTenantName(this.wsTenantName);
+            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.KUBERNETES_RESOURCES_DATA_TRUNCATED, "Info");
             AzureSubscription azureSubscription = syncSubscription(azureTenant);
             Map<String, AzureResourceGroup> azureResourceGroupMap = createAzureResourceGroupMap(syncResourceGroups(azureSubscription));
 //            syncAzureVMs(azureSubscription, azureResourceGroupMap);
@@ -85,7 +88,7 @@ public class AzureResourceSyncService {
 //            syncServersAndDatabases(azureSubscription, azureResourceGroupMap);
 //            syncRoleDefinitions(azureTenant, azureSubscription);
 //            syncRoleAssignments(azureTenant, azureSubscription);
-            List<Triple<String, String, String>> k8ClusterCredentialConfigs = createK8ClusterAndConfigTriples(syncAzureKubernetesClusters(azureSubscription, azureResourceGroupMap));
+            List<ClusterConfigurationRequest> k8ClusterCredentialConfigs = createK8ClusterAndConfigTriples(syncAzureKubernetesClusters(azureSubscription, azureResourceGroupMap));
             Optional.of(k8ClusterCredentialConfigs)
                     .filter(configs -> !CollectionUtils.isEmpty(configs))
                     .ifPresentOrElse(
@@ -125,18 +128,17 @@ public class AzureResourceSyncService {
                 azureResourceGroup -> azureResourceGroup));
     }
 
-    private Map<String, String> createK8ClusterAndConfigMap(List<AzureKubernetesCluster> azureKubernetesClusters) {
-        return azureKubernetesClusters.stream().collect(Collectors.toMap(
-                AzureKubernetesCluster::getAzureId,
-                azureKubernetesCluster -> new String(azureKubernetesCluster.getAzureK8ClusterCredentials().get(0).getValue())));
-    }
-
-    private List<Triple<String, String, String>> createK8ClusterAndConfigTriples(List<AzureKubernetesCluster> azureKubernetesClusters) {
+    private List<ClusterConfigurationRequest> createK8ClusterAndConfigTriples(List<AzureKubernetesCluster> azureKubernetesClusters) {
         return azureKubernetesClusters.stream()
                 .map(azureCluster -> {
-                    String clusterId = azureCluster.getAzureId();
-                    Map<String, String> serverAndTokenMap = GenericUtil.extractServerAndTokenFromKubeConfigYAML(new String(azureCluster.getAzureK8ClusterCredentials().get(0).getValue()));
-                    return Triple.of(clusterId, serverAndTokenMap.get("server"), serverAndTokenMap.get("token"));
+                    String severURL = EncryptionUtil.getDecryptedKey(azureCluster.getAzureK8ClusterCredentials().get(0).getClusterServerUrl(), Constant.AKS_CLUSTER_SERVER_URL);
+                    String token = EncryptionUtil.getDecryptedKey(azureCluster.getAzureK8ClusterCredentials().get(0).getToken(), Constant.AKS_CLUSTER_TOKEN);
+                    return ClusterConfigurationRequest.builder()
+                            .clusterId(azureCluster.getAzureId())
+                            .clusterName(azureCluster.getName())
+                            .server(severURL)
+                            .token(token)
+                            .build();
                 })
                 .collect(Collectors.toList());
     }
@@ -433,7 +435,6 @@ public class AzureResourceSyncService {
                                 .build());
                 azureRoleAssignments.add(azureRoleAssignment);
             }
-
             azureRoleAssignmentRepository.saveAll(azureRoleAssignments);
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_SERVER_ROLE_ASSIGNMENT_SYNCED, "Info");
         } catch (Exception ignored) {
@@ -467,11 +468,7 @@ public class AzureResourceSyncService {
                                 .wsTenantName(this.wsTenantName)
                                 .build();
 
-                        List<AzureK8ClusterCredential> credentials = new ArrayList<>();
-                        credentials.addAll(createK8ClusterCredentials(azureKubernetesCluster, kubernetesCluster.adminKubeConfigs(), kubernetesCluster.resourceGroupName(), azureSubscription.getAzureSubscriptionId(), KubernetesClusterCredentialType.ADMIN));
-//                        credentials.addAll(createK8ClusterCredentials(azureKubernetesCluster, kubernetesCluster.userKubeConfigs(), kubernetesCluster.resourceGroupName(), azureSubscription.getAzureSubscriptionId(), KubernetesClusterCredentialType.USER));
-
-                        azureKubernetesCluster.setAzureK8ClusterCredentials(credentials);
+                        azureKubernetesCluster.setAzureK8ClusterCredentials(createK8ClusterCredentials(azureKubernetesCluster, kubernetesCluster.adminKubeConfigs(), kubernetesCluster.resourceGroupName(), azureSubscription.getAzureSubscriptionId(), KubernetesClusterCredentialType.ADMIN));
                         return azureKubernetesCluster;
                     })
                     .toList();
@@ -493,23 +490,27 @@ public class AzureResourceSyncService {
     private List<AzureK8ClusterCredential> createK8ClusterCredentials(AzureKubernetesCluster cluster, List<CredentialResult> credentialResults,
                                                                       String resourceGroupName, String subscriptionId, KubernetesClusterCredentialType type) {
         return credentialResults.stream()
-                .map(credentialResult -> AzureK8ClusterCredential.builder()
-                        .name(credentialResult.name())
-                        .value(credentialResult.value())
-                        .type(type)
-                        .azureKubernetesCluster(cluster)
-                        .resourceGroupName(resourceGroupName)
-                        .subscriptionId(subscriptionId)
-                        .build())
+                .map(credentialResult -> {
+                    Map<String, String> configMap = GenericUtil.extractServerAndTokenFromKubeConfigYAML(new String(credentialResult.value()));
+                    return AzureK8ClusterCredential.builder()
+                            .name(credentialResult.name())
+                            .clusterServerUrl(EncryptionUtil.getEncryptedKey(configMap.get("server"), Constant.AKS_CLUSTER_SERVER_URL))
+                            .token(EncryptionUtil.getEncryptedKey(configMap.get("token"), Constant.AKS_CLUSTER_TOKEN))
+                            .type(type)
+                            .azureKubernetesCluster(cluster)
+                            .resourceGroupName(resourceGroupName)
+                            .subscriptionId(subscriptionId)
+                            .syncedAt(new Date())
+                            .build();
+                })
                 .collect(Collectors.toList());
     }
 
 
     /* SYNC Azure Clusters resources (Kubernetes resources for AKS) */
-    private void syncKubernetesResources(String subscriptionId, List<Triple<String, String, String>> configs) {
-        log.info("configs: {}", configs);
+    private void syncKubernetesResources(String subscriptionId, List<ClusterConfigurationRequest> configs) {
         K8ResourceDataSyncRequest k8ResourceDataSyncRequest = K8ResourceDataSyncRequest.builder()
-                .clusterConfigTriples(configs)
+                .configurations(configs)
                 .resourceAccountId(subscriptionId)
                 .cloudProviderType(CloudProviderType.AZURE)
                 .wsTenantName(this.wsTenantName)
@@ -521,8 +522,7 @@ public class AzureResourceSyncService {
         } catch (Exception ignored) {
             log.info("Inside AzureResourceSyncService at -> syncKubernetesResources");
             log.warn(String.format("Error in syncing Kubernetes resources with message %s:", ignored.getMessage()));
-            log.error("Error: {}", ignored.getMessage());
-            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.ERROR_IN_SYNCING_KUBERNETES_DATA, "Info");
+            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.ERROR_IN_SYNCING_KUBERNETES_DATA, "Error");
         }
     }
 

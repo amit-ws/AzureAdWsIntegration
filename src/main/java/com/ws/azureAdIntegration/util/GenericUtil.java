@@ -9,11 +9,11 @@ public class GenericUtil {
 
     public static Map<String, String> extractServerAndTokenFromKubeConfigYAML(String config) {
 
-        String serverPrefix = "server: ";
+        final String serverPrefix = "server: ";
         int serverStart = config.indexOf(serverPrefix) + serverPrefix.length();
         int serverEnd = config.indexOf("\n", serverStart);
 
-        String tokenPrefix = "token: ";
+        final String tokenPrefix = "token: ";
         int tokenStart = config.indexOf(tokenPrefix) + tokenPrefix.length();
         int tokenEnd = config.indexOf("\n", tokenStart);
 
