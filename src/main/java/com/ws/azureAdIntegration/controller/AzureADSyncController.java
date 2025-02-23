@@ -84,4 +84,13 @@ public class AzureADSyncController {
                 .status(HttpStatus.ACCEPTED)
                 .body(Collections.singletonMap("message", "Azure role assignments synced successfully!"));
     }
+
+    @GetMapping("v1/onDemand/k8Resources")
+    public ResponseEntity syncKubernetesResourcesDataHandler(@RequestParam String tenantName) {
+        AzureUserCredential azureUserCredential = azureUserCredentialService.updateAzureUserCredentialSyncStatus(tenantName.trim());
+        azureSyncControlService.syncKubernetesResourcesData(azureUserCredentialService.mapFromAzureUserCredentialAndDecryptSecretKey(azureUserCredential));
+        return ResponseEntity
+                .status(HttpStatus.ACCEPTED)
+                .body(Collections.singletonMap("message", "Azure role assignments synced successfully!"));
+    }
 }

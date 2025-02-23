@@ -14,4 +14,6 @@ public interface AzureKubernetesClusterRepository extends JpaRepository<AzureKub
             "aks.isAzureRbacEnabled, aks.type, aks.subscriptionId, aks.resourceGroupName, aks.wsTenantName) " +
             "FROM AzureKubernetesCluster aks WHERE aks.wsTenantName = :wsTenantName")
     List<AzureKubernetesClusterDTO> findAllAzureKubernetesClustersUsingWsTenantName(String wsTenantName);
+
+    List<AzureKubernetesCluster> findAllByWsTenantNameAndPowerState(String wsTenantName, String powerState);
 }

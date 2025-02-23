@@ -2,6 +2,7 @@ package com.ws.azureKuberntesJIT.service;
 
 import com.azure.core.http.rest.PagedIterable;
 import com.azure.resourcemanager.AzureResourceManager;
+import com.azure.resourcemanager.containerservice.models.Code;
 import com.azure.resourcemanager.containerservice.models.CredentialResult;
 import com.azure.resourcemanager.containerservice.models.KubernetesCluster;
 import com.azure.resourcemanager.resources.fluentcore.arm.models.HasName;
@@ -127,12 +128,16 @@ public class K8TestService {
             KubernetesCluster cluster = azureResourceManager
                     .kubernetesClusters()
                     .getByResourceGroup(rgName, clusterName);
-            String kubeConfigContent = new String(cluster.adminKubeConfigs().get(0).value());
-//            System.out.println(kubeConfigContent);
-            String[] extractedValues = extractServerAndTokenFromKubeConfigYAML(kubeConfigContent);
-
-            System.out.println("Original URL: " + extractedValues[0]);
-            System.out.println("Original Token: " + extractedValues[1]);
+//            log.info("STATE: {}", cluster.powerState().code());
+//            log.info("STATE: {}", cluster.powerState().code().getValue());
+//            log.info("STATE: {}", cluster.powerState().code().toString());
+//            log.info("STATE: {}", Code.RUNNING.getValue());
+//            String kubeConfigContent = new String(cluster.adminKubeConfigs().get(0).value());
+////            System.out.println(kubeConfigContent);
+//            String[] extractedValues = extractServerAndTokenFromKubeConfigYAML(kubeConfigContent);
+//
+//            System.out.println("Original URL: " + extractedValues[0]);
+//            System.out.println("Original Token: " + extractedValues[1]);
 //            log.info(" ");
 //
 //            String encryptedURL = EncryptionUtil.getEncryptedKey(extractedValues[0], "AKS cluster url");
@@ -148,7 +153,7 @@ public class K8TestService {
 //            System.out.println("Server: " + extractedValues[0]);
 //            System.out.println("Token: " + extractedValues[1]);
 
-            initialiseK8Client(extractedValues[0], extractedValues[1]);
+//            initialiseK8Client(extractedValues[0], extractedValues[1]);
 
         } catch (Exception exp) {
             throw new RuntimeException(exp.getMessage());
