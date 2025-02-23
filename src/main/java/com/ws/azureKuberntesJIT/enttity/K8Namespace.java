@@ -19,14 +19,10 @@ public class K8Namespace extends K8Metadata {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Long id;
 
+    String phase;
+
     @Column(nullable = false)
     String clusterId;
-
-    @Column(nullable = false)
-    @Enumerated(EnumType.STRING)
-    CloudProviderType cloudType;
-
-    String generateName;
 }
 
 

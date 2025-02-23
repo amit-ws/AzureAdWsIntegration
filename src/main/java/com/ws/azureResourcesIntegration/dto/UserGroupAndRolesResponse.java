@@ -26,4 +26,5 @@ public class UserGroupAndRolesResponse {
     List<String> roleDefinitions;
 
     List<AzureGroupResponse> groupResponses;
+    List<AzureRoleAssignmentResponse> roleDefinitionList;
 }

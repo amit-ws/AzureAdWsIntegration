@@ -1,5 +1,6 @@
 package com.ws.azureKuberntesJIT.enttity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.ws.azureAdIntegration.constants.CloudProviderType;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -26,12 +27,20 @@ public class K8RbacSubject {
     String apiGroup;
     String kind;
     String name;
-    String namespace;
+    String namespace; /* NOTNULL for namespace typed role binding */
 
+    @Column(nullable = false)
     String clusterId;
+
+    @Column(nullable = false)
     @Enumerated(EnumType.STRING)
     CloudProviderType cloudProviderType;
 
+    @Column(nullable = false)
+    String wsTenantName;
+
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "kubernetes_role_bind_id", referencedColumnName = "id")
     K8RoleBind kubernetesRoleBind;
 }

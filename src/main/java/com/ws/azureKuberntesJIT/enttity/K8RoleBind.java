@@ -1,6 +1,7 @@
 package com.ws.azureKuberntesJIT.enttity;
 
-import com.ws.azureKuberntesJIT.constant.RoleLevelType;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.ws.azureKuberntesJIT.constant.K8ResourceLevel;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -23,13 +24,14 @@ public class K8RoleBind extends K8Metadata {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Long id;
 
-    @ManyToOne
-    @JoinColumn(name = "role_ref_id", referencedColumnName = "id")
+    @ManyToOne(fetch = FetchType.LAZY)
     K8RoleReference roleRef;
 
-    @OneToMany(mappedBy = "kubernetesRoleBind", orphanRemoval = true, fetch = FetchType.LAZY)
+    @JsonIgnore
+    @OneToMany(cascade = CascadeType.ALL, mappedBy = "kubernetesRoleBind", orphanRemoval = true, fetch = FetchType.LAZY)
     List<K8RbacSubject> rbacSubjects;
 
+    @Column(nullable = false)
     @Enumerated(EnumType.STRING)
-    RoleLevelType roleLevelType;
+    K8ResourceLevel kubernetesRoleType;
 }

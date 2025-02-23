@@ -81,23 +81,23 @@ public class AzureSyncControlService {
     }
 
     /* on demand sync */
-//    @Async
-//    @Transactional
-//    public void startOnDemandSync(AzureUserCredentialDTO azureUserCredentialDTO) {
-//        log.info("Thread name for startOnDemandSync: {}", Thread.currentThread().getName());
-//        try {
-//            AzureTenant azureTenant = azureADSyncService.initializeGraphClientAndSyncAzureTenant(azureUserCredentialDTO, null);
-//            azureADSyncService.syncAzureADData(azureTenant);
-//            Optional.ofNullable(azureUserCredentialDTO.getSubscriptionId())
-//                    .filter(StringUtils::isNotEmpty)
-//                    .ifPresentOrElse(subscriptionId -> azureResourceSyncService.syncAzureResourceData(azureTenant, azureUserCredentialDTO),
-//                            () -> backendApplicationLogservice.saveAuditLog(
-//                                    azureUserCredentialDTO.getWsTenantName(), "demo@gmail.com", "ADD", Constant.AZURE_RESOURCE_DATA_SYNC_SKIPPED, "Info"));
-//        } catch (Exception exp) {
-//            log.error(String.format("Failure in %s thread while fetching azure data asynchronously", Thread.currentThread().getName()));
-//        }
-//        azureUserCredentialRepository.updateSyncStatusData(false, azureUserCredentialDTO.getId());
-//    }
+    @Async
+    @Transactional
+    public void startOnDemandSync(AzureUserCredentialDTO azureUserCredentialDTO) {
+        log.info("Thread name for startOnDemandSync: {}", Thread.currentThread().getName());
+        try {
+            AzureTenant azureTenant = azureADSyncService.initializeGraphClientAndSyncAzureTenant(azureUserCredentialDTO, null);
+            azureADSyncService.syncAzureADData(azureTenant);
+            Optional.ofNullable(azureUserCredentialDTO.getSubscriptionId())
+                    .filter(StringUtils::isNotEmpty)
+                    .ifPresentOrElse(subscriptionId -> azureResourceSyncService.syncAzureResourceData(azureTenant, azureUserCredentialDTO),
+                            () -> backendApplicationLogservice.saveAuditLog(
+                                    azureUserCredentialDTO.getWsTenantName(), "demo@gmail.com", "ADD", Constant.AZURE_RESOURCE_DATA_SYNC_SKIPPED, "Info"));
+        } catch (Exception exp) {
+            log.error(String.format("Failure in %s thread while fetching azure data asynchronously", Thread.currentThread().getName()));
+        }
+        azureUserCredentialRepository.updateSyncStatusData(false, azureUserCredentialDTO.getId());
+    }
 
 //    @Async
 //    @Transactional
@@ -119,52 +119,52 @@ public class AzureSyncControlService {
 //        return CompletableFuture.completedFuture(null);
 //    }
 
-    @Async
-    public void startOnDemandSync(AzureUserCredentialDTO azureUserCredentialDTO) {
-        String threadName = Thread.currentThread().getName();
-        log.info("Thread name for startOnDemandSync: {}", threadName);
-
-        // Set up a timeout for this task (e.g., 1 minute)
-        long timeoutMillis = 2000; // 60 seconds
-        ExecutorService executorService = Executors.newSingleThreadExecutor();
-        Callable<Void> task = () -> {
-            try {
-                AzureTenant azureTenant = azureADSyncService.initializeGraphClientAndSyncAzureTenant(azureUserCredentialDTO, null);
-                log.info("tenant synced.....");
-                azureADSyncService.syncAzureADData(azureTenant);
-                log.info("syncAzureADData synced.....");
-
-                Optional.ofNullable(azureUserCredentialDTO.getSubscriptionId())
-                        .filter(StringUtils::isNotEmpty)
-                        .ifPresentOrElse(subscriptionId -> azureResourceSyncService.syncAzureResourceData(azureTenant, azureUserCredentialDTO),
-                                () -> backendApplicationLogservice.saveAuditLog(
-                                        azureUserCredentialDTO.getWsTenantName(), "demo@gmail.com", Constant.ADD, Constant.AZURE_RESOURCE_DATA_SYNC_SKIPPED, "Info"));
-
-                return null;  // Task completed successfully
-            } catch (Exception exp) {
-                log.info("Inside exp..........");
-                throw exp;
-            }
-        };
-        // Execute the task with a timeout
-        Future<Void> future = executorService.submit(task);
-        try {
-            future.get(timeoutMillis, TimeUnit.MILLISECONDS); // Timeout after 60 seconds
-        } catch (TimeoutException e) {
-            log.error("Async task exceeded the timeout.");
-            future.cancel(true);
-            backendApplicationLogservice.saveAuditLog(azureUserCredentialDTO.getWsTenantName(), "demo@gmail.com", Constant.ADD, Constant.AZURE_SYNC_TIME_OUT, "Error");
-        } catch (InterruptedException | ExecutionException e) {
-            log.error("Error occurred during Azure sync task: {}", e.getMessage());
-            backendApplicationLogservice.saveAuditLog(azureUserCredentialDTO.getWsTenantName(), "demo@gmail.com", Constant.ADD, String.format(Constant.AZURE_SYNC_FAILURE, e.getMessage()), "Error");
-        } catch (Exception e) {
-            log.error("Error occurred during Azure sync task.", e);
-            backendApplicationLogservice.saveAuditLog(azureUserCredentialDTO.getWsTenantName(), "demo@gmail.com", Constant.ADD, String.format(Constant.AZURE_DATA_ASYNCHRONOUS_FAILURE, e.getMessage()), "Error");
-        } finally {
-            executorService.shutdown();
-        }
-        azureUserCredentialService.updateSyncStatusData(false, azureUserCredentialDTO.getId());
-    }
+//    @Async
+//    public void startOnDemandSync(AzureUserCredentialDTO azureUserCredentialDTO) {
+//        String threadName = Thread.currentThread().getName();
+//        log.info("Thread name for startOnDemandSync: {}", threadName);
+//
+//        // Set up a timeout for this task (e.g., 1 minute)
+//        long timeoutMillis = 2000; // 60 seconds
+//        ExecutorService executorService = Executors.newSingleThreadExecutor();
+//        Callable<Void> task = () -> {
+//            try {
+//                AzureTenant azureTenant = azureADSyncService.initializeGraphClientAndSyncAzureTenant(azureUserCredentialDTO, null);
+//                log.info("tenant synced.....");
+//                azureADSyncService.syncAzureADData(azureTenant);
+//                log.info("syncAzureADData synced.....");
+//
+//                Optional.ofNullable(azureUserCredentialDTO.getSubscriptionId())
+//                        .filter(StringUtils::isNotEmpty)
+//                        .ifPresentOrElse(subscriptionId -> azureResourceSyncService.syncAzureResourceData(azureTenant, azureUserCredentialDTO),
+//                                () -> backendApplicationLogservice.saveAuditLog(
+//                                        azureUserCredentialDTO.getWsTenantName(), "demo@gmail.com", Constant.ADD, Constant.AZURE_RESOURCE_DATA_SYNC_SKIPPED, "Info"));
+//
+//                return null;  // Task completed successfully
+//            } catch (Exception exp) {
+//                log.info("Inside exp..........");
+//                throw exp;
+//            }
+//        };
+//        // Execute the task with a timeout
+//        Future<Void> future = executorService.submit(task);
+//        try {
+//            future.get(timeoutMillis, TimeUnit.MILLISECONDS); // Timeout after 60 seconds
+//        } catch (TimeoutException e) {
+//            log.error("Async task exceeded the timeout.");
+//            future.cancel(true);
+//            backendApplicationLogservice.saveAuditLog(azureUserCredentialDTO.getWsTenantName(), "demo@gmail.com", Constant.ADD, Constant.AZURE_SYNC_TIME_OUT, "Error");
+//        } catch (InterruptedException | ExecutionException e) {
+//            log.error("Error occurred during Azure sync task: {}", e.getMessage());
+//            backendApplicationLogservice.saveAuditLog(azureUserCredentialDTO.getWsTenantName(), "demo@gmail.com", Constant.ADD, String.format(Constant.AZURE_SYNC_FAILURE, e.getMessage()), "Error");
+//        } catch (Exception e) {
+//            log.error("Error occurred during Azure sync task.", e);
+//            backendApplicationLogservice.saveAuditLog(azureUserCredentialDTO.getWsTenantName(), "demo@gmail.com", Constant.ADD, String.format(Constant.AZURE_DATA_ASYNCHRONOUS_FAILURE, e.getMessage()), "Error");
+//        } finally {
+//            executorService.shutdown();
+//        }
+//        azureUserCredentialService.updateSyncStatusData(false, azureUserCredentialDTO.getId());
+//    }
 
 
     /* Sync only the Role Assignment from Azure for the Tenant*/

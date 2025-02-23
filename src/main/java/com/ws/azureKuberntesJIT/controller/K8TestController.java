@@ -34,8 +34,15 @@ public class K8TestController {
     }
 
     @GetMapping("/listNamespaces")
-    public ResponseEntity listNamespaces() {
-        k8TestService.listNamespaces();
+    public ResponseEntity listResourcesHandler() {
+        k8TestService.listResources();
+        return ResponseEntity.ok().build();
+    }
+
+
+    @GetMapping("/savingData")
+    public ResponseEntity savingData() {
+        k8TestService.savingData();
         return ResponseEntity.ok().build();
     }
 }

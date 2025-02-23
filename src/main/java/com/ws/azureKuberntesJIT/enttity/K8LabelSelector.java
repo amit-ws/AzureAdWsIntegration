@@ -1,5 +1,6 @@
 package com.ws.azureKuberntesJIT.enttity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.*;
@@ -7,6 +8,7 @@ import lombok.NoArgsConstructor;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Data
 @Builder
@@ -25,14 +27,15 @@ public class K8LabelSelector {
     @Column(name = "label_value")
     Map<String, String> matchLabels;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    K8AggregationRule k8AggregationRule;
-
-    @OneToMany(mappedBy = "k8LabelSelector")
+    @JsonIgnore
+    @OneToMany(mappedBy = "k8LabelSelector", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     List<K8LabelSelectorRequirement> matchExpressions;
+
+    @JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "kubernetes_aggregation_rule_id", referencedColumnName = "id")
+    K8AggregationRule k8AggregationRule;
 
     @Column(nullable = false)
     String clusterRoleUID;
-
-    String namespace;
 }

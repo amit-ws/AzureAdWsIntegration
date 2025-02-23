@@ -1,5 +1,6 @@
 package com.ws.azureKuberntesJIT.enttity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.NoArgsConstructor;
@@ -26,6 +27,11 @@ public class K8LabelSelectorRequirement {
     @Column(name = "value")
     List<String> values;
 
+    @Column(nullable = false)
+    String clusterRoleUID;
+
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "kubernetes_label_selector_id", referencedColumnName = "id")
     K8LabelSelector k8LabelSelector;
 }

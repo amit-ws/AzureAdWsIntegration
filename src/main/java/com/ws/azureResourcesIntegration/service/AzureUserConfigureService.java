@@ -20,6 +20,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.ObjectUtils;
 
 import java.util.Date;
 import java.util.Optional;
@@ -65,8 +66,11 @@ public class AzureUserConfigureService {
             AzureUserCredentialDTO credentialDTO = azureUserCredentialService.findWSTenantIdWithDecryptedSecret(wsTenantName);
             try {
                 azureADInitializerService.initializeGraphClient(credentialDTO, null);
-                Optional.ofNullable(azureADInitializerService.findUserByUserId(azureId))
-                        .orElseThrow(() -> new RuntimeException(String.format("Invalid azure id provided. Id: %s", azureId)));
+                User user = azureADInitializerService.findUserByUserId(azureId);
+                if (ObjectUtils.isEmpty(user)) {
+                    throw new RuntimeException(String.format("No user found. Invalid azure id provided. Id: %s", azureId));
+                }
+                azureId = user.id;
             } catch (Exception ex) {
                 if (ex.getMessage().contains("Request_ResourceNotFound")) {
                     log.error("Message: {}", "Provided azure-id and Ws-tenant-name mismatched");

@@ -4,7 +4,10 @@ import com.ws.azureAdIntegration.constants.CloudProviderType;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
+import org.apache.commons.lang3.tuple.Triple;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 @NoArgsConstructor
@@ -23,4 +26,6 @@ public class K8ResourceDataSyncRequest {
     String wsTenantName;
     @NotNull(message = "Please provide WS domain email")
     String tenantEmail;
+
+    List<Triple<String, String, String>> clusterConfigTriples;
 }

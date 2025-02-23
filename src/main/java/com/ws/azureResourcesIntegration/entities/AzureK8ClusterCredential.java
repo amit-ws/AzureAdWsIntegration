@@ -2,7 +2,6 @@ package com.ws.azureResourcesIntegration.entities;
 
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.whiteswansecurity.uihost.constant.KubernetesClusterCredentialType;
 import com.ws.azureResourcesIntegration.constant.KubernetesClusterCredentialType;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -15,7 +14,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @Data
 @Entity
-@Table(name = "azure_kubernetes_cluster_credential", schema = "public")
+@Table(name = "azure_kubernetes_cluster_credential", schema = "azure_test")
 public class AzureK8ClusterCredential {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

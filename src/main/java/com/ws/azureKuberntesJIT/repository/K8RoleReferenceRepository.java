@@ -5,5 +5,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public interface K8RoleRefRepository extends JpaRepository<K8RoleReference, Long> {
+public interface K8RoleReferenceRepository extends JpaRepository<K8RoleReference, Long> {
 }

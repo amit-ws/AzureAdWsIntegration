@@ -1,5 +1,6 @@
 package com.ws.azureKuberntesJIT.enttity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.OneToMany;
@@ -8,6 +9,7 @@ import lombok.*;
 import lombok.Data;
 
 import java.util.List;
+import java.util.Set;
 
 @Data
 @Builder
@@ -21,10 +23,13 @@ public class K8AggregationRule {
     Long id;
 
     @Column(nullable = false)
-    String clusterRoleUID;
+    String clusterRoleUID;  /* CLUSTER typed Kubernetes Role */
 
-    String namespace;
-
-    @OneToMany(mappedBy = "k8AggregationRule")
+    @JsonIgnore
+    @OneToMany(mappedBy = "k8AggregationRule", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     List<K8LabelSelector> k8LabelSelectors;
+
+    @JsonIgnore
+    @OneToOne(fetch = FetchType.LAZY)
+    K8Role kubernetesRole;
 }

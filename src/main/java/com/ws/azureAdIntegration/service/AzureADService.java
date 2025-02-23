@@ -5,6 +5,9 @@ import com.ws.azureAdIntegration.dto.AzureUserCredentialDTO;
 import com.ws.azureAdIntegration.entity.*;
 import com.ws.azureAdIntegration.repository.*;
 import com.ws.azureAdIntegration.util.GenericUtil;
+import com.ws.azureKuberntesJIT.service.K8ResourcesDataService;
+import com.ws.azureResourcesIntegration.dto.AzureRoleAssignmentResponse;
+import com.ws.azureResourcesIntegration.dto.AzureRoleDefinitionDTO;
 import com.ws.azureResourcesIntegration.dto.UserGroupAndRolesResponse;
 import com.ws.azureResourcesIntegration.repository.AzureUserConfigureRepository;
 import com.ws.azureResourcesIntegration.repository.PublishedResourcesRepository;
@@ -43,9 +46,10 @@ public class AzureADService {
     final AzureTenantService azureTenantService;
     final AzureUserCredentialService azureUserCredentialService;
     final AzureADInitializerService azureADInitializerService;
+    final K8ResourcesDataService k8ResourcesDataService;
 
     @Autowired
-    public AzureADService(AzureUserRepository azureUserRepository, AzureApplicationRepository azureApplicationRepository, AzureAppRolesRepository azureAppRolesRepository, AzureTenantRepository azureTenantRepository, AzureGroupRepository azureGroupRepository, AzureUserGroupMembershipRepository azureUserGroupMembershipRepository, AzureDeviceRepository azureDeviceRepository, AzureUserDeviceRelationshipRepository azureUserDeviceRelationshipRepository, AzureUserCredentialRepository azureUserCredentialRepository, CustomRoleAssignmentService customRoleAssignmentService, PublishedResourcesRepository publishedResourcesRepository, AzureUserConfigureRepository azureUserConfigureRepository, BackendApplicationLogservice backendApplicationLogservice, AzureTenantService azureTenantService, AzureUserCredentialService azureUserCredentialService, AzureADInitializerService azureADInitializerService) {
+    public AzureADService(AzureUserRepository azureUserRepository, AzureApplicationRepository azureApplicationRepository, AzureAppRolesRepository azureAppRolesRepository, AzureTenantRepository azureTenantRepository, AzureGroupRepository azureGroupRepository, AzureUserGroupMembershipRepository azureUserGroupMembershipRepository, AzureDeviceRepository azureDeviceRepository, AzureUserDeviceRelationshipRepository azureUserDeviceRelationshipRepository, AzureUserCredentialRepository azureUserCredentialRepository, CustomRoleAssignmentService customRoleAssignmentService, PublishedResourcesRepository publishedResourcesRepository, AzureUserConfigureRepository azureUserConfigureRepository, BackendApplicationLogservice backendApplicationLogservice, AzureTenantService azureTenantService, AzureUserCredentialService azureUserCredentialService, AzureADInitializerService azureADInitializerService, K8ResourcesDataService k8ResourcesDataService) {
         this.azureUserRepository = azureUserRepository;
         this.azureApplicationRepository = azureApplicationRepository;
         this.azureAppRolesRepository = azureAppRolesRepository;
@@ -62,6 +66,7 @@ public class AzureADService {
         this.azureTenantService = azureTenantService;
         this.azureUserCredentialService = azureUserCredentialService;
         this.azureADInitializerService = azureADInitializerService;
+        this.k8ResourcesDataService = k8ResourcesDataService;
     }
 
     public List<AzureUser> fetchUsers(String wsTenantName) {
@@ -126,6 +131,7 @@ public class AzureADService {
         azureUserConfigureRepository.deleteAllByWsTenantName(wsTenantName);
         azureUserCredentialRepository.deleteByWsTenantName(wsTenantName);
         azureTenantRepository.deleteByWsTenantName(wsTenantName);
+        k8ResourcesDataService.deleteK8ResourcesByWsTenantName(wsTenantName);
         backendApplicationLogservice.deleteLogsForTenant(wsTenantName);
     }
 
@@ -147,6 +153,7 @@ public class AzureADService {
                         .groupResponses(Optional.ofNullable(resultSet.getGroups()).map(this::convertGroupsToDTO).orElse(Collections.emptyList()))
 //                        .groups(GenericUtil.getOrEmptyList(() -> Collections.singletonList(resultSet.getGroups())))
                         .roleDefinitions(GenericUtil.splitStringConvertToList(resultSet.getRoles()))
+                        .roleDefinitionList(Optional.ofNullable(resultSet.getRoles()).map(this::convertRoleAssignmentsToDTOs).orElse(Collections.emptyList()))
                         .build())
                 .collect(Collectors.toList());
 
@@ -162,6 +169,18 @@ public class AzureADService {
             }
         }
         return groupDTOs;
+    }
+
+    private List<AzureRoleAssignmentResponse> convertRoleAssignmentsToDTOs(String rolesString) {
+        List<AzureRoleAssignmentResponse> roleDTOs = new ArrayList<>();
+        String[] roleEntries = rolesString.split(",");
+        for (String roleEntry : roleEntries) {
+            String[] parts = roleEntry.split(":");
+            if (parts.length == 2) {
+                roleDTOs.add(AzureRoleAssignmentResponse.builder().assignmentAzureId(parts[0]).roleName(parts[1]).build());
+            }
+        }
+        return roleDTOs;
     }
 
 

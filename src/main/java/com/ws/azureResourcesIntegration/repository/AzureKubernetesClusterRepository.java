@@ -1,9 +1,17 @@
 package com.ws.azureResourcesIntegration.repository;
 
+import com.ws.azureResourcesIntegration.dto.AzureKubernetesClusterDTO;
 import com.ws.azureResourcesIntegration.entities.AzureKubernetesCluster;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
+
+import java.util.List;
 
 @Repository
 public interface AzureKubernetesClusterRepository extends JpaRepository<AzureKubernetesCluster, Long> {
+    @Query("SELECT new com.ws.azureResourcesIntegration.dto.AzureKubernetesClusterDTO(aks.id, aks.azureId, aks.name, aks.regionName, " +
+            "aks.isAzureRbacEnabled, aks.type, aks.subscriptionId, aks.resourceGroupName, aks.wsTenantName) " +
+            "FROM AzureKubernetesCluster aks WHERE aks.wsTenantName = :wsTenantName")
+    List<AzureKubernetesClusterDTO> findAllAzureKubernetesClustersUsingWsTenantName(String wsTenantName);
 }

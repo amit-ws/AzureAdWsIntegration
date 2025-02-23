@@ -22,13 +22,19 @@ public class AzureKubernetesCluster {
     String azureId;
     String name;
     String regionName;
+    String publicNetworkAccess;
+    String nodeResourceGroup;
+    String isLocalAccountsEnabled;
+    String managedClusterIdentityType;
+    String kubernetesVersion;
     boolean isAzureRbacEnabled;
     String type;
     @Column(nullable = false)
     String subscriptionId;
     @Column(nullable = false)
     String resourceGroupName;
-
+    @Column(nullable = false)
+    String wsTenantName;
 
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY, mappedBy = "azureKubernetesCluster")
     List<AzureK8ClusterCredential> azureK8ClusterCredentials;

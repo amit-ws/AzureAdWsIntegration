@@ -6,6 +6,25 @@ import java.util.*;
 import java.util.function.Supplier;
 
 public class GenericUtil {
+
+    public static Map<String, String> extractServerAndTokenFromKubeConfigYAML(String config) {
+
+        String serverPrefix = "server: ";
+        int serverStart = config.indexOf(serverPrefix) + serverPrefix.length();
+        int serverEnd = config.indexOf("\n", serverStart);
+
+        String tokenPrefix = "token: ";
+        int tokenStart = config.indexOf(tokenPrefix) + tokenPrefix.length();
+        int tokenEnd = config.indexOf("\n", tokenStart);
+
+        Map<String, String> value = new HashMap<>();
+        value.put("server", config.substring(serverStart, serverEnd).trim());
+        value.put("token", config.substring(tokenStart, tokenEnd).trim());
+
+        return value;
+    }
+
+
     public static void ensureNotNull(Object object, String message) {
         Optional.ofNullable(object)
                 .orElseThrow(() -> new IllegalArgumentException(message));

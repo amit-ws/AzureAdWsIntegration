@@ -1,38 +1,44 @@
 package com.ws.azureKuberntesJIT.enttity;
 
+
 import com.ws.azureAdIntegration.constants.CloudProviderType;
+import com.ws.azureKuberntesJIT.constant.K8ResourceType;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import javax.annotation.Nullable;
-
+@NoArgsConstructor
+@AllArgsConstructor
 @Data
 @Builder
-@AllArgsConstructor
-@NoArgsConstructor
 @Entity
-@Table(name = "kubernetes_role_ref", schema = "azure_test")
-public class K8RoleReference {
+@Table(name = "kubernetes_resource_annotation", schema = "azure_test")
+public class K8ResourceAnnotation {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Long id;
-    String apiGroup;
 
     @Column(nullable = false)
-    String kind;
+    String key;
     @Column(nullable = false)
-    String name;  /* stores role_name  */
+    String value;
+
     @Column(nullable = false)
-    String roleUID; /* ROLE_UID of referenced role */
+    String kubernetesResourceId; /* The parent K8 resource this annotation record belongs to, Eg: namespace */
+
+    @Enumerated(EnumType.STRING)
+    K8ResourceType k8ResourceType;
 
     @Column(nullable = false)
     String clusterId;
 
     @Enumerated(EnumType.STRING)
     CloudProviderType cloudProviderType;
+
+    @Column(nullable = false)
+    String resourceAccountId;
 
     @Column(nullable = false)
     String wsTenantName;

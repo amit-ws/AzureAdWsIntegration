@@ -4,12 +4,14 @@ import com.azure.resourcemanager.authorization.models.RoleAssignment;
 import com.microsoft.graph.models.*;
 import com.ws.azureAdIntegration.constants.CloudProviderType;
 import com.ws.azureAdIntegration.entity.*;
+import com.ws.azureKuberntesJIT.enttity.K8Metadata;
 import com.ws.azureResourcesIntegration.constant.RequestStatus;
 import com.ws.azureResourcesIntegration.dto.AssignRoleRequest;
 import com.ws.azureResourcesIntegration.dto.PublishResourceRequest;
 import com.ws.azureResourcesIntegration.entities.AzureRoleAssignment;
 import com.ws.azureResourcesIntegration.entities.CustomRoleAssignment;
 import com.ws.azureResourcesIntegration.entities.PublishedResource;
+import io.kubernetes.client.openapi.models.V1ObjectMeta;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Date;

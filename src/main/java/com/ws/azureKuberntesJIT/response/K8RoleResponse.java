@@ -2,10 +2,10 @@ package com.ws.azureKuberntesJIT.response;
 
 
 import com.ws.azureAdIntegration.constants.CloudProviderType;
+import com.ws.azureKuberntesJIT.constant.K8ResourceLevel;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
-import java.util.ArrayList;
 import java.util.List;
 
 @NoArgsConstructor
@@ -18,10 +18,10 @@ public class K8RoleResponse {
     String UID;
     String name;
     String namespace;
+    K8ResourceLevel type;
     String clusterId;
+    String resourceAccountId;
     CloudProviderType cloudType;
-    String parentResourceId;
-//    String type; /*cLUSTER LEVEL or NAMESPACE LEVEL*/
 
     List<String> verbs;
     List<String> apiGroups;
@@ -29,15 +29,16 @@ public class K8RoleResponse {
     List<String> resourceNames;
 
 
-    public K8RoleResponse(Long id, String UID, String name, String namespace, String clusterId,
-                          CloudProviderType cloudType, String parentResourceId) {
+    public K8RoleResponse(Long id, String UID, String name, String namespace, K8ResourceLevel type, String clusterId,
+                          CloudProviderType cloudType, String resourceAccountId) {
         this.id = id;
         this.UID = UID;
         this.name = name;
+        this.type = type;
         this.namespace = namespace;
         this.clusterId = clusterId;
         this.cloudType = cloudType;
-        this.parentResourceId = parentResourceId;
+        this.resourceAccountId = resourceAccountId;
     }
 
 }

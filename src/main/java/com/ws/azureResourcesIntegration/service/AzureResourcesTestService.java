@@ -4,10 +4,14 @@ import com.azure.core.http.rest.PagedIterable;
 import com.azure.resourcemanager.AzureResourceManager;
 import com.azure.resourcemanager.authorization.models.RoleAssignment;
 import com.azure.resourcemanager.authorization.models.RoleDefinition;
+import com.azure.resourcemanager.compute.models.PublicIpAddressSku;
 import com.azure.resourcemanager.compute.models.VirtualMachine;
 import com.azure.resourcemanager.containerservice.models.CredentialResult;
 import com.azure.resourcemanager.containerservice.models.KubernetesCluster;
 import com.azure.resourcemanager.containerservice.models.KubernetesClusters;
+import com.azure.resourcemanager.network.models.NetworkInterface;
+import com.azure.resourcemanager.network.models.NicIpConfiguration;
+import com.azure.resourcemanager.network.models.PublicIpAddress;
 import com.azure.resourcemanager.resources.models.PolicyAssignment;
 import com.azure.resourcemanager.resources.models.PolicyDefinition;
 import com.azure.resourcemanager.resources.models.ResourceGroup;
@@ -28,14 +32,17 @@ import io.kubernetes.client.openapi.Configuration;
 import io.kubernetes.client.openapi.apis.*;
 import io.kubernetes.client.openapi.models.*;
 import io.kubernetes.client.util.Config;
+import io.micrometer.common.util.StringUtils;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.util.ObjectUtils;
 import org.springframework.web.client.RestTemplate;
 
 import java.io.IOException;
@@ -377,14 +384,13 @@ public class AzureResourcesTestService {
             clusterDetailsMap.put("Is Local Accounts Enabled", String.valueOf(k8Cluster.isLocalAccountsEnabled()));
             clusterDetailsMap.put("ManagedClusterIdentity type", GenericUtil.getOrNull(() -> k8Cluster.innerModel().identity().type().name()));
 
-            //            clusterDetailsMap.put("Tags", GenericUtil.getOrNull(() -> k8Cluster.tags().values()));
-            //            clusterDetailsMap.put("Network Profile", GenericUtil.getOrNull(() -> k8Cluster.networkProfile().toString()));
+//            clusterDetailsMap.put("Tags", GenericUtil.getOrNull(() -> k8Cluster.tags().values()));
+            clusterDetailsMap.put("Network Profile", GenericUtil.getOrNull(() -> k8Cluster.networkProfile().toString()));
 
         }
 
         return clusterDetailsMap;
     }
-
 
 
     /**
@@ -448,6 +454,73 @@ public class AzureResourcesTestService {
         return federatedTokenUrl;
     }
 
+
+    public void listPublicIPAddressInstances() {
+        AzureResourceManager azureResourceManager = getAzureResourceManager();
+        PagedIterable<PublicIpAddress> publicIpAddresses = azureResourceManager.publicIpAddresses().listByResourceGroup("qa10_group");
+        for (PublicIpAddress publicIpAddress : publicIpAddresses) {
+            log.info("ID: {}", publicIpAddress.id());
+            log.info("IP address: {}", publicIpAddress.ipAddress());
+            log.info("IP address: {}", publicIpAddress.name());
+            log.info("IP address: {}", publicIpAddress.version());
+            log.info("IP address: {}", publicIpAddress.region());
+            log.info("IP address: {}", publicIpAddress.hasAssignedNetworkInterface());
+            log.info("IP address: {}", publicIpAddress.hasAssignedLoadBalancer());
+            log.info("IP address: {}", publicIpAddress.innerModel().type());
+            log.info("IP address: {}", publicIpAddress.ipAllocationMethod().toString());
+        }
+    }
+
+
+    /**
+     * GOAL: To determine which NIC of the target VM has any number of public IP address
+     */
+    public List<String> determineNicWithPublicIpAddressForVM(String rgName, String vmName) {
+        AzureResourceManager azureResourceManager = getAzureResourceManager();
+        VirtualMachine virtualMachine = azureResourceManager.virtualMachines().getByResourceGroup(rgName, vmName);
+        if (virtualMachine == null) {
+            throw new RuntimeException("VM not found!");
+        }
+        // Fetch all the NICs Objects for the VM
+        List<NetworkInterface> networkInterfaces = virtualMachine.networkInterfaceIds().stream()
+                .map(nicId -> azureResourceManager.networkInterfaces().getById(nicId))
+                .toList();
+
+        // Iterate to determine which NIC has at least one public IP address. Store the NIC instance path ID of such NIC
+        List<String> foundNICPatD = new ArrayList<>();
+        for (NetworkInterface networkInterface : networkInterfaces) {
+            for (Map.Entry<String, NicIpConfiguration> stringNicIpConfigurationEntry : networkInterface.ipConfigurations().entrySet()) {
+                NicIpConfiguration nicIpConfiguration = stringNicIpConfigurationEntry.getValue();
+
+                String publicPathId = nicIpConfiguration.publicIpAddressId(); // Its the azure full path ID for the IP-Address object 1️⃣
+
+                if (StringUtils.isNotEmpty(publicPathId)) {
+                    PublicIpAddress publicIpAddress = nicIpConfiguration.getPublicIpAddress();
+                    publicIpAddress.id(); // Its the azure full path ID for the IP-Address object 1️⃣
+
+                    if (!ObjectUtils.isEmpty(publicIpAddress)) {
+                        log.info("Following NIC has the public IP address: {}", networkInterface.id()); // Target NIC found which has at least one public IP
+                        log.info("Public IP address instance path ID: {}", publicIpAddress.id()); // Target NIC found which has at least one public IP
+                        log.info("Public IP Found: {}", publicIpAddress.ipAddress());
+                        foundNICPatD.add(networkInterface.id());
+                        break;
+                    } else {
+                        log.warn("Public IP ID exists, but could not fetch details. Reason: {} {}", "IP address DELETED", "PERMISSION issues");
+                    }
+                } else {
+                    log.error("No Public IP assigned to this NIC configuration");
+                }
+            }
+            if (CollectionUtils.isEmpty(foundNICPatD)) {
+                throw new RuntimeException("NO Public NIC found for the provided VM");
+            }
+        }
+        log.info("-------------------------");
+        log.info("Total NIC with public IP addresses: {}", foundNICPatD.size());
+        log.info("NIc path ID with public IP addresses: {}", foundNICPatD);
+
+        return foundNICPatD;
+    }
 
 
 

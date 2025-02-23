@@ -1,15 +1,12 @@
 package com.ws.azureKuberntesJIT.enttity;
 
 import com.ws.azureAdIntegration.constants.CloudProviderType;
-import jakarta.persistence.CollectionTable;
-import jakarta.persistence.ElementCollection;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
 import java.time.OffsetDateTime;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.Date;
 
 @Data
 @SuperBuilder
@@ -20,7 +17,6 @@ public class K8Metadata {
     String apiVersion;
     String selfLink;
     String kind;
-    String phase;
     String resourceVersion;
     Long generation;
     String name;
@@ -29,20 +25,24 @@ public class K8Metadata {
     OffsetDateTime creationTimestamp;
     OffsetDateTime deletionTimestamp;
 
-    @ElementCollection
-    @CollectionTable(name = "kubernetes_metadata_annotations", joinColumns = @JoinColumn(name = "metadata_id"))
-    @MapKeyColumn(name = "annotation_key")
-    @Column(name = "annotation_value")
-    Map<String, String> annotations = new HashMap<>();
+//    @ElementCollection
+//    @CollectionTable(name = "kubernetes_metadata_annotations", joinColumns = @JoinColumn(name = "metadata_id"))
+//    @MapKeyColumn(name = "annotation_key")
+//    @Column(name = "annotation_value")
+//    Map<String, String> annotations = new HashMap<>();
 
-    @Column(nullable = false)
+    Date syncedAt;
+    Date updatedAt;
+
+//    @Column(nullable = false)
     String clusterId;
     String namespace;
-    @Column(nullable = false)
+//    @Column(nullable = false)
     @Enumerated(EnumType.STRING)
     CloudProviderType cloudProviderType;
 
+//    @Column(nullable = false)
     String wsTenantName;
-    @Column(nullable = false)
-    String resourceAccountId; /* for Azure = subscritpion_id.  For GCP = Project_id*/
+//    @Column(nullable = false)
+    String cloudResourceAccountId; /* for Azure = subscritpion_id.  For GCP = Project_id*/
 }

@@ -60,6 +60,7 @@ public class AzureResourceService {
     final CustomRoleAssignmentRepository customRoleAssignmentRepository;
     final AzureSubscriptionRepository azureSubscriptionRepository;
     final AzureUserConfigureRepository azureUserConfigureRepository;
+    final AzureKubernetesClusterRepository azureKubernetesClusterRepository;
     final PublishedResourcesRepository publishedResourcesRepository;
     final AzureTenantService azureTenantService;
     final AzureAuthUtil azureAuthUtil;
@@ -69,7 +70,7 @@ public class AzureResourceService {
     @Autowired
     public AzureResourceService(AzureVMRepository azureVMRepository, AzureStorageRepository azureStorageRepository, AzureServerRepository azureServerRepository, AzureDatabaseRepository azureDatabaseRepository,
                                 AzureRoleDefinitionRepository azureRoleDefinitionRepository, AzureRoleDefinitionActionRepository azureRoleDefinitionActionRepository, AzureRoleAssignmentRepository azureRoleAssignmentRepository, AzureUserRepository azureUserRepository,
-                                AzureGroupRepository azureGroupRepository, CustomRoleAssignmentRepository customRoleAssignmentRepository, AzureSubscriptionRepository azureSubscriptionRepository, AzureUserConfigureRepository azureUserConfigureRepository, PublishedResourcesRepository publishedResourcesRepository, AzureTenantService azureTenantService,
+                                AzureGroupRepository azureGroupRepository, CustomRoleAssignmentRepository customRoleAssignmentRepository, AzureSubscriptionRepository azureSubscriptionRepository, AzureUserConfigureRepository azureUserConfigureRepository, AzureKubernetesClusterRepository azureKubernetesClusterRepository, PublishedResourcesRepository publishedResourcesRepository, AzureTenantService azureTenantService,
                                 AzureAuthUtil azureAuthUtil, AzureUserCredentialService azureUserCredentialService) {
         this.azureVMRepository = azureVMRepository;
         this.azureStorageRepository = azureStorageRepository;
@@ -83,6 +84,7 @@ public class AzureResourceService {
         this.customRoleAssignmentRepository = customRoleAssignmentRepository;
         this.azureSubscriptionRepository = azureSubscriptionRepository;
         this.azureUserConfigureRepository = azureUserConfigureRepository;
+        this.azureKubernetesClusterRepository = azureKubernetesClusterRepository;
         this.publishedResourcesRepository = publishedResourcesRepository;
         this.azureTenantService = azureTenantService;
         this.azureAuthUtil = azureAuthUtil;
@@ -106,6 +108,7 @@ public class AzureResourceService {
             case STORAGE_ACCOUNT -> azureStorageRepository.findAllAzureStorageAccountsUsingTenantName(wsTenantName);
             case DATABASE -> azureDatabaseRepository.findAllAzureDatabasesUsingWsTenantName(wsTenantName);
             case SUBSCRIPTION -> azureSubscriptionRepository.findAllByWsTenantName(wsTenantName);
+            case AZURE_KUBERNETES -> azureKubernetesClusterRepository.findAllAzureKubernetesClustersUsingWsTenantName(wsTenantName);
             default -> throw new RuntimeException("Invalid azure resource type provided: " + type);
         };
     }
@@ -744,12 +747,12 @@ public class AzureResourceService {
 
 
     public void revokeRoleToPrincipalForResourceInAzure(String wsTenantName) {
-        AzureResourceManager azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredentialService.findWSTenantIdWithDecryptedSecret(wsTenantName));
-        log.info("total: {}", azureResourceManager.storageAccounts().list().stream().count());
+        AzureResourceManager azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredentialService.findWSTenantIdWithDecryptedSecret("amitdev.local"));
+//        log.info("total: {}", azureResourceManager.storageAccounts().list().stream().count());
         try {
             azureResourceManager.accessManagement()
                     .roleAssignments()
-                    .deleteById("/subscriptions/4769af8e-ca3d-448d-bd1a-80e03ed94158/resourceGroups/centos-test01_group/providers/Microsoft.Storage/storageAccounts/whiteswanstorage/providers/Microsoft.Authorization/roleAssignments/0bc96654-891a-4692-a011-c5441055956f");
+                    .deleteById("/subscriptions/4769af8e-ca3d-448d-bd1a-80e03ed94158/resourceGroups/AMITDEV_GROUP/providers/Microsoft.Compute/virtualMachines/amitdev/providers/Microsoft.Authorization/roleAssignments/83121097-4878-4f7e-9970-f6fe1b7f0a16");
         } catch (Exception exp) {
             if (exp.getMessage().contains("404")) {
                 log.error("No data found for provided Role in Azure");
@@ -766,7 +769,8 @@ public class AzureResourceService {
 
     @Transactional
     public AzureRoleAssignment assignRoleToPrincipalForResourceInAzure(AssignRoleRequest request) {
-        AzureResourceManager azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredentialService.findWSTenantIdWithDecryptedSecret(request.getTenantName()));
+//        AzureResourceManager azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredentialService.findWSTenantIdWithDecryptedSecret(request.getTenantName()));
+        AzureResourceManager azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredentialService.findWSTenantIdWithDecryptedSecret("amitdev.local"));
 //        String id = UUID.randomUUID().toString();
 //        String assignee = "c30c5b8e-f883-42a9-a7ff-4d16cd0f7ec8";
 //        String roleId1 = "/subscriptions/4769af8e-ca3d-448d-bd1a-80e03ed94158/providers/Microsoft.Authorization/roleDefinitions/0f37683f-2463-46b6-9ce7-9b788b988ba2";
@@ -807,10 +811,10 @@ public class AzureResourceService {
             RoleAssignment createdRoleAssignment = azureResourceManager.accessManagement()
                     .roleAssignments()
                     .define(UUID.randomUUID().toString())
-                    .forObjectId(request.getPrincipleId())
-                    .withRoleDefinition(request.getRoleDefinitionPathId())
-                    .withScope(request.getResourceScope())
-                    .withDescription(request.getDescription())
+                    .forObjectId("c30c5b8e-f883-42a9-a7ff-4d16cd0f7ec8")
+                    .withRoleDefinition("/subscriptions/4769af8e-ca3d-448d-bd1a-80e03ed94158/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48ef-bd42-f606fba81ae7")
+                    .withScope("/subscriptions/4769af8e-ca3d-448d-bd1a-80e03ed94158/resourceGroups/amitdev_group/providers/Microsoft.Network/networkInterfaces/amitdev513")
+                    .withDescription("Network Contributor on amitdev VM's NIC ")
                     .create();
             log.info("Role Assignment created....");
             if (createdRoleAssignment == null) {

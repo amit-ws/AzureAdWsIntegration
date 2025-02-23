@@ -19,6 +19,8 @@ public class K8Node extends K8Metadata {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Long id;
 
+    String phase;
+
     String externalID;
     String podCIDR;
     Boolean unschedulable;
