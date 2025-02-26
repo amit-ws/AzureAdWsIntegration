@@ -65,7 +65,7 @@ public class AzureADSyncController {
 //                    .status(HttpStatus.REQUEST_TIMEOUT)
 //                    .body(Collections.singletonMap("message", "Sync operation timed out"));
 //        } catch (InterruptedException | ExecutionException e) {
-//            log.error("Error occurred during Azure sync task: {}", e.getMessage());
+//            log.error("Error occurred during Azure sync task: {}", e.getMessage());POI
 //            backendApplicationLogservice.saveAuditLog(tenantName, tenantName, Constant.ADD, String.format(Constant.AZURE_SYNC_FAILURE, e.getMessage()), "Error");
 //            azureUserCredentialService.updateSyncStatusData(false, azureUserCredential.getId());
 //            return ResponseEntity
@@ -91,6 +91,6 @@ public class AzureADSyncController {
         azureSyncControlService.syncKubernetesResourcesData(azureUserCredentialService.mapFromAzureUserCredentialAndDecryptSecretKey(azureUserCredential));
         return ResponseEntity
                 .status(HttpStatus.ACCEPTED)
-                .body(Collections.singletonMap("message", "Azure role assignments synced successfully!"));
+                .body(Collections.singletonMap("message", "Kubernetes resources data synced successfully!"));
     }
 }

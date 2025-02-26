@@ -127,7 +127,8 @@ public class AzureResourcesTestController {
     @GetMapping("/determinePublicNIC")
     public ResponseEntity determineNicWithPublicIpAddressForVMHandler(@RequestParam String rgName,
                                                                       @RequestParam String vmName) {
-        return ResponseEntity.status(HttpStatus.OK).body(azureResourcesTestService.determineNicWithPublicIpAddressForVM(rgName, vmName));
+        return ResponseEntity.status(HttpStatus.OK)
+                .body(azureResourcesTestService.determineNicWithPublicIpAddressForVM(rgName, vmName));
     }
 
 }

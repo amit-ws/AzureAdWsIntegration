@@ -6,9 +6,9 @@ import com.azure.resourcemanager.authorization.models.PrincipalType;
 import com.azure.resourcemanager.authorization.models.RoleAssignment;
 import com.ws.azureAdIntegration.dto.AzureUserCredentialDTO;
 import com.ws.azureAdIntegration.entity.AzureTenant;
+import com.ws.azureAdIntegration.exception.AzureDataException;
 import com.ws.azureAdIntegration.repository.AzureGroupRepository;
 import com.ws.azureAdIntegration.repository.AzureUserRepository;
-import com.ws.azureAdIntegration.service.AzureADService;
 import com.ws.azureAdIntegration.service.AzureTenantService;
 import com.ws.azureAdIntegration.service.AzureUserCredentialService;
 import com.ws.azureAdIntegration.util.AzureAuthUtil;
@@ -21,17 +21,15 @@ import com.ws.azureResourcesIntegration.dto.*;
 import com.ws.azureResourcesIntegration.entities.*;
 import com.ws.azureResourcesIntegration.repository.*;
 import com.ws.azureAdIntegration.constants.Constant;
-import com.ws.projection.ApplicableRoleDefinitionProjection;
 import com.ws.projection.CustomRoleAssignmentProjection;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.tuple.Pair;
 import org.apache.commons.lang3.tuple.Triple;
+import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.repository.CrudRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
@@ -39,7 +37,6 @@ import org.springframework.util.CollectionUtils;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * Azure Resource feature service
@@ -108,7 +105,8 @@ public class AzureResourceService {
             case STORAGE_ACCOUNT -> azureStorageRepository.findAllAzureStorageAccountsUsingTenantName(wsTenantName);
             case DATABASE -> azureDatabaseRepository.findAllAzureDatabasesUsingWsTenantName(wsTenantName);
             case SUBSCRIPTION -> azureSubscriptionRepository.findAllByWsTenantName(wsTenantName);
-            case AZURE_KUBERNETES -> azureKubernetesClusterRepository.findAllAzureKubernetesClustersUsingWsTenantName(wsTenantName);
+            case AZURE_KUBERNETES ->
+                    azureKubernetesClusterRepository.findAllAzureKubernetesClustersUsingWsTenantName(wsTenantName);
             default -> throw new RuntimeException("Invalid azure resource type provided: " + type);
         };
     }
@@ -205,21 +203,6 @@ public class AzureResourceService {
 //    }
 
 
-    @Transactional
-    public void publishResourceByResourceIdAndType(PublishResourceRequest request) {
-        if (request.isFlag()) {
-            try {
-                publishedResourcesRepository.save(AzureEntityUtil.createPublishedResourcesFromRequest(request));
-            } catch (Exception ex) {
-                if (ex.getMessage().contains("duplicate key")) {
-                    throw new RuntimeException("Resource already published");
-                }
-            }
-        } else {
-            publishedResourcesRepository.deleteByResourceIdAndWsTenantName(request.getResourceId(), request.getWsTenantName());
-        }
-    }
-
 
 //    public void validateRequestType(PublishResourceType type) {
 //        if (type == null || !EnumUtils.isValidEnum(PublishResourceType.class, type.name())) {
@@ -241,31 +224,10 @@ public class AzureResourceService {
 //        return resources;
 //    }
 
-    public List<?> getPublishedResources(String wsTenantName, AzureResourcesType type) {
-        List<?> resources = switch (type) {
-            case VIRTUAL_MACHINE -> azureVMRepository.findAllPublishedAzureVM(wsTenantName);
-            case STORAGE_ACCOUNT -> azureStorageRepository.findAllPublishedAzureStorageAccounts(wsTenantName);
-            case DATABASE -> azureDatabaseRepository.findAllPublishedAzureDatabase(wsTenantName);
-            default -> throw new RuntimeException(String.format("Invalid type provided. Type: %s", type));
-        };
-        if (!resources.isEmpty()) {
-            setSubscriptionIdForResources(resources);
-        }
-        return resources;
-    }
 
-    private void setSubscriptionIdForResources(List<?> resources) {
-        if (resources.get(0) instanceof AzureVM) {
-            Integer subscriptionId = ((AzureVM) resources.get(0)).getAzureSubscription().getId();
-            resources.forEach(resource -> ((AzureVM) resource).setAzureSubscriptionId(subscriptionId));
-        } else if (resources.get(0) instanceof AzureStorageAccount) {
-            Integer subscriptionId = ((AzureStorageAccount) resources.get(0)).getAzureSubscription().getId();
-            resources.forEach(resource -> ((AzureStorageAccount) resource).setAzureSubscriptionId(subscriptionId));
-        } else if (resources.get(0) instanceof AzureDatabase) {
-            Integer subscriptionId = ((AzureDatabase) resources.get(0)).getAzureServer().getAzureSubscription().getId();
-            resources.forEach(resource -> ((AzureDatabase) resource).setAzureSubscriptionId(subscriptionId));
-        }
-    }
+
+
+
 
 
 //    private <T> void getByIdAndPublish(Integer resourceId, CrudRepository<T, Integer> repository, AzureResourcesType type) {
@@ -435,24 +397,84 @@ public class AzureResourceService {
     @Transactional
     public List<CustomRoleAssignment> raiseResourceAssignmentRequestInList(AssignRoleRequest request) {
         if (CollectionUtils.isEmpty(request.getRoleDefinitionPathIds())) {
-            throw new RuntimeException("Please provide roles to assign");
+            throw new AzureDataException("Please provide roles to assign");
         }
         List<CustomRoleAssignment> customRoleAssignments = new ArrayList<>();
-        List<CustomRoleAssignment> foundCustomRoles = customRoleAssignmentRepository.findAllByAssigneeAndScopeAndAzureRoleDefinitionPathIdInAndStatusIn(request.getPrincipleId().trim(), request.getResourceScope().trim(),
-                request.getRoleDefinitionPathIds(), Arrays.asList(RequestStatus.APPROVED, RequestStatus.PENDING));
+        List<CustomRoleAssignment> foundCustomRoles = customRoleAssignmentRepository.findAllByAssigneeAndScopeAndAzureRoleDefinitionPathIdInAndStatusInAndWsTenantName(request.getPrincipleId().trim(), request.getResourceScope().trim(),
+                request.getRoleDefinitionPathIds(), Arrays.asList(RequestStatus.APPROVED, RequestStatus.PENDING), request.getTenantName());
         if (CollectionUtils.isEmpty(foundCustomRoles)) {
-            request.getRoleDefinitionPathIds().forEach((id) -> customRoleAssignments.add(AzureEntityUtil.createFromAssignRoleRequestPayload(request, id.trim())));
+            request.getRoleDefinitionPathIds().forEach((id) -> customRoleAssignments.add(AzureEntityUtil.createFromAssignRoleRequestPayload(request, id.trim(), RequestStatus.PENDING)));
         } else {
             Set<String> foundRoleIds = foundCustomRoles.stream().map(CustomRoleAssignment::getAzureRoleDefinitionPathId).collect(Collectors.toSet());
             Set<String> uniqueRoleIds = request.getRoleDefinitionPathIds().stream()
                     .filter(requestRoleId -> !foundRoleIds.contains(requestRoleId))
                     .collect(Collectors.toSet());
             if (CollectionUtils.isEmpty(uniqueRoleIds)) {
-                throw new RuntimeException(String.format("The following roles have already been requested: %s. Please review your request to avoid duplicate role assignments.", request.getRoleDefinitionPathIds()));
+                throw new AzureDataException(String.format("The following roles have already been requested: %s. Please review your request to avoid duplicate role assignments.", request.getRoleDefinitionPathIds()));
             }
-            uniqueRoleIds.forEach((uniqueRoleId) -> customRoleAssignments.add(AzureEntityUtil.createFromAssignRoleRequestPayload(request, uniqueRoleId)));
+            uniqueRoleIds.forEach((uniqueRoleId) -> customRoleAssignments.add(AzureEntityUtil.createFromAssignRoleRequestPayload(request, uniqueRoleId, RequestStatus.PENDING)));
         }
         return customRoleAssignmentRepository.saveAll(customRoleAssignments);
+    }
+
+
+    private void createdRoleAssignmentForNetworkInterfaces(List<CustomRoleAssignment> customRoleAssignments) {
+        customRoleAssignments.forEach(customRoleAssignment -> {
+            RoleAssignment nicRoleAssignment = assignRoleToPrincipalForResourceInAzure(customRoleAssignment.getWsTenantName(), customRoleAssignment);
+            createAzureRoleAssignmentFromRoleAssignment(nicRoleAssignment, customRoleAssignment, GenericUtil.determineScopeType(customRoleAssignment.getScope()));
+        });
+    }
+
+    private List<CustomRoleAssignment> createAndSaveCustomRoleAssignmentForVmNetworkInterfaces(CustomRoleAssignment customRoleAssignment) {
+        List<CustomRoleAssignment> customRoleAssignments = new ArrayList<>();
+        String wsTenantName = customRoleAssignment.getWsTenantName();
+        String assignee = customRoleAssignment.getAssignee();
+        Optional<AzureVM> azureVM = azureVMRepository.findAzureVMUsingInstanceId(customRoleAssignment.getScope(), wsTenantName);
+        if (azureVM.isPresent()) {
+            List<AzureNetworkInterface> networkInterfaces = azureVM.get().getAzureNetworkInterfaces();
+            log.info("networkInterfaces size: {}", networkInterfaces.size());
+            if (!CollectionUtils.isEmpty(networkInterfaces)) {
+                String readerRolePathId = getReaderRoleForWsTenant(wsTenantName);
+                if (StringUtils.isEmpty(readerRolePathId)) {
+                    log.warn(String.format("No reader role found for the provided wsTenant: %s with VM ID: %s ", wsTenantName, customRoleAssignment.getScope()));
+                    return customRoleAssignments;
+                }
+                log.info("readerRolePathId: {}", readerRolePathId);
+                List<String> ids = networkInterfaces.stream().map((AzureNetworkInterface::getAzureId)).toList();
+                log.info("ids: {}", ids.size());
+                List<CustomRoleAssignment> foundCustomRoleAssignments = customRoleAssignmentRepository.findAllByAssigneeAndAzureRoleDefinitionPathIdAndScopeInAndWsTenantNameAndStatus(assignee, readerRolePathId,
+                        ids, wsTenantName, RequestStatus.APPROVED);
+                Set<String> foundCustomAssignmentIds = foundCustomRoleAssignments.stream().map(CustomRoleAssignment::getScope).collect(Collectors.toSet());
+                log.info("foundCustomAssignmentIds: {}", foundCustomAssignmentIds.size());
+                Set<String> uniqueIds = ids.stream()
+                        .filter(id -> !foundCustomAssignmentIds.contains(id))
+                        .collect(Collectors.toSet());
+
+                log.info("uniqueIds: {}", uniqueIds.size());
+                if (!CollectionUtils.isEmpty(uniqueIds)) {
+                    customRoleAssignments = uniqueIds.stream()
+                            .map(uniqueId -> {
+                                CustomRoleAssignment customRoleAssignmentInstance = new CustomRoleAssignment();
+                                BeanUtils.copyProperties(customRoleAssignment, customRoleAssignmentInstance, "id"); // Exclude the 'id' property
+                                customRoleAssignmentInstance.setScope(uniqueId);
+                                customRoleAssignmentInstance.setAzureId(UUID.randomUUID().toString());
+                                customRoleAssignmentInstance.setAzureRoleDefinitionPathId(readerRolePathId);
+                                customRoleAssignmentInstance.setScopeType(AzureResourcesType.NETWORK_INTERFACE.name());
+                                return customRoleAssignmentInstance;
+                            })
+                            .collect(Collectors.toList());
+
+                    log.info("total saved customRoleAssignments: {}", customRoleAssignments.size());
+                    return customRoleAssignmentRepository.saveAll(customRoleAssignments);
+                }
+            }
+        }
+        return customRoleAssignments;
+    }
+
+
+    private String getReaderRoleForWsTenant(String wsTenantName) {
+        return azureRoleDefinitionRepository.findFirstRoleByPriorityForWsTenant("Reader", "Network Contributor", "Contributor", wsTenantName).orElse(null);
     }
 
 
@@ -650,12 +672,16 @@ public class AzureResourceService {
 
     private void processApproval(CustomRoleAssignment customRoleAssignment) {
         RoleAssignment createdRoleAssignment = assignRoleToPrincipalForResourceInAzure(customRoleAssignment.getWsTenantName(), customRoleAssignment);
-        createAzureRoleAssignmentFromRoleAssignment(createdRoleAssignment, customRoleAssignment);
+        createAzureRoleAssignmentFromRoleAssignment(createdRoleAssignment, customRoleAssignment, GenericUtil.determineScopeType(customRoleAssignment.getScope()));
         customRoleAssignment.setAzureRoleAssignmentPathId(createdRoleAssignment.id());
         LocalDateTime validFrom = LocalDateTime.now();
         customRoleAssignment.setValidFrom(validFrom);
         customRoleAssignment.setValidTo(validFrom.plusMinutes(customRoleAssignment.getExpiryTimeAmount()));
         updateCustomRoleAssignmentCommonFields(customRoleAssignment, RequestStatus.APPROVED);
+        if (AzureResourcesType.VIRTUAL_MACHINE.equals(AzureResourcesType.valueOf(customRoleAssignment.getScopeType()))) {
+            List<CustomRoleAssignment> customRoleAssignments = createAndSaveCustomRoleAssignmentForVmNetworkInterfaces(customRoleAssignment);
+            createdRoleAssignmentForNetworkInterfaces(customRoleAssignments);
+        }
     }
 
     @Transactional
@@ -710,9 +736,10 @@ public class AzureResourceService {
         }
     }
 
-    private void createAzureRoleAssignmentFromRoleAssignment(RoleAssignment roleAssignment, CustomRoleAssignment customRoleAssignment) {
+
+    private void createAzureRoleAssignmentFromRoleAssignment(RoleAssignment roleAssignment, CustomRoleAssignment customRoleAssignment, String scopeType) {
         AzureRoleAssignment azureRoleAssignment = AzureEntityUtil.createAzureRoleAssignmentFromResourceEntity(
-                roleAssignment, AzureRoleAssignment.builder()
+                roleAssignment, scopeType, AzureRoleAssignment.builder()
                         .wsTenantName(customRoleAssignment.getWsTenantName())
                         .azureSubscription(findAzureSubscriptionByAzureIdAndWsTenantName(customRoleAssignment.getSubscriptionId(), customRoleAssignment.getWsTenantName()))
                         .azureTenant(azureTenantService.getAzureTenantUsingWsTenantName(customRoleAssignment.getWsTenantName()))
@@ -752,7 +779,7 @@ public class AzureResourceService {
         try {
             azureResourceManager.accessManagement()
                     .roleAssignments()
-                    .deleteById("/subscriptions/4769af8e-ca3d-448d-bd1a-80e03ed94158/resourceGroups/AMITDEV_GROUP/providers/Microsoft.Compute/virtualMachines/amitdev/providers/Microsoft.Authorization/roleAssignments/83121097-4878-4f7e-9970-f6fe1b7f0a16");
+                    .deleteById("/subscriptions/4769af8e-ca3d-448d-bd1a-80e03ed94158/resourceGroups/amitdev_group/providers/Microsoft.Network/networkInterfaces/amitdev513/providers/Microsoft.Authorization/roleAssignments/43bf912e-df7e-40a2-bb2f-e486984ca86f");
         } catch (Exception exp) {
             if (exp.getMessage().contains("404")) {
                 log.error("No data found for provided Role in Azure");
@@ -822,7 +849,7 @@ public class AzureResourceService {
             }
             log.info("RA is not null");
             AzureRoleAssignment azureRoleAssignment = AzureEntityUtil.createAzureRoleAssignmentFromResourceEntity(
-                    createdRoleAssignment, AzureRoleAssignment.builder()
+                    createdRoleAssignment, GenericUtil.determineScopeType(createdRoleAssignment.scope()), AzureRoleAssignment.builder()
                             .azureRoleDefinitionPathId(createdRoleAssignment.roleDefinitionId())
 //                            .subscriptionId(request.getSubscriptionId())
                             .wsTenantName(request.getTenantName())

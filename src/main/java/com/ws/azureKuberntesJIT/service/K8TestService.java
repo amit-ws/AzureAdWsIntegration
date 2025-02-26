@@ -690,25 +690,26 @@ public class K8TestService {
 
 
         // Fetch ReplicaSets
-        V1ReplicaSetList replicaSets = appsApi.listNamespacedReplicaSet("").execute();
-
+        V1ReplicaSetList replicaSets = appsApi.listReplicaSetForAllNamespaces().execute();
         // Fetch StatefulSets (using the same AppsV1Api)
-        V1StatefulSetList statefulSets = appsApi.listNamespacedStatefulSet("").execute();
+        V1StatefulSetList statefulSets = appsApi.listStatefulSetForAllNamespaces().execute();
+        // Fetch StatefulSets (using the same AppsV1Api)
+        V1DaemonSetList daemonSetList = appsApi.listDaemonSetForAllNamespaces().execute();
+
 
         // Fetch Jobs
-        V1JobList jobs = batchApi.listNamespacedJob("").execute();
-
+        V1JobList jobs = batchApi.listJobForAllNamespaces().execute();
         // Fetch CronJobs
-        V1CronJobList cronJobs = batchApi.listNamespacedCronJob("").execute();
+        V1CronJobList cronJobs = batchApi.listCronJobForAllNamespaces().execute();
 
-        // Fetch ConfigMaps
-        V1ConfigMapList configMaps = coreApi.listNamespacedConfigMap("").execute();
 
         // Fetch Ingress
         V1IngressList ingresses = networkingApi.listNamespacedIngress("").execute();
 
-        // Fetch NetworkPolicies
-        V1NetworkPolicyList networkPolicies = networkingApi.listNamespacedNetworkPolicy("").execute();
+
+        // LIst services
+        V1ServiceList services = coreApi.listServiceForAllNamespaces().execute();
+
 
         DiscoveryApi discoveryApi = new DiscoveryApi(client);
 

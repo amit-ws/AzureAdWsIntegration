@@ -1,10 +1,12 @@
 package com.ws.azureResourcesIntegration.controller;
 
+import com.ws.azureAdIntegration.constants.PublishResourceType;
 import com.ws.azureResourcesIntegration.constant.AzureResourcesType;
 import com.ws.azureResourcesIntegration.constant.RequestStatus;
 import com.ws.azureResourcesIntegration.dto.*;
 import com.ws.azureResourcesIntegration.entities.*;
 import com.ws.azureResourcesIntegration.service.AzureResourceService;
+import com.ws.azureResourcesIntegration.service.PublishResourceService;
 import jakarta.validation.Valid;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
@@ -15,17 +17,18 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/azureResources")
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class AzureResourceController {
     final AzureResourceService azureResourceService;
+    final PublishResourceService publishResourceService;
 
     @Autowired
-    public AzureResourceController(AzureResourceService azureResourceService) {
+    public AzureResourceController(AzureResourceService azureResourceService, PublishResourceService publishResourceService) {
         this.azureResourceService = azureResourceService;
+        this.publishResourceService = publishResourceService;
     }
 
     @GetMapping("/v1/getAllVirtualMachines")
@@ -91,14 +94,14 @@ public class AzureResourceController {
 
     @PatchMapping("/v1/publish")
     public ResponseEntity<Void> publishResourceByResourceIdAndTypeHandler(@Valid @RequestBody PublishResourceRequest request) {
-        azureResourceService.publishResourceByResourceIdAndType(request);
+        publishResourceService.publishAzureResource(request);
         return ResponseEntity.ok().build();
     }
 
     @GetMapping("/v1/publish")
-    public ResponseEntity<List<?>> getPublishedResourcesHandler(@RequestParam("type") AzureResourcesType type,
+    public ResponseEntity<List<?>> getPublishedResourcesHandler(@RequestParam("type") PublishResourceType type,
                                                                 @RequestParam("tenantName") String wsTenantName) {
-        return ResponseEntity.ok(azureResourceService.getPublishedResources(wsTenantName, type));
+        return ResponseEntity.ok(publishResourceService.getPublishedAzureResources(wsTenantName, type));
     }
 
 
@@ -188,7 +191,7 @@ public class AzureResourceController {
     }
 
 
-    @GetMapping("/v1/revokeData")
+    @DeleteMapping("/v1/revokeData")
     public ResponseEntity revokeRoleToPrincipalForResourceInAzure(@RequestParam("tenantName") String wsTenantName){
         azureResourceService.revokeRoleToPrincipalForResourceInAzure(wsTenantName.trim());
         return ResponseEntity.noContent().build();

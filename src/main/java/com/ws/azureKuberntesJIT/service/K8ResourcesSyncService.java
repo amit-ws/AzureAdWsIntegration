@@ -64,6 +64,13 @@ public class K8ResourcesSyncService {
     final K8PersistentVolumeRepository k8PersistentVolumeRepository;
     final K8PersistentVolumeClaimRepository k8PersistentVolumeClaimRepository;
     final K8StorageClassRepository K8StorageClassRepository;
+    final K8ReplicaSetRepository k8ReplicaSetRepository;
+    final K8StatefulSetRepository k8StatefulSetRepository;
+    final K8DaemonSetRepository k8DaemonSetRepository;
+    final K8JobRepository k8JobRepository;
+    final K8CronJobRepository k8CronJobRepository;
+    final K8IngressRepository k8IngressRepository;
+    final K8ServiceRepository k8ServiceRepository;
     final BackendApplicationLogservice backendApplicationLogservice;
 
     @Autowired
@@ -74,7 +81,7 @@ public class K8ResourcesSyncService {
                                   K8SecretRepository k8SecretRepository, K8ServiceAccountRepository k8ServiceAccountRepository,
                                   K8NamespaceRepository k8NamespaceRepository,
                                   K8PersistentVolumeRepository k8PersistentVolumeRepository, K8PersistentVolumeClaimRepository k8PersistentVolumeClaimRepository,
-                                  K8StorageClassRepository K8StorageClassRepository, BackendApplicationLogservice backendApplicationLogservice
+                                  K8StorageClassRepository K8StorageClassRepository, K8ReplicaSetRepository k8ReplicaSetRepository, K8StatefulSetRepository k8StatefulSetRepository, K8DaemonSetRepository k8DaemonSetRepository, K8JobRepository k8JobRepository, K8CronJobRepository k8CronJobRepository, K8IngressRepository k8IngressRepository, K8ServiceRepository k8ServiceRepository, BackendApplicationLogservice backendApplicationLogservice
     ) {
         this.k8RoleRepository = k8RoleRepository;
         this.k8ConfigMapRepository = k8ConfigMapRepository;
@@ -90,6 +97,13 @@ public class K8ResourcesSyncService {
         this.k8PersistentVolumeRepository = k8PersistentVolumeRepository;
         this.k8PersistentVolumeClaimRepository = k8PersistentVolumeClaimRepository;
         this.K8StorageClassRepository = K8StorageClassRepository;
+        this.k8ReplicaSetRepository = k8ReplicaSetRepository;
+        this.k8StatefulSetRepository = k8StatefulSetRepository;
+        this.k8DaemonSetRepository = k8DaemonSetRepository;
+        this.k8JobRepository = k8JobRepository;
+        this.k8CronJobRepository = k8CronJobRepository;
+        this.k8IngressRepository = k8IngressRepository;
+        this.k8ServiceRepository = k8ServiceRepository;
         this.backendApplicationLogservice = backendApplicationLogservice;
     }
 //    @Transactional
@@ -177,11 +191,19 @@ public class K8ResourcesSyncService {
             fetchStorageClasses(clusterId);
             fetchConfigMap(clusterId);
             fetchNetworkPolicies(clusterId);
+            fetchReplicaSets(clusterId);
+            fetchStateFulsSets(clusterId);
+            fetchDaemonSets(clusterId);
+            fetchJobs(clusterId);
+            fetchCronJobs(clusterId);
+            fetchIngresses(clusterId);
+            fetchServices(clusterId);
         } catch (Exception ex) {
             log.error("Error occurred in syncing data from Kubernetes: {}", ex.getMessage());
             throw new RuntimeException(ex.getMessage());
         }
     }
+
 
     private void fetchNamespace(String clusterId) throws ApiException {
         V1NamespaceList v1NamespaceList = this.coreV1Api.listNamespace().execute();
@@ -190,15 +212,12 @@ public class K8ResourcesSyncService {
         }
         try {
             List<K8Namespace> kubernetesNamespaces = v1NamespaceList.getItems().stream()
+                    .filter(item -> item.getMetadata() != null)
                     .map(item -> {
                         K8Namespace k8Namespace = K8Namespace.builder()
-                                .kind(item.getKind())
-                                .apiVersion(item.getApiVersion())
                                 .phase(GenericUtil.getOrNull(() -> Objects.requireNonNull(item.getStatus()).getPhase()))
                                 .build();
-                        if (!ObjectUtils.isEmpty(item.getMetadata())) {
-                            setMetadata(k8Namespace, item.getMetadata(), clusterId);
-                        }
+                        setMetadata(k8Namespace, item.getMetadata(), clusterId);
                         return k8Namespace;
                     })
                     .toList();
@@ -218,19 +237,17 @@ public class K8ResourcesSyncService {
                 return;
             }
             List<K8Node> kubernetesNodes = v1NodeList.getItems().stream()
+                    .filter(item -> item.getMetadata() != null)
                     .map(item -> {
                         K8Node k8Node = K8Node.builder()
-                                .kind(item.getKind())
-                                .apiVersion(item.getApiVersion())
                                 .phase(GenericUtil.getOrNull(() -> Objects.requireNonNull(item.getStatus()).getPhase()))
                                 .externalID(GenericUtil.getOrNull(() -> Objects.requireNonNull(item.getSpec()).getExternalID()))
                                 .podCIDR(GenericUtil.getOrNull(() -> Objects.requireNonNull(item.getSpec()).getPodCIDR()))
                                 .unschedulable(GenericUtil.getOrNull(() -> Objects.requireNonNull(item.getSpec()).getUnschedulable()))
                                 .providerID(GenericUtil.getOrNull(() -> Objects.requireNonNull(item.getSpec()).getProviderID()))
                                 .build();
-                        if (!ObjectUtils.isEmpty(item.getMetadata())) {
-                            setMetadata(k8Node, item.getMetadata(), clusterId);
-                        }
+
+                        setMetadata(k8Node, item.getMetadata(), clusterId);
                         return k8Node;
                     })
                     .toList();
@@ -251,10 +268,7 @@ public class K8ResourcesSyncService {
             List<K8CustomResourceDefinition> k8CustomResourceDefinitions = v1CustomResourceDefinitionList.getItems().stream()
                     .filter(item -> item.getMetadata() != null)
                     .map(item -> {
-                        K8CustomResourceDefinition k8CustomResourceDefinition = K8CustomResourceDefinition.builder()
-                                .kind(item.getKind())
-                                .apiVersion(item.getApiVersion())
-                                .build();
+                        K8CustomResourceDefinition k8CustomResourceDefinition = K8CustomResourceDefinition.builder().build();
                         setMetadata(k8CustomResourceDefinition, item.getMetadata(), clusterId);
                         return k8CustomResourceDefinition;
                     })
@@ -275,15 +289,13 @@ public class K8ResourcesSyncService {
                 return;
             }
             List<K8Role> k8ClusterRoles = v1ClusterRoleList.getItems().stream()
+                    .filter(item -> item.getMetadata() != null)
                     .map(item -> {
                         K8Role clusterRole = K8Role.builder()
-                                .kind(item.getKind())
-                                .apiVersion(item.getApiVersion())
                                 .roleType(K8ResourceLevel.CLUSTER)
                                 .build();
-                        if (!ObjectUtils.isEmpty(item.getMetadata())) {
-                            setMetadata(clusterRole, item.getMetadata(), clusterId);
-                        }
+
+                        setMetadata(clusterRole, item.getMetadata(), clusterId);
 
                         V1AggregationRule v1AggregationRule = item.getAggregationRule();
                         if (!ObjectUtils.isEmpty(v1AggregationRule)) {
@@ -352,18 +364,14 @@ public class K8ResourcesSyncService {
                 log.warn(String.format("NO CLUSTER_ROLE_BINDING found for cluster name: %s or cloud type: %s", this.clusterName, this.cloudProviderType));
             }
             List<K8RoleBind> kubernetesRoleBinds = v1ClusterRoleBindingList.getItems().stream()
+                    .filter(item -> item.getMetadata() != null)
                     .map(item -> {
                         K8RoleBind clusterRoleBind = K8RoleBind.builder()
-                                .kind(item.getKind())
-                                .apiVersion(item.getApiVersion())
                                 .kubernetesRoleType(K8ResourceLevel.CLUSTER)
                                 .roleRef(k8RoleReferenceRepository.save(convertToK8RoleReference(item.getRoleRef(), clusterId, item.getMetadata().getUid())))
                                 .build();
 
-                        if (!ObjectUtils.isEmpty(item.getMetadata())) {
-                            setMetadata(clusterRoleBind, item.getMetadata(), clusterId);
-                        }
-
+                        setMetadata(clusterRoleBind, item.getMetadata(), clusterId);
                         clusterRoleBind.setRbacSubjects(convertToK8RbacSubjects(item.getSubjects(), clusterId, clusterRoleBind));
                         return clusterRoleBind;
                     })
@@ -417,16 +425,13 @@ public class K8ResourcesSyncService {
                 return;
             }
             List<K8Role> kubernetesNamespaceRoles = v1RoleList.getItems().stream()
+                    .filter(item -> item.getMetadata() != null)
                     .map(item -> {
                         K8Role namespaceRole = K8Role.builder()
-                                .kind(item.getKind())
-                                .apiVersion(item.getApiVersion())
                                 .roleType(K8ResourceLevel.NAMESPACE)
                                 .build();
+                        setMetadata(namespaceRole, item.getMetadata(), clusterId);
 
-                        if (!ObjectUtils.isEmpty(item.getMetadata())) {
-                            setMetadata(namespaceRole, item.getMetadata(), clusterId);
-                        }
                         Set<K8RolePolicyRule> policyRules = item.getRules().stream()
                                 .map(rule -> K8RolePolicyRule.builder()
                                         .verbs(rule.getVerbs())
@@ -463,18 +468,13 @@ public class K8ResourcesSyncService {
                 return;
             }
             List<K8RoleBind> kubernetesNamespaceRoleBinds = v1RoleBindingList.getItems().stream()
+                    .filter(item -> item.getMetadata() != null)
                     .map(item -> {
                         K8RoleBind namespaceRoleBind = K8RoleBind.builder()
-                                .kind(item.getKind())
-                                .apiVersion(item.getApiVersion())
                                 .kubernetesRoleType(K8ResourceLevel.NAMESPACE)
                                 .roleRef(k8RoleReferenceRepository.save(convertToK8RoleReference(item.getRoleRef(), clusterId, item.getMetadata().getUid())))
                                 .build();
-
-                        if (!ObjectUtils.isEmpty(item.getMetadata())) {
-                            setMetadata(namespaceRoleBind, item.getMetadata(), clusterId);
-                        }
-
+                        setMetadata(namespaceRoleBind, item.getMetadata(), clusterId);
                         namespaceRoleBind.setRbacSubjects(convertToK8RbacSubjects(item.getSubjects(), clusterId, namespaceRoleBind));
                         return namespaceRoleBind;
                     })
@@ -497,10 +497,7 @@ public class K8ResourcesSyncService {
             List<K8Deployment> k8Deployments = v1DeploymentList.getItems().stream()
                     .filter(item -> item.getMetadata() != null)
                     .map(item -> {
-                        K8Deployment k8Deployment = K8Deployment.builder()
-                                .kind(item.getKind())
-                                .apiVersion(item.getApiVersion())
-                                .build();
+                        K8Deployment k8Deployment = K8Deployment.builder().build();
                         setMetadata(k8Deployment, item.getMetadata(), clusterId);
                         return k8Deployment;
                     })
@@ -521,18 +518,14 @@ public class K8ResourcesSyncService {
                 return;
             }
             List<K8Secret> kubernetesSecrets = v1SecretList.getItems().stream()
+                    .filter(item -> item.getMetadata() != null)
                     .map(item -> {
                         K8Secret k8Secret = K8Secret.builder()
-                                .kind(item.getKind())
-                                .apiVersion(item.getApiVersion())
                                 .type(item.getType())
                                 .immutable(item.getImmutable())
                                 .stringData(item.getStringData())
                                 .build();
-                        ;
-                        if (!ObjectUtils.isEmpty(item.getMetadata())) {
-                            setMetadata(k8Secret, item.getMetadata(), clusterId);
-                        }
+                        setMetadata(k8Secret, item.getMetadata(), clusterId);
                         return k8Secret;
                     })
                     .toList();
@@ -552,15 +545,12 @@ public class K8ResourcesSyncService {
                 return;
             }
             List<K8ServiceAccount> kubernetesServiceAccounts = v1ServiceAccountList.getItems().stream()
+                    .filter(item -> item.getMetadata() != null)
                     .map(item -> {
                         K8ServiceAccount k8ServiceAccount = K8ServiceAccount.builder()
-                                .kind(item.getKind())
-                                .apiVersion(item.getApiVersion())
                                 .automountServiceAccountToken(item.getAutomountServiceAccountToken())
                                 .build();
-                        if (!ObjectUtils.isEmpty(item.getMetadata())) {
-                            setMetadata(k8ServiceAccount, item.getMetadata(), clusterId);
-                        }
+                        setMetadata(k8ServiceAccount, item.getMetadata(), clusterId);
                         return k8ServiceAccount;
                     })
                     .toList();
@@ -581,10 +571,7 @@ public class K8ResourcesSyncService {
             List<K8PersistentVolume> persistentVolumes = v1PersistentVolumeList.getItems().stream()
                     .filter(item -> item.getMetadata() != null)
                     .map(item -> {
-                        K8PersistentVolume k8PersistentVolume = K8PersistentVolume.builder()
-                                .kind(item.getKind())
-                                .apiVersion(item.getApiVersion())
-                                .build();
+                        K8PersistentVolume k8PersistentVolume = K8PersistentVolume.builder().build();
                         setMetadata(k8PersistentVolume, item.getMetadata(), clusterId);
                         return k8PersistentVolume;
                     })
@@ -607,10 +594,7 @@ public class K8ResourcesSyncService {
             List<K8PersistentVolumeClaim> persistentVolumeClaims = v1PersistentVolumeClaimList.getItems().stream()
                     .filter(item -> item.getMetadata() != null)
                     .map(item -> {
-                        K8PersistentVolumeClaim k8PersistentVolumeClaim = K8PersistentVolumeClaim.builder()
-                                .kind(item.getKind())
-                                .apiVersion(item.getApiVersion())
-                                .build();
+                        K8PersistentVolumeClaim k8PersistentVolumeClaim = K8PersistentVolumeClaim.builder().build();
                         setMetadata(k8PersistentVolumeClaim, item.getMetadata(), clusterId);
                         return k8PersistentVolumeClaim;
                     })
@@ -633,8 +617,6 @@ public class K8ResourcesSyncService {
             List<K8StorageClass> kubernetesStorageClasses = v1StorageClassList.getItems().stream()
                     .map(item -> {
                         K8StorageClass k8StorageClass = K8StorageClass.builder()
-                                .kind(item.getKind())
-                                .apiVersion(item.getApiVersion())
                                 .provisioner(item.getProvisioner())
                                 .volumeBindingMode(item.getVolumeBindingMode())
                                 .allowVolumeExpansion(item.getAllowVolumeExpansion())
@@ -663,15 +645,12 @@ public class K8ResourcesSyncService {
                 return;
             }
             List<K8ConfigMap> configMaps = v1ConfigMapList.getItems().stream()
+                    .filter(item -> item.getMetadata() != null)
                     .map(item -> {
                         K8ConfigMap k8ConfigMap = K8ConfigMap.builder()
-                                .kind(item.getKind())
-                                .apiVersion(item.getApiVersion())
                                 .immutable(item.getImmutable())
                                 .build();
-                        if (!ObjectUtils.isEmpty(item.getMetadata())) {
-                            setMetadata(k8ConfigMap, item.getMetadata(), clusterId);
-                        }
+                        setMetadata(k8ConfigMap, item.getMetadata(), clusterId);
                         return k8ConfigMap;
                     })
                     .toList();
@@ -691,14 +670,10 @@ public class K8ResourcesSyncService {
                 return;
             }
             List<K8NetworkPolicy> kubernetesNetworkPolicies = v1NetworkPolicyList.getItems().stream()
+                    .filter(item -> item.getMetadata() != null)
                     .map(item -> {
-                        K8NetworkPolicy k8NetworkPolicy = K8NetworkPolicy.builder()
-                                .kind(item.getKind())
-                                .apiVersion(item.getApiVersion())
-                                .build();
-                        if (!ObjectUtils.isEmpty(item.getMetadata())) {
-                            setMetadata(k8NetworkPolicy, item.getMetadata(), clusterId);
-                        }
+                        K8NetworkPolicy k8NetworkPolicy = K8NetworkPolicy.builder().build();
+                        setMetadata(k8NetworkPolicy, item.getMetadata(), clusterId);
                         return k8NetworkPolicy;
                     })
                     .toList();
@@ -711,7 +686,196 @@ public class K8ResourcesSyncService {
     }
 
 
+    private void fetchReplicaSets(String clusterId) {
+        try {
+            V1ReplicaSetList replicaSets = this.appsV1Api.listReplicaSetForAllNamespaces().execute();
+            if (ObjectUtils.isEmpty(replicaSets)) {
+                log.warn(String.format("No REPLICASET(s) found for cluster name: %S of cloud type: %s", this.clusterName, this.cloudProviderType));
+                return;
+            }
+            List<K8ReplicaSet> k8ReplicaSets = replicaSets.getItems().stream()
+                    .filter(item -> item.getMetadata() != null)
+                    .map(item -> {
+                        K8ReplicaSet k8ReplicaSet = K8ReplicaSet.builder().build();
+                        setMetadata(k8ReplicaSet, item.getMetadata(), clusterId);
+//                if (org.apache.commons.lang3.ObjectUtils.isNotEmpty(item.getStatus())) {
+//                    V1ReplicaSetStatus v1ReplicaSetStatus = item.getStatus();
+//                    k8ReplicaSet.setFullyLabeledReplicas(v1ReplicaSetStatus.getFullyLabeledReplicas());
+//                    K8PodManagementControllerStatus status = createK8PodManagementControllerStatus(v1ReplicaSetStatus.getObservedGeneration(), v1ReplicaSetStatus.getReadyReplicas(),
+//                            v1ReplicaSetStatus.getReplicas(), v1ReplicaSetStatus.getAvailableReplicas());
+//                    k8ReplicaSet.setReplicaSetStatus(status);
+//                }
+                        return k8ReplicaSet;
+                    }).toList();
+
+            k8ReplicaSetRepository.saveAll(k8ReplicaSets);
+            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, String.format(Constant.KUBERNETES_REPLICASET_DATA_SYNCED, this.clusterName, this.cloudProviderType), "Info");
+        } catch (Exception ignored) {
+            log.error(String.format("Error in syncing %s with message: %s", V1ReplicaSetList.class.getName(), ignored.getMessage()));
+            throw new RuntimeException(ignored.getMessage());
+        }
+    }
+
+    private void fetchStateFulsSets(String clusterId) {
+        try {
+            V1StatefulSetList statefulSets = this.appsV1Api.listStatefulSetForAllNamespaces().execute();
+            if (ObjectUtils.isEmpty(statefulSets)) {
+                log.warn(String.format("No STATEFULSET(s) found for cluster name: %S of cloud type: %s", this.clusterName, this.cloudProviderType));
+                return;
+            }
+            List<K8StatefulSet> k8StatefulSets = statefulSets.getItems().stream()
+                    .filter(item -> item.getMetadata() != null)
+                    .map(item -> {
+                        K8StatefulSet k8StatefulSet = K8StatefulSet.builder().build();
+                        setMetadata(k8StatefulSet, item.getMetadata(), clusterId);
+//                if (org.apache.commons.lang3.ObjectUtils.isNotEmpty(item.getStatus())) {
+//                    V1StatefulSetStatus v1StatefulSetStatus = item.getStatus();
+//                    k8StatefulSet.setCurrentReplicas(v1StatefulSetStatus.getCurrentReplicas());
+//                    k8StatefulSet.setCurrentRevision(v1StatefulSetStatus.getCurrentRevision());
+//                    k8StatefulSet.setReadyReplicas(v1StatefulSetStatus.getReadyReplicas());
+//                    k8StatefulSet.setUpdatedReplicas(v1StatefulSetStatus.getUpdatedReplicas());
+//                    k8StatefulSet.setUpdateRevision(v1StatefulSetStatus.getUpdateRevision());
+//                    k8StatefulSet.setCollisionCount(v1StatefulSetStatus.getCollisionCount());
+//                    K8PodManagementControllerStatus status = createK8PodManagementControllerStatus(v1StatefulSetStatus.getObservedGeneration(), v1StatefulSetStatus.getReadyReplicas(),
+//                            v1StatefulSetStatus.getReplicas(), v1StatefulSetStatus.getAvailableReplicas());
+//                    k8StatefulSet.setStatefulStatus(status);
+//                }
+                        return k8StatefulSet;
+                    }).toList();
+
+            k8StatefulSetRepository.saveAll(k8StatefulSets);
+            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, String.format(Constant.KUBERNETES_STATEFULSET_DATA_SYNCED, this.clusterName, this.cloudProviderType), "Info");
+        } catch (Exception ignored) {
+            log.error(String.format("Error in syncing %s with message: %s", V1StatefulSetList.class.getName(), ignored.getMessage()));
+            throw new RuntimeException(ignored.getMessage());
+        }
+    }
+
+
+    private void fetchDaemonSets(String clusterId) {
+        try {
+            V1DaemonSetList daemonSetList = this.appsV1Api.listDaemonSetForAllNamespaces().execute();
+            if (ObjectUtils.isEmpty(daemonSetList)) {
+                log.warn(String.format("No DAEMONSET(s) found for cluster name: %S of cloud type: %s", this.clusterName, this.cloudProviderType));
+                return;
+            }
+            List<K8DaemonSet> k8DaemonSets = daemonSetList.getItems().stream()
+                    .filter(item -> item.getMetadata() != null)
+                    .map(item -> {
+                        K8DaemonSet k8DaemonSet = K8DaemonSet.builder().build();
+                        setMetadata(k8DaemonSet, item.getMetadata(), clusterId);
+
+//                if (org.apache.commons.lang3.ObjectUtils.isNotEmpty(item.getStatus())) {
+//                    V1DaemonSetStatus v1StatefulSetStatus = item.getStatus();
+//                    k8DaemonSet.setCurrentNumberScheduled(v1StatefulSetStatus.getCurrentNumberScheduled());
+//                    k8DaemonSet.setDesiredNumberScheduled(v1StatefulSetStatus.getDesiredNumberScheduled());
+//                    k8DaemonSet.setNumberAvailable(v1StatefulSetStatus.getNumberAvailable());
+//                    k8DaemonSet.setNumberMisscheduled(v1StatefulSetStatus.getNumberMisscheduled());
+//                    k8DaemonSet.setNumberReady(v1StatefulSetStatus.getNumberReady());
+//                    k8DaemonSet.setNumberAvailable(v1StatefulSetStatus.getNumberAvailable());
+//                    k8DaemonSet.setUpdatedNumberScheduled(v1StatefulSetStatus.getUpdatedNumberScheduled());
+//                    k8DaemonSet.setCollisionCount(v1StatefulSetStatus.getCollisionCount());
+//                    k8DaemonSet.setObservedGeneration(v1StatefulSetStatus.getObservedGeneration());
+//                }
+                        return k8DaemonSet;
+                    }).toList();
+            k8DaemonSetRepository.saveAll(k8DaemonSets);
+            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, String.format(Constant.KUBERNETES_DAEMONSET_DATA_SYNCED, this.clusterName, this.cloudProviderType), "Info");
+        } catch (Exception ignored) {
+            log.error(String.format("Error in syncing %s with message: %s", V1DaemonSetList.class.getName(), ignored.getMessage()));
+            throw new RuntimeException(ignored.getMessage());
+        }
+    }
+
+    private void fetchJobs(String clusterId) throws ApiException {
+        V1JobList v1JobList = this.batchApi.listJobForAllNamespaces().execute();
+        if (ObjectUtils.isEmpty(v1JobList)) {
+            log.warn(String.format("No JOB(s) found for cluster name: %S of cloud type: %s", this.clusterName, this.cloudProviderType));
+        }
+        try {
+            List<K8Job> k8Jobs = v1JobList.getItems().stream()
+                    .filter(item -> item.getMetadata() != null)
+                    .map(item -> {
+                        K8Job k8Job = K8Job.builder().build();
+                        setMetadata(k8Job, item.getMetadata(), clusterId);
+                        return k8Job;
+                    })
+                    .toList();
+            k8JobRepository.saveAll(k8Jobs);
+            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, String.format(Constant.KUBERNETES_JOB_DATA_SYNCED, this.clusterName, this.cloudProviderType), "Info");
+        } catch (Exception ignored) {
+            log.error(String.format("Error in syncing %s with message: %s", V1JobList.class.getName(), ignored.getMessage()));
+        }
+    }
+
+
+    private void fetchCronJobs(String clusterId) throws ApiException {
+        V1CronJobList v1CronJobList = batchApi.listCronJobForAllNamespaces().execute();
+        if (ObjectUtils.isEmpty(v1CronJobList)) {
+            log.warn(String.format("No CRON JOB(s) found for cluster name: %S of cloud type: %s", this.clusterName, this.cloudProviderType));
+        }
+        try {
+            List<K8CronJob> cronJobs = v1CronJobList.getItems().stream()
+                    .filter(item -> item.getMetadata() != null)
+                    .map(item -> {
+                        K8CronJob cronJob = K8CronJob.builder().build();
+                        setMetadata(cronJob, item.getMetadata(), clusterId);
+                        return cronJob;
+                    })
+                    .toList();
+            k8CronJobRepository.saveAll(cronJobs);
+            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, String.format(Constant.KUBERNETES_CRON_JOB_DATA_SYNCED, this.clusterName, this.cloudProviderType), "Info");
+        } catch (Exception ignored) {
+            log.error(String.format("Error in syncing %s with message: %s", V1CronJobList.class.getName(), ignored.getMessage()));
+        }
+    }
+
+    private void fetchIngresses(String clusterId) throws ApiException {
+        V1IngressList v1IngressList = this.networkingApi.listIngressForAllNamespaces().execute();
+        if (ObjectUtils.isEmpty(v1IngressList)) {
+            log.warn(String.format("No INGRESS(s) found for cluster name: %S of cloud type: %s", this.clusterName, this.cloudProviderType));
+        }
+        try {
+            List<K8Ingress> k8Ingresses = v1IngressList.getItems().stream()
+                    .filter(item -> item.getMetadata() != null)
+                    .map(item -> {
+                        K8Ingress k8Ingress = K8Ingress.builder().build();
+                        setMetadata(k8Ingress, item.getMetadata(), clusterId);
+                        return k8Ingress;
+                    })
+                    .toList();
+            k8IngressRepository.saveAll(k8Ingresses);
+            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, String.format(Constant.KUBERNETES_INGRESS_DATA_SYNCED, this.clusterName, this.cloudProviderType), "Info");
+        } catch (Exception ignored) {
+            log.error(String.format("Error in syncing %s with message: %s", V1IngressList.class.getName(), ignored.getMessage()));
+        }
+    }
+
+    private void fetchServices(String clusterId) {
+        try {
+            V1ServiceList v1ServiceList = this.coreV1Api.listServiceForAllNamespaces().execute();
+            if (ObjectUtils.isEmpty(v1ServiceList)) {
+                log.warn(String.format("No SERVICE(s) found for cluster name: %S of cloud type: %s", this.clusterName, this.cloudProviderType));
+            }
+            List<K8Service> k8Services = v1ServiceList.getItems().stream()
+                    .filter(item -> item.getMetadata() != null)
+                    .map(item -> {
+                        K8Service k8Service = K8Service.builder().build();
+                        setMetadata(k8Service, item.getMetadata(), clusterId);
+                        return k8Service;
+                    })
+                    .toList();
+            k8ServiceRepository.saveAll(k8Services);
+            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, String.format(Constant.KUBERNETES_SERVICES_DATA_SYNCED, this.clusterName, this.cloudProviderType), "Info");
+        } catch (Exception ignored) {
+            log.error(String.format("Error in syncing %s with message: %s", V1ServiceList.class.getName(), ignored.getMessage()));
+        }
+    }
+
+
     private void setMetadata(K8Metadata k8Metadata, V1ObjectMeta metadata, String clusterId) {
+        k8Metadata.setKind(k8Metadata.getKind());
+        k8Metadata.setApiVersion(k8Metadata.getApiVersion());
         k8Metadata.setSelfLink(metadata.getSelfLink());
         k8Metadata.setResourceVersion(metadata.getResourceVersion());
         k8Metadata.setGeneration(metadata.getGeneration());
@@ -777,6 +941,16 @@ public class K8ResourcesSyncService {
 //            log.error("Error: {}", ex.getMessage());
 //            throw new RuntimeException(ex.getMessage());
 //        }
+//    }
+
+    //    private K8PodManagementControllerStatus createK8PodManagementControllerStatus(Long observedGeneration, Integer readyReplicas,
+//                                                                                  Integer replicas, Integer availableReplicas) {
+//        return K8PodManagementControllerStatus.builder()
+//                .observedGeneration(observedGeneration)
+//                .readyReplicas(readyReplicas)
+//                .replicas(replicas)
+//                .availableReplicas(availableReplicas)
+//                .build();
 //    }
 }
 

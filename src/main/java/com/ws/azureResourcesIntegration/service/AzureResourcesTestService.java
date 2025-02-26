@@ -486,40 +486,54 @@ public class AzureResourcesTestService {
                 .map(nicId -> azureResourceManager.networkInterfaces().getById(nicId))
                 .toList();
 
+//        networkInterfaces.forEach((networkInterface -> {
+//            log.info("id: {}", networkInterface.id());
+//            log.info("name: {}", networkInterface.name());
+//            log.info("virtualMachineId: {}", networkInterface.virtualMachineId());
+//            log.info("type: {}", networkInterface.type());
+//            log.info("resourceGroupName: {}", networkInterface.resourceGroupName());
+//            log.info("regionName: {}", networkInterface.regionName());
+//            log.info("subscriptionId: {}", networkInterface.manager().subscriptionId());
+//        }));
+
+
         // Iterate to determine which NIC has at least one public IP address. Store the NIC instance path ID of such NIC
-        List<String> foundNICPatD = new ArrayList<>();
+        List<String> foundNICPatID = new ArrayList<>();
         for (NetworkInterface networkInterface : networkInterfaces) {
-            for (Map.Entry<String, NicIpConfiguration> stringNicIpConfigurationEntry : networkInterface.ipConfigurations().entrySet()) {
-                NicIpConfiguration nicIpConfiguration = stringNicIpConfigurationEntry.getValue();
-
-                String publicPathId = nicIpConfiguration.publicIpAddressId(); // Its the azure full path ID for the IP-Address object 1️⃣
-
-                if (StringUtils.isNotEmpty(publicPathId)) {
-                    PublicIpAddress publicIpAddress = nicIpConfiguration.getPublicIpAddress();
-                    publicIpAddress.id(); // Its the azure full path ID for the IP-Address object 1️⃣
-
-                    if (!ObjectUtils.isEmpty(publicIpAddress)) {
-                        log.info("Following NIC has the public IP address: {}", networkInterface.id()); // Target NIC found which has at least one public IP
-                        log.info("Public IP address instance path ID: {}", publicIpAddress.id()); // Target NIC found which has at least one public IP
-                        log.info("Public IP Found: {}", publicIpAddress.ipAddress());
-                        foundNICPatD.add(networkInterface.id());
-                        break;
-                    } else {
-                        log.warn("Public IP ID exists, but could not fetch details. Reason: {} {}", "IP address DELETED", "PERMISSION issues");
-                    }
-                } else {
-                    log.error("No Public IP assigned to this NIC configuration");
-                }
-            }
-            if (CollectionUtils.isEmpty(foundNICPatD)) {
-                throw new RuntimeException("NO Public NIC found for the provided VM");
-            }
+//            log.info("VM ID: {}", networkInterface.virtualMachineId());
+            log.info("ID: {}", networkInterface.id());
+            log.info("name: {}", networkInterface.name());
+//            for (Map.Entry<String, NicIpConfiguration> stringNicIpConfigurationEntry : networkInterface.ipConfigurations().entrySet()) {
+//                NicIpConfiguration nicIpConfiguration = stringNicIpConfigurationEntry.getValue();
+//
+//                String publicPathId = nicIpConfiguration.publicIpAddressId(); // Its the azure full path ID for the IP-Address object 1️⃣
+//
+//                if (StringUtils.isNotEmpty(publicPathId)) {
+//                    PublicIpAddress publicIpAddress = nicIpConfiguration.getPublicIpAddress();
+//                    publicIpAddress.id(); // Its the azure full path ID for the IP-Address object 1️⃣
+//
+//                    if (!ObjectUtils.isEmpty(publicIpAddress)) {
+//                        log.info("Following NIC has the public IP address: {}", networkInterface.id()); // Target NIC found which has at least one public IP
+//                        log.info("Public IP address instance path ID: {}", publicIpAddress.id()); // Target NIC found which has at least one public IP
+//                        log.info("Public IP Found: {}", publicIpAddress.ipAddress());
+//                        foundNICPatID.add(networkInterface.id());
+//                        break;
+//                    } else {
+//                        log.warn("Public IP ID exists, but could not fetch details. Reason: {} {}", "IP address DELETED", "PERMISSION issues");
+//                    }
+//                } else {
+//                    log.error("No Public IP assigned to this NIC configuration");
+//                }
+//            }
+//            if (CollectionUtils.isEmpty(foundNICPatID)) {
+//                throw new RuntimeException("NO Public NIC found for the provided VM");
+//            }
         }
         log.info("-------------------------");
-        log.info("Total NIC with public IP addresses: {}", foundNICPatD.size());
-        log.info("NIc path ID with public IP addresses: {}", foundNICPatD);
+        log.info("Total NIC with public IP addresses: {}", foundNICPatID.size());
+        log.info("NIc path ID with public IP addresses: {}", foundNICPatID);
 
-        return foundNICPatD;
+        return foundNICPatID;
     }
 
 

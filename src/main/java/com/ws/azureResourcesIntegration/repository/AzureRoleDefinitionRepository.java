@@ -18,11 +18,13 @@ public interface AzureRoleDefinitionRepository extends JpaRepository<AzureRoleDe
     void deleteAllByAzureTenant(AzureTenant azureTenant);
 
     List<AzureRoleDefinition> findAllByAzureTenant(AzureTenant azureTenant);
+
     @Query("SELECT new com.ws.azureResourcesIntegration.dto.RoleDefinitionDTO(ard.id, ard.azureId, ard.roleName, ard.roleType, CASE WHEN pr.resourceId IS NULL THEN FALSE ELSE TRUE END) " +
             "FROM AzureRoleDefinition ard " +
             "LEFT JOIN PublishedResource pr ON UPPER(ard.azureId) = UPPER(pr.resourceId) " +
             "WHERE ard.wsTenantName = :wsTenantName")
     List<RoleDefinitionDTO> findAllRolesUsingWsTenantName(String wsTenantName);
+
     Optional<AzureRoleDefinition> findByIdAndAzureTenant(Integer id, AzureTenant azureTenant);
 
     @Query(value =
@@ -46,6 +48,7 @@ public interface AzureRoleDefinitionRepository extends JpaRepository<AzureRoleDe
     List<ApplicableRoleDefinitionProjection> findAllSuitableRolesForResource(@Param("wsTenantName") String wsTenantName,
                                                                              @Param("action") String resourceType,
                                                                              @Param("assignableScopes") String[] assignableScopes);
+
     @Query(value =
             "SELECT DISTINCT  " +
                     "    ard.role_path_id AS azureRolePathId,   " +
@@ -64,8 +67,23 @@ public interface AzureRoleDefinitionRepository extends JpaRepository<AzureRoleDe
                     "ORDER BY ard.role_name "
             , nativeQuery = true)
     List<ApplicableRoleDefinitionProjection> findAllSuitableRolesForResource2(@Param("wsTenantName") String wsTenantName,
-                                                                             @Param("action") String resourceType,
-                                                                             @Param("assignableScopes") String[] assignableScopes);
+                                                                              @Param("action") String resourceType,
+                                                                              @Param("assignableScopes") String[] assignableScopes);
+
+
+    @Query(value = "SELECT ard.role_path_id  " +
+            "FROM azure_role_definition ard " +
+            "WHERE ard.ws_tenant_name = :wsTenantName " +
+            "  AND upper(ard.role_name) IN (upper(:role1), upper(:role2), upper(:role3)) " +
+            "ORDER BY  " +
+            "  CASE  " +
+            "    WHEN upper(ard.role_name) = upper(:role1) THEN 1 " +
+            "    WHEN upper(ard.role_name) = upper(:role2) THEN 2 " +
+            "    WHEN upper(ard.role_name) = upper(:role3) THEN 3 " +
+            "  END " +
+            "LIMIT 1",
+            nativeQuery = true)
+    Optional<String> findFirstRoleByPriorityForWsTenant(String role1, String role2, String role3, String wsTenantName);
 
 }
 

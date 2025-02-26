@@ -8,6 +8,10 @@ import lombok.*;
 import lombok.experimental.FieldDefaults;
 import lombok.experimental.SuperBuilder;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+
 
 @EqualsAndHashCode(callSuper = true)
 @Entity
@@ -41,6 +45,13 @@ public class AzureVM extends BaseAzureResource {
     String ipAddress;
     String subscriptionId;
 
+//    @ElementCollection(fetch = FetchType.EAGER)
+//    @CollectionTable(
+//            name = "azure_vm_public_nework_interfaces",
+//            joinColumns = @JoinColumn(name = "ws_azure_vm_id")
+//    )
+//    Set<String> publicNetworkInterfaces;
+
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ws_azure_resource_group_id", referencedColumnName = "id")
@@ -49,6 +60,11 @@ public class AzureVM extends BaseAzureResource {
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "ws_azure_subscription_id", referencedColumnName = "id")
     AzureSubscription azureSubscription;
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "azureVM", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    List<AzureNetworkInterface> azureNetworkInterfaces = new ArrayList<>();
+
 
 //    @JsonIgnore
 //    @ManyToOne(fetch = FetchType.LAZY)

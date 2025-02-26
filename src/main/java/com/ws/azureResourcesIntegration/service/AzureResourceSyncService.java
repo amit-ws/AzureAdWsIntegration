@@ -8,6 +8,9 @@ import com.azure.resourcemanager.compute.models.VirtualMachine;
 import com.azure.resourcemanager.containerservice.models.Code;
 import com.azure.resourcemanager.containerservice.models.CredentialResult;
 import com.azure.resourcemanager.containerservice.models.KubernetesCluster;
+import com.azure.resourcemanager.network.models.NetworkInterface;
+import com.azure.resourcemanager.network.models.NicIpConfiguration;
+import com.azure.resourcemanager.network.models.PublicIpAddress;
 import com.azure.resourcemanager.resources.models.ResourceGroup;
 import com.azure.resourcemanager.resources.models.Subscription;
 import com.ws.azureAdIntegration.constants.CloudProviderType;
@@ -15,6 +18,7 @@ import com.ws.azureAdIntegration.constants.Constant;
 import com.ws.azureAdIntegration.dto.AzureUserCredentialDTO;
 import com.ws.azureAdIntegration.entity.*;
 import com.ws.azureAdIntegration.exception.K8ResourceException;
+import com.ws.azureAdIntegration.repository.AzureNetworkInterfaceRepository;
 import com.ws.azureAdIntegration.service.BackendApplicationLogservice;
 import com.ws.azureAdIntegration.util.AzureAuthUtil;
 import com.ws.azureAdIntegration.util.AzureEntityUtil;
@@ -27,15 +31,13 @@ import com.ws.azureKuberntesJIT.service.K8ResourcesSyncService;
 import com.ws.azureResourcesIntegration.constant.KubernetesClusterCredentialType;
 import com.ws.azureResourcesIntegration.entities.*;
 import com.ws.azureResourcesIntegration.repository.*;
+import io.micrometer.common.util.StringUtils;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
-import org.apache.commons.lang3.tuple.Triple;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
 import java.util.*;
@@ -55,6 +57,7 @@ public class AzureResourceSyncService {
     final AzureRoleAssignmentRepository azureRoleAssignmentRepository;
     final AzureVMRepository azureVMRepository;
     final AzureStorageRepository azureStorageRepository;
+    final AzureNetworkInterfaceRepository azureNetworkInterfaceRepository;
     final BackendApplicationLogservice backendApplicationLogservice;
     final AzureKubernetesClusterRepository azureKubernetesClusterRepository;
     final AzureAuthUtil azureAuthUtil;
@@ -62,7 +65,7 @@ public class AzureResourceSyncService {
     final K8ResourcesDataService k8ResourcesDataService;
 
     @Autowired
-    public AzureResourceSyncService(AzureSubscriptionRepository azureSubscriptionRepository, AzureResourceGroupRepository azureResourceGroupRepository, AzureServerRepository azureServerRepository, AzureRoleDefinitionRepository azureRoleDefinitionRepository, AzureRoleAssignmentRepository azureRoleAssignmentRepository, AzureVMRepository azureVMRepository, AzureStorageRepository azureStorageRepository, BackendApplicationLogservice backendApplicationLogservice, AzureKubernetesClusterRepository azureKubernetesClusterRepository, AzureAuthUtil azureAuthUtil, K8ResourcesSyncService k8ResourcesSyncService, K8ResourcesDataService k8ResourcesDataService) {
+    public AzureResourceSyncService(AzureSubscriptionRepository azureSubscriptionRepository, AzureResourceGroupRepository azureResourceGroupRepository, AzureServerRepository azureServerRepository, AzureRoleDefinitionRepository azureRoleDefinitionRepository, AzureRoleAssignmentRepository azureRoleAssignmentRepository, AzureVMRepository azureVMRepository, AzureStorageRepository azureStorageRepository, AzureNetworkInterfaceRepository azureNetworkInterfaceRepository, BackendApplicationLogservice backendApplicationLogservice, AzureKubernetesClusterRepository azureKubernetesClusterRepository, AzureAuthUtil azureAuthUtil, K8ResourcesSyncService k8ResourcesSyncService, K8ResourcesDataService k8ResourcesDataService) {
         this.azureSubscriptionRepository = azureSubscriptionRepository;
         this.azureResourceGroupRepository = azureResourceGroupRepository;
         this.azureServerRepository = azureServerRepository;
@@ -70,6 +73,7 @@ public class AzureResourceSyncService {
         this.azureRoleAssignmentRepository = azureRoleAssignmentRepository;
         this.azureVMRepository = azureVMRepository;
         this.azureStorageRepository = azureStorageRepository;
+        this.azureNetworkInterfaceRepository = azureNetworkInterfaceRepository;
         this.backendApplicationLogservice = backendApplicationLogservice;
         this.azureKubernetesClusterRepository = azureKubernetesClusterRepository;
         this.azureAuthUtil = azureAuthUtil;
@@ -87,11 +91,11 @@ public class AzureResourceSyncService {
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.KUBERNETES_RESOURCES_DATA_TRUNCATED, "Info");
             AzureSubscription azureSubscription = syncSubscription(azureTenant);
             Map<String, AzureResourceGroup> azureResourceGroupMap = createAzureResourceGroupMap(syncResourceGroups(azureSubscription));
-//            syncAzureVMs(azureSubscription, azureResourceGroupMap);
-//            syncStorageData(azureSubscription, azureResourceGroupMap);
-//            syncServersAndDatabases(azureSubscription, azureResourceGroupMap);
-//            syncRoleDefinitions(azureTenant, azureSubscription);
-//            syncRoleAssignments(azureTenant, azureSubscription);
+            syncAzureVMs(azureSubscription, azureResourceGroupMap);
+            syncStorageData(azureSubscription, azureResourceGroupMap);
+            syncServersAndDatabases(azureSubscription, azureResourceGroupMap);
+            syncRoleDefinitions(azureTenant, azureSubscription);
+            syncRoleAssignments(azureTenant, azureSubscription);
             List<AzureKubernetesCluster> azureKubernetesClusters = syncAzureKubernetesClusters(azureSubscription, azureResourceGroupMap);
             syncKubernetesResources(azureSubscription.getAzureSubscriptionId(), azureKubernetesClusters);
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_RESOURCE_DATA_SYNC_END, "Info");
@@ -211,29 +215,35 @@ public class AzureResourceSyncService {
     private void syncAzureVMs(AzureSubscription azureSubscription, Map<String, AzureResourceGroup> azureResourceGroupMap) {
         try {
             List<AzureVM> azureVMs = this.azureResourceManager.virtualMachines().list().stream()
-                    .map(vm -> AzureVM.builder()
-                            .azureVmId(vm.vmId())
-                            .instanceId(vm.id())
-                            .name(vm.name())
-                            .computerName(vm.computerName())
-                            .powerState(GenericUtil.getOrNull(() -> vm.powerState().toString()))
-                            .size(GenericUtil.getOrNull(() -> vm.size().getValue()))
-                            .osType(GenericUtil.getOrNull(() -> vm.osType().toString()))
-                            .publicIpInstanceId(vm.getPrimaryPublicIPAddressId())
-                            .resourceGroupName(vm.resourceGroupName())
-                            .osDiskSize(vm.osDiskSize())
-                            .region(vm.region().name())
-                            .securityType(GenericUtil.getOrNull(() -> vm.securityType().toString()))
-                            .resourceType(vm.type())
-                            .resourceIdentityType(GenericUtil.getOrNull(() -> vm.innerModel().identity().type().name()))
-                            .ipAddress(GenericUtil.getOrNull(() -> vm.getPrimaryPublicIPAddress().ipAddress()))
-                            .syncedAt(new Date())
-                            .subscriptionId(azureSubscription.getAzureSubscriptionId())
-                            .azureResourceGroup(azureResourceGroupMap.get(vm.resourceGroupName().toUpperCase()))
-                            .azureSubscription(azureSubscription)
-                            .wsTenantName(wsTenantName)
-                            .build())
+                    .map(vm -> {
+                        AzureVM azureVM = AzureVM.builder()
+                                .azureVmId(vm.vmId())
+                                .instanceId(vm.id())
+                                .name(vm.name())
+                                .computerName(vm.computerName())
+                                .powerState(GenericUtil.getOrNull(() -> vm.powerState().toString()))
+                                .size(GenericUtil.getOrNull(() -> vm.size().getValue()))
+                                .osType(GenericUtil.getOrNull(() -> vm.osType().toString()))
+                                .publicIpInstanceId(vm.getPrimaryPublicIPAddressId())
+                                .resourceGroupName(vm.resourceGroupName())
+                                .osDiskSize(vm.osDiskSize())
+                                .region(vm.region().name())
+                                .securityType(GenericUtil.getOrNull(() -> vm.securityType().toString()))
+                                .resourceType(vm.type())
+                                .resourceIdentityType(GenericUtil.getOrNull(() -> vm.innerModel().identity().type().name()))
+                                .ipAddress(GenericUtil.getOrNull(() -> vm.getPrimaryPublicIPAddress().ipAddress()))
+                                .syncedAt(new Date())
+                                .subscriptionId(azureSubscription.getAzureSubscriptionId())
+                                .azureResourceGroup(azureResourceGroupMap.get(vm.resourceGroupName().toUpperCase()))
+                                .azureSubscription(azureSubscription)
+                                .wsTenantName(wsTenantName)
+                                .build();
+
+                        azureVM.setAzureNetworkInterfaces(determineAndCreatePublicNetworkInterfacesForVM(azureVM, vm.networkInterfaceIds()));
+                        return azureVM;
+                    })
                     .collect(Collectors.toList());
+
             log.info("vm synced");
             azureVMRepository.saveAll(azureVMs);
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_VMS_SYNCED, "Info");
@@ -431,7 +441,7 @@ public class AzureResourceSyncService {
             PagedIterable<RoleAssignment> roleAssignmentPage = this.azureResourceManager.accessManagement().roleAssignments().listByScope(String.format(Constant.SUBSCRIPTION_LEVEL_SCOPE, this.azureResourceManager.subscriptionId()));
             List<AzureRoleAssignment> azureRoleAssignments = new ArrayList<>();
             for (RoleAssignment roleAssignment : roleAssignmentPage) {
-                AzureRoleAssignment azureRoleAssignment = AzureEntityUtil.createAzureRoleAssignmentFromResourceEntity(roleAssignment,
+                AzureRoleAssignment azureRoleAssignment = AzureEntityUtil.createAzureRoleAssignmentFromResourceEntity(roleAssignment, GenericUtil.determineScopeType(roleAssignment.scope()),
                         AzureRoleAssignment.builder()
                                 .azureSubscription(azureSubscription)
                                 .wsTenantName(this.wsTenantName)
@@ -520,6 +530,39 @@ public class AzureResourceSyncService {
         AzureSubscription azureSubscription = syncOrGetAzureSubscription(azureTenant);
         k8ResourcesDataService.deleteK8ResourcesByWsTenantName(this.wsTenantName);
         syncKubernetesResources(azureSubscription.getAzureSubscriptionId(), azureKubernetesClusters);
+    }
+
+
+    private List<AzureNetworkInterface> determineAndCreatePublicNetworkInterfacesForVM(AzureVM azureVM, List<String> networkInterfaceIds) {
+        List<AzureNetworkInterface> publicAzureNetworkInterfaces = new ArrayList<>();
+        List<NetworkInterface> networkInterfaces = networkInterfaceIds.stream()
+                .map(nicId -> this.azureResourceManager.networkInterfaces().getById(nicId))
+                .toList();
+
+        for (NetworkInterface networkInterface : networkInterfaces) {
+            for (Map.Entry<String, NicIpConfiguration> stringNicIpConfigurationEntry : networkInterface.ipConfigurations().entrySet()) {
+                NicIpConfiguration nicIpConfiguration = stringNicIpConfigurationEntry.getValue();
+                String publicPathId = nicIpConfiguration.publicIpAddressId();
+
+                if (StringUtils.isNotEmpty(publicPathId)) {
+                    PublicIpAddress publicIpAddress = nicIpConfiguration.getPublicIpAddress();
+                    if (ObjectUtils.isNotEmpty(publicIpAddress)) {
+                        publicAzureNetworkInterfaces.add(AzureNetworkInterface.builder()
+                                .azureId(networkInterface.id())
+                                .name(networkInterface.name())
+                                .virtualMachineId(networkInterface.virtualMachineId())
+                                .azureVM(azureVM)
+                                .resourceGroupName(azureVM.getResourceGroupName())
+                                .subscriptionId(azureVM.getSubscriptionId())
+                                .syncedAt(new Date())
+                                .wsTenantName(this.wsTenantName)
+                                .build());
+                        break;
+                    }
+                }
+            }
+        }
+        return publicAzureNetworkInterfaces;
     }
 
 

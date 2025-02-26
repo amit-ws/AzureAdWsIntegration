@@ -115,7 +115,7 @@ public final class AzureEntityUtil {
         return azureDevice;
     }
 
-    public static AzureRoleAssignment createAzureRoleAssignmentFromResourceEntity(RoleAssignment roleAssignment, AzureRoleAssignment azureRoleAssignment) {
+    public static AzureRoleAssignment createAzureRoleAssignmentFromResourceEntity(RoleAssignment roleAssignment, String scopeType, AzureRoleAssignment azureRoleAssignment) {
         GenericUtil.ensureNotNull(roleAssignment, "RoleAssignment cannot be null");
         azureRoleAssignment.setAzureId(roleAssignment.name());
         azureRoleAssignment.setAzureRoleAssignmentPathId(roleAssignment.id());
@@ -124,7 +124,7 @@ public final class AzureEntityUtil {
         azureRoleAssignment.setAssignee(roleAssignment.principalId());
         azureRoleAssignment.setPrincipalType(GenericUtil.getOrNull(() -> roleAssignment.innerModel().principalType().getValue()));
         azureRoleAssignment.setScope(roleAssignment.scope());
-        azureRoleAssignment.setScopeType(GenericUtil.determineScopeType(roleAssignment.scope()));
+        azureRoleAssignment.setScopeType(scopeType);
         azureRoleAssignment.setCondition(roleAssignment.condition());
         azureRoleAssignment.setIsRoleInherited(false);
         azureRoleAssignment.setCreatedOn(GenericUtil.getOrNull(() -> roleAssignment.innerModel().createdOn()));
@@ -154,7 +154,7 @@ public final class AzureEntityUtil {
         return customRoleAssignment;
     }
 
-    public static CustomRoleAssignment createFromAssignRoleRequestPayload(AssignRoleRequest request, String rolePathId) {
+    public static CustomRoleAssignment createFromAssignRoleRequestPayload(AssignRoleRequest request, String rolePathId, RequestStatus status) {
         GenericUtil.ensureNotNull(request, "Payload cannot be null");
         CustomRoleAssignment customRoleAssignment = new CustomRoleAssignment();
         customRoleAssignment.setAzureId(UUID.randomUUID().toString());
@@ -164,7 +164,7 @@ public final class AzureEntityUtil {
         customRoleAssignment.setPrincipalType(request.getPrincipleType().getValue());
         customRoleAssignment.setScopeType(GenericUtil.determineScopeType(request.getResourceScope()));
         customRoleAssignment.setDescription(GenericUtil.getOrNull(() -> request.getDescription().trim()));
-        customRoleAssignment.setStatus(RequestStatus.PENDING);
+        customRoleAssignment.setStatus(status);
         customRoleAssignment.setRequestedAt(new Date());
         customRoleAssignment.setExpiryTimeAmount(request.getExpiryTimeAmount());
         customRoleAssignment.setUserEmail(request.getUserEmail().trim());
@@ -179,7 +179,19 @@ public final class AzureEntityUtil {
         resource.setResourceId(request.getResourceId().trim());
         resource.setWsTenantName(request.getWsTenantName().trim());
         resource.setResourceType(request.getType());
+        resource.setResourceAccountId(request.getResourceAccountId().trim());
         resource.setCloudProviderType(CloudProviderType.AZURE);
+        return resource;
+    }
+
+    public static PublishedResource createPublishedResourcesForK8FromRequest(PublishResourceRequest request) {
+        PublishedResource resource = new PublishedResource();
+        resource.setResourceId(request.getResourceId().trim());
+        resource.setWsTenantName(request.getWsTenantName().trim());
+        resource.setResourceType(request.getType());
+        resource.setResourceAccountId(request.getResourceAccountId().trim());
+        resource.setCloudProviderType(request.getCloudProviderType());
+        resource.setClusterId(request.getClusterId());
         return resource;
     }
 }

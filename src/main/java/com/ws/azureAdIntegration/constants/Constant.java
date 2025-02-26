@@ -13,7 +13,7 @@ public class Constant {
     public static final String AZURE_SYNC_FAILURE = "Azure data sync failure. Error: %s";
     public static final String AZURE_SYNC_TIME_OUT = "Azure data sync timeout";
     public static final String AZURE_CREDENTIALS_SAVED = "User azure credentials saved";
-    public static final  String AZURE_TENANT_SAVED = "Azure tenant (Org) saved";
+    public static final String AZURE_TENANT_SAVED = "Azure tenant (Org) saved";
     public static final String AZURE_APPLICATION__SAVED = "Azure application(s) saved";
     public static final String AZURE_USERS_SAVED = "Azure users saved";
     public static final String AZURE_GROUP_SAVED = "Azure groups saved";
@@ -30,7 +30,7 @@ public class Constant {
 
 
     /*Azure resource related*/
-    public static final  String AZURE_VMS_SYNCED = "Azure VMs synced";
+    public static final String AZURE_VMS_SYNCED = "Azure VMs synced";
     public static final String AZURE_SUBSCRIPTION_SYNCED = "Azure subscription(s) synced";
     public static final String AZURE_RESOURCE_GROUPS_SYNCED = "Azure resource groups synced";
     public static final String AZURE_STORAGES_SYNCED = "Azure storages related data synced";
@@ -103,6 +103,13 @@ public class Constant {
     public static final String KUBERNETES_NAMESPACE_ROLE_BINDING_DATA_SYNCED = "Kubernetes namespace role binding data synced for cluster: %s of type: %s";
     public static final String KUBERNETES_CLUSTER_ROLE_BINDING_DATA_SYNCED = "Kubernetes cluster role binding data synced for cluster: %s of type: %s";
     public static final String KUBERNETES_STORAGE_CLASS_DATA_SYNCED = "Kubernetes storage class data synced for cluster: %s of type: %s";
+    public static final String KUBERNETES_REPLICASET_DATA_SYNCED = "Kubernetes replica set data synced for cluster: %s of type: %s";
+    public static final String KUBERNETES_DAEMONSET_DATA_SYNCED = "Kubernetes daemon set data synced for cluster: %s of type: %s";
+    public static final String KUBERNETES_STATEFULSET_DATA_SYNCED = "Kubernetes stateful set data synced for cluster: %s of type: %s";
+    public static final String KUBERNETES_JOB_DATA_SYNCED = "Kubernetes job data synced for cluster: %s of type: %s";
+    public static final String KUBERNETES_CRON_JOB_DATA_SYNCED = "Kubernetes cron job data synced for cluster: %s of type: %s";
+    public static final String KUBERNETES_INGRESS_DATA_SYNCED = "Kubernetes ingress data synced for cluster: %s of type: %s";
+    public static final String KUBERNETES_SERVICES_DATA_SYNCED = "Kubernetes service data synced for cluster: %s of type: %s";
 
 
 }

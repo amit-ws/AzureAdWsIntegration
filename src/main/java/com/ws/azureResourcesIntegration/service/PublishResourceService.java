@@ -1,0 +1,164 @@
+package com.ws.azureResourcesIntegration.service;
+
+import com.ws.azureAdIntegration.constants.PublishResourceType;
+import com.ws.azureAdIntegration.exception.AzureDataException;
+import com.ws.azureAdIntegration.util.AzureEntityUtil;
+import com.ws.azureKuberntesJIT.enttity.K8IngressRepository;
+import com.ws.azureKuberntesJIT.repository.*;
+import com.ws.azureResourcesIntegration.dto.PublishResourceRequest;
+import com.ws.azureResourcesIntegration.entities.PublishedResource;
+import com.ws.azureResourcesIntegration.repository.AzureDatabaseRepository;
+import com.ws.azureResourcesIntegration.repository.AzureStorageRepository;
+import com.ws.azureResourcesIntegration.repository.AzureVMRepository;
+import com.ws.azureResourcesIntegration.repository.PublishedResourcesRepository;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+
+@Service
+@Slf4j
+public class PublishResourceService {
+    final PublishedResourcesRepository publishedResourcesRepository;
+    final AzureVMRepository azureVMRepository;
+    final AzureStorageRepository azureStorageRepository;
+    final AzureDatabaseRepository azureDatabaseRepository;
+    final K8NodeRepository k8NodeRepository;
+    final K8DeploymentRepository k8DeploymentRepository;
+    final K8ServiceAccountRepository k8ServiceAccountRepository;
+    final K8SecretRepository k8SecretRepository;
+    final K8ConfigMapRepository k8ConfigMapRepository;
+    final K8NetworkPolicyRepository k8NetworkPolicyRepository;
+    final K8ReplicaSetRepository k8ReplicaSetRepository;
+    final K8StatefulSetRepository k8StatefulSetRepository;
+    final K8DaemonSetRepository k8DaemonSetRepository;
+    final K8JobRepository k8JobRepository;
+    final K8CronJobRepository k8CronJobRepository;
+    final K8IngressRepository k8IngressRepository;
+    final K8ServiceRepository k8ServiceRepository;
+
+    @Autowired
+    public PublishResourceService(PublishedResourcesRepository publishedResourcesRepository, AzureVMRepository azureVMRepository,
+                                  AzureStorageRepository azureStorageRepository, AzureDatabaseRepository azureDatabaseRepository,
+                                  K8NodeRepository k8NodeRepository, K8DeploymentRepository k8DeploymentRepository,
+                                  K8ServiceAccountRepository k8ServiceAccountRepository, K8SecretRepository k8SecretRepository,
+                                  K8ConfigMapRepository k8ConfigMapRepository, K8NetworkPolicyRepository k8NetworkPolicyRepository,
+                                  K8ReplicaSetRepository k8ReplicaSetRepository, K8StatefulSetRepository k8StatefulSetRepository,
+                                  K8DaemonSetRepository k8DaemonSetRepository, K8JobRepository k8JobRepository, K8CronJobRepository k8CronJobRepository,
+                                  K8IngressRepository k8IngressRepository, K8ServiceRepository k8ServiceRepository) {
+        this.publishedResourcesRepository = publishedResourcesRepository;
+        this.azureVMRepository = azureVMRepository;
+        this.azureStorageRepository = azureStorageRepository;
+        this.azureDatabaseRepository = azureDatabaseRepository;
+        this.k8NodeRepository = k8NodeRepository;
+        this.k8DeploymentRepository = k8DeploymentRepository;
+        this.k8ServiceAccountRepository = k8ServiceAccountRepository;
+        this.k8SecretRepository = k8SecretRepository;
+        this.k8ConfigMapRepository = k8ConfigMapRepository;
+        this.k8NetworkPolicyRepository = k8NetworkPolicyRepository;
+        this.k8ReplicaSetRepository = k8ReplicaSetRepository;
+        this.k8StatefulSetRepository = k8StatefulSetRepository;
+        this.k8DaemonSetRepository = k8DaemonSetRepository;
+        this.k8JobRepository = k8JobRepository;
+        this.k8CronJobRepository = k8CronJobRepository;
+        this.k8IngressRepository = k8IngressRepository;
+        this.k8ServiceRepository = k8ServiceRepository;
+    }
+
+    @Transactional
+    public void publishAzureResource(PublishResourceRequest request) {
+        if (!request.isFlag()) {
+            unPublishResources(request.getResourceId().trim(), request.getResourceAccountId().trim(), request.getWsTenantName().trim());
+        }
+        publishResources(AzureEntityUtil.createPublishedResourcesFromRequest(request));
+    }
+
+    @Transactional
+    public void publishKubernetesResource(PublishResourceRequest request) {
+        if (!request.isFlag()) {
+            unPublishResources(request.getResourceId().trim(), request.getResourceAccountId().trim(), request.getWsTenantName().trim());
+        }
+        publishResources(AzureEntityUtil.createPublishedResourcesForK8FromRequest(request));
+    }
+
+
+    private void publishResources(PublishedResource publishedResource) {
+        try {
+            publishedResourcesRepository.save(publishedResource);
+        } catch (Exception ex) {
+            if (ex.getMessage().contains("duplicate key")) {
+                throw new AzureDataException("Resource already published");
+            }
+        }
+    }
+
+    private void unPublishResources(String resourceId, String resourceAccountId, String wsTenantName) {
+        publishedResourcesRepository.deleteByResourceIdAndResourceAccountIdAndWsTenantName(resourceId, resourceAccountId, wsTenantName);
+    }
+
+    public List<?> getPublishedAzureResources(String wsTenantName, PublishResourceType type) {
+        return switch (type) {
+            case VIRTUAL_MACHINE -> azureVMRepository.findAllPublishedAzureVM(wsTenantName);
+            case STORAGE_ACCOUNT -> azureStorageRepository.findAllPublishedAzureStorageAccounts(wsTenantName);
+            case DATABASE -> azureDatabaseRepository.findAllPublishedAzureDatabase(wsTenantName);
+            default -> throw new RuntimeException(String.format("Invalid type provided. Type: %s", type));
+        };
+        //        if (!resources.isEmpty()) {
+//            setSubscriptionIdForResources(resources);
+//        }
+    }
+
+
+    public List<?> getPublishedKubernetesResources(String wsTenantName, PublishResourceType type) {
+        return switch (type) {
+            case DEPLOYMENT -> k8DeploymentRepository.findAllPublishedK8DeploymentsByWsTenantName(wsTenantName);
+            case SERVICE_ACCOUNT ->
+                    k8ServiceAccountRepository.findAllPublishedK8ServiceAccountsByWsTenantName(wsTenantName);
+            case SECRET -> k8SecretRepository.findAllPublishedK8SecretsByWsTenantName(wsTenantName);
+            case CONFIG_MAP -> k8ConfigMapRepository.findAllPublishedK8ConfigMapsByWsTenantName(wsTenantName);
+            case NETWORK_POLICY ->
+                    k8NetworkPolicyRepository.findAllPublishedK8NetworkPoliciesByWsTenantName(wsTenantName);
+            case JOB -> k8JobRepository.findAllPublishedK8JobsByWsTenantName(wsTenantName);
+            case CRON_JOB -> k8CronJobRepository.findAllPublishedK8CronJobsByWsTenantName(wsTenantName);
+            case INGRESS -> k8IngressRepository.findAllPublishedK8IngressesByWsTenantName(wsTenantName);
+            case SERVICE -> k8ServiceRepository.findAllPublishedK8ServicesByWsTenantName(wsTenantName);
+            case REPLICA_SET -> k8ReplicaSetRepository.findAllPublishedK8ReplicaSetsByWsTenantName(wsTenantName);
+            case STATEFUL_SET -> k8StatefulSetRepository.findAllPublishedK8StatefulSetsByWsTenantName(wsTenantName);
+            case DAEMON_SET -> k8DaemonSetRepository.findAllPublishedK8DaemonSetsByWsTenantName(wsTenantName);
+            default -> throw new RuntimeException(String.format("Invalid type provided. Type: %s", type));
+        };
+    }
+
+
+//    private void setSubscriptionIdForResources(List<?> resources) {
+//        if (resources.get(0) instanceof AzureVM) {
+//            Integer subscriptionId = ((AzureVM) resources.get(0)).getAzureSubscription().getId();
+//            resources.forEach(resource -> ((AzureVM) resource).setAzureSubscriptionId(subscriptionId));
+//        } else if (resources.get(0) instanceof AzureStorageAccount) {
+//            Integer subscriptionId = ((AzureStorageAccount) resources.get(0)).getAzureSubscription().getId();
+//            resources.forEach(resource -> ((AzureStorageAccount) resource).setAzureSubscriptionId(subscriptionId));
+//        } else if (resources.get(0) instanceof AzureDatabase) {
+//            Integer subscriptionId = ((AzureDatabase) resources.get(0)).getAzureServer().getAzureSubscription().getId();
+//            resources.forEach(resource -> ((AzureDatabase) resource).setAzureSubscriptionId(subscriptionId));
+//        }
+//    }
+
+//    @Transactional
+//    public void publishResourceByResourceIdAndType(PublishResourceRequest request) {
+//        if (request.isFlag()) {
+//            try {
+//                PublishedResource publishedResource = AzureEntityUtil.createPublishedResourcesFromRequest(request);
+//                publishedResourcesRepository.save(publishedResource);
+//            } catch (Exception ex) {
+//                if (ex.getMessage().contains("duplicate key")) {
+//                    throw new AzureDataException("Resource already published");
+//                }
+//            }
+//        } else {
+//            publishedResourcesRepository.deleteByResourceIdAndWsTenantName(request.getResourceId(), request.getWsTenantName());
+//        }
+//    }
+
+}

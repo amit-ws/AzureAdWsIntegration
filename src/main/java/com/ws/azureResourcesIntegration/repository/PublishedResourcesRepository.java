@@ -6,7 +6,7 @@ import org.springframework.data.jpa.repository.Modifying;
 
 public interface PublishedResourcesRepository extends JpaRepository<PublishedResource, Integer> {
     @Modifying
-    void deleteByResourceIdAndWsTenantName(String  resourceId, String wsTenantName);
+    void deleteByResourceIdAndResourceAccountIdAndWsTenantName(String  resourceId, String resourceAccountId, String wsTenantName);
 
     @Modifying
     void deleteAllByWsTenantName(String wsTenantMame);

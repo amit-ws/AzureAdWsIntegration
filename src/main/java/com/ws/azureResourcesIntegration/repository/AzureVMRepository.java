@@ -8,9 +8,12 @@ import org.springframework.stereotype.Repository;
 
 import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface AzureVMRepository extends JpaRepository<AzureVM, Integer> {
+    @Query("SELECT av FROM AzureVM av WHERE upper(av.instanceId) = upper(:instanceId) AND av.wsTenantName = :wsTenantName")
+    Optional<AzureVM> findAzureVMUsingInstanceId(String instanceId, String wsTenantName);
     List<AzureVM> findAllByWsTenantName(String wsTenantName);
 
     @Query("SELECT DISTINCT av FROM AzureVM av INNER JOIN AzureRoleAssignment ara ON UPPER(av.instanceId) = UPPER(ara.scope) " +

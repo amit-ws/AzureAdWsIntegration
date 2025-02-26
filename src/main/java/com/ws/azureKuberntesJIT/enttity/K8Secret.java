@@ -24,7 +24,7 @@ public class K8Secret extends K8Metadata {
     String type;
     Boolean immutable;
 
-    @ElementCollection
+    @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "kubernetes_secret_string_data", joinColumns = @JoinColumn(name = "secret_id"))
     @MapKeyColumn(name = "data_key")
     @Column(name = "data_value")
