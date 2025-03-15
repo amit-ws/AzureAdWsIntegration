@@ -2,7 +2,6 @@ package com.ws.azureKuberntesJIT.models;
 
 import com.ws.azureAdIntegration.constants.CloudProviderType;
 import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
@@ -32,16 +31,16 @@ public class K8MetadataDTO {
     CloudProviderType cloudProviderType;
     String wsTenantName;
     String cloudResourceAccountId;
-    boolean flag;
+    boolean isPublished;
 
 
-    public K8MetadataDTO(String uid, String name, String clusterId, String resourceAccountId, String wsTenantName, CloudProviderType cloudProviderType, boolean flag) {
+    public K8MetadataDTO(String uid, String name, String clusterId, String resourceAccountId, String wsTenantName, CloudProviderType cloudProviderType, boolean isPublished) {
         this.uid = uid;
         this.name = name;
         this.clusterId = clusterId;
         this.cloudResourceAccountId = resourceAccountId;
         this.wsTenantName = wsTenantName;
         this.cloudProviderType = cloudProviderType;
-        this.flag = flag;
+        this.isPublished = isPublished;
     }
 }

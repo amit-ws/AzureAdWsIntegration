@@ -1,6 +1,7 @@
-package com.ws.azureKuberntesJIT.enttity;
+package com.ws.azureKuberntesJIT.repository;
 
 import com.ws.azureAdIntegration.constants.CloudProviderType;
+import com.ws.azureKuberntesJIT.enttity.K8Ingress;
 import com.ws.azureKuberntesJIT.models.K8ConfigMapDTO;
 import com.ws.azureKuberntesJIT.models.K8IngressDTO;
 import org.springframework.data.jpa.repository.JpaRepository;

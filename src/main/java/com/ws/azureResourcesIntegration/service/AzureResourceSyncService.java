@@ -581,8 +581,9 @@ public class AzureResourceSyncService {
                 .tenantEmail(this.tenantEmail)
                 .build();
         try {
+            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.KUBERNETES_RESOURCES_SYNC_STARTED, "Info");
             k8ResourcesSyncService.syncKubernetesData(k8ResourceDataSyncRequest);
-            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.KUBERNETES_RESOURCES_SYNCED, "Info");
+            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.KUBERNETES_RESOURCES_SYNC_ENDED, "Info");
         } catch (Exception ignored) {
             log.info("Inside AzureResourceSyncService at -> syncKubernetesResources");
             log.warn(String.format("Error in syncing Kubernetes resources with message %s:", ignored.getMessage()));

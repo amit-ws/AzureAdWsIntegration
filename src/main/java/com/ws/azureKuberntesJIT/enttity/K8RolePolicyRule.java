@@ -44,7 +44,7 @@ public class K8RolePolicyRule {
     @ElementCollection
     @CollectionTable(name = "kubernetes_policy_rule_resource_names", joinColumns = @JoinColumn(name = "policy_rule_id"))
     @Column(name = "resource_name")
-    List<String> resourceNames;
+    List<String> resourceNames;  // <---- individual resources
 
 //    @Column(name = "role_uid", nullable = false)
     String roleUID;

@@ -14,7 +14,7 @@ import java.util.List;
 
 @Repository
 public interface K8DeploymentRepository extends JpaRepository<K8Deployment, Long> {
-    @Query("SELECT new com.ws.azureKuberntesJIT.models.K8DeploymentDTO(kd.id, kd.apiVersion, kd.selfLink, kd.kind, kd.resourceVersion, kd.generation, \n" +
+    @Query("SELECT new com.ws.azureKuberntesJIT.models.K8DeploymentDTO(kd.id, kd.apiVersion, kd.selfLink, kd.kind, kd.resourceVersion, kd.generation, " +
             "    kd.name, kd.uid, kd.generateName, kd.creationTimestamp, kd.deletionTimestamp, kd.syncedAt, kd.updatedAt, kd.clusterId, \n" +
             "    kd.namespace, kd.cloudProviderType, kd.wsTenantName, kd.cloudResourceAccountId, CASE WHEN pr.resourceId IS NULL THEN FALSE ELSE TRUE END)  " +
             "FROM K8Deployment kd " +
@@ -30,7 +30,8 @@ public interface K8DeploymentRepository extends JpaRepository<K8Deployment, Long
     @Modifying
     void deleteAllByWsTenantName(String wsTenantName);
 
-    @Query("SELECT new com.ws.azureKuberntesJIT.models.K8DeploymentDTO(kd.id, kd.uid, kd.name, kd.clusterId, kd.cloudResourceAccountId, kd.wsTenantName, kd.cloudProviderType, CASE WHEN pr.resourceId IS NULL THEN FALSE ELSE TRUE END) " +
+    @Query("SELECT new com.ws.azureKuberntesJIT.models.K8DeploymentDTO(kd.id, kd.uid, kd.name, kd.clusterId, kd.cloudResourceAccountId, kd.wsTenantName, kd.cloudProviderType, " +
+            "CASE WHEN pr.resourceId IS NULL THEN FALSE ELSE TRUE END) " +
             "FROM K8Deployment kd " +
             "INNER JOIN PublishedResource pr ON kd.uid = pr.resourceId " +
             "WHERE pr.wsTenantName = :wsTenantName " +

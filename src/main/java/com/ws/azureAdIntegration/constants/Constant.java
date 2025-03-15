@@ -72,6 +72,7 @@ public class Constant {
     public static final String VM_LEVEL_SCOPE = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/virtualMachines/%s";
     public static final String STORAGE_ACCOUNT_LEVEL_SCOPE = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Storage/storageAccounts/%s";
     public static final String DATABASE_LEVEL_SCOPE = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Sql/servers/%s/databases/%s";
+    public static final String AKS_LEVEL_SCOPE = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.ContainerService/managedClusters/%s";
 
 
     //Azure Scheduler
@@ -82,7 +83,8 @@ public class Constant {
     public static final String AZURE_KUBERNETES_RESOURCE_DATA_SYNC_ENDED = "K8 resources data sync COMPLETED for cluster: %s of type: %s at: %s";
     public static final String AZURE_KUBERNETES_CLUSTERS_SYNCED = "Azure kubernetes clusters data synced";
     public static final String INSUFFICIENT_PRIVILEGEE_FOR_AKS_ADMIN_CONFIG_FETCH = "InSufficient Privilege to fetch AKS cluster admin credential configs";
-    public static final String KUBERNETES_RESOURCES_SYNCED = "Azure kubernetes resources data synced";
+    public static final String KUBERNETES_RESOURCES_SYNC_ENDED = "Azure kubernetes resources data sync ended";
+    public static final String KUBERNETES_RESOURCES_SYNC_STARTED = "Azure kubernetes resources data syn started";
     public static final String ERROR_IN_SYNCING_KUBERNETES_DATA = "Error in syncing kubernetes resources data ";
     public static final String KUBERNETES_RESOURCES_DATA_SYNC_SKIPPED = "Skipped Kubernetes-Resources data sync as no Azure Kubernetes (AKS) was found";
     public static final String KUBERNETES_RESOURCES_DATA_TRUNCATED = "Kubernetes resources related data successfully truncated";

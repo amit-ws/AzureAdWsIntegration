@@ -29,6 +29,7 @@ public class AzureKubernetesCluster extends BaseAzureResource{
     String isLocalAccountsEnabled;
     String managedClusterIdentityType;
     String kubernetesVersion;
+    String resourceType;
     String powerState;  /* Running or Stopped*/
     boolean isAzureRbacEnabled;
     String type;

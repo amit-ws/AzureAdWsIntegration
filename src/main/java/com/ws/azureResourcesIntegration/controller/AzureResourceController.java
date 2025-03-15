@@ -179,10 +179,9 @@ public class AzureResourceController {
     }
 
     @PostMapping("/v1/assignRole")
-    public ResponseEntity<AzureRoleAssignment> assignRoleToResourceForUserHandler(@Valid @RequestBody AssignRoleRequest request) {
-        return ResponseEntity
-                .status(HttpStatus.CREATED)
-                .body((azureResourceService.assignRoleToPrincipalForResourceInAzure(request)));
+    public ResponseEntity assignRoleToResourceForUserHandler(@Valid @RequestBody AssignRoleRequest request) {
+        azureResourceService.assignRoleToPrincipalForResourceInAzure(request);
+        return ResponseEntity.ok().build();
     }
 
     @DeleteMapping("/v1/removeRole")
@@ -192,8 +191,8 @@ public class AzureResourceController {
 
 
     @DeleteMapping("/v1/revokeData")
-    public ResponseEntity revokeRoleToPrincipalForResourceInAzure(@RequestParam("tenantName") String wsTenantName){
-        azureResourceService.revokeRoleToPrincipalForResourceInAzure(wsTenantName.trim());
+    public ResponseEntity revokeRoleToPrincipalForResourceInAzure(@RequestParam("tenantName") String wsTenantName, @RequestParam("pathId") String pathId){
+        azureResourceService.revokeRoleToPrincipalForResourceInAzure(wsTenantName.trim(), pathId.trim());
         return ResponseEntity.noContent().build();
     }
 }

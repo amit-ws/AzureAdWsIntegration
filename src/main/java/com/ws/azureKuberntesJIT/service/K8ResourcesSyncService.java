@@ -1,14 +1,13 @@
 package com.ws.azureKuberntesJIT.service;
 
-import com.azure.resourcemanager.authorization.models.RoleDefinition;
 import com.ws.azureAdIntegration.constants.CloudProviderType;
 import com.ws.azureAdIntegration.constants.Constant;
 import com.ws.azureAdIntegration.exception.AzureDataException;
 import com.ws.azureAdIntegration.exception.K8DataException;
 import com.ws.azureAdIntegration.service.BackendApplicationLogservice;
 import com.ws.azureAdIntegration.util.GenericUtil;
-import com.ws.azureKuberntesJIT.constant.K8ResourceType;
 import com.ws.azureKuberntesJIT.constant.K8ResourceLevel;
+import com.ws.azureKuberntesJIT.constant.K8RoleBindingType;
 import com.ws.azureKuberntesJIT.dto.*;
 import com.ws.azureKuberntesJIT.enttity.*;
 import com.ws.azureKuberntesJIT.repository.*;
@@ -21,15 +20,12 @@ import io.kubernetes.client.util.Config;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.tuple.Triple;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.CollectionUtils;
 import org.springframework.util.ObjectUtils;
 
-import java.io.StringReader;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -206,18 +202,19 @@ public class K8ResourcesSyncService {
 
 
     private void fetchNamespace(String clusterId) throws ApiException {
-        V1NamespaceList v1NamespaceList = this.coreV1Api.listNamespace().execute();
-        if (ObjectUtils.isEmpty(v1NamespaceList)) {
-            throw new AzureDataException("No NAMESPACE(s) found");
-        }
         try {
+            V1NamespaceList v1NamespaceList = this.coreV1Api.listNamespace().execute();
+            if (ObjectUtils.isEmpty(v1NamespaceList)) {
+                throw new AzureDataException("No NAMESPACE(s) found");
+            }
+            String apiVersion = v1NamespaceList.getApiVersion();
             List<K8Namespace> kubernetesNamespaces = v1NamespaceList.getItems().stream()
                     .filter(item -> item.getMetadata() != null)
                     .map(item -> {
                         K8Namespace k8Namespace = K8Namespace.builder()
                                 .phase(GenericUtil.getOrNull(() -> Objects.requireNonNull(item.getStatus()).getPhase()))
                                 .build();
-                        setMetadata(k8Namespace, item.getMetadata(), clusterId);
+                        setMetadata(k8Namespace, item.getMetadata(), apiVersion, clusterId);
                         return k8Namespace;
                     })
                     .toList();
@@ -236,6 +233,7 @@ public class K8ResourcesSyncService {
                 log.warn(String.format("No NODE(s) found for cluster name: %S of cloud type: %s", this.clusterName, this.cloudProviderType));
                 return;
             }
+            String apiVersion = v1NodeList.getApiVersion();
             List<K8Node> kubernetesNodes = v1NodeList.getItems().stream()
                     .filter(item -> item.getMetadata() != null)
                     .map(item -> {
@@ -247,7 +245,7 @@ public class K8ResourcesSyncService {
                                 .providerID(GenericUtil.getOrNull(() -> Objects.requireNonNull(item.getSpec()).getProviderID()))
                                 .build();
 
-                        setMetadata(k8Node, item.getMetadata(), clusterId);
+                        setMetadata(k8Node, item.getMetadata(), apiVersion, clusterId);
                         return k8Node;
                     })
                     .toList();
@@ -265,11 +263,12 @@ public class K8ResourcesSyncService {
                 log.warn(String.format("No CustomResourceDefinition(s) found for cluster name: %S of cloud type: %s", this.clusterName, this.cloudProviderType));
                 return;
             }
+            String apiVersion = v1CustomResourceDefinitionList.getApiVersion();
             List<K8CustomResourceDefinition> k8CustomResourceDefinitions = v1CustomResourceDefinitionList.getItems().stream()
                     .filter(item -> item.getMetadata() != null)
                     .map(item -> {
                         K8CustomResourceDefinition k8CustomResourceDefinition = K8CustomResourceDefinition.builder().build();
-                        setMetadata(k8CustomResourceDefinition, item.getMetadata(), clusterId);
+                        setMetadata(k8CustomResourceDefinition, item.getMetadata(), apiVersion, clusterId);
                         return k8CustomResourceDefinition;
                     })
                     .collect(Collectors.toList());
@@ -288,6 +287,7 @@ public class K8ResourcesSyncService {
                 log.warn(String.format("No CLUSTER_ROLE(s) found for cluster name: %S of cloud type: %s", this.clusterName, this.cloudProviderType));
                 return;
             }
+            String apiVersion = v1ClusterRoleList.getApiVersion();
             List<K8Role> k8ClusterRoles = v1ClusterRoleList.getItems().stream()
                     .filter(item -> item.getMetadata() != null)
                     .map(item -> {
@@ -295,7 +295,7 @@ public class K8ResourcesSyncService {
                                 .roleType(K8ResourceLevel.CLUSTER)
                                 .build();
 
-                        setMetadata(clusterRole, item.getMetadata(), clusterId);
+                        setMetadata(clusterRole, item.getMetadata(), apiVersion, clusterId);
 
                         V1AggregationRule v1AggregationRule = item.getAggregationRule();
                         if (!ObjectUtils.isEmpty(v1AggregationRule)) {
@@ -363,15 +363,21 @@ public class K8ResourcesSyncService {
             if (ObjectUtils.isEmpty(v1ClusterRoleBindingList)) {
                 log.warn(String.format("NO CLUSTER_ROLE_BINDING found for cluster name: %s or cloud type: %s", this.clusterName, this.cloudProviderType));
             }
+            String apiVersion = v1ClusterRoleBindingList.getApiVersion();
             List<K8RoleBind> kubernetesRoleBinds = v1ClusterRoleBindingList.getItems().stream()
                     .filter(item -> item.getMetadata() != null)
                     .map(item -> {
+//                        log.info("------------");
+//                        log.info("item.getKind() : {}", item.getKind());
+//                        log.info("item.getApiVersion(): {}", item.getApiVersion());
+//                        log.info("------------");
                         K8RoleBind clusterRoleBind = K8RoleBind.builder()
+                                .kind(K8RoleBindingType.ClusterRoleBinding.name())
                                 .kubernetesRoleType(K8ResourceLevel.CLUSTER)
                                 .roleRef(k8RoleReferenceRepository.save(convertToK8RoleReference(item.getRoleRef(), clusterId, item.getMetadata().getUid())))
                                 .build();
 
-                        setMetadata(clusterRoleBind, item.getMetadata(), clusterId);
+                        setMetadata(clusterRoleBind, item.getMetadata(), apiVersion, clusterId);
                         clusterRoleBind.setRbacSubjects(convertToK8RbacSubjects(item.getSubjects(), clusterId, clusterRoleBind));
                         return clusterRoleBind;
                     })
@@ -390,7 +396,7 @@ public class K8ResourcesSyncService {
                         .apiGroup(ref.getApiGroup())
                         .kind(ref.getKind())
                         .name(ref.getName())
-                        .roleUID(roleUID)
+                        .roleUID(roleUID)  /* it is the role binding uid */
                         .clusterId(clusterId)
                         .cloudProviderType(this.cloudProviderType)
                         .cloudResourceAccountId(this.resourceAccountId)
@@ -424,13 +430,14 @@ public class K8ResourcesSyncService {
                 log.warn(String.format("NO NAMESPACE_ROLE(s) found for cluster name: %s or cloud type: %s", this.clusterName, this.cloudProviderType));
                 return;
             }
+            String apiVersion = v1RoleList.getApiVersion();
             List<K8Role> kubernetesNamespaceRoles = v1RoleList.getItems().stream()
                     .filter(item -> item.getMetadata() != null)
                     .map(item -> {
                         K8Role namespaceRole = K8Role.builder()
                                 .roleType(K8ResourceLevel.NAMESPACE)
                                 .build();
-                        setMetadata(namespaceRole, item.getMetadata(), clusterId);
+                        setMetadata(namespaceRole, item.getMetadata(), apiVersion, clusterId);
 
                         Set<K8RolePolicyRule> policyRules = item.getRules().stream()
                                 .map(rule -> K8RolePolicyRule.builder()
@@ -467,14 +474,16 @@ public class K8ResourcesSyncService {
                 log.warn(String.format("NO NAMESPACE_ROLE_BINDING found for cluster name: %s or cloud type: %s", this.clusterName, this.cloudProviderType));
                 return;
             }
+            String apiVersion = v1RoleBindingList.getApiVersion();
             List<K8RoleBind> kubernetesNamespaceRoleBinds = v1RoleBindingList.getItems().stream()
                     .filter(item -> item.getMetadata() != null)
                     .map(item -> {
                         K8RoleBind namespaceRoleBind = K8RoleBind.builder()
+                                .kind(K8RoleBindingType.RoleBinding.name())
                                 .kubernetesRoleType(K8ResourceLevel.NAMESPACE)
                                 .roleRef(k8RoleReferenceRepository.save(convertToK8RoleReference(item.getRoleRef(), clusterId, item.getMetadata().getUid())))
                                 .build();
-                        setMetadata(namespaceRoleBind, item.getMetadata(), clusterId);
+                        setMetadata(namespaceRoleBind, item.getMetadata(), apiVersion, clusterId);
                         namespaceRoleBind.setRbacSubjects(convertToK8RbacSubjects(item.getSubjects(), clusterId, namespaceRoleBind));
                         return namespaceRoleBind;
                     })
@@ -494,11 +503,12 @@ public class K8ResourcesSyncService {
                 log.warn(String.format("NO DEPLOYMENT(s) found for cluster id: %s of cloud type: %s", clusterId, this.cloudProviderType));
                 return;
             }
+            String apiVersion = v1DeploymentList.getApiVersion();
             List<K8Deployment> k8Deployments = v1DeploymentList.getItems().stream()
                     .filter(item -> item.getMetadata() != null)
                     .map(item -> {
                         K8Deployment k8Deployment = K8Deployment.builder().build();
-                        setMetadata(k8Deployment, item.getMetadata(), clusterId);
+                        setMetadata(k8Deployment, item.getMetadata(), apiVersion, clusterId);
                         return k8Deployment;
                     })
                     .collect(Collectors.toList());
@@ -517,6 +527,7 @@ public class K8ResourcesSyncService {
                 log.warn(String.format("NO SECRET(s) found for cluster name: %s of cloud type: %s", this.clusterName, this.cloudProviderType));
                 return;
             }
+            String apiVersion = v1SecretList.getApiVersion();
             List<K8Secret> kubernetesSecrets = v1SecretList.getItems().stream()
                     .filter(item -> item.getMetadata() != null)
                     .map(item -> {
@@ -525,7 +536,7 @@ public class K8ResourcesSyncService {
                                 .immutable(item.getImmutable())
                                 .stringData(item.getStringData())
                                 .build();
-                        setMetadata(k8Secret, item.getMetadata(), clusterId);
+                        setMetadata(k8Secret, item.getMetadata(), apiVersion, clusterId);
                         return k8Secret;
                     })
                     .toList();
@@ -544,13 +555,14 @@ public class K8ResourcesSyncService {
                 log.warn(String.format("NO SERVICE_ACCOUNT(s) found for cluster id: %s of cloud type: %s", clusterId, this.cloudProviderType));
                 return;
             }
+            String apiVersion = v1ServiceAccountList.getApiVersion();
             List<K8ServiceAccount> kubernetesServiceAccounts = v1ServiceAccountList.getItems().stream()
                     .filter(item -> item.getMetadata() != null)
                     .map(item -> {
                         K8ServiceAccount k8ServiceAccount = K8ServiceAccount.builder()
                                 .automountServiceAccountToken(item.getAutomountServiceAccountToken())
                                 .build();
-                        setMetadata(k8ServiceAccount, item.getMetadata(), clusterId);
+                        setMetadata(k8ServiceAccount, item.getMetadata(), apiVersion,  clusterId);
                         return k8ServiceAccount;
                     })
                     .toList();
@@ -568,11 +580,12 @@ public class K8ResourcesSyncService {
                 log.warn(String.format("NO PERSISTENT_VOLUME(s) found for cluster name: %s or cloud type: %s", this.clusterName, this.cloudProviderType));
                 return;
             }
+            String apiVersion = v1PersistentVolumeList.getApiVersion();
             List<K8PersistentVolume> persistentVolumes = v1PersistentVolumeList.getItems().stream()
                     .filter(item -> item.getMetadata() != null)
                     .map(item -> {
                         K8PersistentVolume k8PersistentVolume = K8PersistentVolume.builder().build();
-                        setMetadata(k8PersistentVolume, item.getMetadata(), clusterId);
+                        setMetadata(k8PersistentVolume, item.getMetadata(), apiVersion,  clusterId);
                         return k8PersistentVolume;
                     })
                     .toList();
@@ -591,11 +604,12 @@ public class K8ResourcesSyncService {
                 log.warn(String.format("NO PERSISTENT_VOLUME_CLAIM(s) found for cluster name: %s or cloud type: %s", this.clusterName, this.cloudProviderType));
                 return;
             }
+            String apiVersion = v1PersistentVolumeClaimList.getApiVersion();
             List<K8PersistentVolumeClaim> persistentVolumeClaims = v1PersistentVolumeClaimList.getItems().stream()
                     .filter(item -> item.getMetadata() != null)
                     .map(item -> {
                         K8PersistentVolumeClaim k8PersistentVolumeClaim = K8PersistentVolumeClaim.builder().build();
-                        setMetadata(k8PersistentVolumeClaim, item.getMetadata(), clusterId);
+                        setMetadata(k8PersistentVolumeClaim, item.getMetadata(), apiVersion,  clusterId);
                         return k8PersistentVolumeClaim;
                     })
                     .toList();
@@ -614,6 +628,7 @@ public class K8ResourcesSyncService {
                 log.warn(String.format("NO STORAE_CLASS(Es) found for cluster name: %s or cloud type: %s", this.clusterName, this.cloudProviderType));
                 return;
             }
+            String apiVersion = v1StorageClassList.getApiVersion();
             List<K8StorageClass> kubernetesStorageClasses = v1StorageClassList.getItems().stream()
                     .map(item -> {
                         K8StorageClass k8StorageClass = K8StorageClass.builder()
@@ -624,7 +639,7 @@ public class K8ResourcesSyncService {
                                 .build();
 
                         if (!ObjectUtils.isEmpty(item.getMetadata())) {
-                            setMetadata(k8StorageClass, item.getMetadata(), clusterId);
+                            setMetadata(k8StorageClass, item.getMetadata(), apiVersion,  clusterId);
                         }
                         return k8StorageClass;
                     })
@@ -644,13 +659,14 @@ public class K8ResourcesSyncService {
                 log.warn(String.format("NO CONFIG_MAP(Es) found for cluster name: %s or cloud type: %s", this.clusterName, this.cloudProviderType));
                 return;
             }
+            String apiVersion = v1ConfigMapList.getApiVersion();
             List<K8ConfigMap> configMaps = v1ConfigMapList.getItems().stream()
                     .filter(item -> item.getMetadata() != null)
                     .map(item -> {
                         K8ConfigMap k8ConfigMap = K8ConfigMap.builder()
                                 .immutable(item.getImmutable())
                                 .build();
-                        setMetadata(k8ConfigMap, item.getMetadata(), clusterId);
+                        setMetadata(k8ConfigMap, item.getMetadata(), apiVersion,  clusterId);
                         return k8ConfigMap;
                     })
                     .toList();
@@ -669,11 +685,12 @@ public class K8ResourcesSyncService {
                 log.warn(String.format("NO NETWORK_POLICIES found for cluster name: %s or cloud type: %s", this.clusterName, this.cloudProviderType));
                 return;
             }
+            String apiVersion = v1NetworkPolicyList.getApiVersion();
             List<K8NetworkPolicy> kubernetesNetworkPolicies = v1NetworkPolicyList.getItems().stream()
                     .filter(item -> item.getMetadata() != null)
                     .map(item -> {
                         K8NetworkPolicy k8NetworkPolicy = K8NetworkPolicy.builder().build();
-                        setMetadata(k8NetworkPolicy, item.getMetadata(), clusterId);
+                        setMetadata(k8NetworkPolicy, item.getMetadata(), apiVersion,  clusterId);
                         return k8NetworkPolicy;
                     })
                     .toList();
@@ -693,11 +710,12 @@ public class K8ResourcesSyncService {
                 log.warn(String.format("No REPLICASET(s) found for cluster name: %S of cloud type: %s", this.clusterName, this.cloudProviderType));
                 return;
             }
+            String apiVersion = replicaSets.getApiVersion();
             List<K8ReplicaSet> k8ReplicaSets = replicaSets.getItems().stream()
                     .filter(item -> item.getMetadata() != null)
                     .map(item -> {
                         K8ReplicaSet k8ReplicaSet = K8ReplicaSet.builder().build();
-                        setMetadata(k8ReplicaSet, item.getMetadata(), clusterId);
+                        setMetadata(k8ReplicaSet, item.getMetadata(), apiVersion, clusterId);
 //                if (org.apache.commons.lang3.ObjectUtils.isNotEmpty(item.getStatus())) {
 //                    V1ReplicaSetStatus v1ReplicaSetStatus = item.getStatus();
 //                    k8ReplicaSet.setFullyLabeledReplicas(v1ReplicaSetStatus.getFullyLabeledReplicas());
@@ -723,11 +741,12 @@ public class K8ResourcesSyncService {
                 log.warn(String.format("No STATEFULSET(s) found for cluster name: %S of cloud type: %s", this.clusterName, this.cloudProviderType));
                 return;
             }
+            String apiVersion = statefulSets.getApiVersion();
             List<K8StatefulSet> k8StatefulSets = statefulSets.getItems().stream()
                     .filter(item -> item.getMetadata() != null)
                     .map(item -> {
                         K8StatefulSet k8StatefulSet = K8StatefulSet.builder().build();
-                        setMetadata(k8StatefulSet, item.getMetadata(), clusterId);
+                        setMetadata(k8StatefulSet, item.getMetadata(), apiVersion,  clusterId);
 //                if (org.apache.commons.lang3.ObjectUtils.isNotEmpty(item.getStatus())) {
 //                    V1StatefulSetStatus v1StatefulSetStatus = item.getStatus();
 //                    k8StatefulSet.setCurrentReplicas(v1StatefulSetStatus.getCurrentReplicas());
@@ -759,11 +778,12 @@ public class K8ResourcesSyncService {
                 log.warn(String.format("No DAEMONSET(s) found for cluster name: %S of cloud type: %s", this.clusterName, this.cloudProviderType));
                 return;
             }
+            String apiVersion = daemonSetList.getApiVersion();
             List<K8DaemonSet> k8DaemonSets = daemonSetList.getItems().stream()
                     .filter(item -> item.getMetadata() != null)
                     .map(item -> {
                         K8DaemonSet k8DaemonSet = K8DaemonSet.builder().build();
-                        setMetadata(k8DaemonSet, item.getMetadata(), clusterId);
+                        setMetadata(k8DaemonSet, item.getMetadata(), apiVersion, clusterId);
 
 //                if (org.apache.commons.lang3.ObjectUtils.isNotEmpty(item.getStatus())) {
 //                    V1DaemonSetStatus v1StatefulSetStatus = item.getStatus();
@@ -788,16 +808,17 @@ public class K8ResourcesSyncService {
     }
 
     private void fetchJobs(String clusterId) throws ApiException {
-        V1JobList v1JobList = this.batchApi.listJobForAllNamespaces().execute();
-        if (ObjectUtils.isEmpty(v1JobList)) {
-            log.warn(String.format("No JOB(s) found for cluster name: %S of cloud type: %s", this.clusterName, this.cloudProviderType));
-        }
         try {
+            V1JobList v1JobList = this.batchApi.listJobForAllNamespaces().execute();
+            if (ObjectUtils.isEmpty(v1JobList)) {
+                log.warn(String.format("No JOB(s) found for cluster name: %S of cloud type: %s", this.clusterName, this.cloudProviderType));
+            }
+            String apiVersion = v1JobList.getApiVersion();
             List<K8Job> k8Jobs = v1JobList.getItems().stream()
                     .filter(item -> item.getMetadata() != null)
                     .map(item -> {
                         K8Job k8Job = K8Job.builder().build();
-                        setMetadata(k8Job, item.getMetadata(), clusterId);
+                        setMetadata(k8Job, item.getMetadata(), apiVersion, clusterId);
                         return k8Job;
                     })
                     .toList();
@@ -810,16 +831,17 @@ public class K8ResourcesSyncService {
 
 
     private void fetchCronJobs(String clusterId) throws ApiException {
-        V1CronJobList v1CronJobList = batchApi.listCronJobForAllNamespaces().execute();
-        if (ObjectUtils.isEmpty(v1CronJobList)) {
-            log.warn(String.format("No CRON JOB(s) found for cluster name: %S of cloud type: %s", this.clusterName, this.cloudProviderType));
-        }
         try {
+            V1CronJobList v1CronJobList = batchApi.listCronJobForAllNamespaces().execute();
+            if (ObjectUtils.isEmpty(v1CronJobList)) {
+                log.warn(String.format("No CRON JOB(s) found for cluster name: %S of cloud type: %s", this.clusterName, this.cloudProviderType));
+            }
+            String apiVersion = v1CronJobList.getApiVersion();
             List<K8CronJob> cronJobs = v1CronJobList.getItems().stream()
                     .filter(item -> item.getMetadata() != null)
                     .map(item -> {
                         K8CronJob cronJob = K8CronJob.builder().build();
-                        setMetadata(cronJob, item.getMetadata(), clusterId);
+                        setMetadata(cronJob, item.getMetadata(), apiVersion, clusterId);
                         return cronJob;
                     })
                     .toList();
@@ -831,16 +853,17 @@ public class K8ResourcesSyncService {
     }
 
     private void fetchIngresses(String clusterId) throws ApiException {
-        V1IngressList v1IngressList = this.networkingApi.listIngressForAllNamespaces().execute();
-        if (ObjectUtils.isEmpty(v1IngressList)) {
-            log.warn(String.format("No INGRESS(s) found for cluster name: %S of cloud type: %s", this.clusterName, this.cloudProviderType));
-        }
         try {
+            V1IngressList v1IngressList = this.networkingApi.listIngressForAllNamespaces().execute();
+            if (ObjectUtils.isEmpty(v1IngressList)) {
+                log.warn(String.format("No INGRESS(s) found for cluster name: %S of cloud type: %s", this.clusterName, this.cloudProviderType));
+            }
+            String apiVersion = v1IngressList.getApiVersion();
             List<K8Ingress> k8Ingresses = v1IngressList.getItems().stream()
                     .filter(item -> item.getMetadata() != null)
                     .map(item -> {
                         K8Ingress k8Ingress = K8Ingress.builder().build();
-                        setMetadata(k8Ingress, item.getMetadata(), clusterId);
+                        setMetadata(k8Ingress, item.getMetadata(), apiVersion, clusterId);
                         return k8Ingress;
                     })
                     .toList();
@@ -857,11 +880,12 @@ public class K8ResourcesSyncService {
             if (ObjectUtils.isEmpty(v1ServiceList)) {
                 log.warn(String.format("No SERVICE(s) found for cluster name: %S of cloud type: %s", this.clusterName, this.cloudProviderType));
             }
+            String apiVersion = v1ServiceList.getApiVersion();
             List<K8Service> k8Services = v1ServiceList.getItems().stream()
                     .filter(item -> item.getMetadata() != null)
                     .map(item -> {
                         K8Service k8Service = K8Service.builder().build();
-                        setMetadata(k8Service, item.getMetadata(), clusterId);
+                        setMetadata(k8Service, item.getMetadata(), apiVersion, clusterId);
                         return k8Service;
                     })
                     .toList();
@@ -873,9 +897,9 @@ public class K8ResourcesSyncService {
     }
 
 
-    private void setMetadata(K8Metadata k8Metadata, V1ObjectMeta metadata, String clusterId) {
+    private void setMetadata(K8Metadata k8Metadata, V1ObjectMeta metadata, String apiVersion, String clusterId) {
         k8Metadata.setKind(k8Metadata.getKind());
-        k8Metadata.setApiVersion(k8Metadata.getApiVersion());
+        k8Metadata.setApiVersion(apiVersion);
         k8Metadata.setSelfLink(metadata.getSelfLink());
         k8Metadata.setResourceVersion(metadata.getResourceVersion());
         k8Metadata.setGeneration(metadata.getGeneration());

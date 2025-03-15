@@ -12,7 +12,7 @@ import java.util.Date;
 @Table(name = "published_resource",
         schema = "azure_test",
         uniqueConstraints = {@UniqueConstraint(name = "uk_published_resource_id_ws_tenant_name",
-                columnNames = {"resourceId", "resourceAccountId", "wsTenantName"})})
+                columnNames = {"resourceId", "resourceType", "resourceAccountId", "wsTenantName"})})
 @Data
 @AllArgsConstructor
 @NoArgsConstructor

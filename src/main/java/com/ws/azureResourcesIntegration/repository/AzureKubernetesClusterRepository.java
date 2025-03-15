@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface AzureKubernetesClusterRepository extends JpaRepository<AzureKubernetesCluster, Long> {
@@ -16,4 +17,6 @@ public interface AzureKubernetesClusterRepository extends JpaRepository<AzureKub
     List<AzureKubernetesClusterDTO> findAllAzureKubernetesClustersUsingWsTenantName(String wsTenantName);
 
     List<AzureKubernetesCluster> findAllByWsTenantNameAndPowerState(String wsTenantName, String powerState);
+
+    Optional<AzureKubernetesCluster> findByName(String name);
 }
