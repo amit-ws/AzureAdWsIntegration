@@ -1,6 +1,7 @@
 package com.ws.azureAdIntegration.service;
 
 import com.microsoft.graph.requests.GraphServiceClient;
+import com.ws.azureAdIntegration.constants.CloudProviderType;
 import com.ws.azureAdIntegration.constants.Constant;
 import com.ws.azureAdIntegration.dto.AzureUserCredentialDTO;
 import com.ws.azureAdIntegration.entity.AzureTenant;
@@ -20,6 +21,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
@@ -213,4 +215,12 @@ public class AzureSyncControlService {
 //        log.info("done");
 //        startOnDemandSync(azureUserCredential);
 //    }
+
+
+    @Async
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void syncK8RolesAndBindings(String clusterId, String url, String token, CloudProviderType cloudProviderType) {
+        k8ResourcesSyncService.executeSync(clusterId, url, token, cloudProviderType);
+    }
+
 }

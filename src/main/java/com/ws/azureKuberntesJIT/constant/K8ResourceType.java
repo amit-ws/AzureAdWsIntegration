@@ -33,10 +33,10 @@ public enum K8ResourceType {
     DAEMON_SET("daemonsets", "apps/v1", "apps", "Represents a DaemonSet in Kubernetes"),
 
     // RBAC API Group (rbac.authorization.k8s.io)
-    ROLE("roles", "rbac.authorization.k8s.io/v1", "rbac.authorization.k8s.io", "Represents a Role in Kubernetes RBAC"),
+    NAMESPACE_ROLE("roles", "rbac.authorization.k8s.io/v1", "rbac.authorization.k8s.io", "Represents a Role in Kubernetes RBAC"),
     CLUSTER_ROLE("clusterroles", "rbac.authorization.k8s.io/v1", "rbac.authorization.k8s.io", "Represents a ClusterRole in Kubernetes RBAC"),
-    ROLEBINDING("rolebindings", "rbac.authorization.k8s.io/v1", "rbac.authorization.k8s.io", "Represents a RoleBinding in Kubernetes RBAC"),
-    CLUSTERROLEBINDING("clusterrolebindings", "rbac.authorization.k8s.io/v1", "rbac.authorization.k8s.io", "Represents a ClusterRoleBinding in Kubernetes RBAC"),
+    ROLE_BINDING("rolebindings", "rbac.authorization.k8s.io/v1", "rbac.authorization.k8s.io", "Represents a RoleBinding in Kubernetes RBAC"),
+    CLUSTER_ROLE_BINDING("clusterrolebindings", "rbac.authorization.k8s.io/v1", "rbac.authorization.k8s.io", "Represents a ClusterRoleBinding in Kubernetes RBAC"),
 
     // Networking API Group (networking.k8s.io)
     INGRESS("ingresses", "networking.k8s.io/v1", "networking.k8s.io", "Represents an Ingress resource in Kubernetes"),

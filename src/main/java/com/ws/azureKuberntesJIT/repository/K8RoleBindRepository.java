@@ -9,4 +9,7 @@ import org.springframework.stereotype.Repository;
 public interface K8RoleBindRepository extends JpaRepository<K8RoleBind, Long> {
     @Modifying
     void deleteAllByWsTenantName(String wsTenantName);
+
+    @Modifying
+    void deleteByUid(String uid);
 }

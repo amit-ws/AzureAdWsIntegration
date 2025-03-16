@@ -90,6 +90,10 @@ public class Constant {
     public static final String KUBERNETES_RESOURCES_DATA_TRUNCATED = "Kubernetes resources related data successfully truncated";
     public static final String KUBERNETES_NAMESPACE_DATA_SYNCED = "Kubernetes namespace data synced for cluster: %s of type: %s";
 
+    public static final String KUBERNETES_CLUSTER_ROLE_AND_BINDING_DATA_SYNC = "K8 Cluster roles and bindings data sync %s for cluster: %s of type: %s at: %s";
+    public static final String KUBERNETES_NAMESPACE_ROLE_AND_BINDING_DATA_SYNC = "K8 Namespace roles and bindings data sync %s for cluster: %s of type: %s at: %s";
+
+
 
     public static final String KUBERNETES_NODE_DATA_SYNCED = "Kubernetes node data synced for cluster: %s of type: %s";
     public static final String KUBERNETES_CUSTOM_RESOURCE_DEFINITION_DATA_SYNCED = "Kubernetes custom resource definitions data synced for cluster: %s of type: %s";
@@ -112,6 +116,4 @@ public class Constant {
     public static final String KUBERNETES_CRON_JOB_DATA_SYNCED = "Kubernetes cron job data synced for cluster: %s of type: %s";
     public static final String KUBERNETES_INGRESS_DATA_SYNCED = "Kubernetes ingress data synced for cluster: %s of type: %s";
     public static final String KUBERNETES_SERVICES_DATA_SYNCED = "Kubernetes service data synced for cluster: %s of type: %s";
-
-
 }

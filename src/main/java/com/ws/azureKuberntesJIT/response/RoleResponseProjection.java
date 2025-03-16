@@ -1,7 +1,8 @@
 package com.ws.azureKuberntesJIT.response;
 
 public interface RoleResponseProjection {
-    String getRoleId();
+    String getRoleUid();
     String getRoleName();
-    String getRoleType();
+    String getRoleLevel();
+    String getRoleKind();
 }

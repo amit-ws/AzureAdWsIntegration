@@ -236,7 +236,7 @@ public class K8TestService {
             for (V1ClusterRole item : clusterRoleList.getItems()) {
                 K8Role k8Role = K8Role.builder()
                         .kind(item.getKind())
-                        .roleType(K8ResourceLevel.CLUSTER)
+                        .roleLevel(K8ResourceLevel.CLUSTER)
                         .build();
 
                 Set<K8RolePolicyRule> rules = new HashSet<>();

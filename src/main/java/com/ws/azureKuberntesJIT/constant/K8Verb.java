@@ -1,8 +1,11 @@
 package com.ws.azureKuberntesJIT.constant;
 
+import lombok.AccessLevel;
 import lombok.Getter;
+import lombok.experimental.FieldDefaults;
 
 @Getter
+@FieldDefaults(level = AccessLevel.PRIVATE)
 public enum K8Verb {
     // Basic CRUD Operations
     CREATE("create"),
@@ -38,7 +41,7 @@ public enum K8Verb {
     SIGN("sign"),
     IMPERSONATE("impersonate");
 
-    private final String verb;
+    final String verb;
 
     K8Verb(String verb) {
         this.verb = verb;

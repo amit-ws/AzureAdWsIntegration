@@ -8,6 +8,7 @@ import com.ws.azureAdIntegration.service.BackendApplicationLogservice;
 import com.ws.azureAdIntegration.util.GenericUtil;
 import com.ws.azureKuberntesJIT.constant.K8ResourceLevel;
 import com.ws.azureKuberntesJIT.constant.K8RoleBindingType;
+import com.ws.azureKuberntesJIT.constant.K8RoleKind;
 import com.ws.azureKuberntesJIT.dto.*;
 import com.ws.azureKuberntesJIT.enttity.*;
 import com.ws.azureKuberntesJIT.repository.*;
@@ -147,6 +148,30 @@ public class K8ResourcesSyncService {
         }
     }
 
+    public void executeSync(String clusterId, String url, String token, CloudProviderType cloudProviderType) {
+        this.cloudProviderType = cloudProviderType;
+        initializeK8Client(url, token);
+        initializeK8RbackApi();
+        log.info("K8 data sync STARTED for cluster ID: {}", clusterId);
+        syncClusterRolesAndBindings(clusterId);
+        syncNamespaceRolesAndBindings(clusterId);
+        log.info("K8 data sync ENDED for cluster ID: {}", clusterId);
+    }
+
+    private void syncClusterRolesAndBindings(String clusterId) {
+        backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, String.format(Constant.KUBERNETES_CLUSTER_ROLE_AND_BINDING_DATA_SYNC, "STARTED", clusterId, cloudProviderType, LocalDateTime.now()), "Info");
+        fetchClusterRoles(clusterId);
+        fetchClusterRoleBinding(clusterId);
+        backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, String.format(Constant.KUBERNETES_CLUSTER_ROLE_AND_BINDING_DATA_SYNC, "ENDED", clusterId, cloudProviderType, LocalDateTime.now()), "Info");
+    }
+
+    private void syncNamespaceRolesAndBindings(String clusterId) {
+        backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, String.format(Constant.KUBERNETES_NAMESPACE_ROLE_AND_BINDING_DATA_SYNC, "STARTED", clusterId, cloudProviderType, LocalDateTime.now()), "Info");
+        fetchNamespaceRoles(clusterId);
+        fetchNamespaceRoleBinding(clusterId);
+        backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, String.format(Constant.KUBERNETES_NAMESPACE_ROLE_AND_BINDING_DATA_SYNC, "ENDED", clusterId, cloudProviderType, LocalDateTime.now()), "Info");
+    }
+
     private void initializeK8Client(String clusterURL, String token) {
         try {
             ApiClient client = Config.fromToken(clusterURL, token);
@@ -167,6 +192,10 @@ public class K8ResourcesSyncService {
         this.networkingApi = new NetworkingV1Api();
         this.rbacApi = new RbacAuthorizationV1Api();
         this.apiextensionsV1Api = new ApiextensionsV1Api();
+    }
+
+    private void initializeK8RbackApi() {
+        this.batchApi = new BatchV1Api();
     }
 
 
@@ -292,7 +321,8 @@ public class K8ResourcesSyncService {
                     .filter(item -> item.getMetadata() != null)
                     .map(item -> {
                         K8Role clusterRole = K8Role.builder()
-                                .roleType(K8ResourceLevel.CLUSTER)
+                                .roleLevel(K8ResourceLevel.CLUSTER)
+                                .roleKind(K8RoleKind.ClusterRole)
                                 .build();
 
                         setMetadata(clusterRole, item.getMetadata(), apiVersion, clusterId);
@@ -373,7 +403,8 @@ public class K8ResourcesSyncService {
 //                        log.info("------------");
                         K8RoleBind clusterRoleBind = K8RoleBind.builder()
                                 .kind(K8RoleBindingType.ClusterRoleBinding.name())
-                                .kubernetesRoleType(K8ResourceLevel.CLUSTER)
+                                .level(K8ResourceLevel.CLUSTER)
+                                .bindingType(K8RoleBindingType.ClusterRoleBinding)
                                 .roleRef(k8RoleReferenceRepository.save(convertToK8RoleReference(item.getRoleRef(), clusterId, item.getMetadata().getUid())))
                                 .build();
 
@@ -435,7 +466,8 @@ public class K8ResourcesSyncService {
                     .filter(item -> item.getMetadata() != null)
                     .map(item -> {
                         K8Role namespaceRole = K8Role.builder()
-                                .roleType(K8ResourceLevel.NAMESPACE)
+                                .roleLevel(K8ResourceLevel.NAMESPACE)
+                                .roleKind(K8RoleKind.Role)
                                 .build();
                         setMetadata(namespaceRole, item.getMetadata(), apiVersion, clusterId);
 
@@ -480,7 +512,8 @@ public class K8ResourcesSyncService {
                     .map(item -> {
                         K8RoleBind namespaceRoleBind = K8RoleBind.builder()
                                 .kind(K8RoleBindingType.RoleBinding.name())
-                                .kubernetesRoleType(K8ResourceLevel.NAMESPACE)
+                                .level(K8ResourceLevel.NAMESPACE)
+                                .bindingType(K8RoleBindingType.RoleBinding)
                                 .roleRef(k8RoleReferenceRepository.save(convertToK8RoleReference(item.getRoleRef(), clusterId, item.getMetadata().getUid())))
                                 .build();
                         setMetadata(namespaceRoleBind, item.getMetadata(), apiVersion, clusterId);
@@ -562,7 +595,7 @@ public class K8ResourcesSyncService {
                         K8ServiceAccount k8ServiceAccount = K8ServiceAccount.builder()
                                 .automountServiceAccountToken(item.getAutomountServiceAccountToken())
                                 .build();
-                        setMetadata(k8ServiceAccount, item.getMetadata(), apiVersion,  clusterId);
+                        setMetadata(k8ServiceAccount, item.getMetadata(), apiVersion, clusterId);
                         return k8ServiceAccount;
                     })
                     .toList();
@@ -585,7 +618,7 @@ public class K8ResourcesSyncService {
                     .filter(item -> item.getMetadata() != null)
                     .map(item -> {
                         K8PersistentVolume k8PersistentVolume = K8PersistentVolume.builder().build();
-                        setMetadata(k8PersistentVolume, item.getMetadata(), apiVersion,  clusterId);
+                        setMetadata(k8PersistentVolume, item.getMetadata(), apiVersion, clusterId);
                         return k8PersistentVolume;
                     })
                     .toList();
@@ -609,7 +642,7 @@ public class K8ResourcesSyncService {
                     .filter(item -> item.getMetadata() != null)
                     .map(item -> {
                         K8PersistentVolumeClaim k8PersistentVolumeClaim = K8PersistentVolumeClaim.builder().build();
-                        setMetadata(k8PersistentVolumeClaim, item.getMetadata(), apiVersion,  clusterId);
+                        setMetadata(k8PersistentVolumeClaim, item.getMetadata(), apiVersion, clusterId);
                         return k8PersistentVolumeClaim;
                     })
                     .toList();
@@ -639,7 +672,7 @@ public class K8ResourcesSyncService {
                                 .build();
 
                         if (!ObjectUtils.isEmpty(item.getMetadata())) {
-                            setMetadata(k8StorageClass, item.getMetadata(), apiVersion,  clusterId);
+                            setMetadata(k8StorageClass, item.getMetadata(), apiVersion, clusterId);
                         }
                         return k8StorageClass;
                     })
@@ -666,7 +699,7 @@ public class K8ResourcesSyncService {
                         K8ConfigMap k8ConfigMap = K8ConfigMap.builder()
                                 .immutable(item.getImmutable())
                                 .build();
-                        setMetadata(k8ConfigMap, item.getMetadata(), apiVersion,  clusterId);
+                        setMetadata(k8ConfigMap, item.getMetadata(), apiVersion, clusterId);
                         return k8ConfigMap;
                     })
                     .toList();
@@ -690,7 +723,7 @@ public class K8ResourcesSyncService {
                     .filter(item -> item.getMetadata() != null)
                     .map(item -> {
                         K8NetworkPolicy k8NetworkPolicy = K8NetworkPolicy.builder().build();
-                        setMetadata(k8NetworkPolicy, item.getMetadata(), apiVersion,  clusterId);
+                        setMetadata(k8NetworkPolicy, item.getMetadata(), apiVersion, clusterId);
                         return k8NetworkPolicy;
                     })
                     .toList();
@@ -746,7 +779,7 @@ public class K8ResourcesSyncService {
                     .filter(item -> item.getMetadata() != null)
                     .map(item -> {
                         K8StatefulSet k8StatefulSet = K8StatefulSet.builder().build();
-                        setMetadata(k8StatefulSet, item.getMetadata(), apiVersion,  clusterId);
+                        setMetadata(k8StatefulSet, item.getMetadata(), apiVersion, clusterId);
 //                if (org.apache.commons.lang3.ObjectUtils.isNotEmpty(item.getStatus())) {
 //                    V1StatefulSetStatus v1StatefulSetStatus = item.getStatus();
 //                    k8StatefulSet.setCurrentReplicas(v1StatefulSetStatus.getCurrentReplicas());

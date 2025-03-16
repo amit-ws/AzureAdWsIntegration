@@ -19,4 +19,6 @@ public interface AzureKubernetesClusterRepository extends JpaRepository<AzureKub
     List<AzureKubernetesCluster> findAllByWsTenantNameAndPowerState(String wsTenantName, String powerState);
 
     Optional<AzureKubernetesCluster> findByName(String name);
+
+    Optional<AzureKubernetesCluster> findByAzureId(String clusterId);
 }

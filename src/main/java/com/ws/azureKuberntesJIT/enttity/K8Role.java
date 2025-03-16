@@ -2,12 +2,11 @@ package com.ws.azureKuberntesJIT.enttity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.ws.azureKuberntesJIT.constant.K8ResourceLevel;
+import com.ws.azureKuberntesJIT.constant.K8RoleKind;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
-import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 
 @EqualsAndHashCode(callSuper = true, exclude = {"k8RolePolicyRules"})
@@ -23,7 +22,9 @@ public class K8Role extends K8Metadata {
     Long id;
 
     @Enumerated(EnumType.STRING)
-    K8ResourceLevel roleType;
+    K8ResourceLevel roleLevel;
+    @Enumerated(EnumType.STRING)
+    K8RoleKind roleKind;
 
     @JsonIgnore
     @OneToMany(mappedBy = "kubernetesRole", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)

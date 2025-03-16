@@ -2,6 +2,7 @@ package com.ws.azureKuberntesJIT.enttity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.ws.azureKuberntesJIT.constant.K8ResourceLevel;
+import com.ws.azureKuberntesJIT.constant.K8RoleBindingType;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -33,5 +34,9 @@ public class K8RoleBind extends K8Metadata {
 
     @Column(nullable = false)
     @Enumerated(EnumType.STRING)
-    K8ResourceLevel kubernetesRoleType;
+    K8ResourceLevel level;
+
+    @Column(nullable = false)
+    @Enumerated(EnumType.STRING)
+    K8RoleBindingType bindingType;
 }

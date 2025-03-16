@@ -14,20 +14,20 @@ import java.util.List;
 
 @Repository
 public interface K8RoleRepository extends JpaRepository<K8Role, Long> {
-    @Query("SELECT new com.ws.azureKuberntesJIT.response.K8RoleResponse(kr.id, kr.uid, kr.name, kr.namespace, kr.roleType, kr.clusterId, kr.cloudProviderType, " +
+    @Query("SELECT new com.ws.azureKuberntesJIT.response.K8RoleResponse(kr.id, kr.uid, kr.name, kr.namespace, kr.roleLevel, kr.clusterId, kr.cloudProviderType, " +
             "kr.cloudResourceAccountId, CASE WHEN pr.resourceId IS NULL THEN FALSE ELSE TRUE END) " +
             "FROM K8Role kr " +
             "LEFT JOIN PublishedResource pr ON kr.uid = pr.resourceId " +
-            "WHERE kr.wsTenantName = :wsTenantName AND kr.cloudProviderType = :cloudProviderType AND (:roleType IS NULL OR kr.roleType = :roleType) " +
+            "WHERE kr.wsTenantName = :wsTenantName AND kr.cloudProviderType = :cloudProviderType AND (:roleType IS NULL OR kr.roleLevel = :roleType) " +
             "ORDER BY kr.name")
     List<K8RoleResponse> findAllRolesUsingWsTenantNameAndCloudTypeAndRoleType(String wsTenantName, CloudProviderType cloudProviderType, K8ResourceLevel roleType);
 
 
-    @Query("SELECT new com.ws.azureKuberntesJIT.response.K8RoleResponse(kr.id, kr.uid, kr.name, kr.namespace, kr.roleType, kr.clusterId, kr.cloudProviderType, " +
+    @Query("SELECT new com.ws.azureKuberntesJIT.response.K8RoleResponse(kr.id, kr.uid, kr.name, kr.namespace, kr.roleLevel, kr.clusterId, kr.cloudProviderType, " +
             "kr.cloudResourceAccountId, CASE WHEN pr.resourceId IS NULL THEN FALSE ELSE TRUE END) " +
             "FROM K8Role kr " +
             "LEFT JOIN PublishedResource pr ON kr.uid = pr.resourceId " +
-            "WHERE kr.wsTenantName = :wsTenantName AND kr.clusterId = :clusterId AND kr.cloudProviderType = :cloudProviderType AND (:roleType IS NULL OR kr.roleType = :roleType) " +
+            "WHERE kr.wsTenantName = :wsTenantName AND kr.clusterId = :clusterId AND kr.cloudProviderType = :cloudProviderType AND (:roleType IS NULL OR kr.roleLevel = :roleType) " +
             "ORDER BY kr.name")
     List<K8RoleResponse> findAllRolesUsingWsTenantNameAndCloudTypeAndRoleTypeAndClusterId(String wsTenantName, String clusterId, CloudProviderType cloudProviderType, K8ResourceLevel roleType);
 
@@ -42,6 +42,24 @@ public interface K8RoleRepository extends JpaRepository<K8Role, Long> {
 
     @Modifying
     void deleteAllByWsTenantName(String wsTenantName);
+
+
+    @Query(value =
+            "SELECT kr.uid as roleUid, kr.\"name\" as roleName, kr.role_level as roleLevel, kr.role_kind as roleKind " +
+                    "FROM kubernetes_role kr  " +
+                    "INNER JOIN kubernetes_policy_rule kpr ON kr.uid = kpr.roleuid  " +
+                    "INNER JOIN kubernetes_policy_rule_resource_names kprrn ON kpr.id = kprrn.policy_rule_id  " +
+                    "INNER JOIN published_resource pr ON pr.resource_id = kr.uid  " +
+                    "WHERE kr.ws_tenant_name = :wsTenantName AND kr.cloud_resource_account_id = :resourceAccountId AND kr.cluster_id = :clusterId " +
+                    "AND kr.cloud_provider_type = :cloudType AND kprrn.resource_name = :resourceName AND pr.resource_type = :publishResourceType",
+            nativeQuery = true)
+    List<RoleResponseProjection> suggestRoles(String wsTenantName, String cloudType, String resourceAccountId, String clusterId, String resourceName, String publishResourceType);
+
+    @Modifying
+    void deleteByUid(String uid);
+
+    @Modifying
+    void deleteByNamespaceAndName(String namespace, String roleName);
 
 //    @Query(value = "SELECT   " +
 //            "    kr.id, kr.uid, kr.\"name\", kr.\"namespace\", kr.cloud_provider_type AS CloudType, kr.cluster_id AS ClusterId,   " +

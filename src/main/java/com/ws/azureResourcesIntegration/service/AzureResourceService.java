@@ -664,7 +664,7 @@ public class AzureResourceService {
 
     private void processRequest(CustomRoleAssignment customRoleAssignment, RequestStatus updatedStatus, RequestStatus currentStatus) {
         // Validate the state transition
-        if (!StateChangeConstants.CUSTOM_ROLE_ASSIGNMENT_VALID_STATE_TRANSITIONS.getOrDefault(currentStatus, Set.of()).contains(updatedStatus)) {
+        if (!StateChangeConstants.VALID_STATE_TRANSITIONS.getOrDefault(currentStatus, Set.of()).contains(updatedStatus)) {
             throw new IllegalStateException(String.format("Invalid state transition from %s to %s for resource %s for the user %s",
                     currentStatus, updatedStatus, GenericUtil.determineScopeType(customRoleAssignment.getScope()), customRoleAssignment.getUserEmail()));
         }

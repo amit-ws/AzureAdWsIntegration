@@ -10,7 +10,8 @@ import lombok.NoArgsConstructor;
 @Data
 @Builder
 public class RoleResponse {
-    String roleId;
+    String roleUid;
     String roleName;
-    String roleType;
+    String roleLevel;
+    String roleKind;
 }
