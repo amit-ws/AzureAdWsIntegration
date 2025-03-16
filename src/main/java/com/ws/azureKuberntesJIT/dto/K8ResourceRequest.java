@@ -20,7 +20,8 @@ public class K8ResourceRequest {
     String clusterId;
     @NotNull(message = "Cloud type is required")
     CloudProviderType cloudProviderType;
-    @NotNull(message = "Kubernetes resource type is required")
+//    @NotNull(message = "Kubernetes resource type is required")
     K8ResourceType type;
+    String resourceAccountId;
     String namespace;
 }

@@ -1,5 +1,6 @@
 package com.ws.azureKuberntesJIT.repository;
 
+import com.ws.azureAdIntegration.constants.CloudProviderType;
 import com.ws.azureKuberntesJIT.enttity.K8CustomResourceRequest;
 import com.ws.azureKuberntesJIT.enttity.K8ResourceRequest;
 import com.ws.azureResourcesIntegration.constant.RequestStatus;
@@ -13,6 +14,9 @@ import java.util.UUID;
 @Repository
 public interface K8CustomResourceRequestRepository extends JpaRepository<K8CustomResourceRequest, UUID> {
     List<K8CustomResourceRequest> findAllByStatus(RequestStatus status);
+
+    List<K8CustomResourceRequest> findAllByWsTenantNameAndCloudTypeAndCloudResourceAccountId(String wsTenantName, CloudProviderType cloudType,
+                                                                                             String cloudAccountId);
 
 
 }

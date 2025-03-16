@@ -30,13 +30,16 @@ import io.kubernetes.client.openapi.Configuration;
 import io.kubernetes.client.openapi.apis.*;
 import io.kubernetes.client.openapi.models.*;
 import io.kubernetes.client.util.Config;
+import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
+import org.springframework.web.bind.annotation.RequestBody;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -114,6 +117,9 @@ public class K8ResourceService {
         String clusterId = request.getClusterId().trim();
         CloudProviderType cloudProviderType = request.getCloudProviderType();
         K8ResourceType type = request.getType();
+        if (ObjectUtils.isEmpty(type)) {
+            throw new K8ResourceException("Kubernetes resource type is required");
+        }
         return switch (resourceLevel) {
             case CLUSTER -> getClusterLevelK8Resources(wsTenantName, clusterId, cloudProviderType, type);
             case NAMESPACE -> {
@@ -265,14 +271,14 @@ public class K8ResourceService {
     /*------------------------------------------------------------------------------------------*/
     /*------------------------------------------------------------------------------------------*/
 
-    public List<RoleResponse> suggestRoles(String wsTenantName, CloudProviderType cloudType, String resourceAccountId, String clusterId, String resourceName, String namespace) {
+    public List<RoleResponse> suggestRoles(com.ws.azureKuberntesJIT.dto.K8ResourceRequest request, String resourceName) {
         String publishResourceType;
-        if (StringUtils.isEmpty(namespace)) {
+        if (StringUtils.isEmpty(request.getNamespace())) {
             publishResourceType = PublishResourceType.CLUSTER_ROLE.name();
         } else {
             publishResourceType = PublishResourceType.NAMESPACE.name();
         }
-        List<RoleResponseProjection> projections = k8RoleRepository.suggestRoles(wsTenantName, cloudType.name(), resourceAccountId, clusterId, resourceName, publishResourceType);
+        List<RoleResponseProjection> projections = k8RoleRepository.suggestRoles(request.getWsTenantName(), request.getCloudProviderType().name(), request.getResourceAccountId(), request.getClusterId(), resourceName, publishResourceType);
         if (projections.isEmpty()) {
             return Collections.emptyList();
         }
@@ -350,9 +356,15 @@ public class K8ResourceService {
     }
 
 
+//    public List<K8CustomResourceRequest> findAllRequests(com.ws.azureKuberntesJIT.dto.K8ResourceRequest request) {
+//        return k8CustomResourceRequestRepository.findAllByWsTenantNameAndCloudTypeAndCloudResourceAccountId(request.getWsTenantName().trim(), request.getCloudProviderType(), request.getResourceAccountId());
+//    }
+
+
     @Transactional
     public Boolean processResourceRequest(String requestUUID, RequestStatus updatedStatus) {
-        K8CustomResourceRequest foundRequest = k8CustomResourceRequestRepository.findById(UUID.fromString(requestUUID)).orElseThrow(() -> new K8ResourceException("No resource request found with provided ID: " + requestUUID));
+        K8CustomResourceRequest foundRequest = k8CustomResourceRequestRepository.findById(UUID.fromString(requestUUID))
+                .orElseThrow(() -> new K8ResourceException("No resource request found with provided ID: " + requestUUID));
         RequestStatus currentStatus = foundRequest.getStatus();
         processRequest(foundRequest, updatedStatus, currentStatus);
         return Boolean.TRUE;
@@ -708,7 +720,7 @@ public class K8ResourceService {
     }
 
 
-    private void deleteClusterRoleBinding(String name) {
+    public void deleteClusterRoleBindingUsingName(String name) {
         try {
             this.rbacApi.deleteClusterRoleBinding(name).execute();
         } catch (Exception exp) {
@@ -716,7 +728,7 @@ public class K8ResourceService {
         }
     }
 
-    private void deleteNamespaceRoleBinding(String namespace, String name) {
+    public void deleteNamespaceRoleBindingUsingName(String namespace, String name) {
         try {
             this.rbacApi.deleteNamespacedRoleBinding(name, namespace).execute();
         } catch (Exception exp) {

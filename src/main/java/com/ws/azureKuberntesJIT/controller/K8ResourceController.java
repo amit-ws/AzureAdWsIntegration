@@ -7,9 +7,12 @@ import com.ws.azureKuberntesJIT.constant.K8ResourceLevel;
 import com.ws.azureKuberntesJIT.constant.K8ResourceType;
 import com.ws.azureKuberntesJIT.dto.K8ResourceRequest;
 import com.ws.azureKuberntesJIT.dto.K8RolePolicyRuleDTO;
+import com.ws.azureKuberntesJIT.models.K8ResourceRaiseRequest;
 import com.ws.azureKuberntesJIT.models.RaiseRequest;
 import com.ws.azureKuberntesJIT.response.K8RoleResponse;
+import com.ws.azureKuberntesJIT.response.RoleResponse;
 import com.ws.azureKuberntesJIT.service.K8ResourceService;
+import com.ws.azureResourcesIntegration.constant.RequestStatus;
 import com.ws.azureResourcesIntegration.dto.PublishResourceRequest;
 import com.ws.azureResourcesIntegration.service.PublishResourceService;
 import jakarta.validation.Valid;
@@ -143,4 +146,27 @@ public class K8ResourceController {
         k8ResourceService.test();
         return ResponseEntity.ok().build();
     }
+
+
+    //-------------------------------------------------------------//
+
+    @PostMapping("/v1/suggestRoles/{name}")
+    public ResponseEntity<List<RoleResponse>> suggestRolesHandler(@PathVariable("name") String resourceName,
+                                                                  @Valid @RequestBody K8ResourceRequest request) {
+        return ResponseEntity.ok(k8ResourceService.suggestRoles(request, resourceName.trim()));
+    }
+
+    @PostMapping("/v1/requests/raise")
+    public ResponseEntity<Boolean> raiseResourceRequestHandler(@Valid @RequestBody K8ResourceRaiseRequest request) {
+        return ResponseEntity.ok(k8ResourceService.raiseResourceRequest(request));
+    }
+
+
+    @PostMapping("/v1/requests/process")
+    public ResponseEntity<Boolean> processResourceRequestHandler(@RequestParam("uuid") String requestUUID,
+                                                                 @RequestParam("status") RequestStatus updatedStatus) {
+        return ResponseEntity.ok(k8ResourceService.processResourceRequest(requestUUID.trim(), updatedStatus));
+    }
+
+
 }

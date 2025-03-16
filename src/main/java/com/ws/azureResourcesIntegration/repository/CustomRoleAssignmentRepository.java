@@ -17,6 +17,7 @@ import java.util.Set;
 @Repository
 public interface CustomRoleAssignmentRepository extends JpaRepository<CustomRoleAssignment, Integer> {
     Optional<CustomRoleAssignment> findByAssigneeAndScopeAndAzureRoleDefinitionPathIdAndStatusNot(String assignee, String scope, String roleDefPathId, RequestStatus status);
+
     Optional<CustomRoleAssignment> findByAssigneeAndScopeAndAzureRoleDefinitionPathIdAndStatusNotIn(String assignee, String scope, String roleDefPathId, List<RequestStatus> status);
 
     //    List<CustomRoleAssignment> findAllByWsTenantNameAndStatusOrderByCreatedOnDesc(String wsTenantName, RequestStatus status);
@@ -47,13 +48,14 @@ public interface CustomRoleAssignmentRepository extends JpaRepository<CustomRole
             "LEFT JOIN azure_user au ON  cara.assignee = au.azure_id  " +
             "WHERE cara.ws_tenant_name = :wsTenantName AND (:status IS NULL OR cara.status = :status) AND (:assignee IS NULL OR cara.assignee = :assignee) " +
             "GROUP BY cara.ws_tenant_name , cara.user_email , cara.assignee , cara.\"scope\" , cara.requested_at , au.display_name , cara.status, cara.valid_from , cara.valid_to , cara.expiry_time_amount " +
-            "ORDER BY cara.requested_at DESC", nativeQuery = true)
+            "ORDER BY cara.requested_at DESC"
+            , nativeQuery = true)
     List<CustomRoleAssignmentProjection> filterAllByWsTenantNameAndParams(@Param("wsTenantName") String wsTenantName, @Param("status") String status, String assignee);
 
     @Modifying
     void deleteAllByWsTenantName(String wsTenantMame);
 
-    List<CustomRoleAssignment> findAllByAssigneeAndScope(String assignee, String  scope);
+    List<CustomRoleAssignment> findAllByAssigneeAndScope(String assignee, String scope);
 
     List<CustomRoleAssignment> findAllByAssigneeAndScopeAndAzureRoleDefinitionPathIdInAndStatusInAndWsTenantName(String assignee, String scope, Set<String> roleDefPathIds, List<RequestStatus> status, String wsTenantName);
 
