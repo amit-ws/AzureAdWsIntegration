@@ -14,7 +14,7 @@ import java.util.UUID;
 public interface K8CustomResourceRequestRepository extends JpaRepository<K8CustomResourceRequest, UUID> {
     List<K8CustomResourceRequest> findAllByStatus(RequestStatus status);
 
-    @Query(value = "SELECT kcrr " +
+    @Query(value = "SELECT kcrr.* " +
             "FROM kubernetes_custom_resource_request kcrr " +
             "WHERE kcrr.ws_tenant_name = :wsTenantName AND kcrr.cloud_resource_account_id = :cloudId AND kcrr.cluster_id = :clusterId AND kcrr.role_id = :roleId " +
             "AND kcrr.cloud_type = :cloudType AND (:namespace IS NULL OR kcrr.\"namespace\" = :namespace) AND kcrr.user_name = :userName " +

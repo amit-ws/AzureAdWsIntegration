@@ -219,8 +219,9 @@ public class AzureSyncControlService {
 
     @Async
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void syncK8RolesAndBindings(String clusterId, String url, String token, CloudProviderType cloudProviderType) {
-        k8ResourcesSyncService.executeSync(clusterId, url, token, cloudProviderType);
+    public void syncK8RolesAndBindings(String clusterId, String clusterName, String url, String token, CloudProviderType cloudProviderType) {
+        log.info("Async process started.......");
+        k8ResourcesSyncService.executeSync(clusterId, clusterName, url, token, cloudProviderType);
     }
 
 }

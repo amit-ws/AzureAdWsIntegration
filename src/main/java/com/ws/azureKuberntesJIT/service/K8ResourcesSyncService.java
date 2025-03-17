@@ -148,8 +148,11 @@ public class K8ResourcesSyncService {
         }
     }
 
-    public void executeSync(String clusterId, String url, String token, CloudProviderType cloudProviderType) {
+    public void executeSync(String clusterId, String clusterName, String url, String token, CloudProviderType cloudProviderType) {
         this.cloudProviderType = cloudProviderType;
+        this.clusterName = clusterName;
+        log.info("url: {}", url);
+        log.info("token: {}", token);
         initializeK8Client(url, token);
         initializeK8RbackApi();
         log.info("K8 data sync STARTED for cluster ID: {}", clusterId);
@@ -159,17 +162,17 @@ public class K8ResourcesSyncService {
     }
 
     private void syncClusterRolesAndBindings(String clusterId) {
-        backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, String.format(Constant.KUBERNETES_CLUSTER_ROLE_AND_BINDING_DATA_SYNC, "STARTED", clusterId, cloudProviderType, LocalDateTime.now()), "Info");
+        backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, String.format(Constant.KUBERNETES_CLUSTER_ROLE_AND_BINDING_DATA_SYNC, "STARTED", this.clusterName, cloudProviderType, LocalDateTime.now()), "Info");
         fetchClusterRoles(clusterId);
         fetchClusterRoleBinding(clusterId);
-        backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, String.format(Constant.KUBERNETES_CLUSTER_ROLE_AND_BINDING_DATA_SYNC, "ENDED", clusterId, cloudProviderType, LocalDateTime.now()), "Info");
+        backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, String.format(Constant.KUBERNETES_CLUSTER_ROLE_AND_BINDING_DATA_SYNC, "ENDED", this.clusterName, cloudProviderType, LocalDateTime.now()), "Info");
     }
 
     private void syncNamespaceRolesAndBindings(String clusterId) {
-        backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, String.format(Constant.KUBERNETES_NAMESPACE_ROLE_AND_BINDING_DATA_SYNC, "STARTED", clusterId, cloudProviderType, LocalDateTime.now()), "Info");
+        backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, String.format(Constant.KUBERNETES_NAMESPACE_ROLE_AND_BINDING_DATA_SYNC, "STARTED", this.clusterName, cloudProviderType, LocalDateTime.now()), "Info");
         fetchNamespaceRoles(clusterId);
         fetchNamespaceRoleBinding(clusterId);
-        backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, String.format(Constant.KUBERNETES_NAMESPACE_ROLE_AND_BINDING_DATA_SYNC, "ENDED", clusterId, cloudProviderType, LocalDateTime.now()), "Info");
+        backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, String.format(Constant.KUBERNETES_NAMESPACE_ROLE_AND_BINDING_DATA_SYNC, "ENDED", this.clusterName, cloudProviderType, LocalDateTime.now()), "Info");
     }
 
     private void initializeK8Client(String clusterURL, String token) {
@@ -195,7 +198,7 @@ public class K8ResourcesSyncService {
     }
 
     private void initializeK8RbackApi() {
-        this.batchApi = new BatchV1Api();
+        this.rbacApi = new RbacAuthorizationV1Api();
     }
 
 

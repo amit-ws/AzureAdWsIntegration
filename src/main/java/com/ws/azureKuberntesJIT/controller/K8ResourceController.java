@@ -183,5 +183,4 @@ public class K8ResourceController {
         return ResponseEntity.ok(k8ResourceService.processResourceRequest(requestUUID.trim(), updatedStatus));
     }
 
-
 }

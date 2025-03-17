@@ -32,10 +32,10 @@ public interface K8RoleRepository extends JpaRepository<K8Role, Long> {
     List<K8RoleResponse> findAllRolesUsingWsTenantNameAndCloudTypeAndRoleTypeAndClusterId(String wsTenantName, String clusterId, CloudProviderType cloudProviderType, K8ResourceLevel roleType);
 
 
-    @Query(value = "select \n" +
-            "distinct kr.uid as roleId , kr.\"name\" as roleName , kr.role_type as roleType \n" +
-            "from kubernetes_role kr inner join kubernetes_policy_rule kpr on kr.uid = kpr.roleuid \n" +
-            "inner join kubernetes_policy_rule_resources kprr on kpr.id = kprr.policy_rule_id  where kr.ws_tenant_name = :wsTenantName and kr.cluster_id = :clusterId \n" +
+    @Query(value = "select " +
+            "distinct kr.uid as roleId , kr.\"name\" as roleName , kr.role_type as roleType " +
+            "from kubernetes_role kr inner join kubernetes_policy_rule kpr on kr.uid = kpr.roleuid " +
+            "inner join kubernetes_policy_rule_resources kprr on kpr.id = kprr.policy_rule_id  where kr.ws_tenant_name = :wsTenantName and kr.cluster_id = :clusterId " +
             "and kr.cloud_resource_account_id = :resourceId and kprr.resource = :resourceType and kr.cloud_provider_type = :cloudType order by kr.\"name\""
             , nativeQuery = true)
     List<RoleResponseProjection> findApplicableRoles(String wsTenantName, String resourceType, String resourceId, String clusterId, String cloudType);
@@ -51,15 +51,17 @@ public interface K8RoleRepository extends JpaRepository<K8Role, Long> {
                     "INNER JOIN kubernetes_policy_rule_resource_names kprrn ON kpr.id = kprrn.policy_rule_id  " +
                     "INNER JOIN published_resource pr ON pr.resource_id = kr.uid  " +
                     "WHERE kr.ws_tenant_name = :wsTenantName AND kr.cloud_resource_account_id = :resourceAccountId AND kr.cluster_id = :clusterId " +
-                    "AND kr.cloud_provider_type = :cloudType AND kprrn.resource_name = :resourceName AND pr.resource_type = :publishResourceType",
+                    "AND kr.cloud_provider_type = :cloudType AND kprrn.resource_name = :resourceName AND pr.resource_type = :publishResourceType " +
+                    "AND (:namespace IS NULL OR kr.\"namespace\" = :namespace) " +
+                    "ORDER BY kr.\"name\"",
             nativeQuery = true)
-    List<RoleResponseProjection> suggestRoles(String wsTenantName, String cloudType, String resourceAccountId, String clusterId, String resourceName, String publishResourceType);
+    List<RoleResponseProjection> suggestRoles(String wsTenantName, String cloudType, String resourceAccountId, String clusterId, String namespace,
+                                              String resourceName, String publishResourceType);
 
     @Modifying
     void deleteByUid(String uid);
 
-    @Modifying
-    void deleteByNamespaceAndName(String namespace, String roleName);
+
 
 //    @Query(value = "SELECT   " +
 //            "    kr.id, kr.uid, kr.\"name\", kr.\"namespace\", kr.cloud_provider_type AS CloudType, kr.cluster_id AS ClusterId,   " +
