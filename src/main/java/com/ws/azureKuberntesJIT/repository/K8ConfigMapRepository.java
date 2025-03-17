@@ -35,9 +35,9 @@ public interface K8ConfigMapRepository extends JpaRepository<K8ConfigMap, Long> 
     @Query("SELECT new com.ws.azureKuberntesJIT.models.K8ConfigMapDTO(kcm.id, kcm.uid, kcm.name, kcm.clusterId, kcm.cloudResourceAccountId, kcm.wsTenantName, kcm.cloudProviderType, CASE WHEN pr.resourceId IS NULL THEN FALSE ELSE TRUE END) " +
             "FROM K8ConfigMap kcm " +
             "INNER JOIN PublishedResource pr ON kcm.uid = pr.resourceId " +
-            "WHERE pr.wsTenantName = :wsTenantName " +
+            "WHERE pr.wsTenantName = :wsTenantName AND kcm.clusterId = :clusterId " +
             "ORDER BY kcm.name")
-    List<K8ConfigMapDTO> findAllPublishedK8ConfigMapsByWsTenantName(String wsTenantName);
+    List<K8ConfigMapDTO> findAllPublishedK8ConfigMapsByWsTenantName(String wsTenantName, String clusterId);
 
 
 }

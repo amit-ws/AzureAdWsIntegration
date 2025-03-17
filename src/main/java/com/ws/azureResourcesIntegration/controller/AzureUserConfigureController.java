@@ -37,9 +37,16 @@ public class AzureUserConfigureController {
                 .body(azureUserConfigureService.configureAzureUser(request));
     }
 
+    @PatchMapping("v1/update")
+    public ResponseEntity<AzureUserConfigure> updateAzureUserUpnHandler(@RequestParam("id") Integer id, @RequestParam("upn") String azureUserUpn) {
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(azureUserConfigureService.updateAzureUserUpn(id, azureUserUpn.trim()));
+    }
+
 
     @GetMapping("/get")
-    public ResponseEntity dataGet(@RequestParam String  id, @RequestParam String  tenantName){
+    public ResponseEntity dataGet(@RequestParam String id, @RequestParam String tenantName) {
         return ResponseEntity
                 .status(HttpStatus.OK)
                 .body(azureUserConfigureService.findUser(id.trim(), tenantName.trim()));

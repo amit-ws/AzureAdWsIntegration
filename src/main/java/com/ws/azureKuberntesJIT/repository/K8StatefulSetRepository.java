@@ -31,9 +31,9 @@ public interface K8StatefulSetRepository extends JpaRepository<K8StatefulSet, Lo
     @Query("SELECT new com.ws.azureKuberntesJIT.models.K8StatefulSetDTO(kss.id, kss.uid, kss.name, kss.clusterId, kss.cloudResourceAccountId, kss.wsTenantName, kss.cloudProviderType, CASE WHEN pr.resourceId IS NULL THEN FALSE ELSE TRUE END) " +
             "FROM K8StatefulSet kss " +
             "INNER JOIN PublishedResource pr ON kss.uid = pr.resourceId " +
-            "WHERE pr.wsTenantName = :wsTenantName " +
+            "WHERE pr.wsTenantName = :wsTenantName AND kss.clusterId = :clusterId " +
             "ORDER BY kss.name")
-    List<K8StatefulSetDTO> findAllPublishedK8StatefulSetsByWsTenantName(String wsTenantName);
+    List<K8StatefulSetDTO> findAllPublishedK8StatefulSetsByWsTenantName(String wsTenantName, String clusterId);
 
 
 }

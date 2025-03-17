@@ -33,9 +33,9 @@ public interface K8ReplicaSetRepository extends JpaRepository<K8ReplicaSet, Long
     @Query("SELECT new com.ws.azureKuberntesJIT.models.K8ReplicaSetDTO(krs.id, krs.uid, krs.name, krs.clusterId, krs.cloudResourceAccountId, krs.wsTenantName, krs.cloudProviderType, CASE WHEN pr.resourceId IS NULL THEN FALSE ELSE TRUE END) " +
             "FROM K8ReplicaSet krs " +
             "INNER JOIN PublishedResource pr ON krs.uid = pr.resourceId " +
-            "WHERE pr.wsTenantName = :wsTenantName " +
+            "WHERE pr.wsTenantName = :wsTenantName AND krs.clusterId = :clusterId " +
             "ORDER BY krs.name")
-    List<K8ReplicaSetDTO> findAllPublishedK8ReplicaSetsByWsTenantName(String wsTenantName);
+    List<K8ReplicaSetDTO> findAllPublishedK8ReplicaSetsByWsTenantName(String wsTenantName, String clusterId);
 
 
 }

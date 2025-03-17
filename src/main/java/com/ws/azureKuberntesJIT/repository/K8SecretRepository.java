@@ -36,8 +36,8 @@ public interface K8SecretRepository extends JpaRepository<K8Secret, Long> {
     @Query("SELECT new com.ws.azureKuberntesJIT.models.K8SecretDTO(ks.id, ks.uid, ks.name, ks.clusterId, ks.cloudResourceAccountId, ks.wsTenantName, ks.cloudProviderType, CASE WHEN pr.resourceId IS NULL THEN FALSE ELSE TRUE END) " +
             "FROM K8Secret ks " +
             "INNER JOIN PublishedResource pr ON ks.uid = pr.resourceId " +
-            "WHERE pr.wsTenantName = :wsTenantName " +
+            "WHERE pr.wsTenantName = :wsTenantName AND ks.clusterId = :clusterId " +
             "ORDER BY ks.name")
-    List<K8SecretDTO> findAllPublishedK8SecretsByWsTenantName(String wsTenantName);
+    List<K8SecretDTO> findAllPublishedK8SecretsByWsTenantName(String wsTenantName, String clusterId);
 
 }

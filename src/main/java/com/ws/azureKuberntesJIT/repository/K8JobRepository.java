@@ -33,9 +33,9 @@ public interface K8JobRepository extends JpaRepository<K8Job, Long> {
     @Query("SELECT new com.ws.azureKuberntesJIT.models.K8JobDTO(kj.id, kj.uid, kj.name, kj.clusterId, kj.cloudResourceAccountId, kj.wsTenantName, kj.cloudProviderType, CASE WHEN pr.resourceId IS NULL THEN FALSE ELSE TRUE END) " +
             "FROM K8Job kj " +
             "INNER JOIN PublishedResource pr ON kj.uid = pr.resourceId " +
-            "WHERE pr.wsTenantName = :wsTenantName " +
+            "WHERE pr.wsTenantName = :wsTenantName AND kj.clusterId = :clusterId " +
             "ORDER BY kj.name")
-    List<K8JobDTO> findAllPublishedK8JobsByWsTenantName(String wsTenantName);
+    List<K8JobDTO> findAllPublishedK8JobsByWsTenantName(String wsTenantName, String clusterId);
 
 
 }

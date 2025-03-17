@@ -35,8 +35,8 @@ public interface K8ServiceAccountRepository extends JpaRepository<K8ServiceAccou
     @Query("SELECT new com.ws.azureKuberntesJIT.models.K8ServiceAccountDTO(ksa.id, ksa.uid, ksa.name, ksa.clusterId, ksa.cloudResourceAccountId, ksa.wsTenantName, ksa.cloudProviderType, CASE WHEN pr.resourceId IS NULL THEN FALSE ELSE TRUE END) " +
             "FROM K8ServiceAccount ksa " +
             "INNER JOIN PublishedResource pr ON ksa.uid = pr.resourceId " +
-            "WHERE pr.wsTenantName = :wsTenantName " +
+            "WHERE pr.wsTenantName = :wsTenantName AND ksa.clusterId = :clusterId " +
             "ORDER BY ksa.name")
-    List<K8ServiceAccountDTO> findAllPublishedK8ServiceAccountsByWsTenantName(String wsTenantName);
+    List<K8ServiceAccountDTO> findAllPublishedK8ServiceAccountsByWsTenantName(String wsTenantName, String clusterId);
 
 }

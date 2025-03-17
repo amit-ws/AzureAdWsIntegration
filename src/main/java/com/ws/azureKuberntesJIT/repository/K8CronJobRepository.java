@@ -30,9 +30,9 @@ public interface K8CronJobRepository extends JpaRepository<K8CronJob, Long> {
     @Query("SELECT new com.ws.azureKuberntesJIT.models.K8CronJobDTO(kcj.id, kcj.uid, kcj.name, kcj.clusterId, kcj.cloudResourceAccountId, kcj.wsTenantName, kcj.cloudProviderType, CASE WHEN pr.resourceId IS NULL THEN FALSE ELSE TRUE END) " +
             "FROM K8CronJob kcj " +
             "INNER JOIN PublishedResource pr ON kcj.uid = pr.resourceId " +
-            "WHERE pr.wsTenantName = :wsTenantName " +
+            "WHERE pr.wsTenantName = :wsTenantName AND kcj.clusterId = :clusterId " +
             "ORDER BY kcj.name")
-    List<K8CronJobDTO> findAllPublishedK8CronJobsByWsTenantName(String wsTenantName);
+    List<K8CronJobDTO> findAllPublishedK8CronJobsByWsTenantName(String wsTenantName, String clusterId);
 
 
 }

@@ -35,8 +35,8 @@ public interface K8NetworkPolicyRepository extends JpaRepository<K8NetworkPolicy
     @Query("SELECT new com.ws.azureKuberntesJIT.models.K8NetworkPolicyDTO(knp.id, knp.uid, knp.name, knp.clusterId, knp.cloudResourceAccountId, knp.wsTenantName, knp.cloudProviderType, CASE WHEN pr.resourceId IS NULL THEN FALSE ELSE TRUE END) " +
             "FROM K8NetworkPolicy knp " +
             "INNER JOIN PublishedResource pr ON knp.uid = pr.resourceId " +
-            "WHERE pr.wsTenantName = :wsTenantName " +
+            "WHERE pr.wsTenantName = :wsTenantName AND knp.clusterId = :clusterId " +
             "ORDER BY knp.name")
-    List<K8NetworkPolicyDTO> findAllPublishedK8NetworkPoliciesByWsTenantName(String wsTenantName);
+    List<K8NetworkPolicyDTO> findAllPublishedK8NetworkPoliciesByWsTenantName(String wsTenantName, String clusterId);
 
 }

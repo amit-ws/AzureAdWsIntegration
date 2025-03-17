@@ -7,6 +7,7 @@ import com.ws.azureKuberntesJIT.constant.K8ResourceLevel;
 import com.ws.azureKuberntesJIT.constant.K8ResourceType;
 import com.ws.azureKuberntesJIT.dto.K8ResourceRequest;
 import com.ws.azureKuberntesJIT.dto.K8RolePolicyRuleDTO;
+import com.ws.azureKuberntesJIT.enttity.K8CustomResourceRequest;
 import com.ws.azureKuberntesJIT.models.K8ResourceRaiseRequest;
 import com.ws.azureKuberntesJIT.models.RaiseRequest;
 import com.ws.azureKuberntesJIT.response.K8RoleResponse;
@@ -74,26 +75,6 @@ public class K8ResourceController {
         return ResponseEntity.ok(k8ResourceService.getK8RolePoliciesByRoleUID(roleUID.trim(), wsTenantName, cloudProviderType));
     }
 
-
-    @PatchMapping("/v1/publish")
-    public ResponseEntity<Void> publishResourceByResourceIdAndTypeHandler(@Valid @RequestBody PublishResourceRequest request) {
-        if (ObjectUtils.isEmpty(request.getCloudProviderType())) {
-            throw new K8ResourceException("Cloud type is required. Eg: AZURE, AWS, GCP");
-        }
-        if (ObjectUtils.isEmpty(request.getClusterId())) {
-            throw new K8ResourceException("Cluster ID is required");
-        }
-        publishResourceService.publishKubernetesResource(request);
-        return ResponseEntity.ok().build();
-    }
-
-    @GetMapping("/v1/publish")
-    public ResponseEntity<List<?>> getPublishedResourcesHandler(@RequestParam("type") PublishResourceType type,
-                                                                @RequestParam("tenantName") String wsTenantName) {
-        return ResponseEntity.ok(publishResourceService.getPublishedKubernetesResources(wsTenantName, type));
-    }
-
-
     @GetMapping("/v1/applicableRoles")
     public ResponseEntity<List<?>> getPublishedResourcesHandler(@RequestParam("tenantName") String wsTenantName,
                                                                 @RequestParam("type") String resourceType,
@@ -148,12 +129,38 @@ public class K8ResourceController {
     }
 
 
-    //-------------------------------------------------------------//
+    //-------------------------------------------------------------//    //-------------------------------------------------------------//
+    //-------------------------------------------------------------//    //-------------------------------------------------------------//
 
-    @PostMapping("/v1/suggestRoles/{name}")
+    @PatchMapping("/v1/publish")
+    public ResponseEntity<Void> publishResourceByResourceIdAndTypeHandler(@Valid @RequestBody PublishResourceRequest request) {
+        if (ObjectUtils.isEmpty(request.getCloudProviderType())) {
+            throw new K8ResourceException("Cloud type is required. Eg: AZURE, AWS, GCP");
+        }
+        if (ObjectUtils.isEmpty(request.getClusterId())) {
+            throw new K8ResourceException("Cluster ID is required");
+        }
+        publishResourceService.publishKubernetesResource(request);
+        return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/v1/publish")
+    public ResponseEntity<List<?>> getPublishedResourcesHandler(@RequestParam("type") PublishResourceType type,
+                                                                @RequestParam("tenantName") String wsTenantName,
+                                                                @RequestParam("clusterId") String clusterId) {
+        return ResponseEntity.ok(publishResourceService.getPublishedKubernetesResources(wsTenantName.trim(), clusterId.trim(), type));
+    }
+
+
+    @PostMapping("v1/suggestRoles/{name}")
     public ResponseEntity<List<RoleResponse>> suggestRolesHandler(@PathVariable("name") String resourceName,
                                                                   @Valid @RequestBody K8ResourceRequest request) {
         return ResponseEntity.ok(k8ResourceService.suggestRoles(request, resourceName.trim()));
+    }
+
+    @GetMapping("v1/role-verbs")
+    public ResponseEntity<List<String>> getSupportedRoleVerbsHandler() {
+        return ResponseEntity.ok(k8ResourceService.getSupportedRoleVerbs());
     }
 
     @PostMapping("/v1/requests/raise")
@@ -161,8 +168,16 @@ public class K8ResourceController {
         return ResponseEntity.ok(k8ResourceService.raiseResourceRequest(request));
     }
 
+    @GetMapping("/v1/requests/all")
+    public ResponseEntity<List<K8CustomResourceRequest>> findAllRequestsHandler(@RequestParam("tenantName") String wsTenantName,
+                                                                                @RequestParam("cloudType") CloudProviderType cloudType,
+                                                                                @RequestParam("status") RequestStatus status,
+                                                                                @RequestParam("email") String wsTenantUserEmail) {
+        return ResponseEntity.ok(k8ResourceService.findAllRequests(wsTenantName.trim(), cloudType, status, wsTenantUserEmail.trim()));
+    }
 
-    @PostMapping("/v1/requests/process")
+
+    @PatchMapping("v1/requests/process")
     public ResponseEntity<Boolean> processResourceRequestHandler(@RequestParam("uuid") String requestUUID,
                                                                  @RequestParam("status") RequestStatus updatedStatus) {
         return ResponseEntity.ok(k8ResourceService.processResourceRequest(requestUUID.trim(), updatedStatus));

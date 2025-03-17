@@ -2,8 +2,10 @@ package com.ws.azureKuberntesJIT.repository;
 
 import com.ws.azureAdIntegration.constants.CloudProviderType;
 import com.ws.azureKuberntesJIT.enttity.K8Namespace;
+import com.ws.azureKuberntesJIT.models.K8DeploymentDTO;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -14,5 +16,4 @@ public interface K8NamespaceRepository extends JpaRepository<K8Namespace, Long> 
     List<K8Namespace> findAllByWsTenantNameAndCloudProviderTypeAndClusterIdOrderByName(String wsTenantName, CloudProviderType cloudProviderType, String clusterId);
     @Modifying
     void deleteAllByWsTenantName(String wsTenantName);
-
 }

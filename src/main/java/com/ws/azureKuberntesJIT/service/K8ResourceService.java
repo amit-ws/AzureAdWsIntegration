@@ -21,8 +21,9 @@ import com.ws.azureKuberntesJIT.response.RoleResponseProjection;
 import com.ws.azureResourcesIntegration.constant.RequestStatus;
 import com.ws.azureResourcesIntegration.constant.StateChangeConstants;
 import com.ws.azureResourcesIntegration.entities.AzureKubernetesCluster;
-import com.ws.azureResourcesIntegration.entities.CustomRoleAssignment;
+import com.ws.azureResourcesIntegration.entities.AzureUserConfigure;
 import com.ws.azureResourcesIntegration.repository.AzureKubernetesClusterRepository;
+import com.ws.azureResourcesIntegration.repository.AzureUserConfigureRepository;
 import com.ws.azureResourcesIntegration.repository.PublishedResourcesRepository;
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.ApiException;
@@ -30,7 +31,6 @@ import io.kubernetes.client.openapi.Configuration;
 import io.kubernetes.client.openapi.apis.*;
 import io.kubernetes.client.openapi.models.*;
 import io.kubernetes.client.util.Config;
-import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -39,7 +39,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
-import org.springframework.web.bind.annotation.RequestBody;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -71,6 +70,7 @@ public class K8ResourceService {
     final K8CustomResourceRequestRepository k8CustomResourceRequestRepository;
     final K8RoleBindRepository k8RoleBindRepository;
     final AzureKubernetesClusterRepository azureKubernetesClusterRepository;
+    final AzureUserConfigureRepository azureUserConfigureRepository;
     final AzureSyncControlService azureSyncControlService;
     RbacAuthorizationV1Api rbacApi;
     CoreV1Api coreV1Api;
@@ -84,7 +84,7 @@ public class K8ResourceService {
                              K8RoleRepository k8RoleRepository, K8PolicyRuleRepository k8PolicyRuleRepository, K8ReplicaSetRepository k8ReplicaSetRepository,
                              K8StatefulSetRepository k8StatefulSetRepository, K8DaemonSetRepository k8DaemonSetRepository, K8JobRepository k8JobRepository,
                              K8CronJobRepository k8CronJobRepository, K8IngressRepository k8IngressRepository, K8ServiceRepository k8ServiceRepository,
-                             PublishedResourcesRepository publishedResourcesRepository, K8CustomResourceRequestRepository k8CustomResourceRequestRepository, K8RoleBindRepository k8RoleBindRepository, AzureKubernetesClusterRepository azureKubernetesClusterRepository, AzureSyncControlService azureSyncControlService) {
+                             PublishedResourcesRepository publishedResourcesRepository, K8CustomResourceRequestRepository k8CustomResourceRequestRepository, K8RoleBindRepository k8RoleBindRepository, AzureKubernetesClusterRepository azureKubernetesClusterRepository, AzureUserConfigureRepository azureUserConfigureRepository, AzureSyncControlService azureSyncControlService) {
         this.k8StorageClassRepository = k8StorageClassRepository;
         this.k8PersistentVolumeRepository = k8PersistentVolumeRepository;
         this.k8NamespaceRepository = k8NamespaceRepository;
@@ -108,6 +108,7 @@ public class K8ResourceService {
         this.k8CustomResourceRequestRepository = k8CustomResourceRequestRepository;
         this.k8RoleBindRepository = k8RoleBindRepository;
         this.azureKubernetesClusterRepository = azureKubernetesClusterRepository;
+        this.azureUserConfigureRepository = azureUserConfigureRepository;
         this.azureSyncControlService = azureSyncControlService;
     }
 
@@ -268,8 +269,8 @@ public class K8ResourceService {
     }
 
 
-    /*------------------------------------------------------------------------------------------*/
-    /*------------------------------------------------------------------------------------------*/
+    //-------------------------------------------------------------//    //-------------------------------------------------------------//
+    //-------------------------------------------------------------//    //-------------------------------------------------------------//
 
     public List<RoleResponse> suggestRoles(com.ws.azureKuberntesJIT.dto.K8ResourceRequest request, String resourceName) {
         String publishResourceType;
@@ -292,6 +293,11 @@ public class K8ResourceService {
     }
 
 
+    public List<String> getSupportedRoleVerbs() {
+        return K8Verb.getAllVerb();
+    }
+
+
     @Transactional
     public Boolean raiseResourceRequest(K8ResourceRaiseRequest request) {
         boolean isRoleCustomCreated = false;
@@ -310,9 +316,19 @@ public class K8ResourceService {
             roleName = request.getRoleName().trim();
             roleKind = K8RoleKind.valueOf(request.getRoleKind().trim());
             namespace = request.getNamespace().trim();
-        }
 
-        // Create the request payload and save it in PENDING state
+            // Check if already a role binding is present in PENDING or APPROVED stats
+            String[] statuses = (Arrays.asList(RequestStatus.DECLINE.name(), RequestStatus.EXPIRED.name())).toArray(new String[0]);
+            Optional<K8CustomResourceRequest> customResourceRequestOpt = k8CustomResourceRequestRepository.getCustomRequestWithParamsAndStatusNotIn(request.getWsTenantName().trim(), request.getCloudType().name(), request.getCloudResourceAccountId().trim(),
+                    request.getClusterId().trim(), namespace, roleId, request.getUserName(), statuses);
+            customResourceRequestOpt.ifPresent(this::handleExistingRoleBindingRequest);
+        }
+        createAndSaveK8CustomResourceRequest(request, roleId, roleName, roleKind, isRoleCustomCreated, namespace);
+        return Boolean.TRUE;
+    }
+
+    private void createAndSaveK8CustomResourceRequest(K8ResourceRaiseRequest request, String roleId, String roleName, K8RoleKind roleKind,
+                                                      boolean isRoleCustomCreated, String namespace) {
         K8CustomResourceRequest resourceRequest = K8CustomResourceRequest.builder()
                 .wsTenantName(request.getWsTenantName().trim())
                 .cloudType(request.getCloudType())
@@ -321,6 +337,7 @@ public class K8ResourceService {
                 .status(RequestStatus.PENDING)
                 .wsUserEmail(request.getWsUserEmail().trim())
                 .expiryTimeAmount(request.getExpiryTimeAmount())
+                .message(request.getMessage())
                 .build();
 
         // Setting the role related details
@@ -350,15 +367,29 @@ public class K8ResourceService {
                 .build();
         resourceRequest.setRoleBindRequest(bindRequest);
 
-        // saving the request
         k8CustomResourceRequestRepository.save(resourceRequest);
-        return Boolean.TRUE;
+    }
+
+    private void handleExistingRoleBindingRequest(K8CustomResourceRequest roleBinding) {
+        RequestStatus status = roleBinding.getStatus();
+        switch (status) {
+            case PENDING, APPROVED ->
+                    throw new IllegalArgumentException(String.format("Your request is already in %s state", status));
+        }
     }
 
 
-//    public List<K8CustomResourceRequest> findAllRequests(com.ws.azureKuberntesJIT.dto.K8ResourceRequest request) {
-//        return k8CustomResourceRequestRepository.findAllByWsTenantNameAndCloudTypeAndCloudResourceAccountId(request.getWsTenantName().trim(), request.getCloudProviderType(), request.getResourceAccountId());
-//    }
+    public List<K8CustomResourceRequest> findAllRequests(String wsTenantName, CloudProviderType cloudType, RequestStatus status, String wsTenantUserEmail) {
+        String azureUserUPN = azureUserConfigureRepository.findByEmailAndWsTenantName(wsTenantUserEmail, wsTenantName)
+                .orElseThrow(() -> new RuntimeException("No data found for provided email: " + 1))
+                .getAzureUserUpn();
+
+        return switch (cloudType) {
+            case AZURE ->
+                    k8CustomResourceRequestRepository.getData(wsTenantName, cloudType.name(), status, azureUserUPN);
+            default -> throw new K8ResourceException("Unsupported cloud type provided. Tyepe: {}" + cloudType);
+        };
+    }
 
 
     @Transactional
@@ -384,7 +415,7 @@ public class K8ResourceService {
     }
 
     private void processApproval(K8CustomResourceRequest customResourceRequest) {
-        // 1. Iniftialise the K8 client using cluster ID and CloudType
+        // 1. Initialise the K8 client using cluster ID and CloudType
         Pair<String, String> pair = findClusterUrlAndToken(customResourceRequest.getClusterId(), customResourceRequest.getCloudType());
         initialiseK8ClientUsingClusterName(pair.getLeft(), pair.getRight());
 
@@ -576,9 +607,9 @@ public class K8ResourceService {
     }
 
 
+    //-------------------------------------------------------------//    //-------------------------------------------------------------//
+    //-------------------------------------------------------------//    //-------------------------------------------------------------//
 
-    /*------------------------------------------------------------------------------------------*/
-    /*------------------------------------------------------------------------------------------*/
 
     @Transactional(readOnly = true)
     public void assignClusterRole(String clusterRoleName) {

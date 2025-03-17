@@ -34,9 +34,9 @@ public interface K8DeploymentRepository extends JpaRepository<K8Deployment, Long
             "CASE WHEN pr.resourceId IS NULL THEN FALSE ELSE TRUE END) " +
             "FROM K8Deployment kd " +
             "INNER JOIN PublishedResource pr ON kd.uid = pr.resourceId " +
-            "WHERE pr.wsTenantName = :wsTenantName " +
+            "WHERE pr.wsTenantName = :wsTenantName AND kd.clusterId = :clusterId " +
             "ORDER BY kd.name")
-    List<K8DeploymentDTO> findAllPublishedK8DeploymentsByWsTenantName(String wsTenantName);
+    List<K8DeploymentDTO> findAllPublishedK8DeploymentsByWsTenantName(String wsTenantName, String clusterId);
 
 
 }

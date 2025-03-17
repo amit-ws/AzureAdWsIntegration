@@ -31,9 +31,9 @@ public interface K8DaemonSetRepository extends JpaRepository<K8DaemonSet, Long> 
     @Query("SELECT new com.ws.azureKuberntesJIT.models.K8DaemonSetDTO(kds.id, kds.uid, kds.name, kds.clusterId, kds.cloudResourceAccountId, kds.wsTenantName, kds.cloudProviderType, CASE WHEN pr.resourceId IS NULL THEN FALSE ELSE TRUE END) " +
             "FROM K8DaemonSet kds " +
             "INNER JOIN PublishedResource pr ON kds.uid = pr.resourceId " +
-            "WHERE pr.wsTenantName = :wsTenantName " +
+            "WHERE pr.wsTenantName = :wsTenantName AND kds.clusterId = :clusterId " +
             "ORDER BY kds.name")
-    List<K8DaemonSetDTO> findAllPublishedK8DaemonSetsByWsTenantName(String wsTenantName);
+    List<K8DaemonSetDTO> findAllPublishedK8DaemonSetsByWsTenantName(String wsTenantName, String clusterId);
 
 
 }

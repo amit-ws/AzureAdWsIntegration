@@ -32,9 +32,9 @@ public interface K8ServiceRepository extends JpaRepository<K8Service, Long> {
     @Query("SELECT new com.ws.azureKuberntesJIT.models.K8ServiceDTO(ks.id, ks.uid, ks.name, ks.clusterId, ks.cloudResourceAccountId, ks.wsTenantName, ks.cloudProviderType, CASE WHEN pr.resourceId IS NULL THEN FALSE ELSE TRUE END) " +
             "FROM K8Service ks " +
             "INNER JOIN PublishedResource pr ON ks.uid = pr.resourceId " +
-            "WHERE pr.wsTenantName = :wsTenantName " +
+            "WHERE pr.wsTenantName = :wsTenantName AND ks.clusterId = :clusterId " +
             "ORDER BY ks.name")
-    List<K8ServiceDTO> findAllPublishedK8ServicesByWsTenantName(String wsTenantName);
+    List<K8ServiceDTO> findAllPublishedK8ServicesByWsTenantName(String wsTenantName, String clusterId);
 
 
 }

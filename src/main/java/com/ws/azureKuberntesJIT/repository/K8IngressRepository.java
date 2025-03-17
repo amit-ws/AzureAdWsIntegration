@@ -32,9 +32,9 @@ public interface K8IngressRepository extends JpaRepository<K8Ingress, Long> {
     @Query("SELECT new com.ws.azureKuberntesJIT.models.K8IngressDTO(ki.id, ki.uid, ki.name, ki.clusterId, ki.cloudResourceAccountId, ki.wsTenantName, ki.cloudProviderType, CASE WHEN pr.resourceId IS NULL THEN FALSE ELSE TRUE END) " +
             "FROM K8Ingress ki " +
             "INNER JOIN PublishedResource pr ON ki.uid = pr.resourceId " +
-            "WHERE pr.wsTenantName = :wsTenantName " +
+            "WHERE pr.wsTenantName = :wsTenantName AND ki.clusterId  = :clusterId " +
             "ORDER BY ki.name")
-    List<K8IngressDTO> findAllPublishedK8IngressesByWsTenantName(String wsTenantName);
+    List<K8IngressDTO> findAllPublishedK8IngressesByWsTenantName(String wsTenantName, String clusterId);
 
 
 }

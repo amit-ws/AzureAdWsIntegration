@@ -37,6 +37,7 @@ public class K8ResourceRaiseRequest {
     String wsUserEmail; /* WS Tenant user email */
 
     // Generic
+    String message;
     @NotNull(message = "Please provide cluster Id")
     String clusterId;
     @NotNull(message = "Please provide cloud account ID")

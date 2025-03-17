@@ -25,6 +25,9 @@ public class PublishResourceService {
     final AzureVMRepository azureVMRepository;
     final AzureStorageRepository azureStorageRepository;
     final AzureDatabaseRepository azureDatabaseRepository;
+    final K8StorageClassRepository k8StorageClassRepository;
+    final K8PersistentVolumeRepository k8PersistentVolumeRepository;
+    final K8NamespaceRepository k8NamespaceRepository;
     final K8NodeRepository k8NodeRepository;
     final K8DeploymentRepository k8DeploymentRepository;
     final K8ServiceAccountRepository k8ServiceAccountRepository;
@@ -41,7 +44,7 @@ public class PublishResourceService {
 
     @Autowired
     public PublishResourceService(PublishedResourcesRepository publishedResourcesRepository, AzureVMRepository azureVMRepository,
-                                  AzureStorageRepository azureStorageRepository, AzureDatabaseRepository azureDatabaseRepository,
+                                  AzureStorageRepository azureStorageRepository, AzureDatabaseRepository azureDatabaseRepository, K8StorageClassRepository k8StorageClassRepository, K8PersistentVolumeRepository k8PersistentVolumeRepository, K8NamespaceRepository k8NamespaceRepository,
                                   K8NodeRepository k8NodeRepository, K8DeploymentRepository k8DeploymentRepository,
                                   K8ServiceAccountRepository k8ServiceAccountRepository, K8SecretRepository k8SecretRepository,
                                   K8ConfigMapRepository k8ConfigMapRepository, K8NetworkPolicyRepository k8NetworkPolicyRepository,
@@ -52,6 +55,9 @@ public class PublishResourceService {
         this.azureVMRepository = azureVMRepository;
         this.azureStorageRepository = azureStorageRepository;
         this.azureDatabaseRepository = azureDatabaseRepository;
+        this.k8StorageClassRepository = k8StorageClassRepository;
+        this.k8PersistentVolumeRepository = k8PersistentVolumeRepository;
+        this.k8NamespaceRepository = k8NamespaceRepository;
         this.k8NodeRepository = k8NodeRepository;
         this.k8DeploymentRepository = k8DeploymentRepository;
         this.k8ServiceAccountRepository = k8ServiceAccountRepository;
@@ -111,22 +117,27 @@ public class PublishResourceService {
     }
 
 
-    public List<?> getPublishedKubernetesResources(String wsTenantName, PublishResourceType type) {
+    public List<?> getPublishedKubernetesResources(String wsTenantName, String clusterId, PublishResourceType type) {
         return switch (type) {
-            case DEPLOYMENT -> k8DeploymentRepository.findAllPublishedK8DeploymentsByWsTenantName(wsTenantName);
+//            case NAMESPACE -> k8NamespaceRepository.findAllPublishedK8DeploymentsByWsTenantName(wsTenantName, clusterId)
+//            case CUSTOM_RESOURCE_DEFINITION ->
+//            case NODE ->
+//            case STORAGE_CLASS ->
+//            case PERSISTENT_VOLUME ->
+            case DEPLOYMENT -> k8DeploymentRepository.findAllPublishedK8DeploymentsByWsTenantName(wsTenantName, clusterId);
             case SERVICE_ACCOUNT ->
-                    k8ServiceAccountRepository.findAllPublishedK8ServiceAccountsByWsTenantName(wsTenantName);
-            case SECRET -> k8SecretRepository.findAllPublishedK8SecretsByWsTenantName(wsTenantName);
-            case CONFIG_MAP -> k8ConfigMapRepository.findAllPublishedK8ConfigMapsByWsTenantName(wsTenantName);
+                    k8ServiceAccountRepository.findAllPublishedK8ServiceAccountsByWsTenantName(wsTenantName, clusterId);
+            case SECRET -> k8SecretRepository.findAllPublishedK8SecretsByWsTenantName(wsTenantName, clusterId);
+            case CONFIG_MAP -> k8ConfigMapRepository.findAllPublishedK8ConfigMapsByWsTenantName(wsTenantName, clusterId);
             case NETWORK_POLICY ->
-                    k8NetworkPolicyRepository.findAllPublishedK8NetworkPoliciesByWsTenantName(wsTenantName);
-            case JOB -> k8JobRepository.findAllPublishedK8JobsByWsTenantName(wsTenantName);
-            case CRON_JOB -> k8CronJobRepository.findAllPublishedK8CronJobsByWsTenantName(wsTenantName);
-            case INGRESS -> k8IngressRepository.findAllPublishedK8IngressesByWsTenantName(wsTenantName);
-            case SERVICE -> k8ServiceRepository.findAllPublishedK8ServicesByWsTenantName(wsTenantName);
-            case REPLICA_SET -> k8ReplicaSetRepository.findAllPublishedK8ReplicaSetsByWsTenantName(wsTenantName);
-            case STATEFUL_SET -> k8StatefulSetRepository.findAllPublishedK8StatefulSetsByWsTenantName(wsTenantName);
-            case DAEMON_SET -> k8DaemonSetRepository.findAllPublishedK8DaemonSetsByWsTenantName(wsTenantName);
+                    k8NetworkPolicyRepository.findAllPublishedK8NetworkPoliciesByWsTenantName(wsTenantName, clusterId);
+            case JOB -> k8JobRepository.findAllPublishedK8JobsByWsTenantName(wsTenantName, clusterId);
+            case CRON_JOB -> k8CronJobRepository.findAllPublishedK8CronJobsByWsTenantName(wsTenantName, clusterId);
+            case INGRESS -> k8IngressRepository.findAllPublishedK8IngressesByWsTenantName(wsTenantName, clusterId);
+            case SERVICE -> k8ServiceRepository.findAllPublishedK8ServicesByWsTenantName(wsTenantName, clusterId);
+            case REPLICA_SET -> k8ReplicaSetRepository.findAllPublishedK8ReplicaSetsByWsTenantName(wsTenantName, clusterId);
+            case STATEFUL_SET -> k8StatefulSetRepository.findAllPublishedK8StatefulSetsByWsTenantName(wsTenantName, clusterId);
+            case DAEMON_SET -> k8DaemonSetRepository.findAllPublishedK8DaemonSetsByWsTenantName(wsTenantName, clusterId);
             default -> throw new RuntimeException(String.format("Invalid type provided. Type: %s", type));
         };
     }

@@ -4,6 +4,7 @@ import com.microsoft.graph.models.User;
 import com.ws.azureAdIntegration.constants.Constant;
 import com.ws.azureAdIntegration.dto.AzureUserCredentialDTO;
 import com.ws.azureAdIntegration.entity.AzureUser;
+import com.ws.azureAdIntegration.exception.AzureDataException;
 import com.ws.azureAdIntegration.repository.AzureUserRepository;
 import com.ws.azureAdIntegration.service.AzureADInitializerService;
 import com.ws.azureAdIntegration.service.AzureADService;
@@ -21,7 +22,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.ObjectUtils;
+import org.springframework.util.StringUtils;
 
+import java.time.DateTimeException;
 import java.util.Date;
 import java.util.Optional;
 
@@ -54,6 +57,7 @@ public class AzureUserConfigureService {
 
     @Transactional
     public AzureUserConfigure configureAzureUser(AzureUserConfigureRequest request) {
+        String azureUserUpn = null;
         String azureId = request.getAzureId().trim();
         String wsTenantName = request.getWsTenantName().trim();
         String displayName = request.getDisplayName().trim();
@@ -62,7 +66,9 @@ public class AzureUserConfigureService {
             throw new RuntimeException(String.format("User already configured with the provided email: %s Or azure-id: %s", userEmail, azureId));
         }
 
-        if (azureUserRepository.findByAzureId(azureId).isEmpty()) {
+        Optional<AzureUser> azureUserOpt = azureUserRepository.findByAzureId(azureId);
+
+        if (azureUserOpt.isEmpty()) {
             AzureUserCredentialDTO credentialDTO = azureUserCredentialService.findWSTenantIdWithDecryptedSecret(wsTenantName);
             try {
                 azureADInitializerService.initializeGraphClient(credentialDTO, null);
@@ -71,6 +77,7 @@ public class AzureUserConfigureService {
                     throw new RuntimeException(String.format("No user found. Invalid azure id provided. Id: %s", azureId));
                 }
                 azureId = user.id;
+                azureUserUpn = user.userPrincipalName;
             } catch (Exception ex) {
                 if (ex.getMessage().contains("Request_ResourceNotFound")) {
                     log.error("Message: {}", "Provided azure-id and Ws-tenant-name mismatched");
@@ -78,10 +85,13 @@ public class AzureUserConfigureService {
                 }
                 throw new RuntimeException("Unexpected error occurred: " + ex.getMessage());
             }
+        } else {
+            azureUserUpn = azureUserOpt.get().getUserPrincipalName();
         }
 
         AzureUserConfigure savedUserConfig = azureUserConfigureRepository.save(AzureUserConfigure.builder()
                 .azureId(azureId)
+                .azureUserUpn(azureUserUpn)
                 .wsTenantName(wsTenantName)
                 .displayName(GenericUtil.getOrNull(() -> request.getDisplayName().trim()))
                 .email(request.getEmail().trim())
@@ -91,6 +101,13 @@ public class AzureUserConfigureService {
         return savedUserConfig;
     }
 
+
+    @Transactional
+    public AzureUserConfigure updateAzureUserUpn(Integer id, String azureUserUpn) {
+        AzureUserConfigure azureUserConfigure = azureUserConfigureRepository.findById(id).orElseThrow(() -> new AzureDataException("No azure user configuration found with provided details. ID: " + id));
+        azureUserConfigure.setAzureUserUpn(azureUserUpn);
+        return azureUserConfigureRepository.save(azureUserConfigure);
+    }
 
     public Object findUser(String id, String tenantName) {
         AzureUserCredentialDTO credentialDTO = azureUserCredentialService.findWSTenantIdWithDecryptedSecret(tenantName);

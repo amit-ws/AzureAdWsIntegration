@@ -21,6 +21,7 @@ public class AzureUserConfigure {
     Integer id;
     @Column(nullable = false, unique = true)
     String azureId; /* Azure id of the User */
+    String azureUserUpn;
     String displayName;
     @Column(nullable = false)
     String wsTenantName;

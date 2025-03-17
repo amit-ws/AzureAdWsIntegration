@@ -4,6 +4,11 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.experimental.FieldDefaults;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
+
 @Getter
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public enum K8Verb {
@@ -46,4 +51,11 @@ public enum K8Verb {
     K8Verb(String verb) {
         this.verb = verb;
     }
+
+    public static List<String> getAllVerb() {
+        return Arrays.stream(K8Verb.values())
+                .map(K8Verb::getVerb)
+                .collect(Collectors.toList());
+    }
+
 }

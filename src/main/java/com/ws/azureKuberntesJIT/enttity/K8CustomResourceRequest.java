@@ -43,10 +43,12 @@ public class K8CustomResourceRequest {
     String wsUserEmail; /* Ws Tenant user email */
 
     // Generic fields
+    String message;
     @Column(nullable = false)
     String clusterId;
     @Column(nullable = false)
     String cloudResourceAccountId;
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     CloudProviderType cloudType;
     @Column(nullable = false)
