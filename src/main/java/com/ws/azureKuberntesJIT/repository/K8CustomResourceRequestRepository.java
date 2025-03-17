@@ -1,13 +1,9 @@
 package com.ws.azureKuberntesJIT.repository;
 
-import com.ws.azureAdIntegration.constants.CloudProviderType;
 import com.ws.azureKuberntesJIT.enttity.K8CustomResourceRequest;
-import com.ws.azureKuberntesJIT.enttity.K8ResourceRequest;
 import com.ws.azureResourcesIntegration.constant.RequestStatus;
-import com.ws.azureResourcesIntegration.entities.CustomRoleAssignment;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -28,7 +24,7 @@ public interface K8CustomResourceRequestRepository extends JpaRepository<K8Custo
                                                                                String namespace, String roleId, String userName, String[] statuses);
 
 
-    @Query(value = "SELECT kcrr " +
+    @Query(value = "SELECT kcrr.* " +
             "FROM kubernetes_custom_resource_request kcrr " +
             "INNER JOIN azure_user au ON kcrr.user_name = au.user_principal_name " +
             "WHERE kcrr.ws_tenant_name = :wsTenantName " +
@@ -37,7 +33,7 @@ public interface K8CustomResourceRequestRepository extends JpaRepository<K8Custo
             "  AND (:userName IS NULL OR kcrr.user_name = :userName) " +
             "ORDER BY kcrr.requested_at DESC"
             , nativeQuery = true)
-    List<K8CustomResourceRequest> getData(String wsTenantName, String cloudType, RequestStatus status, String userName);
+    List<K8CustomResourceRequest> getK8CustomResourceRequestWithParams(String wsTenantName, String cloudType, String status, String userName);
 
 
 }

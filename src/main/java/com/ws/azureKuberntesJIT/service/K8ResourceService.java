@@ -21,7 +21,6 @@ import com.ws.azureKuberntesJIT.response.RoleResponseProjection;
 import com.ws.azureResourcesIntegration.constant.RequestStatus;
 import com.ws.azureResourcesIntegration.constant.StateChangeConstants;
 import com.ws.azureResourcesIntegration.entities.AzureKubernetesCluster;
-import com.ws.azureResourcesIntegration.entities.AzureUserConfigure;
 import com.ws.azureResourcesIntegration.repository.AzureKubernetesClusterRepository;
 import com.ws.azureResourcesIntegration.repository.AzureUserConfigureRepository;
 import com.ws.azureResourcesIntegration.repository.PublishedResourcesRepository;
@@ -379,14 +378,21 @@ public class K8ResourceService {
     }
 
 
-    public List<K8CustomResourceRequest> findAllRequests(String wsTenantName, CloudProviderType cloudType, RequestStatus status, String wsTenantUserEmail) {
-        String azureUserUPN = azureUserConfigureRepository.findByEmailAndWsTenantName(wsTenantUserEmail, wsTenantName)
-                .orElseThrow(() -> new RuntimeException("No data found for provided email: " + 1))
-                .getAzureUserUpn();
+    public List<K8CustomResourceRequest> getK8CustomResourceRequests(String wsTenantName, CloudProviderType cloudType, RequestStatus requestStatus, String wsTenantUserEmail) {
+        String azureUserUPN = null;
+        String status = null;
+        if (StringUtils.isNotEmpty(wsTenantUserEmail)) {
+            azureUserUPN = azureUserConfigureRepository.findByEmailAndWsTenantName(wsTenantUserEmail, wsTenantName)
+                    .orElseThrow(() -> new RuntimeException("No data found for provided email: " + 1))
+                    .getAzureUserUpn();
+        }
+        if (ObjectUtils.isNotEmpty(requestStatus)) {
+            status = requestStatus.name();
+        }
 
         return switch (cloudType) {
             case AZURE ->
-                    k8CustomResourceRequestRepository.getData(wsTenantName, cloudType.name(), status, azureUserUPN);
+                    k8CustomResourceRequestRepository.getK8CustomResourceRequestWithParams(wsTenantName, cloudType.name(), status, azureUserUPN);
             default -> throw new K8ResourceException("Unsupported cloud type provided. Tyepe: {}" + cloudType);
         };
     }

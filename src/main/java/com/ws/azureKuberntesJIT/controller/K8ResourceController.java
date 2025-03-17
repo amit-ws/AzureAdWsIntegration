@@ -171,9 +171,9 @@ public class K8ResourceController {
     @GetMapping("/v1/requests/all")
     public ResponseEntity<List<K8CustomResourceRequest>> findAllRequestsHandler(@RequestParam("tenantName") String wsTenantName,
                                                                                 @RequestParam("cloudType") CloudProviderType cloudType,
-                                                                                @RequestParam("status") RequestStatus status,
-                                                                                @RequestParam("email") String wsTenantUserEmail) {
-        return ResponseEntity.ok(k8ResourceService.findAllRequests(wsTenantName.trim(), cloudType, status, wsTenantUserEmail.trim()));
+                                                                                @RequestParam(value = "status", required = false) RequestStatus status,
+                                                                                @RequestParam(value = "email", required = false) String wsTenantUserEmail) {
+        return ResponseEntity.ok(k8ResourceService.getK8CustomResourceRequests(wsTenantName.trim(), cloudType, status, wsTenantUserEmail));
     }
 
 
