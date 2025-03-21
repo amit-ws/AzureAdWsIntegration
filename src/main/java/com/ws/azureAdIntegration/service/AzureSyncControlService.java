@@ -8,6 +8,8 @@ import com.ws.azureAdIntegration.entity.AzureTenant;
 import com.ws.azureAdIntegration.entity.AzureUserCredential;
 import com.ws.azureAdIntegration.repository.AzureTenantRepository;
 import com.ws.azureAdIntegration.repository.AzureUserCredentialRepository;
+import com.ws.azureKuberntesJIT.dto.K8ResourceDataSyncRequest;
+import com.ws.azureKuberntesJIT.service.K8ResourcesDataService;
 import com.ws.azureKuberntesJIT.service.K8ResourcesSyncService;
 import com.ws.azureResourcesIntegration.service.AzureResourceSyncService;
 import lombok.AccessLevel;
@@ -39,16 +41,18 @@ public class AzureSyncControlService {
     final AzureUserCredentialRepository azureUserCredentialRepository;
     final AzureTenantRepository azureTenantRepository;
     final AzureUserCredentialService azureUserCredentialService;
+    final K8ResourcesDataService k8ResourcesDataService;
     final BackendApplicationLogservice backendApplicationLogservice;
 
     @Autowired
-    public AzureSyncControlService(AzureADSyncService azureADSyncService, AzureResourceSyncService azureResourceSyncService, K8ResourcesSyncService k8ResourcesSyncService, AzureUserCredentialRepository azureUserCredentialRepository, AzureTenantRepository azureTenantRepository, AzureUserCredentialService azureUserCredentialService, BackendApplicationLogservice backendApplicationLogservice) {
+    public AzureSyncControlService(AzureADSyncService azureADSyncService, AzureResourceSyncService azureResourceSyncService, K8ResourcesSyncService k8ResourcesSyncService, AzureUserCredentialRepository azureUserCredentialRepository, AzureTenantRepository azureTenantRepository, AzureUserCredentialService azureUserCredentialService, K8ResourcesDataService k8ResourcesDataService, BackendApplicationLogservice backendApplicationLogservice) {
         this.azureADSyncService = azureADSyncService;
         this.azureResourceSyncService = azureResourceSyncService;
         this.k8ResourcesSyncService = k8ResourcesSyncService;
         this.azureUserCredentialRepository = azureUserCredentialRepository;
         this.azureTenantRepository = azureTenantRepository;
         this.azureUserCredentialService = azureUserCredentialService;
+        this.k8ResourcesDataService = k8ResourcesDataService;
         this.backendApplicationLogservice = backendApplicationLogservice;
     }
 
@@ -219,9 +223,10 @@ public class AzureSyncControlService {
 
     @Async
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void syncK8RolesAndBindings(String clusterId, String clusterName, String url, String token, CloudProviderType cloudProviderType) {
+    public void syncK8RolesAndBindings(K8ResourceDataSyncRequest syncRequest) {
         log.info("Async process started.......");
-        k8ResourcesSyncService.executeSync(clusterId, clusterName, url, token, cloudProviderType);
+        k8ResourcesDataService.deleteK8RolesAndBindings(syncRequest.getWsTenantName()); 
+        k8ResourcesSyncService.executeSync(syncRequest);
     }
 
 }

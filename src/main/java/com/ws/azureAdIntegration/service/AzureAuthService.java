@@ -80,6 +80,7 @@ public class AzureAuthService {
                         .clientSecret(EncryptionUtil.getEncryptedKey(createAzureConfiguration.getClientSecret(), Constant.AZURE_CLIENT_SECRET))
                         .tenantId(tenantId)
                         .subscriptionId(subscriptionId)
+//                        .subscriptionIds(createAzureConfiguration.getSubscriptionIds())
                         .wsTenantName(wsTenantName)
                         .syncStatus(true)
                         .createdAt(new Date())

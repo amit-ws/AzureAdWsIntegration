@@ -1,6 +1,6 @@
 package com.ws.azureResourcesIntegration.service;
 
-import com.ws.azureAdIntegration.constants.PublishResourceType;
+import com.ws.azureResourcesIntegration.constant.PublishResourceType;
 import com.ws.azureAdIntegration.exception.AzureDataException;
 import com.ws.azureAdIntegration.util.AzureEntityUtil;
 import com.ws.azureKuberntesJIT.repository.K8IngressRepository;

@@ -8,6 +8,9 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.experimental.FieldDefaults;
 
+import java.util.List;
+import java.util.Set;
+
 @Data
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
@@ -26,6 +29,9 @@ public class CreateAzureConfiguration {
 
     @JsonProperty("subscription_id")
     String subscriptionId;
+
+//    @JsonProperty("subscription_ids")
+//    List<String> subscriptionIds;
 
     @NotNull(message = "Please provide WhiteSwan tenant name")
     @JsonProperty("ws_tenant_name")

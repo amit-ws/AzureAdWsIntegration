@@ -17,8 +17,6 @@ public class K8StorageClass extends K8Metadata {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Long id;
-
-    String apiVersion;
     String provisioner;
     String volumeBindingMode;
     Boolean allowVolumeExpansion;

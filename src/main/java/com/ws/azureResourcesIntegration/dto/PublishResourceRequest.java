@@ -1,7 +1,7 @@
 package com.ws.azureResourcesIntegration.dto;
 
 import com.ws.azureAdIntegration.constants.CloudProviderType;
-import com.ws.azureAdIntegration.constants.PublishResourceType;
+import com.ws.azureResourcesIntegration.constant.PublishResourceType;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Data;

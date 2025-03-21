@@ -1,6 +1,6 @@
 package com.ws.azureResourcesIntegration.controller;
 
-import com.ws.azureAdIntegration.constants.PublishResourceType;
+import com.ws.azureResourcesIntegration.constant.PublishResourceType;
 import com.ws.azureResourcesIntegration.constant.AzureResourcesType;
 import com.ws.azureResourcesIntegration.constant.RequestStatus;
 import com.ws.azureResourcesIntegration.dto.*;

@@ -1,4 +1,4 @@
-package com.ws.azureAdIntegration.constants;
+package com.ws.azureResourcesIntegration.constant;
 
 import lombok.Getter;
 

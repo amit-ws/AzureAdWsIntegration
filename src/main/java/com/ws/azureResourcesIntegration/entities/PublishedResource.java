@@ -1,7 +1,7 @@
 package com.ws.azureResourcesIntegration.entities;
 
 import com.ws.azureAdIntegration.constants.CloudProviderType;
-import com.ws.azureAdIntegration.constants.PublishResourceType;
+import com.ws.azureResourcesIntegration.constant.PublishResourceType;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;

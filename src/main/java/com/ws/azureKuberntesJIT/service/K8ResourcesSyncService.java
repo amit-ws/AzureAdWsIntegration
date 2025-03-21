@@ -148,17 +148,19 @@ public class K8ResourcesSyncService {
         }
     }
 
-    public void executeSync(String clusterId, String clusterName, String url, String token, CloudProviderType cloudProviderType) {
-        this.cloudProviderType = cloudProviderType;
-        this.clusterName = clusterName;
-        log.info("url: {}", url);
-        log.info("token: {}", token);
-        initializeK8Client(url, token);
+    public void executeSync(K8ResourceDataSyncRequest k8ResourceDataSyncRequest) {
+        ClusterConfigurationRequest configurationRequest = k8ResourceDataSyncRequest.getConfigurations().get(0);
+        this.cloudProviderType = k8ResourceDataSyncRequest.getCloudProviderType();
+        this.wsTenantName = k8ResourceDataSyncRequest.getWsTenantName();
+        this.resourceAccountId = k8ResourceDataSyncRequest.getResourceAccountId();
+        this.clusterName = configurationRequest.getClusterName();
+        String clusterId = configurationRequest.getClusterId();
+        initializeK8Client(configurationRequest.getServer(), configurationRequest.getToken());
         initializeK8RbackApi();
-        log.info("K8 data sync STARTED for cluster ID: {}", clusterId);
+        log.info("K8 data sync STARTED for cluster ID: {}", this.clusterName);
         syncClusterRolesAndBindings(clusterId);
         syncNamespaceRolesAndBindings(clusterId);
-        log.info("K8 data sync ENDED for cluster ID: {}", clusterId);
+        log.info("K8 data sync ENDED for cluster ID: {}", this.clusterName);
     }
 
     private void syncClusterRolesAndBindings(String clusterId) {
@@ -319,6 +321,7 @@ public class K8ResourcesSyncService {
                 log.warn(String.format("No CLUSTER_ROLE(s) found for cluster name: %S of cloud type: %s", this.clusterName, this.cloudProviderType));
                 return;
             }
+            log.info("total cluster roles: {}", v1ClusterRoleList.getItems().size());
             String apiVersion = v1ClusterRoleList.getApiVersion();
             List<K8Role> k8ClusterRoles = v1ClusterRoleList.getItems().stream()
                     .filter(item -> item.getMetadata() != null)
@@ -464,6 +467,7 @@ public class K8ResourcesSyncService {
                 log.warn(String.format("NO NAMESPACE_ROLE(s) found for cluster name: %s or cloud type: %s", this.clusterName, this.cloudProviderType));
                 return;
             }
+            log.info("total namespace roles: {}", v1RoleList.getItems().size());
             String apiVersion = v1RoleList.getApiVersion();
             List<K8Role> kubernetesNamespaceRoles = v1RoleList.getItems().stream()
                     .filter(item -> item.getMetadata() != null)

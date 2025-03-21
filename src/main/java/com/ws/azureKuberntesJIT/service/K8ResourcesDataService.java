@@ -53,6 +53,12 @@ public class K8ResourcesDataService {
         executeDelete(wsTenantName);
     }
 
+    public void deleteK8RolesAndBindings(String wsTenantName) {
+        k8RoleRepository.deleteAllByWsTenantName(wsTenantName);
+        k8RoleBindRepository.deleteAllByWsTenantName(wsTenantName);
+        k8RoleReferenceRepository.deleteAllByWsTenantName(wsTenantName);
+    }
+
     private void executeDelete(String wsTenantName) {
         k8NamespaceRepository.deleteAllByWsTenantName(wsTenantName);
         k8StorageClassRepository.deleteAllByWsTenantName(wsTenantName);

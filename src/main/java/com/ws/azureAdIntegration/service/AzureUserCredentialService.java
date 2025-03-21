@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.CollectionUtils;
 
 import java.util.Date;
 import java.util.Optional;
@@ -32,6 +33,9 @@ public class AzureUserCredentialService {
     public AzureUserCredentialDTO mapFromAzureUserCredentialAndDecryptSecretKey(AzureUserCredential azureUserCredential) {
         AzureUserCredentialDTO azureUserCredentialDTO = AzureEntitiesMapper.INSTANCE.fromAzureUserCredentialDTO(azureUserCredential);
         azureUserCredentialDTO.setClientSecret(EncryptionUtil.getDecryptedKey(azureUserCredentialDTO.getClientSecret(), Constant.AZURE_CLIENT_SECRET));
+//        if (!CollectionUtils.isEmpty(azureUserCredential.getSubscriptionIds())) {
+//            azureUserCredentialDTO.setSubscriptionIds(azureUserCredential.getSubscriptionIds());
+//        }
         return azureUserCredentialDTO;
     }
 

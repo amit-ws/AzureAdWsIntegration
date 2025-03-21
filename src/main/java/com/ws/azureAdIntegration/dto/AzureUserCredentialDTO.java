@@ -6,6 +6,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.Date;
+import java.util.List;
+import java.util.Set;
 
 @Data
 @NoArgsConstructor
@@ -16,6 +18,7 @@ public class AzureUserCredentialDTO {
     String tenantId;
     String clientSecret;
     String subscriptionId;
+//    List<String> subscriptionIds;
     Date createdAt;
     Date updatedAt;
     boolean syncStatus;
