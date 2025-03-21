@@ -7,12 +7,15 @@ import com.ws.azureAdIntegration.service.AzureADJwtValidator;
 import com.ws.azureAdIntegration.service.AzureAuthService;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/azure/auth")
@@ -29,11 +32,18 @@ public class AzureAuthController {
         this.azureADJwtValidationService = azureADJwtValidationService;
     }
 
-    @PostMapping("/configure")
-    public ResponseEntity creatAzureConfiguration(@RequestBody @Valid CreateAzureConfiguration createAzureConfiguration) {
+//    @PostMapping("/configure")
+//    public ResponseEntity creatAzureConfiguration(@RequestBody @Valid CreateAzureConfiguration createAzureConfiguration) {
+//        return ResponseEntity
+//                .status(HttpStatus.CREATED)
+//                .body(azureAuthService.creatAzureConfiguration(createAzureConfiguration));
+//    }
+
+    @PostMapping("v2/configure")
+    public ResponseEntity creatAzureConfigurationV2Hanndler(@RequestBody @Valid CreateAzureConfiguration createAzureConfiguration) {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
-                .body(azureAuthService.creatAzureConfiguration(createAzureConfiguration));
+                .body(azureAuthService.creatAzureConfigurationV2(createAzureConfiguration));
     }
 
     @GetMapping("/configuration")
@@ -64,11 +74,22 @@ public class AzureAuthController {
                 .body(azureADJwtValidationService.isAzureADTokenValid(payload.get("token")));
     }
 
-    @PatchMapping("/update/subscriptionId")
-    public ResponseEntity<AzureDataResponse> updateSubscriptionIdHandler(@RequestParam Integer credId, @RequestParam String subscriptionId) {
+//    @PatchMapping("/update/subscriptionId")
+//    public ResponseEntity<AzureDataResponse> updateSubscriptionIdHandler(@RequestParam Integer credId, @RequestParam String subscriptionId) {
+//        return ResponseEntity
+//                .status(HttpStatus.OK)
+//                .body(azureAuthService.updateSubscriptionId(credId, subscriptionId));
+//    }
+
+    @PatchMapping("v2/update/subscriptionId")
+    public ResponseEntity<AzureDataResponse> updateSubscriptionIdsHandler(@RequestParam Integer credId, @RequestParam String wsTenantName,
+                                                                          @RequestParam boolean flag, @RequestBody(required = false) Set<String> requestedSubIds) {
+        if (CollectionUtils.isEmpty(requestedSubIds)) {
+            requestedSubIds = new HashSet<>();
+        }
         return ResponseEntity
-                .status(HttpStatus.OK)
-                .body(azureAuthService.updateSubscriptionId(credId, subscriptionId));
+                .status(HttpStatus.ACCEPTED)
+                .body(azureAuthService.updateSubscriptionIds(credId, wsTenantName, requestedSubIds, flag));
     }
 
 

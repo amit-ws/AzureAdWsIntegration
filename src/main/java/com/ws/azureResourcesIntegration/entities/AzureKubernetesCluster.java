@@ -33,10 +33,6 @@ public class AzureKubernetesCluster extends BaseAzureResource{
     String powerState;  /* Running or Stopped*/
     boolean isAzureRbacEnabled;
     String type;
-    @Column(nullable = false)
-    String subscriptionId;
-    @Column(nullable = false)
-    String resourceGroupName;
 
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY, mappedBy = "azureKubernetesCluster")
     List<AzureK8ClusterCredential> azureK8ClusterCredentials;

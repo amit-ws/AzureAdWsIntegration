@@ -35,6 +35,7 @@ public class AzureRoleAssignment {
     OffsetDateTime updatedOn;
     String updatedBy;
     Date syncedAt;
+    String subscriptionId;
     String wsTenantName; // WhiteSwan account organization name
 
 

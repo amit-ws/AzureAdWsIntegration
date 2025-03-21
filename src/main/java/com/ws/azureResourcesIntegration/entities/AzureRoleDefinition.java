@@ -29,6 +29,7 @@ public class AzureRoleDefinition {
     String createdBy;
     OffsetDateTime createdOn;
     Date syncedAt;
+    String subscriptionId;
     String wsTenantName; // WhiteSwan account organization name
 
     @ElementCollection(fetch = FetchType.EAGER)

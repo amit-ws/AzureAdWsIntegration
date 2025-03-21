@@ -10,6 +10,7 @@ import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 
 import java.util.List;
 
@@ -34,10 +35,10 @@ public class CustomRoleAssignmentService {
 
     public void revokeApprovedRolesInAzureAndDeleteAllForWsTenant(String wsTenantName) {
         List<CustomRoleAssignment> customRoleAssignments = customRoleAssignmentRepository.findAllByWsTenantNameAndStatus(wsTenantName, RequestStatus.APPROVED);
-        if (customRoleAssignments.isEmpty()) {
+        if (CollectionUtils.isEmpty(customRoleAssignments)) {
             log.info("No APPROVED custom roles found for the WS tenant: {}", wsTenantName);
         } else {
-            azureResourceService.revokeAzureResourceAccess(customRoleAssignments, azureUserCredentialService.findWSTenantIdWithDecryptedSecret(wsTenantName));
+            azureResourceService.revokeAzureResourcesAccess(customRoleAssignments, azureUserCredentialService.findAuthenticationCredentialByWSTenantName(wsTenantName));
             customRoleAssignmentRepository.deleteAllByWsTenantName(wsTenantName);
         }
     }

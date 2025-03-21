@@ -41,6 +41,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
 import java.util.*;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -48,6 +49,7 @@ import java.util.stream.Collectors;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class AzureResourceSyncService {
     String wsTenantName;
+    AzureTenant azureTenant;
     final String tenantEmail = "dummy@gmail.com";
     AzureResourceManager azureResourceManager;
     final AzureSubscriptionRepository azureSubscriptionRepository;
@@ -81,9 +83,99 @@ public class AzureResourceSyncService {
         this.k8ResourcesDataService = k8ResourcesDataService;
     }
 
-    public void syncAzureResourceData(AzureTenant azureTenant, AzureUserCredentialDTO azureUserCredentialDTO) {
+
+    public void syncAzureResourcesData(AzureTenant azureTenant, AzureUserCredentialDTO azureUserCredentialDTO, boolean syncRoleAssignments) {
+        this.wsTenantName = azureUserCredentialDTO.getWsTenantName();
+        this.azureTenant = azureTenant;
+        azureUserCredentialDTO.getSubscriptionIds().forEach(subscriptionId -> {
+            initializeAzureResourceManagerBySubscriptionId(
+                    azureUserCredentialDTO.getTenantId(),
+                    azureUserCredentialDTO.getClientId(),
+                    azureUserCredentialDTO.getClientSecret(),
+                    subscriptionId
+            );
+            if (syncRoleAssignments) {
+                syncRoleAssignmentsForSubscription(azureTenant);
+            } else {
+                executeAzureResourceSync();
+            }
+        });
+    }
+
+    public void syncK8ResourcesData(String wsTenantName, AzureUserCredentialDTO azureUserCredentialDTO) {
+        List<AzureKubernetesCluster> azureKubernetesClusters = azureKubernetesClusterRepository.findAllByWsTenantNameAndSubscriptionIdInAndPowerState(wsTenantName,
+                azureUserCredentialDTO.getSubscriptionIds(), Code.RUNNING.getValue());
+        if (CollectionUtils.isEmpty(azureKubernetesClusters)) {
+            throw new K8ResourceException("No AKS clusters found for provided tenant: " + wsTenantName);
+        }
+        Map<String, List<AzureKubernetesCluster>> azureKubernetesClusterMap = groupClustersBySubscriptionId(azureKubernetesClusters);
+        k8ResourcesDataService.deleteK8ResourcesByWsTenantName(this.wsTenantName);
+        azureUserCredentialDTO.getSubscriptionIds().forEach((subscriptionId) -> {
+            syncKubernetesResources(subscriptionId, azureKubernetesClusterMap.get(subscriptionId));
+        });
+    }
+
+    public Map<String, List<AzureKubernetesCluster>> groupClustersBySubscriptionId(List<AzureKubernetesCluster> azureKubernetesClusters) {
+        return azureKubernetesClusters.stream().collect(Collectors.groupingBy(AzureKubernetesCluster::getSubscriptionId));
+    }
+
+
+    private void initializeAzureResourceManagerBySubscriptionId(String tenantId, String clientId, String clientSecret, String subscriptionId) {
+        this.azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(tenantId, clientId, clientSecret, subscriptionId);
+    }
+
+    private void executeAzureResourceSync() {
+        executeSync();
+    }
+
+    private void syncRoleAssignmentsForSubscription(AzureTenant azureTenant) {
+        AzureSubscription azureSubscription = syncOrGetAzureSubscription(azureTenant);
+        syncRoleAssignments(azureTenant, azureSubscription);
+    }
+
+
+//    public void syncAzureResourcesData(AzureTenant azureTenant, AzureUserCredentialDTO azureUserCredentialDTO) {
+//        this.wsTenantName = azureUserCredentialDTO.getWsTenantName();
+//        this.azureTenant = azureTenant;
+//        azureUserCredentialDTO.getSubscriptionIds().forEach(subscriptionId -> {
+//            initializeAzureResourceManagerBySubscriptionId(azureUserCredentialDTO.getTenantId(),
+//                    azureUserCredentialDTO.getClientId(),
+//                    azureUserCredentialDTO.getClientSecret(), subscriptionId);
+//            executeSync();
+//        });
+//    }
+//
+//
+//    public void syncAzureRoleAssignmentsData(AzureTenant azureTenant, AzureUserCredentialDTO azureUserCredentialDTO){
+//        this.wsTenantName = azureUserCredentialDTO.getWsTenantName();
+//        this.azureTenant = azureTenant;
+//        azureUserCredentialDTO.getSubscriptionIds().forEach(subscriptionId -> {
+//            initializeAzureResourceManagerBySubscriptionId(azureUserCredentialDTO.getTenantId(),
+//                    azureUserCredentialDTO.getClientId(),
+//                    azureUserCredentialDTO.getClientSecret(), subscriptionId);
+//            AzureSubscription azureSubscription = syncOrGetAzureSubscription(azureTenant);
+//            syncRoleAssignments(azureTenant, azureSubscription);
+//        });
+//    }
+
+//    private void initializeAzureResourceForSubscriptions(AzureUserCredentialDTO azureUserCredentialDTO) {
+//        azureUserCredentialDTO.getSubscriptionIds().forEach(subscriptionId -> {
+//            initializeAzureResourceManagerBySubscriptionId(azureUserCredentialDTO.getTenantId(),
+//                    azureUserCredentialDTO.getClientId(),
+//                    azureUserCredentialDTO.getClientSecret(), subscriptionId);
+//        });
+//    }
+
+
+//    public void syncAzureResourceData(AzureTenant azureTenant, AzureUserCredentialDTO azureUserCredentialDTO) {
+//        this.azureTenant = azureTenant;
+//        initializeWsTenantNameAndAzureResourceManager(azureUserCredentialDTO);
+//        executeSync();
+//    }
+
+
+    private void executeSync() {
         try {
-            initializeWsTenantNameAndAzureResourceManager(azureUserCredentialDTO);
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_RESOURCE_DATA_SYNC_START, "Info");
             truncateAzureResourcesDataThroughAzureTenant(azureTenant);
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_RESOURCE_DATA_TRUNCATED, "Info");
@@ -107,16 +199,11 @@ public class AzureResourceSyncService {
     }
 
 
-    public void syncAzureRoleAssignmentData(AzureTenant azureTenant, AzureUserCredentialDTO azureUserCredentialDTO) {
-        initializeWsTenantNameAndAzureResourceManager(azureUserCredentialDTO);
-        AzureSubscription azureSubscription = syncOrGetAzureSubscription(azureTenant);
-        syncRoleAssignments(azureTenant, azureSubscription);
-    }
+//    private void initializeWsTenantNameAndAzureResourceManager(AzureUserCredentialDTO azureUserCredentialDTO) {
+//        this.wsTenantName = azureUserCredentialDTO.getWsTenantName();
+//        this.azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredentialDTO);
+//    }
 
-    private void initializeWsTenantNameAndAzureResourceManager(AzureUserCredentialDTO azureUserCredentialDTO) {
-        this.wsTenantName = azureUserCredentialDTO.getWsTenantName();
-        this.azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredentialDTO);
-    }
 
     private AzureSubscription syncOrGetAzureSubscription(AzureTenant azureTenant) {
         return Optional.ofNullable(azureTenant.getAzureSubscriptions())
@@ -194,6 +281,7 @@ public class AzureResourceSyncService {
                             .syncedAt(new Date())
                             .tags(resourceGroup.tags())
                             .location(GenericUtil.getOrNull(() -> resourceGroup.innerModel().location()))
+                            .subscriptionId(azureSubscription.getAzureSubscriptionId())
                             .wsTenantName(this.wsTenantName)
                             .azureSubscription(azureSubscription)
                             .build()
@@ -383,6 +471,7 @@ public class AzureResourceSyncService {
                                 .assignableScope(role.assignableScopes())
                                 .syncedAt(new Date())
                                 .azureSubscription(azureSubscription)
+                                .subscriptionId(azureSubscription.getAzureSubscriptionId())
                                 .wsTenantName(this.wsTenantName)
                                 .azureTenant(azureTenant)
                                 .build();
@@ -443,6 +532,7 @@ public class AzureResourceSyncService {
             for (RoleAssignment roleAssignment : roleAssignmentPage) {
                 AzureRoleAssignment azureRoleAssignment = AzureEntityUtil.createAzureRoleAssignmentFromResourceEntity(roleAssignment, GenericUtil.determineScopeType(roleAssignment.scope()),
                         AzureRoleAssignment.builder()
+                                .subscriptionId(azureSubscription.getAzureSubscriptionId())
                                 .azureSubscription(azureSubscription)
                                 .wsTenantName(this.wsTenantName)
                                 .azureTenant(azureTenant)
@@ -521,17 +611,6 @@ public class AzureResourceSyncService {
                 .collect(Collectors.toList());
     }
 
-    public void syncK8ResourcesData(AzureTenant azureTenant, AzureUserCredentialDTO azureUserCredentialDTO) {
-        List<AzureKubernetesCluster> azureKubernetesClusters = azureKubernetesClusterRepository.findAllByWsTenantNameAndPowerState(azureUserCredentialDTO.getWsTenantName(), Code.RUNNING.getValue());
-        if (CollectionUtils.isEmpty(azureKubernetesClusters)) {
-            throw new K8ResourceException("No AKS found for provided tenant: " + wsTenantName);
-        }
-        initializeWsTenantNameAndAzureResourceManager(azureUserCredentialDTO);
-        AzureSubscription azureSubscription = syncOrGetAzureSubscription(azureTenant);
-        k8ResourcesDataService.deleteK8ResourcesByWsTenantName(this.wsTenantName);
-        syncKubernetesResources(azureSubscription.getAzureSubscriptionId(), azureKubernetesClusters);
-    }
-
 
     private List<AzureNetworkInterface> determineAndCreatePublicNetworkInterfacesForVM(AzureVM azureVM, List<String> networkInterfaceIds) {
         List<AzureNetworkInterface> publicAzureNetworkInterfaces = new ArrayList<>();
@@ -590,5 +669,19 @@ public class AzureResourceSyncService {
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.ERROR_IN_SYNCING_KUBERNETES_DATA, "Error");
         }
     }
+
+    //    public void syncK8ResourcesData(AzureTenant azureTenant, AzureUserCredentialDTO azureUserCredentialDTO) {
+//        List<AzureKubernetesCluster> azureKubernetesClusters = azureKubernetesClusterRepository.findAllByWsTenantNameAndPowerState(azureUserCredentialDTO.getWsTenantName(),
+//                Code.RUNNING.getValue());
+//        if (CollectionUtils.isEmpty(azureKubernetesClusters)) {
+//            throw new K8ResourceException("No AKS found for provided tenant: " + wsTenantName);
+//        }
+//
+//        initializeWsTenantNameAndAzureResourceManager(azureUserCredentialDTO);
+//        AzureSubscription azureSubscription = syncOrGetAzureSubscription(azureTenant);
+//        k8ResourcesDataService.deleteK8ResourcesByWsTenantName(this.wsTenantName);
+//        syncKubernetesResources(azureSubscription.getAzureSubscriptionId(), azureKubernetesClusters);
+//    }
+
 
 }

@@ -22,6 +22,11 @@ public class BaseAzureResource {
 //    Boolean isPublished = Boolean.FALSE;
     Date updatedAt;
     Date syncedAt;
+    @Column(nullable = false)
+    String subscriptionId;
+    @Column(nullable = false)
+    String resourceGroupName;
+    @Column(nullable = false)
     String wsTenantName; // WhiteSwan account organization name
 
     @Transient

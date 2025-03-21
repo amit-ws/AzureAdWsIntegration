@@ -1,11 +1,9 @@
 package com.ws.azureAdIntegration.service;
 
 import com.microsoft.graph.requests.GraphServiceClient;
-import com.ws.azureAdIntegration.constants.CloudProviderType;
 import com.ws.azureAdIntegration.constants.Constant;
 import com.ws.azureAdIntegration.dto.AzureUserCredentialDTO;
 import com.ws.azureAdIntegration.entity.AzureTenant;
-import com.ws.azureAdIntegration.entity.AzureUserCredential;
 import com.ws.azureAdIntegration.repository.AzureTenantRepository;
 import com.ws.azureAdIntegration.repository.AzureUserCredentialRepository;
 import com.ws.azureKuberntesJIT.dto.K8ResourceDataSyncRequest;
@@ -13,23 +11,16 @@ import com.ws.azureKuberntesJIT.service.K8ResourcesDataService;
 import com.ws.azureKuberntesJIT.service.K8ResourcesSyncService;
 import com.ws.azureResourcesIntegration.service.AzureResourceSyncService;
 import lombok.AccessLevel;
-import lombok.Synchronized;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Request;
-import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Collections;
-import java.util.Date;
-import java.util.Optional;
-import java.util.concurrent.*;
 
 @Slf4j
 @Service
@@ -45,7 +36,10 @@ public class AzureSyncControlService {
     final BackendApplicationLogservice backendApplicationLogservice;
 
     @Autowired
-    public AzureSyncControlService(AzureADSyncService azureADSyncService, AzureResourceSyncService azureResourceSyncService, K8ResourcesSyncService k8ResourcesSyncService, AzureUserCredentialRepository azureUserCredentialRepository, AzureTenantRepository azureTenantRepository, AzureUserCredentialService azureUserCredentialService, K8ResourcesDataService k8ResourcesDataService, BackendApplicationLogservice backendApplicationLogservice) {
+    public AzureSyncControlService(AzureADSyncService azureADSyncService, AzureResourceSyncService azureResourceSyncService,
+                                   K8ResourcesSyncService k8ResourcesSyncService, AzureUserCredentialRepository azureUserCredentialRepository,
+                                   AzureTenantRepository azureTenantRepository, AzureUserCredentialService azureUserCredentialService,
+                                   K8ResourcesDataService k8ResourcesDataService, BackendApplicationLogservice backendApplicationLogservice) {
         this.azureADSyncService = azureADSyncService;
         this.azureResourceSyncService = azureResourceSyncService;
         this.k8ResourcesSyncService = k8ResourcesSyncService;
@@ -63,11 +57,7 @@ public class AzureSyncControlService {
         try {
             AzureTenant azureTenant = azureADSyncService.initializeGraphClientAndSyncAzureTenant(azureUserCredentialDTO, graphClient);
             azureADSyncService.syncAzureADData(azureTenant);
-            Optional.ofNullable(azureUserCredentialDTO.getSubscriptionId())
-                    .filter(StringUtils::isNotEmpty)
-                    .ifPresentOrElse(subscriptionId -> azureResourceSyncService.syncAzureResourceData(azureTenant, azureUserCredentialDTO),
-                            () -> backendApplicationLogservice.saveAuditLog(
-                                    azureUserCredentialDTO.getWsTenantName(), "demo@gmail.com", "ADD", Constant.AZURE_RESOURCE_DATA_SYNC_SKIPPED, "Info"));
+            syncAzureResourcesDataIfSubscriptionsExist(azureTenant, azureUserCredentialDTO);
         } catch (Exception exp) {
             log.error(String.format("Failure in %s thread while fetching azure data asynchronously", Thread.currentThread().getName()));
         }
@@ -81,13 +71,14 @@ public class AzureSyncControlService {
     protected void syncAzureResourcesData(AzureUserCredentialDTO azureUserCredentialDTO) {
         log.info("Thread name for syncAzureResourcesData: {}", Thread.currentThread().getName());
         try {
-            AzureTenant azureTenant = findAzureTenantOrSync(azureUserCredentialDTO);
-            azureResourceSyncService.syncAzureResourceData(azureTenant, azureUserCredentialDTO);
+            AzureTenant azureTenant = findOrSyncAzureTenant(azureUserCredentialDTO);
+            syncAzureResourcesDataIfSubscriptionsExist(azureTenant, azureUserCredentialDTO);
         } catch (Exception exp) {
             log.error(String.format("Failure in %s thread while fetching azure data asynchronously", Thread.currentThread().getName()));
         }
         azureUserCredentialService.updateSyncStatusData(false, azureUserCredentialDTO.getId());
     }
+
 
     /* on demand sync */
     @Async
@@ -97,16 +88,63 @@ public class AzureSyncControlService {
         try {
             AzureTenant azureTenant = azureADSyncService.initializeGraphClientAndSyncAzureTenant(azureUserCredentialDTO, null);
             azureADSyncService.syncAzureADData(azureTenant);
-            Optional.ofNullable(azureUserCredentialDTO.getSubscriptionId())
-                    .filter(StringUtils::isNotEmpty)
-                    .ifPresentOrElse(subscriptionId -> azureResourceSyncService.syncAzureResourceData(azureTenant, azureUserCredentialDTO),
-                            () -> backendApplicationLogservice.saveAuditLog(
-                                    azureUserCredentialDTO.getWsTenantName(), "demo@gmail.com", "ADD", Constant.AZURE_RESOURCE_DATA_SYNC_SKIPPED, "Info"));
+            syncAzureResourcesDataIfSubscriptionsExist(azureTenant, azureUserCredentialDTO);
         } catch (Exception exp) {
             log.error(String.format("Failure in %s thread while fetching azure data asynchronously", Thread.currentThread().getName()));
         }
         azureUserCredentialService.updateSyncStatusData(false, azureUserCredentialDTO.getId());
     }
+
+
+    private void syncAzureResourcesDataIfSubscriptionsExist(AzureTenant azureTenant, AzureUserCredentialDTO azureUserCredentialDTO) {
+        if (CollectionUtils.isNotEmpty(azureUserCredentialDTO.getSubscriptionIds())) {
+            azureResourceSyncService.syncAzureResourcesData(azureTenant, azureUserCredentialDTO, false);
+        } else {
+            log.warn("No subscription ID(s) found for the tenant: {}. Skipping Azure resources data sync.", azureTenant.getWsTenantName());
+            backendApplicationLogservice.saveAuditLog(azureTenant.getWsTenantName(), "demo@gmail.com", "ADD",
+                    Constant.AZURE_RESOURCE_DATA_SYNC_SKIPPED, "Info");
+        }
+    }
+
+
+    /* Sync only the Role Assignment from Azure for the Tenant*/
+    @Transactional
+    public void syncAzureRoleAssignments(String wsTenantName) {
+        AzureUserCredentialDTO azureUserCredentialDTO = azureUserCredentialService.findWSTenantIdWithDecryptedSecret(wsTenantName);
+        AzureTenant azureTenant = findOrSyncAzureTenant(azureUserCredentialDTO);
+        azureResourceSyncService.syncAzureResourcesData(azureTenant, azureUserCredentialDTO, true);
+    }
+
+
+    /* Sync only the k8 RESOURCES data for the Tenant*/
+    @Transactional
+    public void syncKubernetesResourcesData(AzureUserCredentialDTO azureUserCredentialDTO) {
+        try {
+            if (CollectionUtils.isNotEmpty(azureUserCredentialDTO.getSubscriptionIds())) {
+                AzureTenant azureTenant = findOrSyncAzureTenant(azureUserCredentialDTO);
+                azureResourceSyncService.syncK8ResourcesData(azureTenant.getWsTenantName(), azureUserCredentialDTO);
+            }
+        } catch (Exception ignored) {
+            log.error("Error in syncing K8 resources data. Caller: syncKubernetesResourcesData");
+            log.error("Error: {}", ignored.getMessage());
+        }
+        azureUserCredentialService.updateSyncStatusData(false, azureUserCredentialDTO.getId());
+    }
+
+    private AzureTenant findOrSyncAzureTenant(AzureUserCredentialDTO azureUserCredentialDTO) {
+        return azureTenantRepository
+                .findByWsTenantName(azureUserCredentialDTO.getWsTenantName())
+                .orElseGet(() -> azureADSyncService.initializeGraphClientAndSyncAzureTenant(azureUserCredentialDTO, null));
+    }
+
+    @Async
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void syncK8RolesAndBindings(K8ResourceDataSyncRequest syncRequest) {
+        log.info("Async process started.......");
+        k8ResourcesDataService.deleteK8RolesAndBindings(syncRequest.getWsTenantName());
+        k8ResourcesSyncService.executeSync(syncRequest);
+    }
+
 
 //    @Async
 //    @Transactional
@@ -176,35 +214,6 @@ public class AzureSyncControlService {
 //    }
 
 
-    /* Sync only the Role Assignment from Azure for the Tenant*/
-    @Transactional
-    public void syncAzureRoleAssignments(String wsTenantName) {
-        AzureUserCredentialDTO azureUserCredentialDTO = azureUserCredentialService.findWSTenantIdWithDecryptedSecret(wsTenantName);
-        AzureTenant azureTenant = findAzureTenantOrSync(azureUserCredentialDTO);
-        azureResourceSyncService.syncAzureRoleAssignmentData(azureTenant, azureUserCredentialDTO);
-    }
-
-
-    /* Sync only the k8 RESOURCES data for the Tenant*/
-    @Transactional
-    public void syncKubernetesResourcesData(AzureUserCredentialDTO azureUserCredentialDTO) {
-        try {
-            AzureTenant azureTenant = findAzureTenantOrSync(azureUserCredentialDTO);
-            azureResourceSyncService.syncK8ResourcesData(azureTenant, azureUserCredentialDTO);
-        } catch (Exception ignored) {
-            log.error("Error in syncing K8 resources data. Caller: syncKubernetesResourcesData");
-            log.error("Error: {}", ignored.getMessage());
-        }
-        azureUserCredentialService.updateSyncStatusData(false, azureUserCredentialDTO.getId());
-    }
-
-    private AzureTenant findAzureTenantOrSync(AzureUserCredentialDTO azureUserCredentialDTO) {
-        return azureTenantRepository
-                .findByWsTenantName(azureUserCredentialDTO.getWsTenantName())
-                .orElseGet(() -> azureADSyncService.initializeGraphClientAndSyncAzureTenant(azureUserCredentialDTO, null));
-    }
-
-
     //    @Transactional
 //    public void syncAzureDataOnDemand(String wsTenantName) {
 //        log.info("inside syncAzureDataOnDemand");
@@ -220,13 +229,5 @@ public class AzureSyncControlService {
 //        startOnDemandSync(azureUserCredential);
 //    }
 
-
-    @Async
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void syncK8RolesAndBindings(K8ResourceDataSyncRequest syncRequest) {
-        log.info("Async process started.......");
-        k8ResourcesDataService.deleteK8RolesAndBindings(syncRequest.getWsTenantName()); 
-        k8ResourcesSyncService.executeSync(syncRequest);
-    }
 
 }

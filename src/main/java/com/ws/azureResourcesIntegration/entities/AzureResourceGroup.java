@@ -26,6 +26,7 @@ public class AzureResourceGroup {
     String regionName;
     String location;
     Date syncedAt;
+    String subscriptionId;
     String wsTenantName; // WhiteSwan account organization name
 
     @ElementCollection(fetch = FetchType.EAGER)

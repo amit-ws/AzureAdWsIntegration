@@ -16,24 +16,24 @@ import java.util.Set;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class CreateAzureConfiguration {
     @NotNull(message = "client_id is required")
-    @JsonProperty("client_id")
+//    @JsonProperty("client_id")
     String clientId;
 
     @NotNull(message = "azure tenant_id is required")
-    @JsonProperty("az_tenant_id")
+//    @JsonProperty("az_tenant_id")
     String tenantId;
 
     @NotNull(message = "client_secret is required")
-    @JsonProperty("client_secret")
+//    @JsonProperty("client_secret")
     String clientSecret;
 
-    @JsonProperty("subscription_id")
+//    @JsonProperty("subscription_id")
     String subscriptionId;
 
 //    @JsonProperty("subscription_ids")
-//    List<String> subscriptionIds;
+    Set<String> subscriptionIds;
 
     @NotNull(message = "Please provide WhiteSwan tenant name")
-    @JsonProperty("ws_tenant_name")
+//    @JsonProperty("ws_tenant_name")
     String wsTenantName;
 }

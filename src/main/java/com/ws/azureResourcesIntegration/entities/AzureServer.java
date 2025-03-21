@@ -11,13 +11,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 @EqualsAndHashCode(callSuper = true)
-@Entity
-@Data
-@Setter
-@Getter
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
+@Data
+@Entity
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @Table(name = "azure_server", schema = "azure_test")
 public class AzureServer extends BaseAzureResource{
@@ -35,7 +33,6 @@ public class AzureServer extends BaseAzureResource{
     Boolean managedServiceIdentityEnabled;
     String managedServiceIdentityType;
     String publicNetworkAccess;
-    String resourceGroupName;
     String innerModelState;
     String administratorType;
     String administratorSignInName;
@@ -44,7 +41,6 @@ public class AzureServer extends BaseAzureResource{
     String administratorLogin;
     String endpointId;
     String resourceType;
-    String subscriptionId;
 
     @OneToMany(mappedBy = "azureServer", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     List<AzureDatabase> azureDatabases = new ArrayList<>();

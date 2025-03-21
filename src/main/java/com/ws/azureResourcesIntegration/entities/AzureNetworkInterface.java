@@ -5,18 +5,20 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
+import lombok.experimental.SuperBuilder;
 
 import java.util.Date;
 
 
-@Builder
+@EqualsAndHashCode(callSuper = true)
+@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
 @Data
 @Entity
-@Table(name = "azure_network_interface", schema = "azure_test")
 @FieldDefaults(level = AccessLevel.PRIVATE)
-public class AzureNetworkInterface {
+@Table(name = "azure_network_interface", schema = "azure_test")
+public class AzureNetworkInterface extends BaseAzureResource{
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Long id;
@@ -26,11 +28,6 @@ public class AzureNetworkInterface {
     String name;
     @Column(nullable = false)
     String virtualMachineId;
-    String resourceGroupName;
-    String subscriptionId;
-    @Column(nullable = false)
-    Date syncedAt;
-    String wsTenantName;
 
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)

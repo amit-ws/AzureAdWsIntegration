@@ -41,8 +41,6 @@ public class AzureDatabase extends BaseAzureResource{
     OffsetDateTime resumedDate;
     String defaultSecondaryLocation;
     String resourceType;
-    String resourceGroupName;
-    String subscriptionId;
 
 
 //    @JsonIgnore

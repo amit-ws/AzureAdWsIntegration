@@ -60,19 +60,18 @@ public class AzureSubscription {
 
     @JsonIgnore
     @OneToMany(mappedBy = "azureSubscription", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    List<AzureRoleDefinition> azureRoleDefinitions = new ArrayList<>();
+    List<AzureKubernetesCluster> azureKubernetesClusters = new ArrayList<>();
 
-//    @JsonIgnore
-//    @OneToMany(mappedBy = "azureSubscription", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-//    List<CustomRoleAssignment> customRoleAssignments = new ArrayList<>();
+    @JsonIgnore
+    @OneToMany(mappedBy = "azureSubscription", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    List<AzureRoleDefinition> azureRoleDefinitions = new ArrayList<>();
 
     @JsonIgnore
     @OneToMany(mappedBy = "azureSubscription", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     List<AzureRoleAssignment> azureRoleAssignments = new ArrayList<>();
 
-    @JsonIgnore
-    @OneToMany(mappedBy = "azureSubscription", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    List<AzureKubernetesCluster> azureKubernetesClusters = new ArrayList<>();
-
+    //    @JsonIgnore
+//    @OneToMany(mappedBy = "azureSubscription", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+//    List<CustomRoleAssignment> customRoleAssignments = new ArrayList<>();
 
 }

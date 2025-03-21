@@ -28,15 +28,15 @@ public class AzureUserCredential {
     @Column(unique = true)
     String subscriptionId;
 
-//    @ElementCollection(fetch = FetchType.EAGER)
-//    @CollectionTable(name = "azure_user_credential_subscription_ids", joinColumns = @JoinColumn(name = "azure_user_credential_id"))
-//    @Column(name = "subscription_id")
-//    List<String> subscriptionIds;
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "azure_user_credential_subscription_ids", joinColumns = @JoinColumn(name = "azure_user_credential_id"))
+    @Column(name = "subscription_id")
+    Set<String> subscriptionIds;
 
     @Column(columnDefinition = "boolean default false")
     boolean syncStatus;
 
     Date createdAt;
     Date updatedAt;
-    String wsTenantName; // Whiteswan account organization name
+    String wsTenantName; // WhiteSwan account organization name
 }

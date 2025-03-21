@@ -58,7 +58,7 @@ package com.ws.azureAdIntegration.util;
 import com.azure.resourcemanager.AzureResourceManager;
 import com.microsoft.graph.requests.GraphServiceClient;
 import com.ws.azureAdIntegration.dto.AzureUserCredentialDTO;
-import com.ws.azureAdIntegration.entity.AzureUserCredential;
+import com.ws.azureAdIntegration.exception.AzureDataException;
 import com.ws.configuration.AzureAuthConfigurationFactory;
 import lombok.extern.slf4j.Slf4j;
 
@@ -77,10 +77,10 @@ public class AzureAuthUtil {
 
     static {
         AZURE_AUTH_ERROR_MAP = new HashMap<>() {{
-            put("AADSTS700016", "Invalid Client ID or Client Secret");
-            put("AADSTS7000215", "Invalid Client Secret");
-            put("AADSTS900023", "Invalid Tenant ID");
-            put("InvalidSubscriptionId", "Invalid Subscription ID");
+            put("AADSTS700016", "Invalid Client ID: %s");
+            put("AADSTS7000215", "Invalid Client Secret: %s");
+            put("AADSTS900023", "Invalid Tenant ID: %s");
+            put("InvalidSubscriptionId", "Invalid Subscription ID: %s");
 //            put("Request_BadRequest", "Invalid Object ID");
         }};
     }
@@ -95,8 +95,9 @@ public class AzureAuthUtil {
         try {
             return azureAuthConfigurationFactory.createAzureGraphServiceClient(clientId, clientSecret, tenantId);
         } catch (Exception e) {
-            log.error("Error in verifying Azure credentials: {}", e.getMessage());
-            String message = resolveAzureCredentialError(e.getMessage());
+            log.error("Error in creating GraphServiceClient with provided Azure credentials");
+            log.error("Message: {}", e.getMessage());
+            String message = resolveAzureCredentialError(e.getMessage(), clientId, clientSecret, tenantId, null);
             throw new RuntimeException(message);
         }
     }
@@ -105,31 +106,79 @@ public class AzureAuthUtil {
         try {
             return azureAuthConfigurationFactory.createAzureGraphServiceClient(azureUserCredentialDTO.getClientId(), azureUserCredentialDTO.getClientSecret(), azureUserCredentialDTO.getTenantId());
         } catch (Exception e) {
-            log.error("Error in verifying Azure credentials: {}", e.getMessage());
-            String message = resolveAzureCredentialError(e.getMessage());
+            log.error("Error in creating GraphServiceClient with provided Azure credentials");
+            log.error("Message: {}", e.getMessage());
+            String message = resolveAzureCredentialError(e.getMessage(), azureUserCredentialDTO.getClientId(), azureUserCredentialDTO.getClientSecret(), azureUserCredentialDTO.getTenantId(), null);
             throw new RuntimeException(message);
         }
     }
 
 
-    public AzureResourceManager validateAzureCredentialsWithSubscriptionId(AzureUserCredentialDTO azureUserCredentialDTO) {
+    public AzureResourceManager validateAzureCredentialsWithSubscriptionId(String tenantId, String clientId, String clientSecret, String subscriptionId) {
         try {
-            return azureAuthConfigurationFactory.createAzureResourceClient(azureUserCredentialDTO.getClientId(), azureUserCredentialDTO.getClientSecret(), azureUserCredentialDTO.getTenantId(), azureUserCredentialDTO.getSubscriptionId());
+            AzureResourceManager azureResourceManager = azureAuthConfigurationFactory.createAzureResourceClient(clientId, clientSecret, tenantId, subscriptionId);
+            validateSubscriptionId(azureResourceManager);
+            return azureResourceManager;
         } catch (Exception e) {
-            log.error("Error in verifying Azure credentials: {}", e.getMessage());
-            String message = resolveAzureCredentialError(e.getMessage());
-            throw new RuntimeException(message);
+            log.error("Error in AzureResourceManager with provided Azure credentials");
+            log.error("Message: {}", e.getMessage());
+//            String error = null;
+//            if (e.getMessage().contains("AADSTS7000215")) {
+//                error = String.format(AZURE_AUTH_ERROR_MAP.get("AADSTS7000215"), clientSecret);
+//            } else if (e.getMessage().contains("AADSTS700016")) {
+//                error = AZURE_AUTH_ERROR_MAP.get("AADSTS700016");
+//            } else if (e.getMessage().contains("AADSTS900023")) {
+//                error = String.format(AZURE_AUTH_ERROR_MAP.get("AADSTS900023"), tenantId);
+//            } else if (e.getMessage().contains("InvalidSubscriptionId")) {
+//                error = String.format(AZURE_AUTH_ERROR_MAP.get("InvalidSubscriptionId"), subscriptionId);
+//            } else {
+//
+//            }
+//            String message = resolveAzureCredentialError(e.getMessage());
+            throw new AzureDataException(resolveAzureCredentialError(e.getMessage(), clientId, clientSecret, tenantId, subscriptionId));
         }
     }
 
-    private static String resolveAzureCredentialError(String errorMessage) {
-        return AZURE_AUTH_ERROR_MAP.entrySet()
-                .stream()
-                .filter(entry -> errorMessage.contains(entry.getKey()))
-                .map(Map.Entry::getValue)
-                .findFirst()
-                .orElse("Unknown error: Please check your Azure credentials and try again.");
+
+    private void validateSubscriptionId(AzureResourceManager azureResourceManager) {
+        azureResourceManager.getCurrentSubscription();
     }
+
+
+    private String resolveAzureCredentialError(String errorMessage, String clientId, String clientSecret, String tenantId, String subscriptionId) {
+        return AZURE_AUTH_ERROR_MAP.entrySet().stream()
+                .filter(entry -> errorMessage.contains(entry.getKey()))
+                .map(entry -> String.format(entry.getValue(), getReplacementValue(entry.getKey(), clientId, clientSecret, tenantId, subscriptionId)))
+                .findFirst()
+                .orElse("Unknown error: Please check your Azure credentials and try again!");
+    }
+
+    private String getReplacementValue(String errorCode, String clientId, String clientSecret, String tenantId, String subscriptionId) {
+        switch (errorCode) {
+            case "AADSTS7000215":
+                return clientSecret;
+            case "AADSTS900023":
+                return tenantId;
+            case "InvalidSubscriptionId":
+                return subscriptionId;
+            default:
+                return clientId;
+        }
+    }
+
+
+//    public AzureResourceManager validateAzureCredentialsWithSubscriptionId(AzureUserCredentialDTO azureUserCredentialDTO) {
+//        try {
+//            return azureAuthConfigurationFactory.createAzureResourceClient(azureUserCredentialDTO.getClientId(), azureUserCredentialDTO.getClientSecret(),
+//                    azureUserCredentialDTO.getTenantId(), azureUserCredentialDTO.getSubscriptionId());
+//        } catch (Exception e) {
+//            log.error("Error in creating azure resource manager with provided Azure credentials");
+//            log.error("Message: {}", e.getMessage());
+//            String message = resolveAzureCredentialError(e.getMessage(), azureUserCredentialDTO.getClientId(), azureUserCredentialDTO.getClientSecret(),
+//                    azureUserCredentialDTO.getTenantId(), azureUserCredentialDTO.getSubscriptionId());
+//            throw new RuntimeException(message);
+//        }
+//    }
 }
 
 

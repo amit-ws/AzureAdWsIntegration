@@ -121,7 +121,7 @@ public class AzureResourceController {
 
     @GetMapping("/v2/applicableRoles")
     public ResponseEntity<List<ApplicableRoleDefinition>> getAllApplicableRoleDefinitionsForResource2(@RequestParam Integer resourceId,
-                                                                                                            @RequestParam AzureResourcesType type) {
+                                                                                                      @RequestParam AzureResourcesType type) {
         return ResponseEntity.ok(azureResourceService.getAllApplicableRoleDefinitionsForResource2(resourceId, type));
     }
 
@@ -138,6 +138,7 @@ public class AzureResourceController {
                 .status(HttpStatus.CREATED)
                 .body((azureResourceService.raiseResourceAssignmentRequestInList(request)));
     }
+
     @GetMapping("/v1/requests/get")
     public ResponseEntity<List<CustomRoleAssignment>> findByAssigneeAndScopeHandler(@RequestParam String assignee, @RequestParam String scope) {
         return ResponseEntity
@@ -184,15 +185,17 @@ public class AzureResourceController {
         return ResponseEntity.ok().build();
     }
 
-    @DeleteMapping("/v1/removeRole")
-    public ResponseEntity<Boolean> revokeRoleAssignmentHandler(@RequestParam String azureId) {
-        return ResponseEntity.ok(azureResourceService.revokeRoleAssignment(azureId));
-    }
+//    @DeleteMapping("/v1/removeRole")
+//    public ResponseEntity<Boolean> revokeRoleAssignmentHandler(@RequestParam String azureId) {
+//        return ResponseEntity.ok(azureResourceService.revokeRoleAssignment(azureId));
+//    }
 
 
     @DeleteMapping("/v1/revokeData")
-    public ResponseEntity revokeRoleToPrincipalForResourceInAzure(@RequestParam("tenantName") String wsTenantName, @RequestParam("pathId") String pathId){
-        azureResourceService.revokeRoleToPrincipalForResourceInAzure(wsTenantName.trim(), pathId.trim());
+    public ResponseEntity revokeRoleToPrincipalForResourceInAzure(@RequestParam("tenantName") String wsTenantName,
+                                                                  @RequestParam("subId") String subId,
+                                                                  @RequestParam("pathId") String pathId) {
+        azureResourceService.revokeRoleToPrincipalForResourceInAzure(wsTenantName.trim(), subId.trim(), pathId.trim());
         return ResponseEntity.noContent().build();
     }
 }

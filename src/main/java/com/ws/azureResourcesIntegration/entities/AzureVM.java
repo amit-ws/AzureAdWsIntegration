@@ -14,13 +14,11 @@ import java.util.Set;
 
 
 @EqualsAndHashCode(callSuper = true)
-@Entity
-@Data
-@Setter
-@Getter
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
+@Data
+@Entity
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @Table(name = "azure_vm", schema = "azure_test")
 public class AzureVM extends BaseAzureResource {
@@ -35,7 +33,6 @@ public class AzureVM extends BaseAzureResource {
     String size;
     String osType;
     String publicIpInstanceId;
-    String resourceGroupName;
     Integer osDiskSize;
     String region;
     String securityType;
@@ -43,7 +40,6 @@ public class AzureVM extends BaseAzureResource {
     String zones;
     String resourceIdentityType;
     String ipAddress;
-    String subscriptionId;
 
 //    @ElementCollection(fetch = FetchType.EAGER)
 //    @CollectionTable(

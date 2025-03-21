@@ -1,8 +1,11 @@
 package com.ws.azureAdIntegration.service;
 
 import com.ws.azureAdIntegration.constants.Constant;
+import com.ws.azureAdIntegration.dto.AzureAuthenticationCredentialDTO;
 import com.ws.azureAdIntegration.dto.AzureUserCredentialDTO;
 import com.ws.azureAdIntegration.entity.AzureUserCredential;
+import com.ws.azureAdIntegration.exception.AzureDataException;
+import com.ws.azureAdIntegration.repository.AzureTenantRepository;
 import com.ws.azureAdIntegration.repository.AzureUserCredentialRepository;
 import com.ws.azureAdIntegration.util.EncryptionUtil;
 import com.ws.mapper.AzureEntitiesMapper;
@@ -30,17 +33,28 @@ public class AzureUserCredentialService {
         return mapFromAzureUserCredentialAndDecryptSecretKey(findByWSTenantName(wsTenantName));
     }
 
+    public AzureAuthenticationCredentialDTO findAuthCredentialWithDecryptedSecret(String wsTenantName) {
+        AzureAuthenticationCredentialDTO authCredential = findAuthenticationCredentialByWSTenantName(wsTenantName);
+        authCredential.setClientSecret(EncryptionUtil.getDecryptedKey(authCredential.getClientSecret(), Constant.AZURE_CLIENT_SECRET));
+        return authCredential;
+    }
+
     public AzureUserCredentialDTO mapFromAzureUserCredentialAndDecryptSecretKey(AzureUserCredential azureUserCredential) {
         AzureUserCredentialDTO azureUserCredentialDTO = AzureEntitiesMapper.INSTANCE.fromAzureUserCredentialDTO(azureUserCredential);
         azureUserCredentialDTO.setClientSecret(EncryptionUtil.getDecryptedKey(azureUserCredentialDTO.getClientSecret(), Constant.AZURE_CLIENT_SECRET));
-//        if (!CollectionUtils.isEmpty(azureUserCredential.getSubscriptionIds())) {
-//            azureUserCredentialDTO.setSubscriptionIds(azureUserCredential.getSubscriptionIds());
-//        }
+        if (!CollectionUtils.isEmpty(azureUserCredential.getSubscriptionIds())) {
+            azureUserCredentialDTO.setSubscriptionIds(azureUserCredential.getSubscriptionIds());
+        }
         return azureUserCredentialDTO;
     }
 
     public AzureUserCredential findByWSTenantName(String wsTenantName) {
         return azureUserCredentialRepository.findByWsTenantName(wsTenantName)
+                .orElseThrow(() -> new RuntimeException("No Azure AD configuration found for tenant: " + wsTenantName));
+    }
+
+    public AzureAuthenticationCredentialDTO findAuthenticationCredentialByWSTenantName(String wsTenantName) {
+        return azureUserCredentialRepository.findAzureUserCredentialUsingWsTenantName(wsTenantName)
                 .orElseThrow(() -> new RuntimeException("No Azure AD configuration found for tenant: " + wsTenantName));
     }
 
@@ -55,7 +69,16 @@ public class AzureUserCredentialService {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void updateSyncStatusData(boolean status, Integer id){
+    public void updateSyncStatusData(boolean status, Integer id) {
         azureUserCredentialRepository.updateSyncStatusData(status, id);
+    }
+
+    public boolean checkIfCredentialExistsUsingTenantId(String tenantId) {
+        return azureUserCredentialRepository.findByTenantId(tenantId).isPresent();
+    }
+
+    public AzureUserCredential getAzureUserCredential(Integer credId, String wsTenantName) {
+        return azureUserCredentialRepository.findByIdAndWsTenantName(credId, wsTenantName)
+                .orElseThrow(() -> new RuntimeException("No azure credentials found with provided data"));
     }
 }

@@ -4,6 +4,7 @@ package com.ws.azureResourcesIntegration.service;
 import com.azure.resourcemanager.AzureResourceManager;
 import com.azure.resourcemanager.authorization.models.PrincipalType;
 import com.azure.resourcemanager.authorization.models.RoleAssignment;
+import com.ws.azureAdIntegration.dto.AzureAuthenticationCredentialDTO;
 import com.ws.azureAdIntegration.dto.AzureUserCredentialDTO;
 import com.ws.azureAdIntegration.entity.AzureTenant;
 import com.ws.azureAdIntegration.exception.AzureDataException;
@@ -46,6 +47,7 @@ import java.util.stream.Collectors;
 @Slf4j
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class AzureResourceService {
+    Map<String, AzureResourceManager> azureResourceManagerCache = new HashMap<>();
     final AzureVMRepository azureVMRepository;
     final AzureStorageRepository azureStorageRepository;
     final AzureServerRepository azureServerRepository;
@@ -154,7 +156,7 @@ public class AzureResourceService {
         if (!CollectionUtils.isEmpty(roleActions)) {
             Map<Boolean, List<String>> partitionedActions = roleActions.stream()
                     .collect(Collectors.partitioningBy(
-                            roleAction -> "ACTION".equalsIgnoreCase(roleAction.getActionType()),
+                            roleAction -> "ACTION" .equalsIgnoreCase(roleAction.getActionType()),
                             Collectors.mapping(AzureRoleDefinitionActionNameProjection::getActionName, Collectors.toList())
                     ));
             response.setActions(partitionedActions.get(true));
@@ -376,13 +378,13 @@ public class AzureResourceService {
                 .orElseThrow(() -> new RuntimeException("No data found"));
     }
 
-    @Transactional
-    public CustomRoleAssignment raiseResourceAssignmentRequest(AssignRoleRequest request) {
-        Optional<CustomRoleAssignment> existingRoleAssignment = customRoleAssignmentRepository.findByAssigneeAndScopeAndAzureRoleDefinitionPathIdAndStatusNotIn(
-                request.getPrincipleId().trim(), request.getResourceScope().trim(), request.getRoleDefinitionPathId().trim(), Arrays.asList(RequestStatus.DECLINE, RequestStatus.EXPIRED));
-        return existingRoleAssignment.map(roleAssignment -> handleExistingRoleAssignment(roleAssignment, request))
-                .orElseGet(() -> createNewRoleAssignment(request));
-    }
+//    @Transactional
+//    public CustomRoleAssignment raiseResourceAssignmentRequest(AssignRoleRequest request) {
+//        Optional<CustomRoleAssignment> existingRoleAssignment = customRoleAssignmentRepository.findByAssigneeAndScopeAndAzureRoleDefinitionPathIdAndStatusNotIn(
+//                request.getPrincipleId().trim(), request.getResourceScope().trim(), request.getRoleDefinitionPathId().trim(), Arrays.asList(RequestStatus.DECLINE, RequestStatus.EXPIRED));
+//        return existingRoleAssignment.map(roleAssignment -> handleExistingRoleAssignment(roleAssignment, request))
+//                .orElseGet(() -> createNewRoleAssignment(request));
+//    }
 
     public CustomRoleAssignment raiseResourceAssignmentRequestV2(AssignRoleRequest request) {
         Optional<CustomRoleAssignment> existingRoleAssignmentOpt = customRoleAssignmentRepository.findByAssigneeAndScopeAndAzureRoleDefinitionPathIdAndStatusNotIn(
@@ -426,7 +428,7 @@ public class AzureResourceService {
 
     private void createdRoleAssignmentForNetworkInterfaces(List<CustomRoleAssignment> customRoleAssignments) {
         customRoleAssignments.forEach(customRoleAssignment -> {
-            RoleAssignment nicRoleAssignment = assignRoleToPrincipalForResourceInAzure(customRoleAssignment.getWsTenantName(), customRoleAssignment);
+            RoleAssignment nicRoleAssignment = assignRoleToPrincipalForResourceInAzure(customRoleAssignment);
             createAzureRoleAssignmentFromRoleAssignment(nicRoleAssignment, customRoleAssignment, GenericUtil.determineScopeType(customRoleAssignment.getScope()));
         });
     }
@@ -648,6 +650,11 @@ public class AzureResourceService {
         return true;
     }
 
+    @Transactional
+    public void revokeAzureResourceAccess(CustomRoleAssignment customRoleAssignment) {
+        processExpiration(customRoleAssignment);
+    }
+
 
     @Transactional
     public Boolean processResourceRequestForPrinciple(ProcessAccessRequest request, String wsTenantName) {
@@ -677,7 +684,7 @@ public class AzureResourceService {
     }
 
     private void processApproval(CustomRoleAssignment customRoleAssignment) {
-        RoleAssignment createdRoleAssignment = assignRoleToPrincipalForResourceInAzure(customRoleAssignment.getWsTenantName(), customRoleAssignment);
+        RoleAssignment createdRoleAssignment = assignRoleToPrincipalForResourceInAzure(customRoleAssignment);
         createAzureRoleAssignmentFromRoleAssignment(createdRoleAssignment, customRoleAssignment, GenericUtil.determineScopeType(customRoleAssignment.getScope()));
         customRoleAssignment.setAzureRoleAssignmentPathId(createdRoleAssignment.id());
         LocalDateTime validFrom = LocalDateTime.now();
@@ -691,9 +698,9 @@ public class AzureResourceService {
     }
 
 
-    /**
-     * LEGACY CODE
-     */
+//    /**
+//     * LEGACY CODE
+//     */
 //    private void processApproval(CustomRoleAssignment customRoleAssignment) {
 //        RoleAssignment createdRoleAssignment = assignRoleToPrincipalForResourceInAzure(customRoleAssignment.getWsTenantName(), customRoleAssignment);
 //        createAzureRoleAssignmentFromRoleAssignment(createdRoleAssignment, customRoleAssignment);
@@ -705,23 +712,39 @@ public class AzureResourceService {
 ////                String.format("Resource access request %S and Azure Role Assignment CREATED in Azure for the assignee: %s", RequestStatus.APPROVED, customRoleAssignment.getAssignee()));
 //        updateCustomRoleAssignmentCommonFields(customRoleAssignment, RequestStatus.APPROVED);
 //    }
-    @Transactional
-    public void revokeAzureResourceAccess(CustomRoleAssignment customRoleAssignment) {
-        processExpiration(customRoleAssignment);
+
+
+//    public void revokeAzureResourceAccess(List<CustomRoleAssignment> customRoleAssignments, AzureUserCredentialDTO azureUserCredentialDTO) {
+//        AzureResourceManager azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredentialDTO);
+//        revokeRoleToPrincipalForResourceInAzure(customRoleAssignments, azureResourceManager);
+//    }
+
+    public void revokeAzureResourcesAccess(List<CustomRoleAssignment> customRoleAssignments, AzureAuthenticationCredentialDTO azureAuthCredentialDTO) {
+        customRoleAssignments.forEach(customRoleAssignment -> {
+            AzureResourceManager azureResourceManager = getOrCreateAzureResourceManager(
+                    azureAuthCredentialDTO.getTenantId(),
+                    azureAuthCredentialDTO.getClientId(),
+                    azureAuthCredentialDTO.getClientSecret(),
+                    customRoleAssignment.getSubscriptionId());
+
+            revokeRoleToPrincipalForResourceInAzure(customRoleAssignment.getAzureRoleAssignmentPathId(), azureResourceManager);
+        });
     }
 
-    public void revokeAzureResourceAccess(List<CustomRoleAssignment> customRoleAssignments, AzureUserCredentialDTO azureUserCredentialDTO) {
-        AzureResourceManager azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredentialDTO);
-        revokeRoleToPrincipalForResourceInAzure(customRoleAssignments, azureResourceManager);
-    }
 
+//    private void processExpiration(CustomRoleAssignment customRoleAssignment) {
+//        AzureResourceManager azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredentialService.findWSTenantIdWithDecryptedSecret(customRoleAssignment.getWsTenantName()));
+//        revokeRoleToPrincipalForResourceInAzure(customRoleAssignment.getAzureRoleAssignmentPathId(), azureResourceManager);
+//        azureRoleAssignmentRepository.deleteByAzureRoleAssignmentPathId(customRoleAssignment.getAzureRoleAssignmentPathId());
+//        updateCustomRoleAssignmentCommonFields(customRoleAssignment, RequestStatus.EXPIRED);
+//    }
 
     private void processExpiration(CustomRoleAssignment customRoleAssignment) {
-        AzureResourceManager azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredentialService.findWSTenantIdWithDecryptedSecret(customRoleAssignment.getWsTenantName()));
-        revokeRoleToPrincipalForResourceInAzure(customRoleAssignment.getAzureRoleAssignmentPathId(), azureResourceManager);
+        revokeRoleToPrincipalForResourceInAzure(customRoleAssignment.getAzureRoleAssignmentPathId(), getAzureResourceManagerForSubscription(customRoleAssignment));
         azureRoleAssignmentRepository.deleteByAzureRoleAssignmentPathId(customRoleAssignment.getAzureRoleAssignmentPathId());
         updateCustomRoleAssignmentCommonFields(customRoleAssignment, RequestStatus.EXPIRED);
     }
+
 
     private void processDenial(CustomRoleAssignment customRoleAssignment) {
         updateCustomRoleAssignmentCommonFields(customRoleAssignment, RequestStatus.DECLINE);
@@ -733,9 +756,10 @@ public class AzureResourceService {
         customRoleAssignmentRepository.save(customRoleAssignment);
     }
 
-    private RoleAssignment assignRoleToPrincipalForResourceInAzure(String wsTenantName, CustomRoleAssignment customRoleAssignment) {
+    private RoleAssignment assignRoleToPrincipalForResourceInAzure(CustomRoleAssignment customRoleAssignment) {
         try {
-            AzureResourceManager azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredentialService.findWSTenantIdWithDecryptedSecret(wsTenantName));
+//            AzureResourceManager azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredentialService.findWSTenantIdWithDecryptedSecret(wsTenantName));
+            AzureResourceManager azureResourceManager = getAzureResourceManagerForSubscription(customRoleAssignment);
             RoleAssignment createdRoleAssignment = azureResourceManager.accessManagement()
                     .roleAssignments()
                     .define(customRoleAssignment.getAzureId())
@@ -757,6 +781,15 @@ public class AzureResourceService {
         }
     }
 
+    private AzureResourceManager getAzureResourceManagerForSubscription(CustomRoleAssignment customRoleAssignment) {
+        AzureAuthenticationCredentialDTO azureAuthCredentialDTO = azureUserCredentialService.findAuthCredentialWithDecryptedSecret(customRoleAssignment.getWsTenantName());
+        return azureAuthUtil.validateAzureCredentialsWithSubscriptionId(
+                azureAuthCredentialDTO.getTenantId(),
+                azureAuthCredentialDTO.getClientId(),
+                azureAuthCredentialDTO.getClientSecret(),
+                customRoleAssignment.getSubscriptionId()
+        );
+    }
 
     private void createAzureRoleAssignmentFromRoleAssignment(RoleAssignment roleAssignment, CustomRoleAssignment customRoleAssignment, String scopeType) {
         AzureRoleAssignment azureRoleAssignment = AzureEntityUtil.createAzureRoleAssignmentFromResourceEntity(
@@ -774,6 +807,14 @@ public class AzureResourceService {
 
     }
 
+    private AzureResourceManager getOrCreateAzureResourceManager(String tenantId, String clientId, String clientSecret, String subscriptionId) {
+        if (!azureResourceManagerCache.containsKey(subscriptionId)) {
+            AzureResourceManager azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(tenantId, clientId, clientSecret, subscriptionId);
+            azureResourceManagerCache.put(subscriptionId, azureResourceManager);
+        }
+        return azureResourceManagerCache.get(subscriptionId);
+    }
+
     private void revokeRoleToPrincipalForResourceInAzure(String roleAssignmentPathId, AzureResourceManager azureResourceManager) {
         try {
             azureResourceManager.accessManagement()
@@ -788,15 +829,22 @@ public class AzureResourceService {
     }
 
 
-    private void revokeRoleToPrincipalForResourceInAzure(List<CustomRoleAssignment> customRoleAssignments, AzureResourceManager azureResourceManager) {
-        customRoleAssignments
-                .forEach(customRoleAssignment -> revokeRoleToPrincipalForResourceInAzure(customRoleAssignment.getAzureRoleAssignmentPathId(), azureResourceManager));
-    }
+//    private void revokeRoleToPrincipalForResourceInAzure(List<CustomRoleAssignment> customRoleAssignments, AzureResourceManager azureResourceManager) {
+//        customRoleAssignments
+//                .forEach(customRoleAssignment -> revokeRoleToPrincipalForResourceInAzure(customRoleAssignment.getAzureRoleAssignmentPathId(), azureResourceManager));
+//    }
 
 
-    public void revokeRoleToPrincipalForResourceInAzure(String wsTenantName, String pathId) {
-        AzureResourceManager azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredentialService.findWSTenantIdWithDecryptedSecret(wsTenantName));
-//        log.info("total: {}", azureResourceManager.storageAccounts().list().stream().count());
+
+
+
+
+    /* ------------------------------------------------------------------------------------------------- */
+    /* ------------------------------------------------------------------------------------------------- */
+
+    public void revokeRoleToPrincipalForResourceInAzure(String wsTenantName, String subsId, String pathId) {
+        CustomRoleAssignment customRoleAssignment = CustomRoleAssignment.builder().wsTenantName(wsTenantName).azureRoleAssignmentPathId(pathId).subscriptionId(subsId).build();
+        AzureResourceManager azureResourceManager = getAzureResourceManagerForSubscription(customRoleAssignment);
         try {
             azureResourceManager.accessManagement()
                     .roleAssignments()
@@ -809,16 +857,11 @@ public class AzureResourceService {
         }
     }
 
-
-
-
-
-    /* ------------------------------------------------------------------------------------------------- */
-
     @Transactional
     public void assignRoleToPrincipalForResourceInAzure(AssignRoleRequest request) {
 //        AzureResourceManager azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredentialService.findWSTenantIdWithDecryptedSecret(request.getTenantName()));
-        AzureResourceManager azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredentialService.findWSTenantIdWithDecryptedSecret("amitdev.local"));
+        AzureAuthenticationCredentialDTO authDTO = azureUserCredentialService.findAuthenticationCredentialByWSTenantName("amitdev.local");
+        AzureResourceManager azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(authDTO.getTenantId(), authDTO.getClientId(), authDTO.getClientSecret(), "4769af8e-ca3d-448d-bd1a-80e03ed94158");
 //        String id = UUID.randomUUID().toString();
 //        String assignee = "c30c5b8e-f883-42a9-a7ff-4d16cd0f7ec8";
 //        String roleId1 = "/subscriptions/4769af8e-ca3d-448d-bd1a-80e03ed94158/providers/Microsoft.Authorization/roleDefinitions/0f37683f-2463-46b6-9ce7-9b788b988ba2";
@@ -884,30 +927,30 @@ public class AzureResourceService {
         }
     }
 
-    @Transactional
-    public Boolean revokeRoleAssignment(String azureId) {
-//        String fullRoleAssignmentId = scope + "/providers/Microsoft.Authorization/roleAssignments/" + roleAssignmentId;
-        try {
-            AzureRoleAssignment assignment = azureRoleAssignmentRepository.findByAzureId(azureId).orElseThrow(() -> new RuntimeException("No Role assignment found with provided azure-id: " + azureId));
-            log.info("tenant: {}", assignment.getWsTenantName());
-            log.info("azure id: {}", assignment.getAzureId());
-            log.info("RA path id: {}", assignment.getAzureRoleAssignmentPathId());
-            AzureResourceManager azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredentialService.findWSTenantIdWithDecryptedSecret(assignment.getWsTenantName()));
-            log.info("started");
-            azureResourceManager.accessManagement()
-                    .roleAssignments()
-                    .deleteById(assignment.getAzureRoleAssignmentPathId());
-            azureRoleAssignmentRepository.deleteByAzureRoleAssignmentPathId(assignment.getAzureRoleAssignmentPathId());
-            log.info("deleted");
-            return Boolean.TRUE;
-        } catch (Exception ex) {
-            log.error("Error: {}", ex.getMessage());
-            if (ex.getMessage().contains("401")) {
-                throw new RuntimeException("UnAuthorized access token");
-            }
-            throw new RuntimeException(ex.getMessage());
-        }
-    }
+//    @Transactional
+//    public Boolean revokeRoleAssignment(String azureId) {
+////        String fullRoleAssignmentId = scope + "/providers/Microsoft.Authorization/roleAssignments/" + roleAssignmentId;
+//        try {
+//            AzureRoleAssignment assignment = azureRoleAssignmentRepository.findByAzureId(azureId).orElseThrow(() -> new RuntimeException("No Role assignment found with provided azure-id: " + azureId));
+//            log.info("tenant: {}", assignment.getWsTenantName());
+//            log.info("azure id: {}", assignment.getAzureId());
+//            log.info("RA path id: {}", assignment.getAzureRoleAssignmentPathId());
+//            AzureResourceManager azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredentialService.findWSTenantIdWithDecryptedSecret(assignment.getWsTenantName()));
+//            log.info("started");
+//            azureResourceManager.accessManagement()
+//                    .roleAssignments()
+//                    .deleteById(assignment.getAzureRoleAssignmentPathId());
+//            azureRoleAssignmentRepository.deleteByAzureRoleAssignmentPathId(assignment.getAzureRoleAssignmentPathId());
+//            log.info("deleted");
+//            return Boolean.TRUE;
+//        } catch (Exception ex) {
+//            log.error("Error: {}", ex.getMessage());
+//            if (ex.getMessage().contains("401")) {
+//                throw new RuntimeException("UnAuthorized access token");
+//            }
+//            throw new RuntimeException(ex.getMessage());
+//        }
+//    }
 
 
     //    @Transactional

@@ -10,13 +10,11 @@ import java.time.OffsetDateTime;
 import java.util.Map;
 
 @EqualsAndHashCode(callSuper = true)
-@Entity
-@Data
-@Setter
-@Getter
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
+@Data
+@Entity
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @Table(name = "azure_storage_account", schema = "azure_test")
 public class AzureStorageAccount extends BaseAzureResource{
@@ -37,8 +35,6 @@ public class AzureStorageAccount extends BaseAzureResource{
     String skuTier;
     String accessTier;
     String resourceType;
-    String resourceGroupName;
-    String subscriptionId;
 
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(

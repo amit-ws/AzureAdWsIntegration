@@ -17,8 +17,8 @@ public class AzureUserCredentialDTO {
     String clientId;
     String tenantId;
     String clientSecret;
-    String subscriptionId;
-//    List<String> subscriptionIds;
+//    String subscriptionId;
+    Set<String> subscriptionIds;
     Date createdAt;
     Date updatedAt;
     boolean syncStatus;
