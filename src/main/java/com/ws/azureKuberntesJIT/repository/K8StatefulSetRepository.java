@@ -6,9 +6,11 @@ import com.ws.azureKuberntesJIT.enttity.K8ReplicaSet;
 import com.ws.azureKuberntesJIT.enttity.K8StatefulSet;
 import com.ws.azureKuberntesJIT.models.K8StatefulSetDTO;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 
 @Repository
@@ -36,4 +38,7 @@ public interface K8StatefulSetRepository extends JpaRepository<K8StatefulSet, Lo
     List<K8StatefulSetDTO> findAllPublishedK8StatefulSetsByWsTenantName(String wsTenantName, String clusterId);
 
 
+    @Modifying
+    @Query("DELETE FROM K8StatefulSet WHERE wsTenantName = :wsTenantName AND cloudProviderType = :cloudType AND (:cloudIds IS NULL OR cloudResourceAccountId IN :cloudIds)")
+    void deleteAllUsingWsTenantNameAndCloudTypeAndCloudIds(String wsTenantName, CloudProviderType cloudType, Collection<String> cloudIds);
 }

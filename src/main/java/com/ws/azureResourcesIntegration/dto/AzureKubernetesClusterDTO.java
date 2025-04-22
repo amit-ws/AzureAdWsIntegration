@@ -20,4 +20,5 @@ public class AzureKubernetesClusterDTO {
     String subscriptionId;
     String resourceGroupName;
     String wsTenantName;
+    boolean isPublished;
 }

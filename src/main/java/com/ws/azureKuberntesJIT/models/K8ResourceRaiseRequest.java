@@ -46,4 +46,7 @@ public class K8ResourceRaiseRequest {
     CloudProviderType cloudType;
     @NotNull(message = "Please provide WS tenant name")
     String wsTenantName;
+
+    String user;
+    String clusterName;
 }

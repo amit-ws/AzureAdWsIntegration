@@ -43,15 +43,15 @@ public interface AzureStorageRepository extends JpaRepository<AzureStorageAccoun
             "asa.wsTenantName, asa.syncedAt, asa.updatedAt, asa.subscriptionId, CASE WHEN pr.resourceId IS NULL THEN FALSE ELSE TRUE END) " +
             "FROM AzureStorageAccount asa " +
             "LEFT JOIN PublishedResource pr ON upper(asa.storageAccountName) = upper(pr.resourceId) " +
-            "WHERE asa.wsTenantName = :wsTenantName " +
+            "WHERE asa.wsTenantName = :wsTenantName  AND (:subscriptionId IS NULL OR asa.subscriptionId = :subscriptionId) " +
             "ORDER BY asa.storageAccountName")
-    List<AzureStorageAccountDTO> findAllAzureStorageAccountsUsingTenantName(String wsTenantName);
+    List<AzureStorageAccountDTO> findAllAzureStorageAccountsUsingTenantNameAndSubscriptionId(String wsTenantName, String subscriptionId);
 
     @Query("SELECT asa FROM AzureStorageAccount asa " +
             "INNER JOIN PublishedResource pr ON asa.storageAccountName = pr.resourceId " +
-            "WHERE asa.wsTenantName = :wsTenantName " +
+            "WHERE asa.wsTenantName = :wsTenantName  AND (:subscriptionId IS NULL OR asa.subscriptionId = :subscriptionId) " +
             "ORDER BY asa.storageAccountName")
-    List<AzureStorageAccount> findAllPublishedAzureStorageAccounts(String wsTenantName);
+    List<AzureStorageAccount> findAllPublishedAzureStorageAccountsBywsTenantNameAndsubscriptionId(String wsTenantName, String subscriptionId);
 
 
 }

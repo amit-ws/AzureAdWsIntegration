@@ -39,7 +39,7 @@ public class AzureAuthController {
 //                .body(azureAuthService.creatAzureConfiguration(createAzureConfiguration));
 //    }
 
-    @PostMapping("v2/configure")
+    @PostMapping("/configure")
     public ResponseEntity creatAzureConfigurationV2Hanndler(@RequestBody @Valid CreateAzureConfiguration createAzureConfiguration) {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
@@ -83,13 +83,13 @@ public class AzureAuthController {
 
     @PatchMapping("v2/update/subscriptionId")
     public ResponseEntity<AzureDataResponse> updateSubscriptionIdsHandler(@RequestParam Integer credId, @RequestParam String wsTenantName,
-                                                                          @RequestParam boolean flag, @RequestBody(required = false) Set<String> requestedSubIds) {
+                                                                          @RequestBody(required = false) Set<String> requestedSubIds) {
         if (CollectionUtils.isEmpty(requestedSubIds)) {
             requestedSubIds = new HashSet<>();
         }
         return ResponseEntity
                 .status(HttpStatus.ACCEPTED)
-                .body(azureAuthService.updateSubscriptionIds(credId, wsTenantName, requestedSubIds, flag));
+                .body(azureAuthService.updateSubscriptionIds(credId, wsTenantName, requestedSubIds));
     }
 
 

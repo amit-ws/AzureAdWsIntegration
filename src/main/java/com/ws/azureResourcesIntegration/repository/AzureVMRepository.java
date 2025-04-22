@@ -6,7 +6,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
-import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 
@@ -42,15 +41,15 @@ public interface AzureVMRepository extends JpaRepository<AzureVM, Integer> {
             "av.ipAddress, av.wsTenantName, av.syncedAt, av.updatedAt, av.subscriptionId, CASE WHEN pr.resourceId IS NULL THEN FALSE ELSE TRUE END) " +
             "FROM AzureVM av " +
             "LEFT JOIN PublishedResource pr ON upper(av.azureVmId) = upper(pr.resourceId) " +
-            "WHERE av.wsTenantName = :wsTenantName " +
+            "WHERE av.wsTenantName = :wsTenantName AND (:subscriptionId IS NULL OR av.subscriptionId = :subscriptionId) " +
             "ORDER BY av.name")
-    List<AzureVmDTO> findAllAzureVMUsingTenantName(String wsTenantName);
+    List<AzureVmDTO> findAllAzureVMUsingTenantNameAndSubscriptionId(String wsTenantName, String subscriptionId);
 
     @Query("SELECT av FROM AzureVM av " +
             "INNER JOIN PublishedResource pr ON av.azureVmId = pr.resourceId " +
-            "WHERE av.wsTenantName = :wsTenantName " +
+            "WHERE av.wsTenantName = :wsTenantName AND (:subscriptionId IS NULL OR av.subscriptionId = :subscriptionId)  " +
             "ORDER BY av.name")
-    List<AzureVM> findAllPublishedAzureVM(String wsTenantName);
+    List<AzureVM> findAllPublishedAzureVMByWsTenantNameAndSubscriptionId(String wsTenantName, String subscriptionId);
 
 }
 

@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 
 @Repository
@@ -31,7 +32,8 @@ public interface K8SecretRepository extends JpaRepository<K8Secret, Long> {
     List<K8Secret> findAllByClusterIdAndWsTenantName(String clusterId, String wsTenantName);
 
     @Modifying
-    void deleteAllByWsTenantName(String wsTenantName);
+    @Query("DELETE FROM K8Secret WHERE wsTenantName = :wsTenantName AND cloudProviderType = :cloudType AND (:cloudIds IS NULL OR cloudResourceAccountId IN :cloudIds)")
+    void deleteAllUsingWsTenantNameAndCloudTypeAndCloudIds(String wsTenantName, CloudProviderType cloudType, Collection<String> cloudIds);
 
     @Query("SELECT new com.ws.azureKuberntesJIT.models.K8SecretDTO(ks.id, ks.uid, ks.name, ks.clusterId, ks.cloudResourceAccountId, ks.wsTenantName, ks.cloudProviderType, CASE WHEN pr.resourceId IS NULL THEN FALSE ELSE TRUE END) " +
             "FROM K8Secret ks " +

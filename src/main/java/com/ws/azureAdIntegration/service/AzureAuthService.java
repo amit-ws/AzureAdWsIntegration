@@ -1,7 +1,7 @@
 package com.ws.azureAdIntegration.service;
 
-import com.azure.resourcemanager.AzureResourceManager;
 import com.microsoft.graph.requests.GraphServiceClient;
+import com.ws.azureAdIntegration.constants.CloudProviderType;
 import com.ws.azureAdIntegration.constants.Constant;
 import com.ws.azureAdIntegration.dto.AzureUserCredentialDTO;
 import com.ws.azureAdIntegration.dto.CreateAzureConfiguration;
@@ -13,14 +13,17 @@ import com.ws.azureAdIntegration.repository.AzureUserCredentialRepository;
 import com.ws.azureAdIntegration.repository.AzureUserRepository;
 import com.ws.azureAdIntegration.util.AzureAuthUtil;
 import com.ws.azureAdIntegration.util.EncryptionUtil;
+import com.ws.azureKuberntesJIT.service.K8CustomResourceRequestService;
+import com.ws.azureKuberntesJIT.service.K8ResourcesDataService;
+import com.ws.azureResourcesIntegration.repository.PublishedResourcesRepository;
 import com.ws.azureResourcesIntegration.service.AzureResourceDataService;
 import com.ws.azureResourcesIntegration.service.AzureResourceSyncService;
+import com.ws.azureResourcesIntegration.service.CustomRoleAssignmentService;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import okhttp3.Request;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.ObjectUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,17 +45,22 @@ public class AzureAuthService {
     final BackendApplicationLogservice backendApplicationLogservice;
     final AzureSyncControlService azureSyncControlService;
     final AzureResourceSyncService azureResourceSyncService;
-    final AzureAuthUtil azureAuthUtil;
+    final AzureUserRepository azureUserRepository;
+    final PublishedResourcesRepository publishedResourcesRepository;
     final AzureUserEntityService azureUserEntityService;
     final AzureUserCredentialService azureUserCredentialService;
     final AzureResourceDataService azureResourceDataService;
-    final AzureUserRepository azureUserRepository;
+    final K8ResourcesDataService k8ResourcesDataService;
+    final K8CustomResourceRequestService k8CustomResourceRequestService;
+    final CustomRoleAssignmentService customRoleAssignmentService;
+    final AzureAuthUtil azureAuthUtil;
+
     @Value("${spring.cloud.azure.active-directory.redirect-uri}")
     String redirectUri;
 
     @Autowired
     public AzureAuthService(AzureUserCredentialRepository azureUserCredentialRepository, BackendApplicationLogservice backendApplicationLogservice, AzureSyncControlService azureSyncControlService,
-                            AzureResourceSyncService azureResourceSyncService, AzureAuthUtil azureAuthUtil, AzureUserEntityService azureUserEntityService, AzureUserRepository azureUserRepository, AzureUserCredentialService azureUserCredentialService, AzureResourceDataService azureResourceDataService) {
+                            AzureResourceSyncService azureResourceSyncService, AzureAuthUtil azureAuthUtil, AzureUserEntityService azureUserEntityService, AzureUserRepository azureUserRepository, PublishedResourcesRepository publishedResourcesRepository, AzureUserCredentialService azureUserCredentialService, AzureResourceDataService azureResourceDataService, K8ResourcesDataService k8ResourcesDataService, K8CustomResourceRequestService k8CustomResourceRequestService, CustomRoleAssignmentService customRoleAssignmentService) {
         this.azureUserCredentialRepository = azureUserCredentialRepository;
         this.backendApplicationLogservice = backendApplicationLogservice;
         this.azureSyncControlService = azureSyncControlService;
@@ -60,8 +68,12 @@ public class AzureAuthService {
         this.azureAuthUtil = azureAuthUtil;
         this.azureUserEntityService = azureUserEntityService;
         this.azureUserRepository = azureUserRepository;
+        this.publishedResourcesRepository = publishedResourcesRepository;
         this.azureUserCredentialService = azureUserCredentialService;
         this.azureResourceDataService = azureResourceDataService;
+        this.k8ResourcesDataService = k8ResourcesDataService;
+        this.k8CustomResourceRequestService = k8CustomResourceRequestService;
+        this.customRoleAssignmentService = customRoleAssignmentService;
     }
 
     @Transactional
@@ -81,15 +93,16 @@ public class AzureAuthService {
             throw new AzureDataException("Azure credentials already exist for provided azure tenant ID: " + tenantId);
         }
 
-        log.info("Validating user's Azure-AD credentials..");
-        GraphServiceClient<Request> graphClient = azureAuthUtil.validateAzureCredentials(tenantId, clientId, clientSecret);
-        validateRequestedSubIds(subscriptionIds, tenantId, clientId, clientSecret);
+        log.info(Constant.VALIDATING_AZURE_TENANT_AUTHENTICATION_CREDENTIAL);
+        GraphServiceClient<Request> graphClient = azureAuthUtil.validateAzureAuthenticationCredentials(tenantId, clientId, clientSecret);
+        log.info(Constant.VALIDATING_AZURE_TENANT_SUBSCRIPTION_IDS);
+        validateRequestedSubscriptionIds(subscriptionIds, tenantId, clientId, clientSecret);
 
         log.info("Thread name for azure user credential creation: {}", Thread.currentThread().getName());
         AzureUserCredential azureUserCredential = azureUserCredentialRepository.save(
                 AzureUserCredential.builder()
                         .clientId(clientId)
-                        .clientSecret(EncryptionUtil.getEncryptedKey(createAzureConfiguration.getClientSecret(), Constant.AZURE_CLIENT_SECRET))
+                        .clientSecret(EncryptionUtil.getEncryptedKey(clientSecret, Constant.AZURE_CLIENT_SECRET))
                         .tenantId(tenantId)
                         .subscriptionIds(createAzureConfiguration.getSubscriptionIds())
                         .wsTenantName(wsTenantName)
@@ -103,7 +116,7 @@ public class AzureAuthService {
         backendApplicationLogservice.saveAuditLog(wsTenantName, "dummy@gmail.com", Constant.ADD, Constant.AZURE_AD_DATA_SYNC_START, "INFO");
         log.info("Azure data sync started");
         azureSyncControlService.syncAzureData(graphClient, azureUserCredentialDTO);
-        return Collections.singletonMap("message", "Credentials configured successfully");
+        return Collections.singletonMap("message", "Azure credentials configured successfully");
     }
 
 //    @Transactional
@@ -123,7 +136,7 @@ public class AzureAuthService {
 //                    }
 //                });
 //        log.info("Validating user's Azure-AD credentials..");
-//        GraphServiceClient<Request> graphClient = azureAuthUtil.validateAzureCredentials(tenantId, clientId, createAzureConfiguration.getClientSecret());
+//        GraphServiceClient<Request> graphClient = azureAuthUtil.validateAzureAuthenticationCredentials(tenantId, clientId, createAzureConfiguration.getClientSecret());
 //        AzureUserCredential azureUserCredential = azureUserCredentialRepository.save(
 //                AzureUserCredential.builder()
 //                        .clientId(clientId)
@@ -139,7 +152,7 @@ public class AzureAuthService {
 //        AzureUserCredentialDTO azureUserCredentialDTO = azureUserCredentialService.mapFromAzureUserCredentialAndDecryptSecretKey(azureUserCredential);
 //        log.info("Thread name: {}", Thread.currentThread().getName());
 //        backendApplicationLogservice.saveAuditLog(wsTenantName, "dummy@gmail.com", Constant.ADD, Constant.AZURE_AD_DATA_SYNC_START, "INFO");
-//        azureSyncControlService.syncAzureData(graphClient, azureUserCredentialDTO);
+////        azureSyncControlService.syncAzureData(graphClient, azureUserCredentialDTO);
 //        return Collections.singletonMap("message", "Credentials configured successfully");
 //    }
 
@@ -196,63 +209,75 @@ public class AzureAuthService {
 
 
     @Transactional
-    public AzureDataResponse updateSubscriptionIds(Integer credId, String wsTenantName, Set<String> requestedSubIds, boolean flag) {
+    public AzureDataResponse updateSubscriptionIds(Integer credId, String wsTenantName, Set<String> requestedSubIds) {
         log.info("Thread name for updateSubscriptionId: {}", Thread.currentThread().getName());
         AzureDataResponse response = new AzureDataResponse();
         boolean toStartSync = false;
+
         AzureUserCredential azureUserCredential = azureUserCredentialService.getAzureUserCredential(credId, wsTenantName);
-        validateRequestedSubIds(requestedSubIds, azureUserCredential.getTenantId(), azureUserCredential.getClientId(), azureUserCredential.getClientSecret());
-        Set<String> toBeDeletedIds = azureUserCredential.getSubscriptionIds();
-        toBeDeletedIds.removeAll(requestedSubIds);
-        log.info("toBeDeletedIds: {}", toBeDeletedIds);
-        deleteSubscriptions(toBeDeletedIds, wsTenantName);
-        log.info("finally to be saved ID(s): {}", requestedSubIds);
+        String decryptedClientSecret = EncryptionUtil.getDecryptedKey(azureUserCredential.getClientSecret(), Constant.AZURE_CLIENT_SECRET);
+        validateRequestedSubscriptionIds(requestedSubIds, azureUserCredential.getTenantId(), azureUserCredential.getClientId(), decryptedClientSecret);
 
-        if (flag) {
-            // Handle deletion of custom resource assignments if required
+        Set<String> toBeDeletedSubscriptionIds = azureUserCredential.getSubscriptionIds();
+        toBeDeletedSubscriptionIds.removeAll(requestedSubIds);
+        log.info("Found subscriptions to delete: {}", toBeDeletedSubscriptionIds);
+        if (CollectionUtils.isNotEmpty(toBeDeletedSubscriptionIds)) {
+            deleteSubscriptions(toBeDeletedSubscriptionIds, wsTenantName);
+            revokeAzureAndK8RolesAndRequests(wsTenantName, toBeDeletedSubscriptionIds);
         }
+        log.info("Processing subscription updates for: {}", requestedSubIds);
 
-        log.info("azureUserCredential sync status: {}", azureUserCredential.isSyncStatus());
         if (azureUserCredential.isSyncStatus()) {
             toStartSync = true;
-            response.setMessage("Your subscription ID(s) has been successfully updated. New data sync skipped as one earlier sync process is currently in progress");
+            response.setMessage("Your subscription ID(s) have been successfully updated. New data sync skipped as one earlier sync process is currently in progress.");
         } else {
             azureUserCredential.setSyncStatus(true);
-            response.setMessage("Subscription ID updated and Azure resources data sync started");
+            response.setMessage("Subscription ID updated, and Azure resources data sync started.");
         }
         azureUserCredential.setSubscriptionIds(requestedSubIds);
         azureUserCredential.setUpdatedAt(new Date());
         azureUserCredentialRepository.saveAndFlush(azureUserCredential);
+
         AzureUserCredentialDTO credentialDTO = azureUserCredentialService.mapFromAzureUserCredentialAndDecryptSecretKey(azureUserCredential);
         if (!toStartSync) {
             azureSyncControlService.syncAzureResourcesData(credentialDTO);
         }
+
         response.setData(credentialDTO);
         return response;
     }
 
-    private void deleteSubscriptions(Set<String> toBeDeletedIds, String wsTenantName) {
-        if (CollectionUtils.isNotEmpty(toBeDeletedIds)) {
-            List<Integer> subscriptionIds = toBeDeletedIds.stream()
-                    .map(subscriptionId -> azureResourceDataService.findAzureSubscriptionByIdAndWsTenantName(subscriptionId, wsTenantName).getId())
-                    .collect(Collectors.toList());
-            azureResourceDataService.deleteBySubscriptionIdsAndWsTenantName(subscriptionIds, wsTenantName);
-            // also the K8 data for these Ids
+    private void deleteSubscriptions(Set<String> toBeDeletedSubscriptionIds, String wsTenantName) {
+        List<Integer> subscriptionIds = toBeDeletedSubscriptionIds.stream()
+                .map(subscriptionId -> azureResourceDataService.findAzureSubscriptionByIdAndWsTenantName(subscriptionId, wsTenantName).getId())
+                .collect(Collectors.toList());
+        azureResourceDataService.deleteBySubscriptionIdsAndWsTenantName(subscriptionIds, wsTenantName);
+    }
+
+
+    private void revokeAzureAndK8RolesAndRequests(String wsTenantName, Set<String> toBeDeletedSubscriptionIds) {
+        log.info("Revoking roles and requests for deleted subscriptions: {}", toBeDeletedSubscriptionIds);
+        customRoleAssignmentService.revokeApprovedRolesInAzureAndDeleteAllForWsTenant(wsTenantName, toBeDeletedSubscriptionIds);
+        k8CustomResourceRequestService.revokeCustomRequestsByWsTenantNameAndSubscriptionIds(wsTenantName, CloudProviderType.AZURE, toBeDeletedSubscriptionIds);
+        k8ResourcesDataService.deleteByWsTenantNameAndSubscriptionIds(wsTenantName, CloudProviderType.AZURE, toBeDeletedSubscriptionIds);
+        publishedResourcesRepository.deleteAllByWsTenantName(wsTenantName, toBeDeletedSubscriptionIds);
+    }
+
+
+    private void validateRequestedSubscriptionIds(Set<String> requestedSubIds, String tenantId, String clientId, String clientSecret) {
+        if (CollectionUtils.isNotEmpty(requestedSubIds)) {
+            requestedSubIds.forEach(subscriptionId -> {
+                log.info(String.format(Constant.VALIDATING_SUBSCRIPTION_ID, subscriptionId));
+                azureAuthUtil.validateAzureAuthenticationCredentialsWithSubscriptionId(
+                        tenantId,
+                        clientId,
+                        clientSecret,
+                        subscriptionId
+                );
+            });
         }
     }
 
-    private void validateRequestedSubIds(Set<String> requestedSubIds, String tenantId, String clientId, String clientSecret) {
-        if (CollectionUtils.isNotEmpty(requestedSubIds)) {
-            requestedSubIds.forEach(subscriptionId ->
-                    azureAuthUtil.validateAzureCredentialsWithSubscriptionId(
-                            tenantId,
-                            clientId,
-                            EncryptionUtil.getEncryptedKey(clientSecret, Constant.AZURE_CLIENT_SECRET),
-                            subscriptionId
-                    )
-            );
-        }
-    }
 
 //    @Transactional
 //    public AzureDataResponse updateSubscriptionIds(Integer credId, String wsTenantName, Set<String> requestedSubIds, boolean flag) {

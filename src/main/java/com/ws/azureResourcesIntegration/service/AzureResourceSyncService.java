@@ -41,7 +41,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
 import java.util.*;
-import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -108,8 +107,9 @@ public class AzureResourceSyncService {
         if (CollectionUtils.isEmpty(azureKubernetesClusters)) {
             throw new K8ResourceException("No AKS clusters found for provided tenant: " + wsTenantName);
         }
+//        k8ResourcesDataService.deleteByWsTenantNameAndSubscriptionIds(this.wsTenantName, CloudProviderType.AZURE, azureKubernetesClusterMap.keySet());
         Map<String, List<AzureKubernetesCluster>> azureKubernetesClusterMap = groupClustersBySubscriptionId(azureKubernetesClusters);
-        k8ResourcesDataService.deleteK8ResourcesByWsTenantName(this.wsTenantName);
+        this.wsTenantName = wsTenantName;
         azureUserCredentialDTO.getSubscriptionIds().forEach((subscriptionId) -> {
             syncKubernetesResources(subscriptionId, azureKubernetesClusterMap.get(subscriptionId));
         });
@@ -121,7 +121,7 @@ public class AzureResourceSyncService {
 
 
     private void initializeAzureResourceManagerBySubscriptionId(String tenantId, String clientId, String clientSecret, String subscriptionId) {
-        this.azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(tenantId, clientId, clientSecret, subscriptionId);
+        this.azureResourceManager = azureAuthUtil.validateAzureAuthenticationCredentialsWithSubscriptionId(tenantId, clientId, clientSecret, subscriptionId);
     }
 
     private void executeAzureResourceSync() {
@@ -179,17 +179,17 @@ public class AzureResourceSyncService {
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_RESOURCE_DATA_SYNC_START, "Info");
             truncateAzureResourcesDataThroughAzureTenant(azureTenant);
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_RESOURCE_DATA_TRUNCATED, "Info");
-            k8ResourcesDataService.deleteK8ResourcesByWsTenantName(this.wsTenantName);
-            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.KUBERNETES_RESOURCES_DATA_TRUNCATED, "Info");
             AzureSubscription azureSubscription = syncSubscription(azureTenant);
             Map<String, AzureResourceGroup> azureResourceGroupMap = createAzureResourceGroupMap(syncResourceGroups(azureSubscription));
-            syncAzureVMs(azureSubscription, azureResourceGroupMap);
+//            syncAzureVMs(azureSubscription, azureResourceGroupMap);
             syncStorageData(azureSubscription, azureResourceGroupMap);
             syncServersAndDatabases(azureSubscription, azureResourceGroupMap);
             syncRoleDefinitions(azureTenant, azureSubscription);
+            log.info("azure role definitions data fetched..");
             syncRoleAssignments(azureTenant, azureSubscription);
-            List<AzureKubernetesCluster> azureKubernetesClusters = syncAzureKubernetesClusters(azureSubscription, azureResourceGroupMap);
-            syncKubernetesResources(azureSubscription.getAzureSubscriptionId(), azureKubernetesClusters);
+            log.info("azure role assignments data fetched..");
+//            List<AzureKubernetesCluster> azureKubernetesClusters = syncAzureKubernetesClusters(azureSubscription, azureResourceGroupMap);
+//            syncKubernetesResources(azureSubscription.getAzureSubscriptionId(), azureKubernetesClusters);
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_RESOURCE_DATA_SYNC_END, "Info");
         } catch (Exception ex) {
             log.error("Error occurred in syncing data from Azure Resources");
@@ -542,7 +542,7 @@ public class AzureResourceSyncService {
             azureRoleAssignmentRepository.saveAll(azureRoleAssignments);
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_SERVER_ROLE_ASSIGNMENT_SYNCED, "Info");
         } catch (Exception ignored) {
-            log.error(String.format("Error in syncing %s with message: %s", RoleDefinition.class.getName(), ignored.getMessage()));
+            log.error(String.format("Error in syncing %s with message: %s", RoleAssignment.class.getName(), ignored.getMessage()));
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, (Constant.ERROR_IN_SYNCING_AZURE_RESOURCES + RoleDefinition.class.getName()), "Error");
         }
     }
@@ -567,6 +567,7 @@ public class AzureResourceSyncService {
                                 .kubernetesVersion(kubernetesCluster.version())
                                 .isAzureRbacEnabled(kubernetesCluster.isAzureRbacEnabled())
                                 .type(kubernetesCluster.type())
+                                .resourceType(GenericUtil.getOrNull(() -> kubernetesCluster.innerModel().type()))
                                 .subscriptionId(azureSubscription.getAzureSubscriptionId())
                                 .azureResourceGroup(azureResourceGroupMap.get(kubernetesCluster.resourceGroupName().toUpperCase()))
                                 .azureSubscription(azureSubscription)

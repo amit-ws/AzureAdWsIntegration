@@ -1,20 +1,20 @@
 package com.ws.azureAdIntegration.service;
 
+import com.ws.azureAdIntegration.constants.CloudProviderType;
 import com.ws.azureAdIntegration.dto.AzureGroupResponse;
 import com.ws.azureAdIntegration.dto.AzureUserCredentialDTO;
 import com.ws.azureAdIntegration.entity.*;
 import com.ws.azureAdIntegration.repository.*;
 import com.ws.azureAdIntegration.util.GenericUtil;
+import com.ws.azureKuberntesJIT.service.K8CustomResourceRequestService;
 import com.ws.azureKuberntesJIT.service.K8ResourcesDataService;
 import com.ws.azureResourcesIntegration.dto.AzureRoleAssignmentResponse;
-import com.ws.azureResourcesIntegration.dto.AzureRoleDefinitionDTO;
 import com.ws.azureResourcesIntegration.dto.UserGroupAndRolesResponse;
 import com.ws.azureResourcesIntegration.repository.AzureUserConfigureRepository;
 import com.ws.azureResourcesIntegration.repository.PublishedResourcesRepository;
 import com.ws.azureResourcesIntegration.service.CustomRoleAssignmentService;
 import com.ws.projection.UserGroupAndRolesProjection;
 import com.ws.projection.UserGroupsNameProjection;
-import jakarta.persistence.EntityNotFoundException;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
@@ -47,9 +47,10 @@ public class AzureADService {
     final AzureUserCredentialService azureUserCredentialService;
     final AzureADInitializerService azureADInitializerService;
     final K8ResourcesDataService k8ResourcesDataService;
+    final K8CustomResourceRequestService k8CustomResourceRequestService;
 
     @Autowired
-    public AzureADService(AzureUserRepository azureUserRepository, AzureApplicationRepository azureApplicationRepository, AzureAppRolesRepository azureAppRolesRepository, AzureTenantRepository azureTenantRepository, AzureGroupRepository azureGroupRepository, AzureUserGroupMembershipRepository azureUserGroupMembershipRepository, AzureDeviceRepository azureDeviceRepository, AzureUserDeviceRelationshipRepository azureUserDeviceRelationshipRepository, AzureUserCredentialRepository azureUserCredentialRepository, CustomRoleAssignmentService customRoleAssignmentService, PublishedResourcesRepository publishedResourcesRepository, AzureUserConfigureRepository azureUserConfigureRepository, BackendApplicationLogservice backendApplicationLogservice, AzureTenantService azureTenantService, AzureUserCredentialService azureUserCredentialService, AzureADInitializerService azureADInitializerService, K8ResourcesDataService k8ResourcesDataService) {
+    public AzureADService(AzureUserRepository azureUserRepository, AzureApplicationRepository azureApplicationRepository, AzureAppRolesRepository azureAppRolesRepository, AzureTenantRepository azureTenantRepository, AzureGroupRepository azureGroupRepository, AzureUserGroupMembershipRepository azureUserGroupMembershipRepository, AzureDeviceRepository azureDeviceRepository, AzureUserDeviceRelationshipRepository azureUserDeviceRelationshipRepository, AzureUserCredentialRepository azureUserCredentialRepository, CustomRoleAssignmentService customRoleAssignmentService, PublishedResourcesRepository publishedResourcesRepository, AzureUserConfigureRepository azureUserConfigureRepository, BackendApplicationLogservice backendApplicationLogservice, AzureTenantService azureTenantService, AzureUserCredentialService azureUserCredentialService, AzureADInitializerService azureADInitializerService, K8ResourcesDataService k8ResourcesDataService, K8CustomResourceRequestService k8CustomResourceRequestService) {
         this.azureUserRepository = azureUserRepository;
         this.azureApplicationRepository = azureApplicationRepository;
         this.azureAppRolesRepository = azureAppRolesRepository;
@@ -67,6 +68,7 @@ public class AzureADService {
         this.azureUserCredentialService = azureUserCredentialService;
         this.azureADInitializerService = azureADInitializerService;
         this.k8ResourcesDataService = k8ResourcesDataService;
+        this.k8CustomResourceRequestService = k8CustomResourceRequestService;
     }
 
     public List<AzureUser> fetchUsers(String wsTenantName) {
@@ -126,12 +128,13 @@ public class AzureADService {
     public void deleteTenantV2(String wsTenantName) {
         GenericUtil.ensureNotNull(wsTenantName, "WhiteSwan tenant name cannot be null");
         azureTenantService.getAzureTenantUsingWsTenantName(wsTenantName);
-        customRoleAssignmentService.revokeApprovedRolesInAzureAndDeleteAllForWsTenant(wsTenantName);
-        publishedResourcesRepository.deleteAllByWsTenantName(wsTenantName);
+        customRoleAssignmentService.revokeApprovedRolesInAzureAndDeleteAllForWsTenant(wsTenantName, null);
+        k8CustomResourceRequestService.revokeCustomRequestsByWsTenantNameAndSubscriptionIds(wsTenantName, CloudProviderType.AZURE, null);
+        publishedResourcesRepository.deleteAllByWsTenantName(wsTenantName, null);
         azureUserConfigureRepository.deleteAllByWsTenantName(wsTenantName);
         azureUserCredentialRepository.deleteByWsTenantName(wsTenantName);
         azureTenantRepository.deleteByWsTenantName(wsTenantName);
-        k8ResourcesDataService.deleteK8ResourcesByWsTenantName(wsTenantName);
+        k8ResourcesDataService.deleteByWsTenantNameAndSubscriptionIds(wsTenantName, CloudProviderType.AZURE, null);
         backendApplicationLogservice.deleteLogsForTenant(wsTenantName);
     }
 

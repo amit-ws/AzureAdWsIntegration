@@ -32,6 +32,7 @@ public class K8RoleBindRequest {
     K8SubjectKind subjectKind;
     @Column(nullable = false)
     String userName; /* For azure users -> UPN */
+    String userDisplayName; /* name of the cloud specific User on which role has been assigned */
     String namespace;
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

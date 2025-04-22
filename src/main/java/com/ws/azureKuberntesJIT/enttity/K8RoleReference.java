@@ -8,6 +8,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import javax.annotation.Nullable;
+import java.util.Date;
 
 @Data
 @Builder
@@ -39,4 +40,7 @@ public class K8RoleReference {
 
     @Column(nullable = false)
     String wsTenantName;
+
+    @Builder.Default
+    Date syncedAt = new Date();
 }

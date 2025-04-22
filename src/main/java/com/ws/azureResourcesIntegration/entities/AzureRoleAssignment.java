@@ -27,6 +27,7 @@ public class AzureRoleAssignment {
     String principalType; /* assignee type */
     String scope; /* path-id of the resource on which role has been assigned to eg: Subscription, ResourceGroup, VM etc.. */
     String scopeType; /* Eg: SUBSCRIPTION, RESOURCE-GROUP, VM, SERVER etc. To be decided from application */
+    @Column(name = "condition", length = 1000)
     String condition;
     String azureRoleDefinitionPathId;
     Boolean isRoleInherited; /* Role inherited from Parent. If false: The role was specifically assigned on this Scope (resource)*/

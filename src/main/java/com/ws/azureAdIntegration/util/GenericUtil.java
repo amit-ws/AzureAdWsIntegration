@@ -130,6 +130,11 @@ public class GenericUtil {
                     if (pathSegments[providersIndex + 1].equalsIgnoreCase("Microsoft.Network") && pathSegments[providersIndex + 2].equalsIgnoreCase("virtualNetworks")) {
                         return AzureResourcesType.VIRTUAL_NETWORK.name();
                     }
+
+                    // Check for Azure Kubernetes Cluster (AKS)
+                    if (pathSegments[providersIndex + 1].equalsIgnoreCase("Microsoft.ContainerService") && pathSegments[providersIndex + 2].equalsIgnoreCase("managedClusters")) {
+                        return AzureResourcesType.AZURE_KUBERNETES.name();
+                    }
                 }
             }
         }

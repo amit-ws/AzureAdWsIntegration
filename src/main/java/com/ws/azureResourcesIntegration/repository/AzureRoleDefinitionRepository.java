@@ -3,7 +3,6 @@ package com.ws.azureResourcesIntegration.repository;
 import com.ws.azureAdIntegration.entity.AzureTenant;
 import com.ws.azureResourcesIntegration.dto.RoleDefinitionDTO;
 import com.ws.azureResourcesIntegration.entities.AzureRoleDefinition;
-import com.ws.azureResourcesIntegration.entities.AzureRoleDefinitionAction;
 import com.ws.projection.ApplicableRoleDefinitionProjection;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -19,11 +18,12 @@ public interface AzureRoleDefinitionRepository extends JpaRepository<AzureRoleDe
 
     List<AzureRoleDefinition> findAllByAzureTenant(AzureTenant azureTenant);
 
-    @Query("SELECT new com.ws.azureResourcesIntegration.dto.RoleDefinitionDTO(ard.id, ard.azureId, ard.roleName, ard.roleType, CASE WHEN pr.resourceId IS NULL THEN FALSE ELSE TRUE END) " +
+    @Query("SELECT new com.ws.azureResourcesIntegration.dto.RoleDefinitionDTO(ard.id, ard.azureId, ard.roleName, ard.roleType, ard.subscriptionId, CASE WHEN pr.resourceId IS NULL THEN FALSE ELSE TRUE END) " +
             "FROM AzureRoleDefinition ard " +
             "LEFT JOIN PublishedResource pr ON UPPER(ard.azureId) = UPPER(pr.resourceId) " +
-            "WHERE ard.wsTenantName = :wsTenantName")
-    List<RoleDefinitionDTO> findAllRolesUsingWsTenantName(String wsTenantName);
+            "WHERE ard.wsTenantName = :wsTenantName AND (:subscriptionId IS NULL OR ard.subscriptionId = :subscriptionId) " +
+            "ORDER BY ard.roleName ")
+    List<RoleDefinitionDTO> findAllRolesUsingWsTenantNameAndsubscriptionId(String wsTenantName, String subscriptionId);
 
     Optional<AzureRoleDefinition> findByIdAndAzureTenant(Integer id, AzureTenant azureTenant);
 
@@ -39,7 +39,7 @@ public interface AzureRoleDefinitionRepository extends JpaRepository<AzureRoleDe
                     "INNER JOIN azure_role_definition_assignable_scopes ardas ON ard.id = ardas.ws_azure_role_definition_id   " +
                     "INNER JOIN published_resource pr on ard.azure_id = pr.resource_id " +
                     "WHERE   " +
-                    "    (ardas.assignable_scope = ANY (:assignableScopes) OR ardas.assignable_scope = '/' )   " +
+                    "    (UPPER(ardas.assignable_scope) = ANY (:assignableScopes) OR ardas.assignable_scope = '/' )   " +
                     "    AND UPPER(arda.\"action\") ILIKE ANY (ARRAY[CONCAT(UPPER(:action), '/%'), '*'])   " +
                     "    AND arda.ws_tenant_name = :wsTenantName  " +
                     "GROUP BY ard.id, ard.role_name, ard.role_type   " +

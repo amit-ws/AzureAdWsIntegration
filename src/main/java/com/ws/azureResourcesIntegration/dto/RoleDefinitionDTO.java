@@ -24,14 +24,16 @@ public class RoleDefinitionDTO {
     String type;
     String roleType;
     String createdBy;
+    String subscriptionId;
     boolean isPublished;
 
 
-    public RoleDefinitionDTO(Integer id, String azureId, String roleName, String roleType, boolean isPublished) {
+    public RoleDefinitionDTO(Integer id, String azureId, String roleName, String roleType, String subscriptionId, boolean isPublished) {
         this.id = id;
         this.azureId = azureId;
         this.roleName = roleName;
         this.roleType = roleType;
+        this.subscriptionId = subscriptionId;
         this.isPublished = isPublished;
     }
 }

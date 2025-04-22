@@ -45,4 +45,7 @@ public interface AzureUserRepository extends JpaRepository<AzureUser, Integer> {
                     "ORDER BY au.display_name",
             nativeQuery = true)
     List<UserGroupAndRolesProjection> getUserDetailsWithGroupNamesAndRoleNamesUsingTenantName(String wsTenantName, Integer azureTenantId, String azureUserId);
+
+
+    Optional<AzureUser> findByUserPrincipalNameAndWsTenantName(String upn, String wsTenantName);
 }

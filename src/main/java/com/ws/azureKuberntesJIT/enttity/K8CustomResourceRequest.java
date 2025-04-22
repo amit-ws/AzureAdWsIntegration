@@ -53,4 +53,6 @@ public class K8CustomResourceRequest {
     CloudProviderType cloudType;
     @Column(nullable = false)
     String wsTenantName;
+
+    String clusterName;
 }

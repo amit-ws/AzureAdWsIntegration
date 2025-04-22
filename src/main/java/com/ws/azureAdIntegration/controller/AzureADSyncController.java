@@ -40,8 +40,8 @@ public class AzureADSyncController {
     }
 
     @GetMapping("onDemand")
-    public ResponseEntity syncAzureADData(@RequestParam String tenantName) {
-        log.info("Thread name for syncAzureADData: {}", Thread.currentThread().getName());
+    public ResponseEntity startOnDemandSyncHandler(@RequestParam String tenantName) {
+        log.info("Thread name for startOnDemandSyncHandler: {}", Thread.currentThread().getName());
         AzureUserCredential azureUserCredential = azureUserCredentialService.updateAzureUserCredentialSyncStatus(tenantName.trim());
         azureSyncControlService.startOnDemandSync(azureUserCredentialService.mapFromAzureUserCredentialAndDecryptSecretKey(azureUserCredential));
         return ResponseEntity
@@ -79,7 +79,9 @@ public class AzureADSyncController {
 
     @GetMapping("v1/onDemand/assignedRoles")
     public ResponseEntity syncAzureRoleAssignmentsHandler(@RequestParam String tenantName) {
-        azureSyncControlService.syncAzureRoleAssignments(tenantName);
+        log.info("Thread name for syncAzureRoleAssignments: {}", Thread.currentThread().getName());
+        AzureUserCredential azureUserCredential = azureUserCredentialService.updateAzureUserCredentialSyncStatus(tenantName.trim());
+        azureSyncControlService.syncAzureRoleAssignments(azureUserCredentialService.mapFromAzureUserCredentialAndDecryptSecretKey(azureUserCredential));
         return ResponseEntity
                 .status(HttpStatus.ACCEPTED)
                 .body(Collections.singletonMap("message", "Azure role assignments synced successfully!"));

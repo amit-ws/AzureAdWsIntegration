@@ -3,6 +3,11 @@ package com.ws.azureKuberntesJIT.service;
 
 import com.ws.azureAdIntegration.constants.CloudProviderType;
 import com.ws.azureAdIntegration.constants.Constant;
+import com.ws.azureAdIntegration.entity.AzureUser;
+import com.ws.azureAdIntegration.exception.AzureDataException;
+import com.ws.azureAdIntegration.repository.AzureUserRepository;
+import com.ws.azureAdIntegration.util.GenericUtil;
+import com.ws.azureKuberntesJIT.models.K8CustomResourceRequestDTO;
 import com.ws.azureResourcesIntegration.constant.PublishResourceType;
 import com.ws.azureAdIntegration.exception.K8ResourceException;
 import com.ws.azureAdIntegration.service.AzureSyncControlService;
@@ -13,7 +18,6 @@ import com.ws.azureKuberntesJIT.dto.K8ResourceDataSyncRequest;
 import com.ws.azureKuberntesJIT.dto.K8RolePolicyRuleDTO;
 import com.ws.azureKuberntesJIT.enttity.*;
 import com.ws.azureKuberntesJIT.models.K8ResourceRaiseRequest;
-import com.ws.azureKuberntesJIT.models.RaiseRequest;
 import com.ws.azureKuberntesJIT.repository.K8IngressRepository;
 import com.ws.azureKuberntesJIT.repository.*;
 import com.ws.azureKuberntesJIT.response.K8RoleResponse;
@@ -22,9 +26,10 @@ import com.ws.azureKuberntesJIT.response.RoleResponseProjection;
 import com.ws.azureResourcesIntegration.constant.RequestStatus;
 import com.ws.azureResourcesIntegration.constant.StateChangeConstants;
 import com.ws.azureResourcesIntegration.entities.AzureKubernetesCluster;
-import com.ws.azureResourcesIntegration.repository.AzureKubernetesClusterRepository;
 import com.ws.azureResourcesIntegration.repository.AzureUserConfigureRepository;
 import com.ws.azureResourcesIntegration.repository.PublishedResourcesRepository;
+import com.ws.azureResourcesIntegration.service.AzureResourceDataService;
+import com.ws.azureResourcesIntegration.service.CustomRoleAssignmentService;
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.ApiException;
 import io.kubernetes.client.openapi.Configuration;
@@ -47,6 +52,7 @@ import java.util.stream.Collectors;
 @Service
 @Slf4j
 public class K8ResourceService {
+    Map<String, RbacAuthorizationV1Api> k8RbacApiClientMap = new HashMap<>();
     final K8StorageClassRepository k8StorageClassRepository;
     final K8PersistentVolumeRepository k8PersistentVolumeRepository;
     final K8NamespaceRepository k8NamespaceRepository;
@@ -69,10 +75,12 @@ public class K8ResourceService {
     final PublishedResourcesRepository publishedResourcesRepository;
     final K8CustomResourceRequestRepository k8CustomResourceRequestRepository;
     final K8RoleBindRepository k8RoleBindRepository;
-    final AzureKubernetesClusterRepository azureKubernetesClusterRepository;
     final AzureUserConfigureRepository azureUserConfigureRepository;
+    final AzureUserRepository azureUserRepository;
     final AzureSyncControlService azureSyncControlService;
     final K8ClientService k8ClientService;
+    final AzureResourceDataService azureResourceDataService;
+    final CustomRoleAssignmentService customRoleAssignmentService;
     RbacAuthorizationV1Api rbacApi;
 
 
@@ -84,7 +92,8 @@ public class K8ResourceService {
                              K8RoleRepository k8RoleRepository, K8PolicyRuleRepository k8PolicyRuleRepository, K8ReplicaSetRepository k8ReplicaSetRepository,
                              K8StatefulSetRepository k8StatefulSetRepository, K8DaemonSetRepository k8DaemonSetRepository, K8JobRepository k8JobRepository,
                              K8CronJobRepository k8CronJobRepository, K8IngressRepository k8IngressRepository, K8ServiceRepository k8ServiceRepository,
-                             PublishedResourcesRepository publishedResourcesRepository, K8CustomResourceRequestRepository k8CustomResourceRequestRepository, K8RoleBindRepository k8RoleBindRepository, AzureKubernetesClusterRepository azureKubernetesClusterRepository, AzureUserConfigureRepository azureUserConfigureRepository, AzureSyncControlService azureSyncControlService, K8ClientService k8ClientService) {
+                             PublishedResourcesRepository publishedResourcesRepository, K8CustomResourceRequestRepository k8CustomResourceRequestRepository,
+                             K8RoleBindRepository k8RoleBindRepository, AzureUserConfigureRepository azureUserConfigureRepository, AzureUserRepository azureUserRepository, AzureSyncControlService azureSyncControlService, K8ClientService k8ClientService, AzureResourceDataService azureResourceDataService, CustomRoleAssignmentService customRoleAssignmentService) {
         this.k8StorageClassRepository = k8StorageClassRepository;
         this.k8PersistentVolumeRepository = k8PersistentVolumeRepository;
         this.k8NamespaceRepository = k8NamespaceRepository;
@@ -107,11 +116,14 @@ public class K8ResourceService {
         this.publishedResourcesRepository = publishedResourcesRepository;
         this.k8CustomResourceRequestRepository = k8CustomResourceRequestRepository;
         this.k8RoleBindRepository = k8RoleBindRepository;
-        this.azureKubernetesClusterRepository = azureKubernetesClusterRepository;
         this.azureUserConfigureRepository = azureUserConfigureRepository;
+        this.azureUserRepository = azureUserRepository;
         this.azureSyncControlService = azureSyncControlService;
         this.k8ClientService = k8ClientService;
+        this.azureResourceDataService = azureResourceDataService;
+        this.customRoleAssignmentService = customRoleAssignmentService;
     }
+
 
     @Transactional(readOnly = true)
     public List<?> getK8Resources(com.ws.azureKuberntesJIT.dto.K8ResourceRequest request, K8ResourceLevel resourceLevel) {
@@ -182,32 +194,44 @@ public class K8ResourceService {
         };
     }
 
-    public List<?> getNamespaceLevelK8Resources(String clusterId, String wsTenantName, K8ResourceType type) {
-        return switch (type) {
-            case DEPLOYMENT -> k8DeploymentRepository.findAllByClusterIdAndWsTenantName(clusterId, wsTenantName);
-            case NODE -> k8NodeRepository.findAllByClusterIdAndWsTenantName(clusterId, wsTenantName);
-            case SERVICE_ACCOUNT ->
-                    k8ServiceAccountRepository.findAllByClusterIdAndWsTenantName(clusterId, wsTenantName);
-            case SECRET -> k8SecretRepository.findAllByClusterIdAndWsTenantName(clusterId, wsTenantName);
-            case CONFIG_MAP -> k8ConfigMapRepository.findAllByClusterIdAndWsTenantName(clusterId, wsTenantName);
-            case NETWORK_POLICY -> k8NetworkPolicyRepository.findAllByClusterIdAndWsTenantName(clusterId, wsTenantName);
-            case JOB -> k8JobRepository.findAllByClusterIdAndWsTenantName(clusterId, wsTenantName);
-            case CRON_JOB -> k8CronJobRepository.findAllByClusterIdAndWsTenantName(clusterId, wsTenantName);
-            case REPLICA_SET -> k8ReplicaSetRepository.findAllByClusterIdAndWsTenantName(clusterId, wsTenantName);
-            case STATEFUL_SET -> k8StatefulSetRepository.findAllByClusterIdAndWsTenantName(clusterId, wsTenantName);
-            case DAEMON_SET -> k8DaemonSetRepository.findAllByClusterIdAndWsTenantName(clusterId, wsTenantName);
-            case SERVICE -> k8ServiceRepository.findAllByClusterIdAndWsTenantName(clusterId, wsTenantName);
-            case INGRESS -> k8IngressRepository.findAllByClusterIdAndWsTenantName(clusterId, wsTenantName);
-            default -> throw new RuntimeException("Invalid kubernetes resource type provided. Type: " + type);
+
+    public List<Map<String, String>> getK8ResourcesTypes(K8ResourceLevel level) {
+        return switch (level) {
+            case CLUSTER -> getAllClusterLevelResourcesTypes();
+            case NAMESPACE -> getAllNamespaceLevelResourcesTypes();
+            default -> throw new K8ResourceException("Unsupported kubernetes resource level provided");
         };
     }
 
 
-    public List<K8RoleResponse> getK8Roles(String wsTenantName, CloudProviderType cloudProviderType, K8ResourceLevel k8RoleType) {
-        if (k8RoleType.equals(K8ResourceLevel.ALL)) {
-            k8RoleType = null;
-        }
-        return k8RoleRepository.findAllRolesUsingWsTenantNameAndCloudTypeAndRoleType(wsTenantName, cloudProviderType, k8RoleType);
+    private List<Map<String, String>> getAllClusterLevelResourcesTypes() {
+        return Arrays.stream(K8ResourceType.values())
+                .filter(type -> type == K8ResourceType.NAMESPACE ||
+                        type == K8ResourceType.CUSTOM_RESOURCE_DEFINITION ||
+                        type == K8ResourceType.NODE ||
+                        type == K8ResourceType.STORAGE_CLASS ||
+                        type == K8ResourceType.PERSISTENT_VOLUME)
+                .map(type -> Map.of("key", type.name(), "value", type.getDisplayName()))
+                .collect(Collectors.toList());
+    }
+
+
+    private List<Map<String, String>> getAllNamespaceLevelResourcesTypes() {
+        return Arrays.stream(K8ResourceType.values())
+                .filter(type -> type == K8ResourceType.DEPLOYMENT ||
+                        type == K8ResourceType.SERVICE_ACCOUNT ||
+                        type == K8ResourceType.SECRET ||
+                        type == K8ResourceType.CONFIG_MAP ||
+                        type == K8ResourceType.NETWORK_POLICY ||
+                        type == K8ResourceType.JOB ||
+                        type == K8ResourceType.CRON_JOB ||
+                        type == K8ResourceType.REPLICA_SET ||
+                        type == K8ResourceType.STATEFUL_SET ||
+                        type == K8ResourceType.DAEMON_SET ||
+                        type == K8ResourceType.SERVICE ||
+                        type == K8ResourceType.INGRESS)
+                .map(type -> Map.of("key", type.name(), "value", type.getDisplayName()))
+                .collect(Collectors.toList());
     }
 
 
@@ -238,51 +262,12 @@ public class K8ResourceService {
                 .collect(Collectors.toList());
     }
 
-    public List<RoleResponse> findApplicableRoles(String wsTenantName, String resourceType, String resourceId, String clusterId, CloudProviderType cloudProviderType) {
-        List<RoleResponseProjection> projections = k8RoleRepository.findApplicableRoles(wsTenantName, resourceType, resourceId, clusterId, cloudProviderType.name());
-        if (projections.isEmpty()) {
-            return Collections.emptyList();
-        }
-
-        return projections.stream().map((projection -> RoleResponse.builder().roleUid(projection.getRoleUid()).roleLevel(projection.getRoleLevel()).roleName(projection.getRoleName()).build())).collect(Collectors.toList());
-    }
-
-
-    @Transactional
-    public Boolean raiseRequest(List<RaiseRequest> requests) {
-        List<K8ResourceRequest> roleRequests = requests.stream()
-                .map((request -> K8ResourceRequest.builder()
-                        .roleId(request.getRoleId())
-                        .roleName(request.getRoleName())
-                        .resourceId(request.getResourceId())
-                        .resourceType(request.getResourceType())
-                        .roleType(request.getRoleType())
-                        .cloudType(request.getCloudType())
-                        .clusterId(request.getClusterId())
-                        .namespace(request.getNamespace())
-                        .wsTenantName(request.getWsTenantName())
-                        .status(RequestStatus.APPROVED)
-                        .build())).toList();
-
-//        k8CustomResourceRequestRepository.saveAll(roleRequests);
-
-        return Boolean.TRUE;
-    }
-
-
-    //-------------------------------------------------------------//    //-------------------------------------------------------------//
-    //-------------------------------------------------------------//    //-------------------------------------------------------------//
 
     public List<RoleResponse> suggestRoles(com.ws.azureKuberntesJIT.dto.K8ResourceRequest request, String resourceName) {
-        String publishResourceType;
-        String namespace = null;
-        if (StringUtils.isEmpty(request.getNamespace())) {
-            publishResourceType = PublishResourceType.CLUSTER_ROLE.name();
-        } else {
-            publishResourceType = PublishResourceType.NAMESPACE_ROLE.name();
-        }
-        if (StringUtils.isNotEmpty(request.getNamespace())) {
-            namespace = request.getNamespace().trim();
+        String namespace = StringUtils.isNotEmpty(request.getNamespace()) ? request.getNamespace().trim() : null;
+        String publishResourceType = StringUtils.isEmpty(namespace) ? PublishResourceType.CLUSTER_ROLE.name() : PublishResourceType.NAMESPACE_ROLE.name();
+        if (StringUtils.isEmpty(request.getResourceAccountId())) {
+            throw new K8ResourceException("Cloud resource account ID is required");
         }
         List<RoleResponseProjection> projections = k8RoleRepository.suggestRoles(request.getWsTenantName(), request.getCloudProviderType().name(), request.getResourceAccountId(), request.getClusterId(),
                 namespace, resourceName, publishResourceType);
@@ -336,7 +321,7 @@ public class K8ResourceService {
 
     private void checkExistingRoleBinding(K8ResourceRaiseRequest request, String namespace, String roleId) {
         String[] statuses = {RequestStatus.DECLINE.name(), RequestStatus.EXPIRED.name()};
-        Optional<K8CustomResourceRequest> customResourceRequestOpt = k8CustomResourceRequestRepository.getCustomRequestWithParamsAndStatusNotIn(
+        Optional<K8CustomResourceRequest> customResourceRequestOpt = k8CustomResourceRequestRepository.findCustomRequestWithParamsAndStatusNotIn(
                 request.getWsTenantName().trim(), request.getCloudType().name(),
                 request.getCloudResourceAccountId().trim(), request.getClusterId().trim(),
                 namespace, roleId, request.getUserName(), statuses);
@@ -352,6 +337,7 @@ public class K8ResourceService {
                 .cloudType(request.getCloudType())
                 .cloudResourceAccountId(request.getCloudResourceAccountId().trim())
                 .clusterId(request.getClusterId().trim())
+                .clusterName(GenericUtil.getOrNull(() -> request.getClusterName().trim()))
                 .status(RequestStatus.PENDING)
                 .wsUserEmail(request.getWsUserEmail().trim())
                 .expiryTimeAmount(request.getExpiryTimeAmount())
@@ -378,6 +364,7 @@ public class K8ResourceService {
                 .resourceType(request.getK8ResourceType().name())
                 .roleBindingName(UUID.randomUUID().toString())
                 .userName(request.getUserName().trim())
+                .userDisplayName(GenericUtil.getOrNull(() -> request.getUser().trim()))
                 .subjectKind(K8SubjectKind.USER)
                 .bindingType((StringUtils.isEmpty(namespace)) ? K8RoleBindingType.ClusterRoleBinding : K8RoleBindingType.RoleBinding)
                 .level((StringUtils.isEmpty(namespace)) ? K8ResourceLevel.CLUSTER : K8ResourceLevel.NAMESPACE)
@@ -397,21 +384,18 @@ public class K8ResourceService {
     }
 
 
-    public List<K8CustomResourceRequest> getK8CustomResourceRequests(String wsTenantName, CloudProviderType cloudType, RequestStatus requestStatus, String wsTenantUserEmail) {
+    public List<K8CustomResourceRequestDTO> getK8CustomResourceRequests(String wsTenantName, CloudProviderType cloudType, RequestStatus requestStatus,
+                                                                        String wsTenantUserEmail, String cloudResourceAccountId) {
         String azureUserUPN = null;
-        String status = null;
         if (StringUtils.isNotEmpty(wsTenantUserEmail)) {
             azureUserUPN = azureUserConfigureRepository.findByEmailAndWsTenantName(wsTenantUserEmail, wsTenantName)
-                    .orElseThrow(() -> new RuntimeException("No data found for provided email: " + 1))
+                    .orElseThrow(() -> new RuntimeException("No data found for provided email: " + wsTenantUserEmail))
                     .getAzureUserUpn();
-        }
-        if (ObjectUtils.isNotEmpty(requestStatus)) {
-            status = requestStatus.name();
         }
 
         return switch (cloudType) {
             case AZURE ->
-                    k8CustomResourceRequestRepository.getK8CustomResourceRequestWithParams(wsTenantName, cloudType.name(), status, azureUserUPN);
+                    k8CustomResourceRequestRepository.findK8CustomResourceRequestWithParams(wsTenantName, cloudType, requestStatus, azureUserUPN, cloudResourceAccountId);
             default -> throw new K8ResourceException("Unsupported cloud type provided. Type: {}" + cloudType);
         };
     }
@@ -422,9 +406,36 @@ public class K8ResourceService {
         K8CustomResourceRequest foundRequest = k8CustomResourceRequestRepository.findById(UUID.fromString(requestUUID))
                 .orElseThrow(() -> new K8ResourceException("No resource request found with provided ID: " + requestUUID));
         RequestStatus currentStatus = foundRequest.getStatus();
+//        checkAzureRoleAssignmentForUser(foundRequest);
         processRequest(foundRequest, updatedStatus, currentStatus);
         return Boolean.TRUE;
     }
+
+
+    private void checkAzureRoleAssignmentForUser(K8CustomResourceRequest foundRequest) {
+        String wsTenantName = foundRequest.getWsTenantName();
+        String userName = foundRequest.getRoleBindRequest().getUserName();
+        if (!foundRequest.getCloudType().equals(CloudProviderType.AZURE)) {
+            throw new K8ResourceException("Unsupported cloud type provided. Type: " + foundRequest.getCloudType());
+        }
+
+        String assignee = findAzureUserIdByUPN(userName, wsTenantName).getAzureId();
+        boolean flag = customRoleAssignmentService.checkIfCustomRoleAssignmentExistsForAssignee(
+                wsTenantName,
+                foundRequest.getCloudResourceAccountId(),
+                foundRequest.getClusterId(),
+                assignee
+        );
+        if (!flag) {
+            throw new AzureDataException(String.format("No Azure RBAC exists on the assignee %s for scope %s ", userName, foundRequest.getClusterName()));
+        }
+    }
+
+    private AzureUser findAzureUserIdByUPN(String upn, String wsTenantName) {
+        return azureUserRepository.findByUserPrincipalNameAndWsTenantName(upn, wsTenantName)
+                .orElseThrow(() -> new AzureDataException("No azure user found with provided upn: " + upn));
+    }
+
 
     private void processRequest(K8CustomResourceRequest foundRequest, RequestStatus updatedStatus, RequestStatus currentStatus) {
         // Validate the state transition
@@ -442,7 +453,17 @@ public class K8ResourceService {
     private void processApproval(K8CustomResourceRequest customResourceRequest) {
         // 1. Initialize the K8 client using cluster ID and CloudType
         Triple<String, String, String> clusterDetails = initializeK8ClientsWithClusterDetails(customResourceRequest.getClusterId(), customResourceRequest.getCloudType());
+        createRoleBindingAndRole(customResourceRequest);
+        LocalDateTime validFrom = LocalDateTime.now();
+        customResourceRequest.setValidFrom(validFrom);
+        customResourceRequest.setValidTo(validFrom.plusMinutes(customResourceRequest.getExpiryTimeAmount()));
+        updateCustomRoleAssignmentCommonFields(customResourceRequest, RequestStatus.APPROVED);
 
+        // 2. Sync the roles and role bindings asynchronously
+        azureSyncControlService.syncK8RolesAndBindings(createK8ResourceDataSyncRequest(customResourceRequest, clusterDetails));
+    }
+
+    private void createRoleBindingAndRole(K8CustomResourceRequest customResourceRequest) {
         String namespace = customResourceRequest.getRoleBindRequest().getNamespace();
         String roleName = customResourceRequest.getRoleRequest().getRoleName();
         List<String> verbs = customResourceRequest.getRoleRequest().getVerbs();
@@ -457,24 +478,16 @@ public class K8ResourceService {
                 V1ClusterRole createdClusterRole = k8ClientService.createClusterRole(roleName, resourceName, verbs, apiGroup, resource);
                 customResourceRequest.getRoleRequest().setRoleId(createdClusterRole.getMetadata().getUid());
             }
-            V1ClusterRoleBinding createdClusterRoleBinding = k8ClientService.createClusterRoleBinding(roleBindingName, userName, roleName, K8ResourceType.CLUSTER_ROLE.getApiGroup(), K8ResourceType.CLUSTER_ROLE.getApiVersion());
+            V1ClusterRoleBinding createdClusterRoleBinding = k8ClientService.createClusterRoleBinding(roleName, roleBindingName, userName, K8ResourceType.CLUSTER_ROLE.getApiGroup(), K8ResourceType.CLUSTER_ROLE.getApiVersion());
             customResourceRequest.getRoleBindRequest().setRoleBindingId(createdClusterRoleBinding.getMetadata().getUid());
         } else {
             if (customResourceRequest.getRoleRequest().isRoleCustomCreated()) {
                 V1Role createdNamespaceRole = k8ClientService.createNamespaceRole(namespace, roleName, resourceName, verbs, apiGroup, resource);
                 customResourceRequest.getRoleRequest().setRoleId(createdNamespaceRole.getMetadata().getUid());
             }
-            V1RoleBinding createdNamespaceRoleBinding = k8ClientService.createNamespaceRoleBinding(namespace, roleBindingName, userName, roleName, K8ResourceType.NAMESPACE_ROLE.getApiGroup(), K8ResourceType.NAMESPACE_ROLE.getApiVersion());
+            V1RoleBinding createdNamespaceRoleBinding = k8ClientService.createNamespaceRoleBinding(namespace, roleBindingName, roleName, userName, K8ResourceType.NAMESPACE_ROLE.getApiGroup(), K8ResourceType.NAMESPACE_ROLE.getApiVersion());
             customResourceRequest.getRoleBindRequest().setRoleBindingId(createdNamespaceRoleBinding.getMetadata().getUid());
         }
-
-        LocalDateTime validFrom = LocalDateTime.now();
-        customResourceRequest.setValidFrom(validFrom);
-        customResourceRequest.setValidTo(validFrom.plusMinutes(customResourceRequest.getExpiryTimeAmount()));
-        updateCustomRoleAssignmentCommonFields(customResourceRequest, RequestStatus.APPROVED);
-
-        // 2. Sync the roles and role bindings asynchronously
-        azureSyncControlService.syncK8RolesAndBindings(createK8ResourceDataSyncRequest(customResourceRequest, clusterDetails));
     }
 
 
@@ -482,31 +495,38 @@ public class K8ResourceService {
         updateCustomRoleAssignmentCommonFields(customResourceRequest, RequestStatus.DECLINE);
     }
 
+
     private void processExpiration(K8CustomResourceRequest customResourceRequest) {
         // 1. Initialize the K8 clients
         initializeK8ClientsWithClusterDetails(customResourceRequest.getClusterId(), customResourceRequest.getCloudType());
 
         // 2. Revoke Role and binding in the k8 and delete in the table
-        String namespace = customResourceRequest.getRoleBindRequest().getNamespace();
-        String roleBindingName = customResourceRequest.getRoleBindRequest().getRoleBindingName();
-        String roleName = customResourceRequest.getRoleRequest().getRoleName();
+        revokeRoleBindingAndRole(customResourceRequest.getRoleBindRequest().getNamespace(),
+                customResourceRequest.getRoleBindRequest().getRoleBindingName(),
+                customResourceRequest.getRoleRequest().getRoleId(),
+                customResourceRequest.getRoleRequest().getRoleName(),
+                customResourceRequest.getRoleRequest().isRoleCustomCreated());
+
+        // 3. Delete the role binding from the table
+        k8RoleBindRepository.deleteByUid(customResourceRequest.getRoleBindRequest().getRoleBindingId());
+        updateCustomRoleAssignmentCommonFields(customResourceRequest, RequestStatus.EXPIRED);
+    }
+
+
+    private void revokeRoleBindingAndRole(String namespace, String roleBindingName, String roleId, String roleName, boolean isRoleCustomCreated) {
         if (StringUtils.isEmpty(namespace)) {
             k8ClientService.revokeClusterRoleBinding(roleBindingName);
-            if (customResourceRequest.getRoleRequest().isRoleCustomCreated()) {
+            if (isRoleCustomCreated) {
                 k8ClientService.revokeClusterRole(roleName);
-                k8RoleRepository.deleteByUid(customResourceRequest.getRoleRequest().getRoleId());
+                k8RoleRepository.deleteByUid(roleId);
             }
         } else {
             k8ClientService.revokeNamespaceRoleBinding(namespace, roleBindingName);
-            if (customResourceRequest.getRoleRequest().isRoleCustomCreated()) {
+            if (isRoleCustomCreated) {
                 k8ClientService.revokeNamespaceRole(namespace, roleName);
-                k8RoleRepository.deleteByUid(customResourceRequest.getRoleRequest().getRoleId());
+                k8RoleRepository.deleteByUid(roleId);
             }
         }
-        k8RoleBindRepository.deleteByUid(customResourceRequest.getRoleBindRequest().getRoleBindingId());
-
-        // 4. Update the status of the customResourceRequest to EXPIRED
-        updateCustomRoleAssignmentCommonFields(customResourceRequest, RequestStatus.EXPIRED);
     }
 
 
@@ -515,6 +535,11 @@ public class K8ResourceService {
         k8ClientService.initializeK8Client(clusterDetails.getLeft(), clusterDetails.getRight());
         k8ClientService.initializeK8RbacClient();
         return clusterDetails;
+    }
+
+    private RbacAuthorizationV1Api initializeK8RbacApiClientByClusterCredential(String clusterId, CloudProviderType cloudType) {
+        Triple<String, String, String> clusterDetails = findClusterUrlAndToken(clusterId, cloudType);
+        return k8ClientService.initializeK8ClientWithRbacApi(clusterDetails.getLeft(), clusterDetails.getRight());
     }
 
 
@@ -541,7 +566,7 @@ public class K8ResourceService {
 
     private Triple<String, String, String> findClusterUrlAndToken(String k8ClusterId, CloudProviderType cloudType) {
         if (cloudType.name().equalsIgnoreCase(CloudProviderType.AZURE.name())) {
-            AzureKubernetesCluster azureKubernetesCluster = azureKubernetesClusterRepository.findByAzureId(k8ClusterId.trim()).orElseThrow(() -> new K8ResourceException(String.format("No %s cluster found with provided cluster ID", cloudType)));
+            AzureKubernetesCluster azureKubernetesCluster = azureResourceDataService.findAksByAzureId(k8ClusterId);
             String severURL = EncryptionUtil.getDecryptedKey(azureKubernetesCluster.getAzureK8ClusterCredentials().get(0).getClusterServerUrl(), Constant.AKS_CLUSTER_SERVER_URL);
             String token = EncryptionUtil.getDecryptedKey(azureKubernetesCluster.getAzureK8ClusterCredentials().get(0).getToken(), Constant.AKS_CLUSTER_TOKEN);
             return Triple.of(severURL, azureKubernetesCluster.getName(), token);
@@ -555,6 +580,90 @@ public class K8ResourceService {
     public void revokeK8ResourceAccess(K8CustomResourceRequest customResourceRequest) {
         processExpiration(customResourceRequest);
     }
+
+    public void revokeK8ResourceAccess(List<K8CustomResourceRequestDTO> customResourceRequests) {
+        for (K8CustomResourceRequestDTO customResourceRequest : customResourceRequests) {
+            RbacAuthorizationV1Api rbacAuthorizationV1Api = getOrInitializeK8Client(customResourceRequest.getClusterId(), customResourceRequest.getCloudType());
+            k8ClientService.initializeK8RbacClient(rbacAuthorizationV1Api);
+            revokeRoleBindingAndRole(customResourceRequest.getNamespace(),
+                    customResourceRequest.getRoleBindingName(),
+                    customResourceRequest.getRoleId(),
+                    customResourceRequest.getRoleName(),
+                    customResourceRequest.isRoleCustomCreated());
+        }
+    }
+
+    private RbacAuthorizationV1Api getOrInitializeK8Client(String clusterId, CloudProviderType cloudType) {
+        if (!k8RbacApiClientMap.containsKey(clusterId)) {
+            k8RbacApiClientMap.put(clusterId, initializeK8RbacApiClientByClusterCredential(clusterId, cloudType));
+        }
+        return k8RbacApiClientMap.get(clusterId);
+    }
+
+
+    //-------------------------------------------------------------//    //-------------------------------------------------------------//
+    //-------------------------------------------------------------//    //-------------------------------------------------------------//
+
+
+    public List<?> getNamespaceLevelK8Resources(String clusterId, String wsTenantName, K8ResourceType type) {
+        return switch (type) {
+            case DEPLOYMENT -> k8DeploymentRepository.findAllByClusterIdAndWsTenantName(clusterId, wsTenantName);
+            case NODE -> k8NodeRepository.findAllByClusterIdAndWsTenantName(clusterId, wsTenantName);
+            case SERVICE_ACCOUNT ->
+                    k8ServiceAccountRepository.findAllByClusterIdAndWsTenantName(clusterId, wsTenantName);
+            case SECRET -> k8SecretRepository.findAllByClusterIdAndWsTenantName(clusterId, wsTenantName);
+            case CONFIG_MAP -> k8ConfigMapRepository.findAllByClusterIdAndWsTenantName(clusterId, wsTenantName);
+            case NETWORK_POLICY -> k8NetworkPolicyRepository.findAllByClusterIdAndWsTenantName(clusterId, wsTenantName);
+            case JOB -> k8JobRepository.findAllByClusterIdAndWsTenantName(clusterId, wsTenantName);
+            case CRON_JOB -> k8CronJobRepository.findAllByClusterIdAndWsTenantName(clusterId, wsTenantName);
+            case REPLICA_SET -> k8ReplicaSetRepository.findAllByClusterIdAndWsTenantName(clusterId, wsTenantName);
+            case STATEFUL_SET -> k8StatefulSetRepository.findAllByClusterIdAndWsTenantName(clusterId, wsTenantName);
+            case DAEMON_SET -> k8DaemonSetRepository.findAllByClusterIdAndWsTenantName(clusterId, wsTenantName);
+            case SERVICE -> k8ServiceRepository.findAllByClusterIdAndWsTenantName(clusterId, wsTenantName);
+            case INGRESS -> k8IngressRepository.findAllByClusterIdAndWsTenantName(clusterId, wsTenantName);
+            default -> throw new RuntimeException("Invalid kubernetes resource type provided. Type: " + type);
+        };
+    }
+
+
+    public List<K8RoleResponse> getK8Roles(String wsTenantName, CloudProviderType cloudProviderType, K8ResourceLevel k8RoleType) {
+        if (k8RoleType.equals(K8ResourceLevel.ALL)) {
+            k8RoleType = null;
+        }
+        return k8RoleRepository.findAllRolesUsingWsTenantNameAndCloudTypeAndRoleType(wsTenantName, cloudProviderType, k8RoleType);
+    }
+
+
+    public List<RoleResponse> findApplicableRoles(String wsTenantName, String resourceType, String resourceId, String clusterId, CloudProviderType cloudProviderType) {
+        List<RoleResponseProjection> projections = k8RoleRepository.findApplicableRoles(wsTenantName, resourceType, resourceId, clusterId, cloudProviderType.name());
+        if (projections.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        return projections.stream().map((projection -> RoleResponse.builder().roleUid(projection.getRoleUid()).roleLevel(projection.getRoleLevel()).roleName(projection.getRoleName()).build())).collect(Collectors.toList());
+    }
+
+
+//    @Transactional
+//    public Boolean raiseRequest(List<RaiseRequest> requests) {
+//        List<K8ResourceRequest> roleRequests = requests.stream()
+//                .map((request -> K8ResourceRequest.builder()
+//                        .roleId(request.getRoleId())
+//                        .roleName(request.getRoleName())
+//                        .resourceId(request.getResourceId())
+//                        .resourceType(request.getResourceType())
+//                        .roleType(request.getRoleType())
+//                        .cloudType(request.getCloudType())
+//                        .clusterId(request.getClusterId())
+//                        .namespace(request.getNamespace())
+//                        .wsTenantName(request.getWsTenantName())
+//                        .status(RequestStatus.APPROVED)
+//                        .build())).toList();
+//
+////        k8CustomResourceRequestRepository.saveAll(roleRequests);
+//
+//        return Boolean.TRUE;
+//    }
 
 
     //-------------------------------------------------------------//    //-------------------------------------------------------------//
@@ -612,7 +721,7 @@ public class K8ResourceService {
     private V1Role createV1Role(String namespace, List<String> resourceNames) {
         try {
             V1Role v1Role = new V1Role()
-                    .metadata(new V1ObjectMeta().name(namespace + "-example-role-1").namespace(namespace))
+                    .metadata(new V1ObjectMeta().name(namespace + "-example-role-2").namespace(namespace))
                     .rules(Collections.singletonList(
                             new V1PolicyRule()
                                     .verbs(Arrays.asList("get", "list"))
@@ -718,10 +827,11 @@ public class K8ResourceService {
 
 
     private void initialise() {
-        AzureKubernetesCluster azureKubernetesCluster = azureKubernetesClusterRepository.findByName("ws-test-aks-cluster-1").get();
-        String severURL = EncryptionUtil.getDecryptedKey(azureKubernetesCluster.getAzureK8ClusterCredentials().get(0).getClusterServerUrl(), Constant.AKS_CLUSTER_SERVER_URL);
-        String token = EncryptionUtil.getDecryptedKey(azureKubernetesCluster.getAzureK8ClusterCredentials().get(0).getToken(), Constant.AKS_CLUSTER_TOKEN);
-        initializeK8Client(severURL, token);
+//        AzureKubernetesCluster azureKubernetesCluster = azureKubernetesClusterRepository.findByName("ws-test-aks-cluster-1").get();
+//        String severURL = EncryptionUtil.getDecryptedKey(azureKubernetesCluster.getAzureK8ClusterCredentials().get(0).getClusterServerUrl(), Constant.AKS_CLUSTER_SERVER_URL);
+//        String token = EncryptionUtil.getDecryptedKey(azureKubernetesCluster.getAzureK8ClusterCredentials().get(0).getToken(), Constant.AKS_CLUSTER_TOKEN);
+        initializeK8Client("https://ws-test-aks-cluster-1-dns-8t33e8yw.hcp.eastus.azmk8s.io:443",
+                "2m1cdratgzh42n8k2n7rdd5ovazvn4ymgvdeb5bk2vjp94o5wqr8vwgfr0m863f8c0lwzr7rtmb5dy8dzwafp09kj4jrcqt5n49v4qsc9sls018c2nt20u9pyoqahqhi");
         initializeK8RbacClient();
     }
 

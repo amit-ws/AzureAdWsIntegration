@@ -11,7 +11,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
+import org.springframework.util.ObjectUtils;
 
+import java.util.Collection;
 import java.util.List;
 
 @Slf4j
@@ -33,14 +35,23 @@ public class CustomRoleAssignmentService {
         this.backendApplicationLogservice = backendApplicationLogservice;
     }
 
-    public void revokeApprovedRolesInAzureAndDeleteAllForWsTenant(String wsTenantName) {
-        List<CustomRoleAssignment> customRoleAssignments = customRoleAssignmentRepository.findAllByWsTenantNameAndStatus(wsTenantName, RequestStatus.APPROVED);
-        if (CollectionUtils.isEmpty(customRoleAssignments)) {
-            log.info("No APPROVED custom roles found for the WS tenant: {}", wsTenantName);
-        } else {
-            azureResourceService.revokeAzureResourcesAccess(customRoleAssignments, azureUserCredentialService.findAuthenticationCredentialByWSTenantName(wsTenantName));
-            customRoleAssignmentRepository.deleteAllByWsTenantName(wsTenantName);
+    public void revokeApprovedRolesInAzureAndDeleteAllForWsTenant(String wsTenantName, Collection<String> subscriptionIDs) {
+        List<CustomRoleAssignment> customRoleAssignments = customRoleAssignmentRepository.findAllByWsTenantNameAndStatus(wsTenantName, RequestStatus.APPROVED, subscriptionIDs);
+        log.info("Totsl {} CustomRoleAssignment found for the WS tenant: {} to be revoked", customRoleAssignments.size(), wsTenantName);
+        if (!CollectionUtils.isEmpty(customRoleAssignments)) {
+            azureResourceService.revokeAzureResourceAccess(customRoleAssignments, azureUserCredentialService.findAuthenticationCredentialByWSTenantName(wsTenantName));
         }
+        customRoleAssignmentRepository.deleteAllByWsTenantName(wsTenantName);
+    }
+
+    public boolean checkIfCustomRoleAssignmentExistsForAssignee(String wsTenantName, String subscriptionId, String scope, String assignee) {
+        return ObjectUtils.isEmpty(findByScopeAndAssigneeAndWsTenantNameAndSubscriptionId(scope, assignee, wsTenantName, subscriptionId));
+    }
+
+
+    private CustomRoleAssignment findByScopeAndAssigneeAndWsTenantNameAndSubscriptionId(String scope, String assignee, String wsTenantName, String subscriptionId) {
+        return customRoleAssignmentRepository.findByScopeAndAssigneeAndWsTenantNameAndSubscriptionId(scope, assignee, wsTenantName, subscriptionId)
+                .orElse(null);
     }
 
 }

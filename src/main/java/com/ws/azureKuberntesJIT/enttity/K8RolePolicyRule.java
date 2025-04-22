@@ -46,20 +46,20 @@ public class K8RolePolicyRule {
     @Column(name = "resource_name")
     List<String> resourceNames;  // <---- individual resources
 
-//    @Column(name = "role_uid", nullable = false)
+    @Column(name = "role_uid", nullable = false)
     String roleUID;
 
-//    @Column(nullable = false)
+    @Column(nullable = false)
     @Enumerated(EnumType.STRING)
     CloudProviderType cloudProviderType;
 
     @Enumerated(EnumType.STRING)
     K8ResourceLevel kubernetesRoleType;
 
-//    @Column(nullable = false)
+    @Column(nullable = false)
     String wsTenantName;
 
-//    @Column(nullable = false)
+    @Column(nullable = false)
     String clusterId;
 
     @JsonIgnore

@@ -22,11 +22,12 @@ public class K8RoleResponse {
     String clusterId;
     String resourceAccountId;
     CloudProviderType cloudType;
+    String wsTenantName;
     boolean isPublished;
 
 
     public K8RoleResponse(Long id, String UID, String name, String namespace, K8ResourceLevel type, String clusterId,
-                          CloudProviderType cloudType, String resourceAccountId, boolean isPublished) {
+                          CloudProviderType cloudType, String resourceAccountId, String wsTenantName, boolean isPublished) {
         this.id = id;
         this.UID = UID;
         this.name = name;
@@ -35,6 +36,7 @@ public class K8RoleResponse {
         this.clusterId = clusterId;
         this.cloudType = cloudType;
         this.resourceAccountId = resourceAccountId;
+        this.wsTenantName = wsTenantName;
         this.isPublished = isPublished;
     }
 

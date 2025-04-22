@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 
 @Repository
@@ -28,7 +29,8 @@ public interface K8DeploymentRepository extends JpaRepository<K8Deployment, Long
 
     List<K8Deployment> findAllByClusterIdAndWsTenantName(String clusterId, String wsTenantName);
     @Modifying
-    void deleteAllByWsTenantName(String wsTenantName);
+    @Query("DELETE FROM K8Deployment WHERE wsTenantName = :wsTenantName AND cloudProviderType = :cloudType AND (:cloudIds IS NULL OR cloudResourceAccountId IN :cloudIds)")
+    void deleteAllUsingWsTenantNameAndCloudTypeAndCloudIds(String wsTenantName, CloudProviderType cloudType, Collection<String> cloudIds);
 
     @Query("SELECT new com.ws.azureKuberntesJIT.models.K8DeploymentDTO(kd.id, kd.uid, kd.name, kd.clusterId, kd.cloudResourceAccountId, kd.wsTenantName, kd.cloudProviderType, " +
             "CASE WHEN pr.resourceId IS NULL THEN FALSE ELSE TRUE END) " +

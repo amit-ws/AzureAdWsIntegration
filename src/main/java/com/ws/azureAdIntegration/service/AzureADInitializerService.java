@@ -4,6 +4,7 @@ import com.microsoft.graph.models.DirectoryObject;
 import com.microsoft.graph.models.Organization;
 import com.microsoft.graph.models.User;
 import com.microsoft.graph.requests.*;
+import com.ws.azureAdIntegration.constants.Constant;
 import com.ws.azureAdIntegration.dto.AzureUserCredentialDTO;
 import com.ws.azureAdIntegration.util.AzureAuthUtil;
 import jakarta.validation.constraints.NotNull;
@@ -34,8 +35,8 @@ public class AzureADInitializerService {
     public void initializeGraphClient(AzureUserCredentialDTO azureUserCredentialDTO, GraphServiceClient<Request> client) {
         this.graphClient = Optional.ofNullable(client)
                 .orElseGet(() -> {
-                    log.info("Validating user's Azure-AD credentials..");
-                    return azureAuthUtil.validateAzureCredentials(azureUserCredentialDTO);
+                    log.info(Constant.VALIDATING_AZURE_TENANT_AUTHENTICATION_CREDENTIAL);
+                    return azureAuthUtil.validateAzureAuthenticationCredentials(azureUserCredentialDTO);
                 });
     }
 

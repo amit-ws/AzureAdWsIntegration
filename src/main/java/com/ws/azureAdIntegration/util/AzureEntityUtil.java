@@ -125,6 +125,7 @@ public final class AzureEntityUtil {
         azureRoleAssignment.setPrincipalType(GenericUtil.getOrNull(() -> roleAssignment.innerModel().principalType().getValue()));
         azureRoleAssignment.setScope(roleAssignment.scope());
         azureRoleAssignment.setScopeType(scopeType);
+//        log.info("condition: {}", roleAssignment.condition());
         azureRoleAssignment.setCondition(roleAssignment.condition());
         azureRoleAssignment.setIsRoleInherited(false);
         azureRoleAssignment.setCreatedOn(GenericUtil.getOrNull(() -> roleAssignment.innerModel().createdOn()));

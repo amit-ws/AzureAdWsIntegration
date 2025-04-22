@@ -19,7 +19,6 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
-import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -36,13 +35,13 @@ public class AzureADSyncService {
     final AzureUserGroupMembershipRepository azureUserGroupMembershipRepository;
     final AzureUserDeviceRelationshipRepository azureUserDeviceRelationshipRepository;
     final BackendApplicationLogservice backendApplicationLogservice;
-    final AzureADInitializerService azureADInitializerService;
+    final AzureADInitializerService azureInitializerService;
 
     @Autowired
     public AzureADSyncService(AzureUserRepository azureUserRepository, AzureGroupRepository azureGroupRepository, AzureDeviceRepository azureDeviceRepository,
                               AzureTenantRepository azureTenantRepository, AzureApplicationRepository azureApplicationRepository, AzureUserGroupMembershipRepository azureUserGroupMembershipRepository,
                               AzureUserDeviceRelationshipRepository azureUserDeviceRelationshipRepository, AzureUserCredentialRepository azureUserCredentialRepository,
-                              BackendApplicationLogservice backendApplicationLogservice, AzureADInitializerService azureADInitializerService
+                              BackendApplicationLogservice backendApplicationLogservice, AzureADInitializerService azureInitializerService
     ) {
         this.azureUserRepository = azureUserRepository;
         this.azureGroupRepository = azureGroupRepository;
@@ -52,27 +51,30 @@ public class AzureADSyncService {
         this.azureUserGroupMembershipRepository = azureUserGroupMembershipRepository;
         this.azureUserDeviceRelationshipRepository = azureUserDeviceRelationshipRepository;
         this.backendApplicationLogservice = backendApplicationLogservice;
-        this.azureADInitializerService = azureADInitializerService;
+        this.azureInitializerService = azureInitializerService;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public AzureTenant initializeGraphClientAndSyncAzureTenant(AzureUserCredentialDTO azureUserCredentialDTO, GraphServiceClient<Request> graphClient) {
         this.wsTenantName = azureUserCredentialDTO.getWsTenantName();
-        azureADInitializerService.initializeGraphClient(azureUserCredentialDTO, graphClient);
+        azureInitializerService.initializeGraphClient(azureUserCredentialDTO, graphClient);
         return syncTenantData(azureUserCredentialDTO.getTenantId());
     }
 
     protected void syncAzureADData(AzureTenant azureTenant) {
         try {
             syncApplications(azureTenant);
+            log.info("azureApplications synced....");
             List<AzureUser> azureUsers = syncUsersData(azureTenant);
             log.info("azureUsers synced....");
             List<AzureGroup> azureGroups = syncGroupsData(azureTenant);
             log.info("azureGroups synced....");
             List<AzureDevice> azureDevices = syncDevicesData(azureTenant);
+            log.info("azureDevices synced....");
             syncUsersGroupsMembershipData(azureUsers, azureGroups);
-            log.info("azureGroups mapped");
+            log.info("azureGroups mapped....");
             syncUsersDeviceRelationshipData(azureUsers, azureDevices);
+            log.info("azureDevices mapped....");
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_AD_DATA_SYNC_END, "Info");
         } catch (Exception ex) {
             log.error("Error occurred in syncing data from Azure AD: {}", ex.getMessage());
@@ -85,14 +87,15 @@ public class AzureADSyncService {
         // delete the existing tenant and re-create whatever has been fetched this time
         azureTenantRepository.deleteByAzureId(tenantId);
         azureTenantRepository.flush();
-        Organization organization = azureADInitializerService.getOrganizationUsingTenantId(tenantId);
+        Organization organization = azureInitializerService.getOrganizationUsingTenantId(tenantId);
         AzureTenant azureTenant = AzureEntityUtil.createAzureTenantFromGraphOrganization(organization, AzureTenant.builder().wsTenantName(this.wsTenantName).build());
         backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_TENANT_SAVED, "INFO");
+        log.info("azureTenant synced....");
         return azureTenantRepository.save(azureTenant);
     }
 
     private void syncApplications(AzureTenant azureTenant) {
-        ApplicationCollectionPage result = azureADInitializerService.getApplicationCollection();
+        ApplicationCollectionPage result = azureInitializerService.getApplicationCollection();
         List<AzureApplication> azureApplications = result.getCurrentPage().stream()
                 .map(graphApp -> {
                     AzureApplication azureApp = AzureEntityUtil.createAzureApplicationFromGraphApplication(
@@ -120,7 +123,7 @@ public class AzureADSyncService {
     }
 
     private List<AzureUser> syncUsersData(AzureTenant azureTenant) {
-        UserCollectionPage result = azureADInitializerService.getUsersCollection();
+        UserCollectionPage result = azureInitializerService.getUsersCollection();
         List<AzureUser> azureUsers = result.getCurrentPage().stream()
                 .map(graphUser -> AzureEntityUtil.createAzureUserFromGraphUser(graphUser, AzureUser.builder()
                         .wsTenantName(this.wsTenantName)
@@ -134,7 +137,7 @@ public class AzureADSyncService {
 
 
     private List<AzureGroup> syncGroupsData(AzureTenant azureTenant) {
-        GroupCollectionPage result = azureADInitializerService.getGroupCollection();
+        GroupCollectionPage result = azureInitializerService.getGroupCollection();
         List<AzureGroup> azureGroups = result.getCurrentPage().stream()
                 .map(group -> AzureEntityUtil.createAzureGroupFromGraphGroup(group, AzureGroup.builder()
                         .wsTenantName(this.wsTenantName)
@@ -156,7 +159,7 @@ public class AzureADSyncService {
         List<AzureUserGroupMembership> memberships = new ArrayList<>();
         List<String> azureUserIds = azureUserMap.keySet().stream().toList();
         azureUserIds.forEach((userId) -> {
-            List<DirectoryObject> groups = azureADInitializerService.getGroupsOfUser(userId);
+            List<DirectoryObject> groups = azureInitializerService.getGroupsOfUser(userId);
             groups.forEach((group) -> {
                 AzureUserGroupMembership userGroup = AzureUserGroupMembership.builder()
                         .azureUser(azureUserMap.get(userId))
@@ -174,7 +177,7 @@ public class AzureADSyncService {
 
 
     private List<AzureDevice> syncDevicesData(AzureTenant azureTenant) {
-        DeviceCollectionPage result = azureADInitializerService.getDeviceCollection();
+        DeviceCollectionPage result = azureInitializerService.getDeviceCollection();
         List<AzureDevice> azureDevices = result.getCurrentPage().stream()
                 .map(device -> AzureEntityUtil.createAzureDeviceFromGraphDevice(device, AzureDevice.builder()
                         .wsTenantName(this.wsTenantName)
@@ -197,7 +200,7 @@ public class AzureADSyncService {
         List<AzureUserDeviceRelationship> userDevices = new ArrayList<>();
         List<String> azureUserIds = azureUserMap.keySet().stream().toList();
         azureUserIds.forEach((userId) -> {
-            List<DirectoryObject> devices = azureADInitializerService.getDevicesOfUser(userId);
+            List<DirectoryObject> devices = azureInitializerService.getDevicesOfUser(userId);
             devices.forEach((device) -> {
                 AzureUserDeviceRelationship userDevice = AzureUserDeviceRelationship.builder()
                         .azureUser(azureUserMap.get(userId))

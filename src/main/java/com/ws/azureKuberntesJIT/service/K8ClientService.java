@@ -26,6 +26,10 @@ import java.util.List;
 public class K8ClientService {
     RbacAuthorizationV1Api rbacApi;
 
+    public RbacAuthorizationV1Api initializeK8ClientWithRbacApi(String clusterServerURL, String token) {
+        initializeK8Client(clusterServerURL, token);
+        return initializeK8RbacClientAndGet();
+    }
 
     public void initializeK8Client(String clusterServerURL, String token) {
         try {
@@ -50,6 +54,14 @@ public class K8ClientService {
         this.rbacApi = new RbacAuthorizationV1Api();
     }
 
+    public void initializeK8RbacClient(RbacAuthorizationV1Api rbacApi) {
+        this.rbacApi = rbacApi;
+    }
+
+    public RbacAuthorizationV1Api initializeK8RbacClientAndGet() {
+        return new RbacAuthorizationV1Api();
+    }
+
 
     public V1Role createNamespaceRole(String namespace, String roleName, String resourceName, List<String> verbs, String apiGroup, String resources) {
         try {
@@ -63,7 +75,9 @@ public class K8ClientService {
                                     .resources(Collections.singletonList(resources))
                                     .resourceNames(Collections.singletonList(resourceName))
                     ));
-            return rbacApi.createNamespacedRole(namespace, v1Role).execute();
+            v1Role = rbacApi.createNamespacedRole(namespace, v1Role).execute();
+            log.info("created namespace role id: {}", v1Role.getMetadata().getUid());
+            return v1Role;
         } catch (Exception exp) {
             if (exp.getMessage().contains("409")) {
                 throw new K8ResourceException("Namespace role already exists in your kubernetes cluster with the name: " + "");

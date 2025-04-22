@@ -116,4 +116,7 @@ public class Constant {
     public static final String KUBERNETES_CRON_JOB_DATA_SYNCED = "Kubernetes cron job data synced for cluster: %s of type: %s";
     public static final String KUBERNETES_INGRESS_DATA_SYNCED = "Kubernetes ingress data synced for cluster: %s of type: %s";
     public static final String KUBERNETES_SERVICES_DATA_SYNCED = "Kubernetes service data synced for cluster: %s of type: %s";
+    public static final String VALIDATING_AZURE_TENANT_AUTHENTICATION_CREDENTIAL = "Validating azure authentication related credentials";
+    public static final String VALIDATING_AZURE_TENANT_SUBSCRIPTION_IDS = "validating provided subscription Ids";
+    public static final String VALIDATING_SUBSCRIPTION_ID = "Validating azure subscription Id: %s";
 }

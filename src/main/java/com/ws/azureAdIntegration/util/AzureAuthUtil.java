@@ -62,7 +62,6 @@ import com.ws.azureAdIntegration.exception.AzureDataException;
 import com.ws.configuration.AzureAuthConfigurationFactory;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.HashMap;
 import java.util.Map;
 
 import okhttp3.Request;
@@ -73,17 +72,12 @@ import org.springframework.stereotype.Component;
 @Component
 public class AzureAuthUtil {
     private final AzureAuthConfigurationFactory azureAuthConfigurationFactory;
-    private static final Map<String, String> AZURE_AUTH_ERROR_MAP;
-
-    static {
-        AZURE_AUTH_ERROR_MAP = new HashMap<>() {{
-            put("AADSTS700016", "Invalid Client ID: %s");
-            put("AADSTS7000215", "Invalid Client Secret: %s");
-            put("AADSTS900023", "Invalid Tenant ID: %s");
-            put("InvalidSubscriptionId", "Invalid Subscription ID: %s");
-//            put("Request_BadRequest", "Invalid Object ID");
-        }};
-    }
+    private static final Map<String, String> AZURE_AUTH_ERROR_MAP = Map.of(
+            "AADSTS700016", "Invalid Client ID: %s",
+            "AADSTS7000215", "Invalid Client Secret: %s",
+            "AADSTS900023", "Invalid Tenant ID: %s",
+            "InvalidSubscriptionId", "Invalid Subscription ID: %s"
+    );
 
 
     @Autowired
@@ -91,7 +85,7 @@ public class AzureAuthUtil {
         this.azureAuthConfigurationFactory = azureAuthConfigurationFactory;
     }
 
-    public GraphServiceClient<Request> validateAzureCredentials(String tenantId, String clientId, String clientSecret) {
+    public GraphServiceClient<Request> validateAzureAuthenticationCredentials(String tenantId, String clientId, String clientSecret) {
         try {
             return azureAuthConfigurationFactory.createAzureGraphServiceClient(clientId, clientSecret, tenantId);
         } catch (Exception e) {
@@ -102,7 +96,7 @@ public class AzureAuthUtil {
         }
     }
 
-    public GraphServiceClient<Request> validateAzureCredentials(AzureUserCredentialDTO azureUserCredentialDTO) {
+    public GraphServiceClient<Request> validateAzureAuthenticationCredentials(AzureUserCredentialDTO azureUserCredentialDTO) {
         try {
             return azureAuthConfigurationFactory.createAzureGraphServiceClient(azureUserCredentialDTO.getClientId(), azureUserCredentialDTO.getClientSecret(), azureUserCredentialDTO.getTenantId());
         } catch (Exception e) {
@@ -114,7 +108,7 @@ public class AzureAuthUtil {
     }
 
 
-    public AzureResourceManager validateAzureCredentialsWithSubscriptionId(String tenantId, String clientId, String clientSecret, String subscriptionId) {
+    public AzureResourceManager validateAzureAuthenticationCredentialsWithSubscriptionId(String tenantId, String clientId, String clientSecret, String subscriptionId) {
         try {
             AzureResourceManager azureResourceManager = azureAuthConfigurationFactory.createAzureResourceClient(clientId, clientSecret, tenantId, subscriptionId);
             validateSubscriptionId(azureResourceManager);

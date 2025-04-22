@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 
 @Repository
@@ -30,7 +31,8 @@ public interface K8NetworkPolicyRepository extends JpaRepository<K8NetworkPolicy
     List<K8NetworkPolicy> findAllByClusterIdAndWsTenantName(String clusterId, String wsTenantName);
 
     @Modifying
-    void deleteAllByWsTenantName(String wsTenantName);
+    @Query("DELETE FROM K8NetworkPolicy WHERE wsTenantName = :wsTenantName AND cloudProviderType = :cloudType AND (:cloudIds IS NULL OR cloudResourceAccountId IN :cloudIds)")
+    void deleteAllUsingWsTenantNameAndCloudTypeAndCloudIds(String wsTenantName, CloudProviderType cloudType, Collection<String> cloudIds);
 
     @Query("SELECT new com.ws.azureKuberntesJIT.models.K8NetworkPolicyDTO(knp.id, knp.uid, knp.name, knp.clusterId, knp.cloudResourceAccountId, knp.wsTenantName, knp.cloudProviderType, CASE WHEN pr.resourceId IS NULL THEN FALSE ELSE TRUE END) " +
             "FROM K8NetworkPolicy knp " +

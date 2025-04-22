@@ -1,5 +1,6 @@
 package com.ws.azureResourcesIntegration.controller;
 
+import com.ws.azureKuberntesJIT.constant.K8ResourceLevel;
 import com.ws.azureResourcesIntegration.constant.PublishResourceType;
 import com.ws.azureResourcesIntegration.constant.AzureResourcesType;
 import com.ws.azureResourcesIntegration.constant.RequestStatus;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/azureResources")
@@ -53,17 +55,27 @@ public class AzureResourceController {
 
     @GetMapping("/v1/all")
     public ResponseEntity<List<?>> getAzureResourcesUsingType_v2(@RequestParam("type") AzureResourcesType type,
-                                                                 @RequestParam("tenantName") String wsTenantName) {
-        return ResponseEntity.ok(azureResourceService.getAzureResourcesUsingType(type, wsTenantName));
+                                                                 @RequestParam("tenantName") String wsTenantName,
+                                                                 @RequestParam(value = "subsId", required = false) String subscriptionId) {
+        return ResponseEntity.ok(azureResourceService.getAzureResourcesUsingType(type, wsTenantName, subscriptionId));
     }
 
+
+    @GetMapping("v1/types")
+    public ResponseEntity<List<Map<String, String>>> getK8ResourcesTypesHandler() {
+        return ResponseEntity.ok(azureResourceService.getAllSupportedAzureResourcesTypes());
+    }
+
+
     @GetMapping("/v1/getRoleDefinitionsName")
-    public ResponseEntity<List<RoleDefinitionDTO>> getRoleDefinitionsNameWithIdHandler(@RequestParam("tenantName") String wsTenantName) {
-        return ResponseEntity.ok(azureResourceService.getRoleDefinitionsNameWithId(wsTenantName));
+    public ResponseEntity<List<RoleDefinitionDTO>> getRoleDefinitionsNameWithIdHandler(@RequestParam("tenantName") String wsTenantName,
+                                                                                       @RequestParam(value = "subsId", required = false) String subscriptionId) {
+        return ResponseEntity.ok(azureResourceService.getRoleDefinitionsNameWithId(wsTenantName, subscriptionId));
     }
 
     @GetMapping("/v1/getAzureRoleDefinitionById")
-    public ResponseEntity<AzureRoleDefinitionDTO> getAzureRoleDefinitionByIdHandler(@RequestParam("id") Integer azureRoleId, @RequestParam("tenantName") String wsTenantName) {
+    public ResponseEntity<AzureRoleDefinitionDTO> getAzureRoleDefinitionByIdHandler(@RequestParam("id") Integer azureRoleId,
+                                                                                    @RequestParam("tenantName") String wsTenantName) {
         return ResponseEntity.ok(azureResourceService.getAzureRoleDefinitionDetailsUsingId(azureRoleId, wsTenantName));
     }
 
@@ -100,10 +112,16 @@ public class AzureResourceController {
 
     @GetMapping("/v1/publish")
     public ResponseEntity<List<?>> getPublishedResourcesHandler(@RequestParam("type") PublishResourceType type,
-                                                                @RequestParam("tenantName") String wsTenantName) {
-        return ResponseEntity.ok(publishResourceService.getPublishedAzureResources(wsTenantName, type));
+                                                                @RequestParam("tenantName") String wsTenantName,
+                                                                @RequestParam(value = "subsId", required = false) String subscriptionId) {
+        return ResponseEntity.ok(publishResourceService.getPublishedAzureResources(wsTenantName, type, subscriptionId));
     }
 
+
+    @GetMapping("/v1/publish/types")
+    public ResponseEntity<List<Map<String, String>>> getAllK8PublishedResourceTypesHandler() {
+        return ResponseEntity.ok(publishResourceService.getAllAzurePublishedResourceTypes());
+    }
 
     // OLDER CODE
 //    @GetMapping("/v1/publish")
@@ -149,8 +167,9 @@ public class AzureResourceController {
     @GetMapping("/v1/requests/all")
     public ResponseEntity<Collection<CustomRoleAssignmentDTO>> getAllRaiseRoleAssignmentRequestHandler(@RequestParam("tenantName") String wsTenantName,
                                                                                                        @RequestParam(value = "state", required = false) RequestStatus status,
-                                                                                                       @RequestParam(value = "email", required = false) String userEmail) {
-        return ResponseEntity.ok(azureResourceService.getAllRaisedRoleAssignmentRequest(wsTenantName, status, userEmail));
+                                                                                                       @RequestParam(value = "email", required = false) String userEmail,
+                                                                                                       @RequestParam(value = "subsId", required = false) String subscriptionId) {
+        return ResponseEntity.ok(azureResourceService.getAllRaisedRoleAssignmentRequest(wsTenantName, status, userEmail, subscriptionId));
     }
 
     @GetMapping("/v2/requests/all")

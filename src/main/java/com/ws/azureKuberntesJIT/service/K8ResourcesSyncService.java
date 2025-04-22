@@ -68,6 +68,7 @@ public class K8ResourcesSyncService {
     final K8CronJobRepository k8CronJobRepository;
     final K8IngressRepository k8IngressRepository;
     final K8ServiceRepository k8ServiceRepository;
+    final K8ResourcesDataService k8ResourcesDataService;
     final BackendApplicationLogservice backendApplicationLogservice;
 
     @Autowired
@@ -78,7 +79,7 @@ public class K8ResourcesSyncService {
                                   K8SecretRepository k8SecretRepository, K8ServiceAccountRepository k8ServiceAccountRepository,
                                   K8NamespaceRepository k8NamespaceRepository,
                                   K8PersistentVolumeRepository k8PersistentVolumeRepository, K8PersistentVolumeClaimRepository k8PersistentVolumeClaimRepository,
-                                  K8StorageClassRepository K8StorageClassRepository, K8ReplicaSetRepository k8ReplicaSetRepository, K8StatefulSetRepository k8StatefulSetRepository, K8DaemonSetRepository k8DaemonSetRepository, K8JobRepository k8JobRepository, K8CronJobRepository k8CronJobRepository, K8IngressRepository k8IngressRepository, K8ServiceRepository k8ServiceRepository, BackendApplicationLogservice backendApplicationLogservice
+                                  K8StorageClassRepository K8StorageClassRepository, K8ReplicaSetRepository k8ReplicaSetRepository, K8StatefulSetRepository k8StatefulSetRepository, K8DaemonSetRepository k8DaemonSetRepository, K8JobRepository k8JobRepository, K8CronJobRepository k8CronJobRepository, K8IngressRepository k8IngressRepository, K8ServiceRepository k8ServiceRepository, K8ResourcesDataService k8ResourcesDataService, BackendApplicationLogservice backendApplicationLogservice
     ) {
         this.k8RoleRepository = k8RoleRepository;
         this.k8ConfigMapRepository = k8ConfigMapRepository;
@@ -101,6 +102,7 @@ public class K8ResourcesSyncService {
         this.k8CronJobRepository = k8CronJobRepository;
         this.k8IngressRepository = k8IngressRepository;
         this.k8ServiceRepository = k8ServiceRepository;
+        this.k8ResourcesDataService = k8ResourcesDataService;
         this.backendApplicationLogservice = backendApplicationLogservice;
     }
 //    @Transactional
@@ -131,7 +133,10 @@ public class K8ResourcesSyncService {
         this.wsTenantName = k8ResourceDataSyncRequest.getWsTenantName();
         this.tenantEmail = k8ResourceDataSyncRequest.getTenantEmail();
         this.resourceAccountId = k8ResourceDataSyncRequest.getResourceAccountId();
-
+        log.info("Deleting k8 resources for cloud Id: {}", this.resourceAccountId);
+        k8ResourcesDataService.deleteByWsTenantNameAndSubscriptionIds(this.wsTenantName, this.cloudProviderType, Collections.singletonList(this.resourceAccountId));
+        log.info("Deleted k8 resources");
+        backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.KUBERNETES_RESOURCES_DATA_TRUNCATED, "Info");
         for (ClusterConfigurationRequest configuration : k8ResourceDataSyncRequest.getConfigurations()) {
             this.clusterName = configuration.getClusterName();
             String clusterURL = configuration.getServer();

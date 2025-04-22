@@ -6,9 +6,11 @@ import com.ws.azureKuberntesJIT.enttity.K8Job;
 import com.ws.azureKuberntesJIT.models.K8CronJobDTO;
 import com.ws.azureKuberntesJIT.models.K8DaemonSetDTO;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 
 @Repository
@@ -33,6 +35,11 @@ public interface K8CronJobRepository extends JpaRepository<K8CronJob, Long> {
             "WHERE pr.wsTenantName = :wsTenantName AND kcj.clusterId = :clusterId " +
             "ORDER BY kcj.name")
     List<K8CronJobDTO> findAllPublishedK8CronJobsByWsTenantName(String wsTenantName, String clusterId);
+
+
+    @Modifying
+    @Query("DELETE FROM K8CronJob WHERE wsTenantName = :wsTenantName AND cloudProviderType = :cloudType AND (:cloudIds IS NULL OR cloudResourceAccountId IN :cloudIds)")
+    void deleteAllUsingWsTenantNameAndCloudTypeAndCloudIds(String wsTenantName, CloudProviderType cloudType, Collection<String> cloudIds);
 
 
 }

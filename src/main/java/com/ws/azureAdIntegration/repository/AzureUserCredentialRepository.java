@@ -22,6 +22,10 @@ public interface AzureUserCredentialRepository extends JpaRepository<AzureUserCr
             "FROM AzureUserCredential auc WHERE auc.wsTenantName = :wsTenantName")
     Optional<AzureAuthenticationCredentialDTO> findAzureUserCredentialUsingWsTenantName(String wsTenantName);
 
+    @Query(value = "SELECT new com.ws.azureAdIntegration.dto.AzureAuthenticationCredentialDTO(auc.tenantId, auc.clientId, auc.clientSecret) " +
+            "FROM AzureUserCredential auc WHERE auc.id = :id AND auc.wsTenantName = :wsTenantName")
+    Optional<AzureAuthenticationCredentialDTO> findAzureUserCredentialUsingCredIdAndWsTenantName(Integer id, String wsTenantName);
+
     @Query(value = "SELECT auc FROM azure_user_credential auc INNER JOIN azure_user au ON auc.ws_tenant_name = au.ws_tenant_name \n" +
             "WHERE au.azure_id = :azureUserId", nativeQuery = true)
     Optional<AzureUserCredential> findAzureUserCredentialUsingAzureUserId(String azureUserId);

@@ -61,7 +61,7 @@ public class AzureUserCredentialService {
     public AzureUserCredential updateAzureUserCredentialSyncStatus(String wsTenantName) {
         AzureUserCredential azureUserCredential = findByWSTenantName(wsTenantName);
         if (azureUserCredential.isSyncStatus()) {
-            throw new RuntimeException("Sync is already in progress. It may take some time depending on your data size");
+            throw new RuntimeException("Please wait! Sync is already in progress. It may take some time depending on your data size");
         }
         azureUserCredential.setSyncStatus(true);
         azureUserCredential.setUpdatedAt(new Date());
@@ -81,4 +81,10 @@ public class AzureUserCredentialService {
         return azureUserCredentialRepository.findByIdAndWsTenantName(credId, wsTenantName)
                 .orElseThrow(() -> new RuntimeException("No azure credentials found with provided data"));
     }
+
+    public AzureAuthenticationCredentialDTO findAuthenticationCredentialByWSTenantName(Integer credId, String wsTenantName) {
+        return azureUserCredentialRepository.findAzureUserCredentialUsingCredIdAndWsTenantName(credId, wsTenantName)
+                .orElseThrow(() -> new RuntimeException("No Azure AD configuration found for tenant: " + wsTenantName));
+    }
+
 }

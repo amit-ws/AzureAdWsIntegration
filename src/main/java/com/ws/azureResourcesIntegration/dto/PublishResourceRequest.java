@@ -11,7 +11,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @Data
 public class PublishResourceRequest {
-    @NotNull
+    @NotNull(message = "Kubernetes resource ID is required")
     String resourceId;
     @NotNull(message = "WS tenant name is required")
     String wsTenantName;

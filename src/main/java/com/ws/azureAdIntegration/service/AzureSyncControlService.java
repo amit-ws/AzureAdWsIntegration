@@ -21,6 +21,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collections;
+
 
 @Slf4j
 @Service
@@ -88,6 +90,7 @@ public class AzureSyncControlService {
         try {
             AzureTenant azureTenant = azureADSyncService.initializeGraphClientAndSyncAzureTenant(azureUserCredentialDTO, null);
             azureADSyncService.syncAzureADData(azureTenant);
+
             syncAzureResourcesDataIfSubscriptionsExist(azureTenant, azureUserCredentialDTO);
         } catch (Exception exp) {
             log.error(String.format("Failure in %s thread while fetching azure data asynchronously", Thread.currentThread().getName()));
@@ -109,10 +112,14 @@ public class AzureSyncControlService {
 
     /* Sync only the Role Assignment from Azure for the Tenant*/
     @Transactional
-    public void syncAzureRoleAssignments(String wsTenantName) {
-        AzureUserCredentialDTO azureUserCredentialDTO = azureUserCredentialService.findWSTenantIdWithDecryptedSecret(wsTenantName);
-        AzureTenant azureTenant = findOrSyncAzureTenant(azureUserCredentialDTO);
-        azureResourceSyncService.syncAzureResourcesData(azureTenant, azureUserCredentialDTO, true);
+    public void syncAzureRoleAssignments(AzureUserCredentialDTO azureUserCredentialDTO) {
+        try {
+            AzureTenant azureTenant = findOrSyncAzureTenant(azureUserCredentialDTO);
+            azureResourceSyncService.syncAzureResourcesData(azureTenant, azureUserCredentialDTO, true);
+        } catch (Exception ex) {
+            log.error(String.format("Failure in %s thread while fetching azure data asynchronously", Thread.currentThread().getName()));
+        }
+        azureUserCredentialService.updateSyncStatusData(false, azureUserCredentialDTO.getId());
     }
 
 
@@ -141,7 +148,7 @@ public class AzureSyncControlService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void syncK8RolesAndBindings(K8ResourceDataSyncRequest syncRequest) {
         log.info("Async process started.......");
-        k8ResourcesDataService.deleteK8RolesAndBindings(syncRequest.getWsTenantName());
+        k8ResourcesDataService.deleteK8RolesAndBindings(syncRequest.getWsTenantName(), syncRequest.getCloudProviderType(), Collections.singletonList(syncRequest.getResourceAccountId()));
         k8ResourcesSyncService.executeSync(syncRequest);
     }
 

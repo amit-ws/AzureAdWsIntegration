@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -23,8 +24,12 @@ public interface CustomRoleAssignmentRepository extends JpaRepository<CustomRole
     //    List<CustomRoleAssignment> findAllByWsTenantNameAndStatusOrderByCreatedOnDesc(String wsTenantName, RequestStatus status);
     List<CustomRoleAssignment> findAllByStatus(RequestStatus status);
 
-    @Query("SELECT c FROM CustomRoleAssignment c WHERE c.wsTenantName = :wsTenantName AND (:status IS NULL OR c.status = :status) ORDER BY c.requestedAt DESC")
-    List<CustomRoleAssignment> findAllByWsTenantNameAndStatus(@Param("wsTenantName") String wsTenantName, @Param("status") RequestStatus status);
+    @Query("SELECT c FROM CustomRoleAssignment c " +
+            "WHERE c.wsTenantName = :wsTenantName AND (:status IS NULL OR c.status = :status) AND (:subscriptionIDs IS NULL OR c.subscriptionId =:subscriptionIDs)" +
+            "ORDER BY c.requestedAt DESC")
+    List<CustomRoleAssignment> findAllByWsTenantNameAndStatus(@Param("wsTenantName") String wsTenantName,
+                                                              @Param("status") RequestStatus status,
+                                                              Collection<String> subscriptionIDs);
 
     @Query("SELECT new com.ws.azureResourcesIntegration.dto.CustomRoleAssignmentDTO(c.id, c.azureId, c.azureRoleAssignmentPathId, c.description, c.assignee, " +
             "c.principalType, c.scope, c.scopeType, c.condition, c.azureRoleDefinitionPathId, c.wsTenantName, c.status, c.requestedAt, c.updatedAt, c.validFrom," +
@@ -32,9 +37,10 @@ public interface CustomRoleAssignmentRepository extends JpaRepository<CustomRole
             "FROM CustomRoleAssignment c " +
             "LEFT JOIN AzureRoleDefinition ard ON c.azureRoleDefinitionPathId = ard.rolePathId " +
             "LEFT JOIN AzureUser au ON c.assignee = au.azureId " +
-            "WHERE c.wsTenantName = :wsTenantName AND (:status IS NULL OR c.status = :status)  AND (:assignee IS NULL OR c.assignee = :assignee) " +
+            "WHERE c.wsTenantName = :wsTenantName AND (:status IS NULL OR c.status = :status)  AND (:assignee IS NULL OR c.assignee = :assignee) AND (:subscriptionId IS NULL OR c.subscriptionId = :subscriptionId) " +
             "ORDER BY c.requestedAt DESC")
-    List<CustomRoleAssignmentDTO> findAllByWsTenantNameAndStatus2(@Param("wsTenantName") String wsTenantName, @Param("status") RequestStatus status, String assignee);
+    List<CustomRoleAssignmentDTO> findAllByWsTenantNameAndStatus2(@Param("wsTenantName") String wsTenantName, @Param("status") RequestStatus status,
+                                                                  String assignee, String subscriptionId);
 
     @Query(value = "SELECT  " +
             "ARRAY_AGG(ard.role_name) AS roles, " +
@@ -62,6 +68,8 @@ public interface CustomRoleAssignmentRepository extends JpaRepository<CustomRole
     List<CustomRoleAssignment> findAllByAssigneeAndAzureRoleDefinitionPathIdAndScopeInAndWsTenantNameAndStatus(String assignee, String rolePathId, List<String> scopeIds, String wsTenantName, RequestStatus status);
 
     List<CustomRoleAssignment> findAllByWsTenantNameAndAzureIdIn(String wsTenantName, List<String> azureIDs);
+
+    Optional<CustomRoleAssignment> findByScopeAndAssigneeAndWsTenantNameAndSubscriptionId(String  assignee, String scope, String wsTenantName, String subscriptionId);
 
 
 }

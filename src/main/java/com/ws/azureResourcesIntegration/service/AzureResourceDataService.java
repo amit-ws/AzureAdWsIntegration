@@ -1,6 +1,9 @@
 package com.ws.azureResourcesIntegration.service;
 
+import com.ws.azureAdIntegration.exception.K8ResourceException;
+import com.ws.azureResourcesIntegration.entities.AzureKubernetesCluster;
 import com.ws.azureResourcesIntegration.entities.AzureSubscription;
+import com.ws.azureResourcesIntegration.repository.AzureKubernetesClusterRepository;
 import com.ws.azureResourcesIntegration.repository.AzureSubscriptionRepository;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
@@ -15,10 +18,12 @@ import java.util.List;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class AzureResourceDataService {
     final AzureSubscriptionRepository azureSubscriptionRepository;
+    final AzureKubernetesClusterRepository azureKubernetesClusterRepository;
 
     @Autowired
-    public AzureResourceDataService(AzureSubscriptionRepository azureSubscriptionRepository) {
+    public AzureResourceDataService(AzureSubscriptionRepository azureSubscriptionRepository, AzureKubernetesClusterRepository azureKubernetesClusterRepository) {
         this.azureSubscriptionRepository = azureSubscriptionRepository;
+        this.azureKubernetesClusterRepository = azureKubernetesClusterRepository;
     }
 
 
@@ -28,6 +33,11 @@ public class AzureResourceDataService {
 
     public AzureSubscription findAzureSubscriptionByIdAndWsTenantName(String subscriptionId, String wsTenantName) {
         return azureSubscriptionRepository.findByAzureSubscriptionIdAndWsTenantName(subscriptionId, wsTenantName).orElse(null);
+    }
+
+    public AzureKubernetesCluster findAksByAzureId(String clusterId) {
+        return azureKubernetesClusterRepository.findByAzureId(clusterId)
+                .orElseThrow(() -> new K8ResourceException(String.format("No %s cluster found with provided cluster ID", clusterId)));
     }
 
 }

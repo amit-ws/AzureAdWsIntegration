@@ -279,6 +279,13 @@
         </dependency>
 
 
+        <!-- https://mvnrepository.com/artifact/com.azure/azure-monitor-query -->
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-monitor-query</artifactId>
+            <version>1.5.7</version>
+        </dependency>
+
 
     </dependencies>
     <dependencyManagement>
