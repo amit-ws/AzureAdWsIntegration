@@ -86,5 +86,9 @@ public class AzureUserCredentialService {
         return azureUserCredentialRepository.findAzureUserCredentialUsingCredIdAndWsTenantName(credId, wsTenantName)
                 .orElseThrow(() -> new RuntimeException("No Azure AD configuration found for tenant: " + wsTenantName));
     }
+    public boolean checkIfSyncInProcess(String wsTenantName) {
+        return azureUserCredentialRepository.checkSyncStatus(wsTenantName)
+                .orElseThrow(() -> new AzureDataException("No Azure AD configuration found for tenant: " + wsTenantName));
+    }
 
 }

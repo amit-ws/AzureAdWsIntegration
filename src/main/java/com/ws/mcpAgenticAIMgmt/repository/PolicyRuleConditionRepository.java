@@ -1,9 +1,9 @@
 package com.ws.mcpAgenticAIMgmt.repository;
 
-import com.ws.mcpAgenticAIMgmt.model.PolicyCondition;
+import com.ws.mcpAgenticAIMgmt.model.PolicyRuleCondition;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public interface PolicyConditionRepository extends JpaRepository<PolicyCondition, Long> {
+public interface PolicyRuleConditionRepository extends JpaRepository<PolicyRuleCondition, Long> {
 }

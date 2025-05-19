@@ -6,6 +6,7 @@ import com.ws.azureAdIntegration.constants.Constant;
 import com.ws.azureAdIntegration.entity.AzureUser;
 import com.ws.azureAdIntegration.exception.AzureDataException;
 import com.ws.azureAdIntegration.repository.AzureUserRepository;
+import com.ws.azureAdIntegration.service.AzureUserCredentialService;
 import com.ws.azureAdIntegration.util.GenericUtil;
 import com.ws.azureKuberntesJIT.models.K8CustomResourceRequestDTO;
 import com.ws.azureResourcesIntegration.constant.PublishResourceType;
@@ -81,6 +82,7 @@ public class K8ResourceService {
     final K8ClientService k8ClientService;
     final AzureResourceDataService azureResourceDataService;
     final CustomRoleAssignmentService customRoleAssignmentService;
+    final AzureUserCredentialService azureUserCredentialService;
     RbacAuthorizationV1Api rbacApi;
 
 
@@ -93,7 +95,7 @@ public class K8ResourceService {
                              K8StatefulSetRepository k8StatefulSetRepository, K8DaemonSetRepository k8DaemonSetRepository, K8JobRepository k8JobRepository,
                              K8CronJobRepository k8CronJobRepository, K8IngressRepository k8IngressRepository, K8ServiceRepository k8ServiceRepository,
                              PublishedResourcesRepository publishedResourcesRepository, K8CustomResourceRequestRepository k8CustomResourceRequestRepository,
-                             K8RoleBindRepository k8RoleBindRepository, AzureUserConfigureRepository azureUserConfigureRepository, AzureUserRepository azureUserRepository, AzureSyncControlService azureSyncControlService, K8ClientService k8ClientService, AzureResourceDataService azureResourceDataService, CustomRoleAssignmentService customRoleAssignmentService) {
+                             K8RoleBindRepository k8RoleBindRepository, AzureUserConfigureRepository azureUserConfigureRepository, AzureUserRepository azureUserRepository, AzureSyncControlService azureSyncControlService, K8ClientService k8ClientService, AzureResourceDataService azureResourceDataService, CustomRoleAssignmentService customRoleAssignmentService, AzureUserCredentialService azureUserCredentialService) {
         this.k8StorageClassRepository = k8StorageClassRepository;
         this.k8PersistentVolumeRepository = k8PersistentVolumeRepository;
         this.k8NamespaceRepository = k8NamespaceRepository;
@@ -122,6 +124,7 @@ public class K8ResourceService {
         this.k8ClientService = k8ClientService;
         this.azureResourceDataService = azureResourceDataService;
         this.customRoleAssignmentService = customRoleAssignmentService;
+        this.azureUserCredentialService = azureUserCredentialService;
     }
 
 
@@ -405,6 +408,9 @@ public class K8ResourceService {
     public Boolean processResourceRequest(String requestUUID, RequestStatus updatedStatus) {
         K8CustomResourceRequest foundRequest = k8CustomResourceRequestRepository.findById(UUID.fromString(requestUUID))
                 .orElseThrow(() -> new K8ResourceException("No resource request found with provided ID: " + requestUUID));
+        if (azureUserCredentialService.checkIfSyncInProcess(foundRequest.getWsTenantName())) {
+            throw new AzureDataException("The process cannot be completed as a data sync is in progress. Please try again once it’s finished.");
+        }
         RequestStatus currentStatus = foundRequest.getStatus();
 //        checkAzureRoleAssignmentForUser(foundRequest);
         processRequest(foundRequest, updatedStatus, currentStatus);

@@ -656,6 +656,9 @@ public class AzureResourceService {
     @Transactional
     public Boolean processResourceRequestForPrinciple(Integer customRoleAssignmentId, RequestStatus updatedStatus) {
         CustomRoleAssignment customRoleAssignment = customRoleAssignmentRepository.findById(customRoleAssignmentId).orElseThrow(() -> new RuntimeException("No raised resource details found with provided id: " + customRoleAssignmentId));
+        if (azureUserCredentialService.checkIfSyncInProcess(customRoleAssignment.getWsTenantName())) {
+            throw new AzureDataException("The process cannot be completed as a data sync is in progress. Please try again once it’s finished.");
+        }
         RequestStatus currentStatus = customRoleAssignment.getStatus();
 
 //        // Validate the state transition

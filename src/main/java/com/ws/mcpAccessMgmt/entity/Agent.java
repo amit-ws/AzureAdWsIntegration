@@ -30,7 +30,7 @@ public class Agent {
 
     @ManyToOne
     @JoinColumn(name = "enterprise_id", nullable = false)
-    private Enterprise enterprise;
+    private McpEnterprise mcpEnterprise;
 
     @CreationTimestamp
     private LocalDateTime createdAt;

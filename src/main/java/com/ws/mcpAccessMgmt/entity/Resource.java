@@ -26,7 +26,7 @@ public class Resource {
 
     @ManyToOne
     @JoinColumn(name = "enterprise_id", nullable = false)
-    private Enterprise enterprise;
+    private McpEnterprise mcpEnterprise;
 
     // Optional metadata
     @Column(columnDefinition = "JSONB")

@@ -15,7 +15,7 @@ import java.util.UUID;
 @AllArgsConstructor
 @NoArgsConstructor
 @Table(name = "enterprise", schema = "mcp_data-mgmt")
-public class Enterprise {
+public class McpEnterprise {
     @Id
     @GeneratedValue(generator = "UUID")
     private UUID id;

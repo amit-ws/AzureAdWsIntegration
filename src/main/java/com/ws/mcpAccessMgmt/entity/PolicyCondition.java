@@ -30,11 +30,7 @@ public class PolicyCondition {
     @Enumerated(EnumType.STRING)
     private ConditionOperator operator; // EQUALS, IN, GREATER_THAN, etc.
 
-//    private String value; // e.g., "CONFIDENTIAL", "['admin', 'diagnosis_ai']"
-
-    @Convert(converter = JsonNodeConverter.class)
-    @Column(columnDefinition = "JSONB")
-    private JsonNode value;
+    private String value; // e.g., "CONFIDENTIAL", "['admin', 'diagnosis_ai']"
 
     @Enumerated(EnumType.STRING)
     private LogicalOperator logicalOperator; // AND, OR

@@ -36,4 +36,7 @@ public interface AzureUserCredentialRepository extends JpaRepository<AzureUserCr
 
     Optional<AzureUserCredential> findByTenantId(String tenantId);
     Optional<AzureUserCredential> findByIdAndWsTenantName(Integer id, String wsTenantName);
+
+    @Query("SELECT auc.syncStatus FROM AzureUserCredential auc WHERE auc.wsTenantName = :wsTenantName")
+    Optional<Boolean> checkSyncStatus(String wsTenantName);
 }

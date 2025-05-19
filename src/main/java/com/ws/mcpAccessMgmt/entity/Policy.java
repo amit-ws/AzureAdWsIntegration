@@ -25,7 +25,7 @@ public class Policy {
 
     @ManyToOne
     @JoinColumn(name = "enterprise_id", nullable = false)
-    private Enterprise enterprise;
+    private McpEnterprise mcpEnterprise;
 
     private String name;
     private String description;
