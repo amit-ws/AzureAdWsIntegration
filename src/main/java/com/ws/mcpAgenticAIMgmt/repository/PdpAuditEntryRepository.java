@@ -11,4 +11,3 @@ public interface PdpAuditEntryRepository extends JpaRepository<PdpAuditLogEntry,
 }
 
 
-//https://chat.nonbios.ai/68dd1dbc-a41c-474f-b96d-d4afd732d160/chat
