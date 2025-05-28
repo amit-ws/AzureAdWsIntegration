@@ -44,7 +44,9 @@ public class EnterpriseService {
         if (StringUtils.isEmpty(email)) {
             throw new WsAgenticAIMgmtException("No email provided");
         }
-        return getByEmail(email);
+        Enterprise enterprise = getByEmail(email);
+        log.info("Enterprise: {}", enterprise.getContactEmail());
+        return enterprise;
     }
 
 

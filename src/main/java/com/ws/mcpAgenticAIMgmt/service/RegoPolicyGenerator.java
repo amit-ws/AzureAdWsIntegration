@@ -4,6 +4,7 @@ import com.ws.mcpAgenticAIMgmt.exception.WsAgenticAIMgmtException;
 import com.ws.mcpAgenticAIMgmt.model.*;
 import com.ws.mcpAgenticAIMgmt.repository.EnterprisePolicyRepository;
 import com.ws.mcpAgenticAIMgmt.repository.EnterpriseRepository;
+import com.ws.mcpAgenticAIMgmt.util.HelperUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,11 +36,11 @@ public class RegoPolicyGenerator {
         log.info("id: {}", policy.getEnterpriseId());
 
         Enterprise enterprise = getByEnterpriseId(policy.getEnterpriseId());
-        enterprise.setCurrentPolicyId(savedPolicyId.toString());
+        enterprise.setCurrentPolicyId(savedPolicyId);
         enterpriseRepository.save(enterprise);
 
         String rego = generateRegoPolicy(policy, savedPolicyId);
-        opaClientService.saveRefoInOpa(rego, savedPolicyId.toString());
+        opaClientService.saveRegoInOpa(rego, savedPolicyId.toString());
 
         return Map.of("policyId", savedPolicyId);
     }
@@ -69,7 +70,7 @@ public class RegoPolicyGenerator {
     private String generateRegoPolicy(EnterprisePolicy policy, UUID policyId) {
         StringBuilder regoPolicy = new StringBuilder();
 
-        regoPolicy.append("package policy_").append(policyId.toString().replace("-", "_")).append(" \n\n");
+        regoPolicy.append("package ").append(HelperUtil.createPackageNameForOpaRego(policyId)).append(" \n\n");
         regoPolicy.append("default allow := false\n\n");
 
         if (policy.getPolicyRules() != null) {
@@ -143,21 +144,21 @@ public class RegoPolicyGenerator {
 
     private String generateTimeConditionRego(PolicyRuleCondition condition) {
         StringBuilder timeConditionRego = new StringBuilder();
-        timeConditionRego.append("    input.timeZone == \"").append(condition.getTimeZone()).append("\"\n");
+        timeConditionRego.append("    input.context.timeZone == \"").append(condition.getTimeZone()).append("\"\n");
 
         switch (condition.getOperator()) {
             case "between":
-                timeConditionRego.append("    input.currentTime >= \"").append(condition.getStartTime()).append("\"\n");
-                timeConditionRego.append("    input.currentTime <= \"").append(condition.getEndTime()).append("\"\n");
+                timeConditionRego.append("    input.context.currentTime >= \"").append(condition.getStartTime()).append("\"\n");
+                timeConditionRego.append("    input.context.currentTime <= \"").append(condition.getEndTime()).append("\"\n");
                 break;
             case "before":
-                timeConditionRego.append("    input.currentTime < \"").append(condition.getValue()).append("\"\n");
+                timeConditionRego.append("    input.context.currentTime < \"").append(condition.getValue()).append("\"\n");
                 break;
             case "after":
-                timeConditionRego.append("    input.currentTime > \"").append(condition.getValue()).append("\"\n");
+                timeConditionRego.append("    input.context.currentTime > \"").append(condition.getValue()).append("\"\n");
                 break;
             case "equals":
-                timeConditionRego.append("    input.currentTime == \"").append(condition.getValue()).append("\"\n");
+                timeConditionRego.append("    input.context.currentTime == \"").append(condition.getValue()).append("\"\n");
                 break;
             default:
                 throw new IllegalArgumentException("Unsupported time operator: " + condition.getOperator());
@@ -171,13 +172,13 @@ public class RegoPolicyGenerator {
 
         switch (condition.getOperator()) {
             case "equals":
-                dataSensitivityRego.append("    input.dataSensitivity == ").append(condition.getValue()).append("\n");
+                dataSensitivityRego.append("    input.context.dataSensitivity == ").append(condition.getValue()).append("\n");
                 break;
             case "greaterThan":
-                dataSensitivityRego.append("    input.dataSensitivity > ").append(condition.getValue()).append("\n");
+                dataSensitivityRego.append("    input.context.dataSensitivity > ").append(condition.getValue()).append("\n");
                 break;
             case "lessThan":
-                dataSensitivityRego.append("    input.dataSensitivity < ").append(condition.getValue()).append("\n");
+                dataSensitivityRego.append("    input.context.dataSensitivity < ").append(condition.getValue()).append("\n");
                 break;
             default:
                 throw new IllegalArgumentException("Unsupported data sensitivity operator: " + condition.getOperator());
@@ -191,13 +192,13 @@ public class RegoPolicyGenerator {
 
         switch (condition.getOperator()) {
             case "equals":
-                agentRiskScoreRego.append("    input.agentRiskScore == ").append(condition.getValue()).append("\n");
+                agentRiskScoreRego.append("    input.context.agentRiskScore == ").append(condition.getValue()).append("\n");
                 break;
             case "greaterThan":
-                agentRiskScoreRego.append("    input.agentRiskScore > ").append(condition.getValue()).append("\n");
+                agentRiskScoreRego.append("    input.context.agentRiskScore > ").append(condition.getValue()).append("\n");
                 break;
             case "lessThan":
-                agentRiskScoreRego.append("    input.agentRiskScore < ").append(condition.getValue()).append("\n");
+                agentRiskScoreRego.append("    input.context.agentRiskScore < ").append(condition.getValue()).append("\n");
                 break;
             default:
                 throw new IllegalArgumentException("Unsupported agent risk score operator: " + condition.getOperator());

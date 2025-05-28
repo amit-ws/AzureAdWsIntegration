@@ -34,7 +34,7 @@ public class PolicyRule {
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY, mappedBy = "policyRule")
     private List<PolicyRuleCondition> conditions;
 
-    private String effect;
+    private String effect; // Deny, Allow
 
     @ManyToOne
     @JsonIgnore

@@ -34,7 +34,7 @@ public class Enterprise {
     @Enumerated(EnumType.STRING)
     EnterpriseStatus status;
     boolean ssoEnabled;
-    String currentPolicyId;
+    UUID currentPolicyId;
     String createdBy;
 
     @Builder.Default

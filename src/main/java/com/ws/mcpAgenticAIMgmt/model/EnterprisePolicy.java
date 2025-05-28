@@ -27,6 +27,7 @@ public class EnterprisePolicy {
 
     @Column(columnDefinition = "boolean default false")
     private boolean inUse;
+    private boolean active;
 
     @Builder.Default
     private Date createdAT = new Date();

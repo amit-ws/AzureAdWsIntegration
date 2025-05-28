@@ -7,13 +7,16 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 
 @Slf4j
 @Service
 public class OpaClientService {
 
-    public Boolean saveRefoInOpa(String rego, String policyId) {
+    public Boolean saveRegoInOpa(String rego, String policyId) {
         String opaUrl = "http://localhost:8181/v1/policies/" + policyId;
 
         RestTemplate restTemplate = new RestTemplate();
@@ -61,6 +64,56 @@ public class OpaClientService {
                 throw new RuntimeException("Internal server error");
             }
         }
+    }
+
+
+    public Map<String, Object> evaluate(String inputOpaJson, String policyPackageName) {
+        String opaUrl = String.format("http://localhost:8181/v1/data/%s", policyPackageName);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        HttpEntity<String> entity = new HttpEntity<>(inputOpaJson, headers);
+        RestTemplate restTemplate = new RestTemplate();
+
+        ResponseEntity<Map> response = restTemplate.exchange(
+                opaUrl,
+                HttpMethod.POST,
+                entity,
+                Map.class
+        );
+
+        log.info("Response Status: {}", response.getStatusCode());
+        log.info("Raw Response Body: {}", response.getBody());
+
+        Map responseBody = response.getBody();
+
+        boolean allow = false;
+        List<String> failedConditions = Collections.emptyList();
+
+        if (responseBody != null && responseBody.containsKey("result")) {
+            Object resultObj = responseBody.get("result");
+            if (resultObj instanceof Map) {
+                Map<String, Object> resultMap = (Map<String, Object>) resultObj;
+                Object allowObj = resultMap.get("allow");
+                if (allowObj instanceof Boolean) {
+                    allow = (Boolean) allowObj;
+                }
+                Object failedConditionsObj = resultMap.get("failed_conditions");
+                if (failedConditionsObj instanceof Map) {
+                    Map<String, Object> failedConditionsMap = (Map<String, Object>) failedConditionsObj;
+                    if (!failedConditionsMap.isEmpty()) {
+                        failedConditions = new ArrayList<>(failedConditionsMap.keySet());
+                    }
+                }
+            }
+        }
+
+        return Map.of(
+                "flag", allow,
+                "failedConditions", failedConditions,
+                "opaResponse", responseBody
+        );
     }
 
 

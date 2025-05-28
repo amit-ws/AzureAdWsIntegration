@@ -6,6 +6,7 @@ import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/policies/")
@@ -33,8 +34,14 @@ public class OpaPolicyUploaderController {
     }
 
     @GetMapping("/v1/evaluate")
-    public ResponseEntity<Boolean> evaluate(@RequestParam String user) {
-        return ResponseEntity.ok().body(uploadPolicy.evaluate(user));
+    public ResponseEntity<Boolean> evaluate(@RequestParam String user, @RequestParam("package") String opaPackageName) {
+        return ResponseEntity.ok().body(uploadPolicy.evaluate(user, opaPackageName));
+    }
+
+
+    @GetMapping("/v2/evaluate")
+    public ResponseEntity<Map<String, Object>> evaluateV2(@RequestParam("package") String opaPackageName) {
+        return ResponseEntity.ok().body(uploadPolicy.evaluateV2(opaPackageName));
     }
 
 

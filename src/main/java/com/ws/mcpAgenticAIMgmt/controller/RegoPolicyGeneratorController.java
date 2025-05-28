@@ -2,6 +2,7 @@ package com.ws.mcpAgenticAIMgmt.controller;
 
 import com.ws.mcpAgenticAIMgmt.model.EnterprisePolicy;
 import com.ws.mcpAgenticAIMgmt.service.RegoPolicyGenerator;
+import com.ws.mcpAgenticAIMgmt.service.RegoPolicyGeneratorV2;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
@@ -22,10 +23,12 @@ import java.util.UUID;
 public class RegoPolicyGeneratorController {
 
     final RegoPolicyGenerator policyGenerator;
+    final RegoPolicyGeneratorV2 policyGeneratorV2;
 
     @Autowired
-    public RegoPolicyGeneratorController(RegoPolicyGenerator policyGenerator) {
+    public RegoPolicyGeneratorController(RegoPolicyGenerator policyGenerator, RegoPolicyGeneratorV2 policyGeneratorV2) {
         this.policyGenerator = policyGenerator;
+        this.policyGeneratorV2 = policyGeneratorV2;
     }
 
 
@@ -33,7 +36,7 @@ public class RegoPolicyGeneratorController {
     public ResponseEntity<Map<String, UUID>> generateRegoPolicy(@RequestBody EnterprisePolicy policy) {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
-                .body(policyGenerator.createAndSaveRego(policy));
+                .body(policyGeneratorV2.createAndSaveRego(policy));
     }
 
     @GetMapping("v1/all")
