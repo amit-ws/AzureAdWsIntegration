@@ -233,6 +233,7 @@ public class K8ResourcesSyncService {
             fetchCronJobs(clusterId);
             fetchIngresses(clusterId);
             fetchServices(clusterId);
+            fetchNHILogs(clusterId);
         } catch (Exception ex) {
             log.error("Error occurred in syncing data from Kubernetes: {}", ex.getMessage());
             throw new RuntimeException(ex.getMessage());
@@ -939,6 +940,108 @@ public class K8ResourcesSyncService {
         } catch (Exception ignored) {
             log.error(String.format("Error in syncing %s with message: %s", V1ServiceList.class.getName(), ignored.getMessage()));
         }
+    }
+
+
+    private List<K8sLogEntryDTO> fetchNHILogs(String clusterId) {
+        List<K8sLogEntryDTO> logEntries = new ArrayList<>();
+        try {
+            Map<String, V1Node> nodeCache = new HashMap<>();
+            V1PodList podList = this.coreV1Api.listPodForAllNamespaces().execute();
+            if (podList == null || podList.getItems().isEmpty()) {
+                log.warn("No pods found for cluster: {}", clusterId);
+                return logEntries;
+            }
+
+            for (V1Pod pod : podList.getItems()) {
+                String namespace = pod.getMetadata().getNamespace();
+                String podName = pod.getMetadata().getName();
+                String nodeName = pod.getSpec().getNodeName();
+                String serviceAccount = pod.getSpec().getServiceAccountName();
+                Map<String, String> podLabels = pod.getMetadata().getLabels();
+                Map<String, String> nodeLabels = null;
+                try {
+                    if (nodeCache.containsKey(nodeName)) {
+                        nodeLabels = nodeCache.get(nodeName).getMetadata().getLabels();
+                    } else {
+                        V1Node node = this.coreV1Api.readNode(nodeName).execute();
+                        nodeLabels = node.getMetadata().getLabels();
+                        nodeCache.put(nodeName, node);
+                    }
+                } catch (Exception e) {
+                    log.warn("Failed to fetch metadata for node of cluster with error : {} {} {} ", this.clusterName, nodeName, e.getMessage());
+                }
+
+//                if (serviceAccount == null) continue;
+//                if (serviceAccount == null || serviceAccount.equals("default")) continue;
+
+                for (V1Container container : pod.getSpec().getContainers()) {
+                    String containerName = container.getName();
+
+                    try {
+                        String rawLog = this.coreV1Api
+                                .readNamespacedPodLog(podName, namespace)
+                                .container(containerName)
+//                                .tailLines(1000)
+//                                .sinceSeconds(600)
+                                .timestamps(true)
+                                .execute();
+
+                        K8sLogEntryDTO entryDTO = parseRawLogsToDTOs(rawLog, clusterId, namespace, podName, containerName,
+                                serviceAccount, nodeName, podLabels, nodeLabels);
+
+                        logEntries.add(entryDTO);
+
+                    } catch (Exception logErr) {
+                        log.warn("Log fetch failure for {} / {} / {}: {}", namespace, podName, containerName, logErr.getMessage());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("Critical error fetching logs for cluster {}: {}", clusterId, e.getMessage(), e);
+        }
+        return logEntries;
+    }
+
+    private K8sLogEntryDTO parseRawLogsToDTOs(String rawLogs, String clusterId, String namespace,
+                                              String podName, String containerName,
+                                              String serviceAccount, String nodeName,
+                                              Map<String, String> podLabels, Map<String, String> nodeLabels) {
+        K8sLogEntryDTO entry = null;
+        for (String line : rawLogs.split("\n")) {
+            String[] parts = line.split(" ", 2);
+            String timestamp = parts[0];
+            String message = parts.length > 1 ? parts[1] : "";
+
+            entry = K8sLogEntryDTO.builder()
+                    .clusterId(clusterId)
+                    .namespace(namespace)
+                    .podName(podName)
+                    .containerName(containerName)
+                    .serviceAccount(serviceAccount)
+                    .nodeName(nodeName)
+                    .timestamp(timestamp)
+                    .message(message)
+                    .podLabels(podLabels)
+                    .nodeLabels(nodeLabels)
+                    .logLevel(extractLogLevel(message)) // heuristic
+                    .rawLog(rawLogs)
+                    .wsTenantName(this.wsTenantName)
+                    .cloudProviderType(this.cloudProviderType)
+                    .cloudResourceAccountId(this.resourceAccountId)
+                    .build();
+        }
+        return entry;
+    }
+
+    private String extractLogLevel(String message) {
+        if (message == null) return "UNKNOWN";
+        message = message.toLowerCase();
+        if (message.contains("error")) return "ERROR";
+        if (message.contains("warn")) return "WARN";
+        if (message.contains("debug")) return "DEBUG";
+        if (message.contains("info")) return "INFO";
+        return "INFO";
     }
 
 

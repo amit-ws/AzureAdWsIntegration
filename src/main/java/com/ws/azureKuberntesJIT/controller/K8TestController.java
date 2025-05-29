@@ -1,13 +1,18 @@
 package com.ws.azureKuberntesJIT.controller;
 
+import com.ws.azureKuberntesJIT.dto.K8sAuditLog;
 import com.ws.azureKuberntesJIT.service.K8TestService;
+import com.ws.azureKuberntesJIT.service.LogsAndMetricsService;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 
 @RestController
@@ -16,10 +21,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class K8TestController {
 
     final K8TestService k8TestService;
+    final LogsAndMetricsService logsAndMetricsService;
 
     @Autowired
-    public K8TestController(K8TestService k8TestService) {
+    public K8TestController(K8TestService k8TestService, LogsAndMetricsService logsAndMetricsService) {
         this.k8TestService = k8TestService;
+        this.logsAndMetricsService = logsAndMetricsService;
     }
 
     @GetMapping("/getRG")
@@ -49,6 +56,32 @@ public class K8TestController {
     @GetMapping("/createK8Resources")
     public ResponseEntity createK8ResourcesWithSampleData() {
         k8TestService.createK8ResourcesWithSampleData();
+        return ResponseEntity.ok().build();
+    }
+
+
+    @GetMapping("/getPodLogs")
+    public ResponseEntity fetchK8LogsFromPods() {
+        k8TestService.fetchK8LogsFromPods();
+        return ResponseEntity.ok().build();
+    }
+
+
+    @GetMapping("/getLogs")
+    public ResponseEntity<List<K8sAuditLog>> fetchK8LogsHandler() {
+        return ResponseEntity.ok(logsAndMetricsService.fetchK8Logs());
+    }
+
+
+    @GetMapping("/create/CRB")
+    public ResponseEntity createClusterRoleBindingForUser() {
+        k8TestService.createClusterRoleBindingForUser();
+        return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/create/RB")
+    public ResponseEntity createRoleAndBindingForSA(@RequestParam String ns, @RequestParam String sa) {
+        k8TestService.createRoleAndBindingForSA(ns, sa);
         return ResponseEntity.ok().build();
     }
 }

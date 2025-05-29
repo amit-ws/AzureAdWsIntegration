@@ -2,7 +2,6 @@ package com.ws.azureKuberntesJIT.service;
 
 import com.azure.core.http.rest.PagedIterable;
 import com.azure.resourcemanager.AzureResourceManager;
-import com.azure.resourcemanager.containerservice.models.Code;
 import com.azure.resourcemanager.containerservice.models.CredentialResult;
 import com.azure.resourcemanager.containerservice.models.KubernetesCluster;
 import com.azure.resourcemanager.resources.fluentcore.arm.models.HasName;
@@ -11,9 +10,7 @@ import com.ws.azureAdIntegration.constants.Constant;
 import com.ws.azureAdIntegration.repository.AzureApplicationRepository;
 import com.ws.azureAdIntegration.service.AzureUserCredentialService;
 import com.ws.azureAdIntegration.service.BackendApplicationLogservice;
-import com.ws.azureAdIntegration.util.EncryptionUtil;
 import com.ws.azureKuberntesJIT.constant.K8ResourceLevel;
-import com.ws.azureKuberntesJIT.enttity.K8LabelSelector;
 import com.ws.azureKuberntesJIT.enttity.K8Role;
 import com.ws.azureKuberntesJIT.enttity.K8RolePolicyRule;
 import com.ws.azureKuberntesJIT.repository.K8RoleRepository;
@@ -28,13 +25,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.CollectionUtils;
 import org.springframework.util.ObjectUtils;
 
 import java.io.IOException;
 import java.io.StringReader;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -101,22 +96,6 @@ public class K8TestService {
             ;
             log.info(" ");
         }
-    }
-
-    public static String[] extractServerAndTokenFromKubeConfigYAML(String config) {
-        String[] result = new String[2];
-
-        String serverPrefix = "server: ";
-        int serverStart = config.indexOf(serverPrefix) + serverPrefix.length();
-        int serverEnd = config.indexOf("\n", serverStart);
-        result[0] = config.substring(serverStart, serverEnd).trim();
-
-        String tokenPrefix = "token: ";
-        int tokenStart = config.indexOf(tokenPrefix) + tokenPrefix.length();
-        int tokenEnd = config.indexOf("\n", tokenStart);
-        result[1] = config.substring(tokenStart, tokenEnd).trim();
-
-        return result;
     }
 
 
@@ -859,6 +838,78 @@ public class K8TestService {
     }
 
 
+    public void createClusterRoleBindingForUser() {
+        try {
+            initializeK8Client();
+            RbacAuthorizationV1Api rbacApi = new RbacAuthorizationV1Api();
+
+            String bindingName = UUID.randomUUID().toString();
+            log.info("bindingName: {}", bindingName);
+
+            RbacV1Subject subject = new RbacV1Subject()
+                    .kind("User")
+                    .apiGroup("rbac.authorization.k8s.io")
+                    .name("8f06327f-7401-4a57-8e56-14761cac7288");
+
+            V1RoleRef roleRef = new V1RoleRef()
+                    .apiGroup("rbac.authorization.k8s.io")
+                    .kind("ClusterRole")
+                    .name("cluster-admin");
+
+            V1ClusterRoleBinding binding = new V1ClusterRoleBinding()
+                    .metadata(new V1ObjectMeta().name(bindingName))
+                    .addSubjectsItem(subject)
+                    .roleRef(roleRef);
+
+            V1ClusterRoleBinding createdBinding = rbacApi.createClusterRoleBinding(binding).execute();
+            log.info("ClusterRoleBinding created successfully with binding id: and name: {} {} ",
+                    createdBinding.getMetadata().getUid(), createdBinding.getMetadata().getName());
+        } catch (Exception ex) {
+            throw new RuntimeException(ex.getMessage());
+        }
+    }
+
+
+    public void createRoleAndBindingForSA(String namespace, String serviceAccountName) {
+        try {
+            initializeK8Client();
+            RbacAuthorizationV1Api rbacApi = new RbacAuthorizationV1Api();
+
+            // Define Role
+            V1Role role = new V1Role()
+                    .metadata(new V1ObjectMeta().name("pod-reader-role").namespace(namespace))
+                    .addRulesItem(new V1PolicyRule()
+                            .addApiGroupsItem("")  // "" = core API group
+                            .addResourcesItem("pods")
+                            .addVerbsItem("get")
+                            .addVerbsItem("list")
+                            .addVerbsItem("watch"));
+
+            // Create Role
+            rbacApi.createNamespacedRole(namespace, role).execute();
+
+            // Define RoleBinding
+            V1RoleBinding roleBinding = new V1RoleBinding()
+                    .metadata(new V1ObjectMeta().name("pod-reader-binding").namespace(namespace))
+                    .roleRef(new V1RoleRef()
+                            .apiGroup("rbac.authorization.k8s.io")
+                            .kind("Role")
+                            .name("pod-reader-role"))
+                    .addSubjectsItem(new RbacV1Subject()
+                            .kind("ServiceAccount")
+                            .name(serviceAccountName)
+                            .namespace(namespace));
+
+            // Create RoleBinding
+            V1RoleBinding createdBinding = rbacApi.createNamespacedRoleBinding(namespace, roleBinding).execute();
+            log.info("RoleBinding created successfully with binding id: and name: {} {} ",
+                    createdBinding.getMetadata().getUid(), createdBinding.getMetadata().getName());
+        } catch (Exception ex) {
+            throw new RuntimeException(ex.getMessage());
+        }
+    }
+
+
     public void removeK8Role(String namespace, String roleBindingName, RbacAuthorizationV1Api api) throws ApiException {
         api.deleteNamespacedRoleBinding(roleBindingName, namespace).execute();
         api.deleteClusterRoleBinding(roleBindingName).execute();
@@ -941,22 +992,6 @@ public class K8TestService {
     }
 
 
-    public void initializeK8Client() {
-        String rgName = "ws-test-aks-rg";
-        String clusterName = "ws-test-aks-cluster-1";
-        AzureResourceManager azureResourceManager = getAzureResourceManager(clientId, clientSecret, tenantId, subscriptionId);
-        KubernetesCluster cluster = azureResourceManager
-                .kubernetesClusters()
-                .getByResourceGroup(rgName, clusterName);
-        String kubeConfigContent = new String(cluster.adminKubeConfigs().get(0).value());
-        String[] extractedValues = extractServerAndTokenFromKubeConfigYAML(kubeConfigContent);
-
-        ApiClient client = Config.fromToken(extractedValues[0], extractedValues[1]);
-        client.setVerifyingSsl(false);
-        Configuration.setDefaultApiClient(client);
-    }
-
-
     public void createK8ResourcesWithSampleData() {
         initializeK8Client();
 //        createV1Secret("default", "my-dummy-secret-1", "dummyUser10", "dummyPass10");
@@ -1001,4 +1036,79 @@ public class K8TestService {
             throw new RuntimeException(exp.getMessage());
         }
     }
+
+    public void fetchK8LogsFromPods() {
+        initializeK8Client();
+        CoreV1Api coreV1Api = new CoreV1Api();
+        try {
+            V1PodList v1PodList = coreV1Api.listPodForAllNamespaces().execute();
+            if (ObjectUtils.isEmpty(v1PodList)) {
+                throw new RuntimeException("No pods found in the cluster.");
+            }
+            for (V1Pod pod : v1PodList.getItems()) {
+                String namespace = pod.getMetadata().getNamespace();
+                String podName = pod.getMetadata().getName();
+                String serviceAccount = pod.getSpec().getServiceAccountName();
+//                String nodeName = pod.getSpec().getNodeName();
+
+//                log.info("Namespace: {}", namespace);
+//                log.info("Pod Name: {}", podName);
+//                log.info("Node Name: {}", nodeName);
+//                log.info("Service Account: {}", serviceAccount);
+
+                for (V1Container container : pod.getSpec().getContainers()) {
+                    String containerName = container.getName();
+                    log.info("containerName: {}", serviceAccount);
+
+                    String rawLog = coreV1Api.readNamespacedPodLog(podName, namespace)
+                            .container(containerName)
+                            .tailLines(5)
+//                            .sinceSeconds(600)
+                            .timestamps(true)
+                            .execute();
+
+                    log.info("rawLog: {}", rawLog);
+                }
+                log.info(" ");
+            }
+
+        } catch (Exception e) {
+            throw new RuntimeException(e.getMessage());
+        }
+
+    }
+
+
+    public void initializeK8Client() {
+        String rgName = "ws-test-aks-rg";
+        String clusterName = "ws-test-aks-cluster-1";
+        AzureResourceManager azureResourceManager = getAzureResourceManager(clientId, clientSecret, tenantId, subscriptionId);
+        KubernetesCluster cluster = azureResourceManager
+                .kubernetesClusters()
+                .getByResourceGroup(rgName, clusterName);
+        String kubeConfigContent = new String(cluster.adminKubeConfigs().get(0).value());
+        String[] extractedValues = extractServerAndTokenFromKubeConfigYAML(kubeConfigContent);
+
+        ApiClient client = Config.fromToken(extractedValues[0], extractedValues[1]);
+        client.setVerifyingSsl(false);
+        Configuration.setDefaultApiClient(client);
+    }
+
+
+    public static String[] extractServerAndTokenFromKubeConfigYAML(String config) {
+        String[] result = new String[2];
+
+        String serverPrefix = "server: ";
+        int serverStart = config.indexOf(serverPrefix) + serverPrefix.length();
+        int serverEnd = config.indexOf("\n", serverStart);
+        result[0] = config.substring(serverStart, serverEnd).trim();
+
+        String tokenPrefix = "token: ";
+        int tokenStart = config.indexOf(tokenPrefix) + tokenPrefix.length();
+        int tokenEnd = config.indexOf("\n", tokenStart);
+        result[1] = config.substring(tokenStart, tokenEnd).trim();
+
+        return result;
+    }
+
 }
