@@ -72,6 +72,29 @@ public class K8TestController {
         return ResponseEntity.ok(logsAndMetricsService.fetchK8Logs());
     }
 
+    @GetMapping("/testLogs")
+    public ResponseEntity<?> testLogs() {
+        return ResponseEntity.ok(logsAndMetricsService.testLogs());
+
+    }
+
+
+    @GetMapping("/logs/customSA")
+    public ResponseEntity<List<?>> fetchK8LogsForCustomSAsHandler() {
+        return ResponseEntity.ok(logsAndMetricsService.fetchK8LogsForCustomSAs());
+    }
+
+    @GetMapping("/logs/new/customSA")
+    public ResponseEntity<List<?>> fetchK8LogsForCustomSAs_NEW() {
+        return ResponseEntity.ok(logsAndMetricsService.fetchK8LogsForCustomSAs_NEW());
+    }
+
+
+//    @GetMapping("/getCustomSA")
+//    public ResponseEntity<List<String>> fetchCustomServiceAccounts() {
+//        return ResponseEntity.ok(logsAndMetricsService.fetchCustomServiceAccounts());
+//    }
+
 
     @GetMapping("/create/CRB")
     public ResponseEntity createClusterRoleBindingForUser() {

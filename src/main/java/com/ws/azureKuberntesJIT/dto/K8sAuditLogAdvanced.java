@@ -31,6 +31,7 @@ public class K8sAuditLogAdvanced {
     String responseStatusReason;
     String stage;
     String annotations;
+    Map<String, Object> annotationObj;
     OffsetDateTime requestReceivedTimestamp;  // datetime type
     String auditID;
     Map<String, Object> requestObject;
