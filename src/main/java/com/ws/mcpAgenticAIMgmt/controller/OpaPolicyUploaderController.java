@@ -40,7 +40,7 @@ public class OpaPolicyUploaderController {
 
 
     @GetMapping("/v2/evaluate")
-    public ResponseEntity<Map<String, Object>> evaluateV2(@RequestParam("package") String opaPackageName) {
+    public ResponseEntity<Map<String, Object>> evaluateV2Handler(@RequestParam("package") String opaPackageName) {
         return ResponseEntity.ok().body(uploadPolicy.evaluateV2(opaPackageName));
     }
 
