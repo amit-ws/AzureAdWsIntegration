@@ -50,9 +50,9 @@ spring:
             scopes: "openid,profile,email"
 
   datasource:
-    url: "jdbc:postgresql://localhost:5432/ws-azureDb?currentSchema=azure_test"
-    username: "postgres"
-    password: "postgres"
+    url: "jdbc:postgresql://localhost:5432/ws_local?currentSchema=azure_test" # OR DB NAME AS -> ws-azureDb
+    username: "root" # OR, postgres
+    password: "root" # OR,  postgres
 
   jpa:
     hibernate:
