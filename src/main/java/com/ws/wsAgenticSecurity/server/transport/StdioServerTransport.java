@@ -247,6 +247,14 @@ public class StdioServerTransport implements McpServerTransport {
         }
     }
 
+    /**
+     * Extracts tokens from incoming request data and stores them in the ClientSession.
+     *
+     * <p>Scans for well-known token keys at top level and recursively in nested maps.
+     * When a token is found, it is both logged (masked) and stored in
+     * {@link ClientSession#storeToken(String, String)} for later use by the
+     * orchestrator when forwarding tool calls to enterprise servers.
+     */
     private void extractTokens(Map<String, Object> data) {
         String[] tokenKeys = {
                 "token", "apiKey", "api_key", "accessToken", "access_token",
@@ -254,11 +262,25 @@ public class StdioServerTransport implements McpServerTransport {
                 "authorization", "credentials", "secret", "key", "jwt"
         };
 
+        // Get current session for token storage (best-effort)
+        ClientSession session = null;
+        try {
+            session = sessionManager.getCurrentSession();
+        } catch (Exception e) {
+            log.debug("Could not get session for token storage: {}", e.getMessage());
+        }
+
         for (String key : tokenKeys) {
             if (data.containsKey(key)) {
                 Object value = data.get(key);
                 if (value != null) {
-                    log.info("TOKEN: {} = {}...", key, maskToken(value.toString()));
+                    String tokenValue = value.toString();
+                    log.info("TOKEN: {} = {}...", key, maskToken(tokenValue));
+
+                    // Store in ClientSession for orchestrator to use
+                    if (session != null && !tokenValue.isBlank()) {
+                        session.storeToken(key, tokenValue);
+                    }
                 }
             }
         }

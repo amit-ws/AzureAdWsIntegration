@@ -20,9 +20,25 @@ import java.util.function.Function;
 /**
  * HTTP-based MCP transport - sends initialize message as first POST,
  * which returns SSE stream for all subsequent server messages.
+ *
+ * <p>Supports per-request header overrides via {@link #setRequestOverrideHeaders(Map)}.
+ * When the orchestrator detects an agent-provided token, it sets override headers
+ * on the current thread before calling {@code McpSyncClient.callTool()}.
+ * The override is applied in {@link #sendMessage(McpSchema.JSONRPCMessage)} and
+ * must be cleaned up by the caller via {@link #clearRequestOverrideHeaders()}.
  */
 @Slf4j
 public class HttpMcpTransport implements McpClientTransport {
+
+    /**
+     * ThreadLocal for per-request header overrides. When set, these headers
+     * replace the config-based headers for the current HTTP request only.
+     * The calling code (ToolCallOrchestrator) MUST clear this in a finally block.
+     *
+     * <p>ThreadLocal is safe here because handleToolCall() is synchronous —
+     * the same thread flows from orchestrator → callTool() → sendMessage().
+     */
+    private static final ThreadLocal<Map<String, String>> requestOverrideHeaders = new ThreadLocal<>();
 
     private final String baseUrl;
     private final Map<String, String> headers;
@@ -69,7 +85,12 @@ public class HttpMcpTransport implements McpClientTransport {
                 conn.setRequestProperty("Content-Type", "application/json");
                 conn.setRequestProperty("Cache-Control", "no-cache");
 
-                if (headers != null) {
+                // ── Apply headers: agent override (if set) takes priority over config ──
+                Map<String, String> overrides = requestOverrideHeaders.get();
+                if (overrides != null && !overrides.isEmpty()) {
+                    overrides.forEach(conn::setRequestProperty);
+                    log.debug("🔑 Using agent-provided token override ({} headers)", overrides.size());
+                } else if (headers != null) {
                     headers.forEach(conn::setRequestProperty);
                 }
 
@@ -205,5 +226,40 @@ public class HttpMcpTransport implements McpClientTransport {
 
     public boolean isConnected() {
         return connected.get();
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  PER-REQUEST HEADER OVERRIDE (Agent Token Support)
+    // ════════════════════════════════════════════════════════════════════
+
+    /**
+     * Set override headers for the current thread's next HTTP request.
+     * When set, these headers REPLACE the config-based headers entirely.
+     *
+     * <p>The caller MUST call {@link #clearRequestOverrideHeaders()} in a
+     * finally block after the tool call completes.
+     *
+     * @param overrideHeaders the headers to use instead of config headers
+     */
+    public static void setRequestOverrideHeaders(Map<String, String> overrideHeaders) {
+        requestOverrideHeaders.set(overrideHeaders);
+    }
+
+    /**
+     * Clear the per-request header override for the current thread.
+     * Must be called in a finally block after every tool call that set overrides.
+     */
+    public static void clearRequestOverrideHeaders() {
+        requestOverrideHeaders.remove();
+    }
+
+    /**
+     * Get the config-based headers for this transport.
+     * Used by the orchestrator to merge non-auth config headers with agent tokens.
+     *
+     * @return the config-based headers (may be null)
+     */
+    public Map<String, String> getConfigHeaders() {
+        return headers;
     }
 }

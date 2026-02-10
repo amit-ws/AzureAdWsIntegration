@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Data
 @Slf4j
@@ -31,7 +32,7 @@ public class ClientSession {
         this.createdAt = Instant.now();
         this.auditService = auditService;
         this.metadata = new HashMap<>();
-        this.tokens = new HashMap<>();
+        this.tokens = new ConcurrentHashMap<>();
         this.initialized = false;
     }
 
@@ -87,5 +88,31 @@ public class ClientSession {
         }
 
         log.info("====================================");
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  TOKEN MANAGEMENT — Agent-provided tokens
+    // ════════════════════════════════════════════════════════════════════
+
+    /**
+     * Store a token extracted from the AI agent's request.
+     * Called by StdioServerTransport.extractTokens() when a token key is detected.
+     *
+     * @param key   the token key (e.g., "authorization", "token", "apiKey")
+     * @param value the token value
+     */
+    public void storeToken(String key, String value) {
+        if (key != null && value != null && !value.isBlank()) {
+            tokens.put(key, value);
+            log.debug("🔑 Stored agent token: {} ({}...)", key,
+                    value.length() > 8 ? value.substring(0, 4) + "..." + value.substring(value.length() - 4) : "***");
+        }
+    }
+
+    /**
+     * Check if the agent has provided any tokens.
+     */
+    public boolean hasTokens() {
+        return tokens != null && !tokens.isEmpty();
     }
 }
