@@ -3,6 +3,7 @@ package com.ws.wsAgenticSecurity.client.config;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
@@ -10,9 +11,14 @@ import java.util.Map;
 /**
  * Application initializer that auto-connects to all configured MCP servers on startup.
  * Implements ApplicationRunner to execute after Spring context is fully initialized.
+ *
+ * <p>{@code @Order(1)} ensures this runs <strong>before</strong> the MCP Server
+ * initializer ({@code @Order(2)}) so that the capability registry is populated
+ * before the server exposes tools to AI agents.
  */
 @Component
 @Slf4j
+@Order(1)
 public class McpClientInitializer implements ApplicationRunner {
 
     private final McpConfigLoader configLoader;

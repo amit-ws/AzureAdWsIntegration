@@ -1,6 +1,9 @@
 package com.ws.wsAgenticSecurity.client.config;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ws.wsAgenticSecurity.audit.service.McpAuditService;
+import com.ws.wsAgenticSecurity.registry.service.CapabilityRegistryService;
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.spec.McpClientTransport;
@@ -30,8 +33,16 @@ public class McpSessionManager {
     // Audit service — all audit calls are @Async, never blocks
     private final McpAuditService auditService;
 
-    public McpSessionManager(McpAuditService auditService) {
+    // Capability Registry — persists discovered capabilities from enterprise servers
+    private final CapabilityRegistryService registryService;
+
+    private final ObjectMapper objectMapper;
+
+    public McpSessionManager(McpAuditService auditService,
+                             CapabilityRegistryService registryService) {
         this.auditService = auditService;
+        this.registryService = registryService;
+        this.objectMapper = new ObjectMapper();
     }
 
     /**
@@ -129,11 +140,40 @@ public class McpSessionManager {
                     client.getServerInfo().name(),
                     client.getServerInfo().version());
 
-            // Fetch and cache tools
+            // Fetch and cache tools, resources, prompts
             fetchAndCacheTools(serverName, session);
 
             // Store session
             sessions.put(serverName, session);
+
+            // ── Register discovered capabilities in the registry ───────
+            try {
+                JsonNode capsJson = null;
+                if (client.getServerCapabilities() != null) {
+                    capsJson = objectMapper.valueToTree(Map.of(
+                            "tools", client.getServerCapabilities().tools() != null,
+                            "resources", client.getServerCapabilities().resources() != null,
+                            "prompts", client.getServerCapabilities().prompts() != null,
+                            "logging", client.getServerCapabilities().logging() != null
+                    ));
+                }
+
+                registryService.registerServer(
+                        serverName,
+                        client.getServerInfo() != null ? client.getServerInfo().name() : serverName,
+                        client.getServerInfo() != null ? client.getServerInfo().version() : null,
+                        null,  // protocolVersion — not exposed by McpSyncClient
+                        capsJson,
+                        session.getTools(),
+                        session.getResources(),
+                        session.getPrompts()
+                );
+                log.info("🗂️  Server '{}' capabilities registered in registry", serverName);
+            } catch (Exception regEx) {
+                log.error("⚠️  Failed to register server '{}' in registry: {}",
+                        serverName, regEx.getMessage(), regEx);
+                // Don't throw — connection is still valid even if registry fails
+            }
 
             long duration = System.currentTimeMillis() - startTime;
 
@@ -290,6 +330,14 @@ public class McpSessionManager {
                 auditService.auditClientSessionDisconnected(serverName);
             } catch (Exception e) {
                 log.error("⚠️  Error during disconnect for '{}': {}", serverName, e.getMessage());
+            }
+
+            // Remove capabilities from registry
+            try {
+                registryService.removeServer(serverName);
+            } catch (Exception e) {
+                log.error("⚠️  Failed to remove server '{}' from registry: {}",
+                        serverName, e.getMessage());
             }
         } else {
             log.warn("⚠️  Server '{}' was not connected", serverName);

@@ -18,11 +18,11 @@ public interface AzureRoleDefinitionRepository extends JpaRepository<AzureRoleDe
 
     List<AzureRoleDefinition> findAllByAzureTenant(AzureTenant azureTenant);
 
-    @Query("SELECT new com.ws.azureResourcesIntegration.dto.RoleDefinitionDTO(ard.id, ard.azureId, ard.roleName, ard.roleType, ard.subscriptionId, CASE WHEN pr.resourceId IS NULL THEN FALSE ELSE TRUE END) " +
+    @Query(value = "SELECT new com.ws.azureResourcesIntegration.dto.RoleDefinitionDTO(ard.id, ard.azureId, ard.roleName, ard.roleType, ard.subscriptionId, CASE WHEN pr.resourceId IS NULL THEN FALSE ELSE TRUE END) " +
             "FROM AzureRoleDefinition ard " +
             "LEFT JOIN PublishedResource pr ON UPPER(ard.azureId) = UPPER(pr.resourceId) " +
             "WHERE ard.wsTenantName = :wsTenantName AND (:subscriptionId IS NULL OR ard.subscriptionId = :subscriptionId) " +
-            "ORDER BY ard.roleName ")
+            "ORDER BY ard.roleName ", nativeQuery = false)
     List<RoleDefinitionDTO> findAllRolesUsingWsTenantNameAndsubscriptionId(String wsTenantName, String subscriptionId);
 
     Optional<AzureRoleDefinition> findByIdAndAzureTenant(Integer id, AzureTenant azureTenant);
