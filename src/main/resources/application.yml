@@ -1,0 +1,129 @@
+#spring:
+#  security:
+#    oauth2:
+#      client:
+#        registration:
+#          azure:
+#            client-id: 9acacaf6-02e1-4e06-84d9-5da4a7ffd2aa
+#            client-secret: sJB8Q~G-YDCgTRPv6J~LZCQkNyDyUATwQvP_Bcx0
+#            scope: openid, profile, email
+#            redirect-uri: http://localhost:9495/login/oauth2/code/azure
+#            authorization-grant-type: authorization_code
+#        provider:
+#          azure:
+#            authorization-uri: https://login.microsoftonline.com/00b1d06b-e316-45af-a6d2-2734f62a5acd/oauth2/v2.0/authorize
+#            token-uri: https://login.microsoftonline.com/00b1d06b-e316-45af-a6d2-2734f62a5acd/oauth2/v2.0/token
+#            jwk-set-uri: https://login.microsoftonline.com/00b1d06b-e316-45af-a6d2-2734f62a5acd/discovery/v2.0/keys
+#
+
+#
+#spring:
+#  cloud:
+#    azure:
+#      active-directory:
+#        enabled: true
+#        profile:
+#          tenant-id: 00b1d06b-e316-45af-a6d2-2734f62a5acd
+#        credential:
+#          client-id: 9acacaf6-02e1-4e06-84d9-5da4a7ffd2aa
+#          client-secret: sJB8Q~G-YDCgTRPv6J~LZCQkNyDyUATwQvP_Bcx0
+#        authorization-clients:
+#          graph:
+#            scopes: https://graph.microsoft.com/Analytics.Read, email
+
+
+
+spring:
+  cloud:
+    azure:
+      active-directory:
+        client-id: "9acacaf6-02e1-4e06-84d9-5da4a7ffd2aa"
+        client-secret: "sJB8Q~G-YDCgTRPv6J~LZCQkNyDyUATwQvP_Bcx0"
+        tenant-id: "00b1d06b-e316-45af-a6d2-2734f62a5acd"
+        subscription-id: "4769af8e-ca3d-448d-bd1a-80e03ed94158"
+        redirect-uri: "http://localhost:9495/api/callback"
+        authBaseUrl: "https://login.microsoftonline.com/"
+        token-uri: "/oauth2/v2.0/token"
+        graphBaseUrl: "https://graph.microsoft.com/v1.0"
+        authorization-clients:
+          azure:
+            scopes: "openid,profile,email"
+
+  datasource:
+    url: "jdbc:postgresql://localhost:5432/ws_local?currentSchema=ws_agentic_security&stringtype=unspecified" # stringtype=unspecified tells the PostgreSQL JDBC driver to not send varchar as the parameter type — letting Postgres infer jsonb from the column definition. Fixes all JSONB columns in one go.
+    username: "root" # OR, postgres
+    password: "root" # OR,  postgres
+
+  jpa:
+    hibernate:
+      ddl-auto: "update"
+    show-sql: false
+    properties:
+      hibernate:
+        default_schema: azure_test
+        jdbc:
+          lob:
+            non_contextual_creation: true
+
+  logging:
+    level:
+      org:
+        springframework:
+          security: DEBUG
+
+
+  main:
+    allow-bean-definition-overriding: true
+    banner-mode: off
+
+
+server:
+  port: 9495
+
+
+clientId: 12345
+clientSecret:
+tenantId:
+subscriptionId:
+
+springdoc:
+  swagger-ui:
+    defaultModelsExpandDepth: -1
+    defaultModelExpandDepth: -1
+    docExpansion: none
+
+
+certificate:
+  default-expiration-seconds: 3600
+  max-expiration-seconds: 86400
+  signer-name: kubernetes.io/kube-apiserver-client
+
+
+github:
+  token: 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
+
+#mcp:
+#  server:
+#    enabled: false  # Set to true only when you want MCP server to run [for option 2]
+
+
+
+mcp:
+  config:
+    file: mcp_config.json
+
+logging:
+  level:
+    com.ws.wsAgenticSecurity.client: INFO
+    com.ws.wsAgenticSecurity.audit: DEBUG
+    io.modelcontextprotocol: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+
+
+# ─── NOTE ────────────────────────────────────────────────────────────
+# The audit table 'mcp_audit_log' lives in schema 'ws_agentic_security'.
+# Ensure this schema exists in PostgreSQL before startup:
+#   CREATE SCHEMA IF NOT EXISTS ws_agentic_security;
+# Hibernate ddl-auto:update will create/update the table automatically.
+# ─────────────────────────────────────────────────────────────────────

@@ -1,0 +1,32 @@
+{
+  "mcpServers": {
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": {
+        "Authorization": "Bearer ${input:github_token}",
+        "Content-Type": "application/json"
+      },
+      "timeout": 30
+    },
+    "atlassian": {
+      "type": "http",
+      "url": "https://mcp.atlassian.com/v1/mcp",
+      "headers": {
+        "Authorization": "${input:atlassian_token}",
+        "Content-Type": "application/json"
+      },
+      "config": {
+        "jiraUrl": "${input:jira_url}",
+        "confluenceUrl": "${input:confluence_url}"
+      },
+      "timeout": 45
+    }
+  },
+  "inputs": {
+    "github_token": "",
+    "atlassian_token": "",
+    "jira_url": "http://whiteswansecurity.atlassian.net",
+    "confluence_url": "https://whiteswansecurity.atlassian.net/wiki"
+  }
+}
