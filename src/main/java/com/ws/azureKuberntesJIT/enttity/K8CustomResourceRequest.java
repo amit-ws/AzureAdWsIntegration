@@ -55,4 +55,11 @@ public class K8CustomResourceRequest {
     String wsTenantName;
 
     String clusterName;
+
+    @Column(name = "cert_csr_name", columnDefinition = "TEXT")
+    String certCsrName;
+    @Column(name = "csr_private_key_pem", columnDefinition = "TEXT")
+    private String privateKeyPem;
+    @Column(name = "csr_signed_cert", columnDefinition = "TEXT")
+    String certificatePem;
 }

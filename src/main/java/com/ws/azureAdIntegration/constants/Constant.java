@@ -27,6 +27,7 @@ public class Constant {
     public static final String GCP_PRIVATE_KEY = "GCP private key";
     public static final String AKS_CLUSTER_SERVER_URL = "Azure kubernetes cluster server url";
     public static final String AKS_CLUSTER_TOKEN = "Azure kubernetes cluster token";
+    public static final String AKS_CLUSTER_CA_DATA = "Azure kubernetes cluster certificate authority data";
 
 
     /*Azure resource related*/

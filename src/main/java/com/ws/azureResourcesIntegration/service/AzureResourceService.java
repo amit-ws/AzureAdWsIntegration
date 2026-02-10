@@ -4,6 +4,7 @@ package com.ws.azureResourcesIntegration.service;
 import com.azure.resourcemanager.AzureResourceManager;
 import com.azure.resourcemanager.authorization.models.PrincipalType;
 import com.azure.resourcemanager.authorization.models.RoleAssignment;
+import com.ws.azureAdIntegration.constants.Constant;
 import com.ws.azureAdIntegration.dto.AzureAuthenticationCredentialDTO;
 import com.ws.azureAdIntegration.entity.AzureTenant;
 import com.ws.azureAdIntegration.exception.AzureDataException;
@@ -21,7 +22,7 @@ import com.ws.azureResourcesIntegration.constant.StateChangeConstants;
 import com.ws.azureResourcesIntegration.dto.*;
 import com.ws.azureResourcesIntegration.entities.*;
 import com.ws.azureResourcesIntegration.repository.*;
-import com.ws.azureAdIntegration.constants.Constant;
+import com.ws.configuration.AzureAuthConfigurationFactory;
 import com.ws.projection.ApplicableRoleDefinitionProjection;
 import com.ws.projection.CustomRoleAssignmentProjection;
 import lombok.AccessLevel;
@@ -66,13 +67,14 @@ public class AzureResourceService {
     final AzureAuthUtil azureAuthUtil;
     final AzureUserCredentialService azureUserCredentialService;
     final BackendApplicationLogservice backendApplicationLogservice;
+    final AzureAuthConfigurationFactory azureAuthConfigurationFactory;
 
 
     @Autowired
     public AzureResourceService(AzureVMRepository azureVMRepository, AzureStorageRepository azureStorageRepository, AzureServerRepository azureServerRepository, AzureDatabaseRepository azureDatabaseRepository,
                                 AzureRoleDefinitionRepository azureRoleDefinitionRepository, AzureRoleDefinitionActionRepository azureRoleDefinitionActionRepository, AzureRoleAssignmentRepository azureRoleAssignmentRepository, AzureUserRepository azureUserRepository,
                                 AzureGroupRepository azureGroupRepository, CustomRoleAssignmentRepository customRoleAssignmentRepository, AzureSubscriptionRepository azureSubscriptionRepository, AzureUserConfigureRepository azureUserConfigureRepository, AzureKubernetesClusterRepository azureKubernetesClusterRepository, PublishedResourcesRepository publishedResourcesRepository, AzureTenantService azureTenantService,
-                                AzureAuthUtil azureAuthUtil, AzureUserCredentialService azureUserCredentialService, BackendApplicationLogservice backendApplicationLogservice) {
+                                AzureAuthUtil azureAuthUtil, AzureUserCredentialService azureUserCredentialService, BackendApplicationLogservice backendApplicationLogservice, AzureAuthConfigurationFactory azureAuthConfigurationFactory) {
         this.azureVMRepository = azureVMRepository;
         this.azureStorageRepository = azureStorageRepository;
         this.azureServerRepository = azureServerRepository;
@@ -91,6 +93,7 @@ public class AzureResourceService {
         this.azureAuthUtil = azureAuthUtil;
         this.azureUserCredentialService = azureUserCredentialService;
         this.backendApplicationLogservice = backendApplicationLogservice;
+        this.azureAuthConfigurationFactory = azureAuthConfigurationFactory;
     }
 
     public List<?> getAzureResourcesUsingType(String wsTenantName, AzureResourcesType type) {
@@ -883,11 +886,38 @@ public class AzureResourceService {
         }
     }
 
+
+
+
+    public void revokeRoleToPrincipalForResourceInAzure(String pathId) {
+        AzureResourceManager azureResourceManager = getAzureResourceManager("cb51e8d1-519c-4e18-9b2f-28d53e6badd1", "yye8Q~FxfhNLvs07nM3PIPF0.H0zAvcvQ1Z5FcCJ",
+                "f875ebf8-f5f0-4915-a2c9-4442e0118fd2", "4769af8e-ca3d-448d-bd1a-80e03ed94158");
+        try {
+            azureResourceManager.accessManagement()
+                    .roleAssignments()
+                    .deleteById(pathId);
+        } catch (Exception exp) {
+            if (exp.getMessage().contains("404")) {
+                log.error("No data found for provided Role in Azure");
+            }
+            throw exp;
+        }
+    }
+
+
+
+    private AzureResourceManager getAzureResourceManager(String clientId, String clientSecret, String tenantId, String subscriptionId) {
+        return azureAuthConfigurationFactory.createAzureResourceClient(clientId, clientSecret, tenantId, subscriptionId);
+    }
+
+
+
+
     @Transactional
     public void assignRoleToPrincipalForResourceInAzure(AssignRoleRequest request) {
 //        AzureResourceManager azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredentialService.findWSTenantIdWithDecryptedSecret(request.getTenantName()));
-        AzureAuthenticationCredentialDTO authDTO = azureUserCredentialService.findAuthenticationCredentialByWSTenantName("amitdev.local");
-        AzureResourceManager azureResourceManager = azureAuthUtil.validateAzureAuthenticationCredentialsWithSubscriptionId(authDTO.getTenantId(), authDTO.getClientId(), authDTO.getClientSecret(), "4769af8e-ca3d-448d-bd1a-80e03ed94158");
+//        AzureAuthenticationCredentialDTO authDTO = azureUserCredentialService.findAuthenticationCredentialByWSTenantName("amitdev.local");
+//        AzureResourceManager azureResourceManager = azureAuthUtil.validateAzureAuthenticationCredentialsWithSubscriptionId(authDTO.getTenantId(), authDTO.getClientId(), authDTO.getClientSecret(), "4769af8e-ca3d-448d-bd1a-80e03ed94158");
 //        String id = UUID.randomUUID().toString();
 //        String assignee = "c30c5b8e-f883-42a9-a7ff-4d16cd0f7ec8";
 //        String roleId1 = "/subscriptions/4769af8e-ca3d-448d-bd1a-80e03ed94158/providers/Microsoft.Authorization/roleDefinitions/0f37683f-2463-46b6-9ce7-9b788b988ba2";
@@ -923,15 +953,19 @@ public class AzureResourceService {
 //            log.error("message2: {}", e.getMessage());
 //        }
 //        log.info("Success2");
+
+        AzureResourceManager armAdmin = getAzureResourceManager("cb51e8d1-519c-4e18-9b2f-28d53e6badd1", "yye8Q~FxfhNLvs07nM3PIPF0.H0zAvcvQ1Z5FcCJ",
+                "f875ebf8-f5f0-4915-a2c9-4442e0118fd2", "4769af8e-ca3d-448d-bd1a-80e03ed94158");
+
         try {
             log.info("Started...");
-            RoleAssignment createdRoleAssignment = azureResourceManager.accessManagement()
+            RoleAssignment createdRoleAssignment = armAdmin.accessManagement()
                     .roleAssignments()
                     .define(UUID.randomUUID().toString())
-                    .forObjectId("c30c5b8e-f883-42a9-a7ff-4d16cd0f7ec8")
+                    .forObjectId("44686a19-4bf2-4026-8b5f-213ab2ba8676")
                     .withRoleDefinition("/subscriptions/4769af8e-ca3d-448d-bd1a-80e03ed94158/providers/Microsoft.Authorization/roleDefinitions/8e3af657-a8ff-443c-a75c-2fe8c4bcb635")
-                    .withScope("/subscriptions/4769af8e-ca3d-448d-bd1a-80e03ed94158/resourcegroups/ws-test-aks-rg/providers/Microsoft.ContainerService/managedClusters/ws-test-aks-cluster-1")
-                    .withDescription("AKS cluster user access")
+                    .withScope("/subscriptions/4769af8e-ca3d-448d-bd1a-80e03ed94158")
+                    .withDescription("Owner access to the JIT ACESS app on Subs")
                     .create();
             log.info("Role Assignment created....");
             if (createdRoleAssignment == null) {

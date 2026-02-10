@@ -31,7 +31,9 @@ public class K8ClientService {
         return initializeK8RbacClientAndGet();
     }
 
-    public void initializeK8Client(String clusterServerURL, String token) {
+
+
+    public ApiClient initializeK8Client(String clusterServerURL, String token) {
         try {
             if (StringUtils.isEmpty(clusterServerURL)) {
                 throw new K8ResourceException("Cluster Server URL is required to initialize K8 clients");
@@ -42,6 +44,7 @@ public class K8ClientService {
             ApiClient client = Config.fromToken(clusterServerURL, token);
             client.setVerifyingSsl(false);
             Configuration.setDefaultApiClient(client);
+            return client;
         } catch (Exception ex) {
             log.error("Error in initializing k8 client");
             log.error("Error: {}", ex.getMessage());

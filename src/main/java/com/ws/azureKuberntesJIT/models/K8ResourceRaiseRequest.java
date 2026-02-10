@@ -29,6 +29,7 @@ public class K8ResourceRaiseRequest {
     String k8ResourceId;
     String k8ResourceName;
     String namespace; /* To be taken from the published resource */
+    String userId;
     @NotNull(message = "Please provide user name")
     String userName;
 

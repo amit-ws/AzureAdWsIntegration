@@ -50,7 +50,7 @@ spring:
             scopes: "openid,profile,email"
 
   datasource:
-    url: "jdbc:postgresql://localhost:5432/ws_local?currentSchema=azure_test" # OR DB NAME AS -> ws-azureDb
+    url: "jdbc:postgresql://localhost:5432/ws_local?currentSchema=ws_agentic_security&stringtype=unspecified" # stringtype=unspecified tells the PostgreSQL JDBC driver to not send varchar as the parameter type — letting Postgres infer jsonb from the column definition. Fixes all JSONB columns in one go.
     username: "root" # OR, postgres
     password: "root" # OR,  postgres
 
@@ -58,12 +58,24 @@ spring:
     hibernate:
       ddl-auto: "update"
     show-sql: false
+    properties:
+      hibernate:
+        default_schema: azure_test
+        jdbc:
+          lob:
+            non_contextual_creation: true
 
   logging:
     level:
       org:
         springframework:
           security: DEBUG
+
+
+  main:
+    allow-bean-definition-overriding: true
+    banner-mode: off
+
 
 server:
   port: 9495
@@ -79,3 +91,39 @@ springdoc:
     defaultModelsExpandDepth: -1
     defaultModelExpandDepth: -1
     docExpansion: none
+
+
+certificate:
+  default-expiration-seconds: 3600
+  max-expiration-seconds: 86400
+  signer-name: kubernetes.io/kube-apiserver-client
+
+
+github:
+  token: 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
+
+#mcp:
+#  server:
+#    enabled: false  # Set to true only when you want MCP server to run [for option 2]
+
+
+
+mcp:
+  config:
+    file: mcp_config.json
+
+logging:
+  level:
+    com.ws.wsAgenticSecurity.client: INFO
+    com.ws.wsAgenticSecurity.audit: DEBUG
+    io.modelcontextprotocol: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+
+
+# ─── NOTE ────────────────────────────────────────────────────────────
+# The audit table 'mcp_audit_log' lives in schema 'ws_agentic_security'.
+# Ensure this schema exists in PostgreSQL before startup:
+#   CREATE SCHEMA IF NOT EXISTS ws_agentic_security;
+# Hibernate ddl-auto:update will create/update the table automatically.
+# ─────────────────────────────────────────────────────────────────────

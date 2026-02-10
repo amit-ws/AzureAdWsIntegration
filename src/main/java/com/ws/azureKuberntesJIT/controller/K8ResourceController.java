@@ -1,17 +1,16 @@
 package com.ws.azureKuberntesJIT.controller;
 
 import com.ws.azureAdIntegration.constants.CloudProviderType;
-import com.ws.azureKuberntesJIT.models.K8CustomResourceRequestDTO;
-import com.ws.azureResourcesIntegration.constant.PublishResourceType;
 import com.ws.azureAdIntegration.exception.K8ResourceException;
 import com.ws.azureKuberntesJIT.constant.K8ResourceLevel;
 import com.ws.azureKuberntesJIT.dto.K8ResourceRequest;
 import com.ws.azureKuberntesJIT.dto.K8RolePolicyRuleDTO;
-import com.ws.azureKuberntesJIT.enttity.K8CustomResourceRequest;
+import com.ws.azureKuberntesJIT.models.K8CustomResourceRequestDTO;
 import com.ws.azureKuberntesJIT.models.K8ResourceRaiseRequest;
 import com.ws.azureKuberntesJIT.response.K8RoleResponse;
 import com.ws.azureKuberntesJIT.response.RoleResponse;
 import com.ws.azureKuberntesJIT.service.K8ResourceService;
+import com.ws.azureResourcesIntegration.constant.PublishResourceType;
 import com.ws.azureResourcesIntegration.constant.RequestStatus;
 import com.ws.azureResourcesIntegration.dto.PublishResourceRequest;
 import com.ws.azureResourcesIntegration.service.PublishResourceService;
@@ -104,10 +103,11 @@ public class K8ResourceController {
         return ResponseEntity.ok(k8ResourceService.getSupportedRoleVerbs());
     }
 
-    @PostMapping("/v1/requests/raise")
-    public ResponseEntity<Boolean> raiseResourceRequestHandler(@Valid @RequestBody K8ResourceRaiseRequest request) {
-        return ResponseEntity.ok(k8ResourceService.raiseResourceRequest(request));
-    }
+//    @PostMapping("/v1/requests/raise")
+//    public ResponseEntity<Boolean> raiseResourceRequestHandler(@Valid @RequestBody K8ResourceRaiseRequest request,
+//                                                               @RequestParam(required = false) boolean isCertBasedRequest) {
+//        return ResponseEntity.ok(k8ResourceService.raiseResourceRequest(request, isCertBasedRequest));
+//    }
 
     @GetMapping("/v1/requests/all")
     public ResponseEntity<List<K8CustomResourceRequestDTO>> findAllRequestsHandler(@RequestParam("tenantName") String wsTenantName,

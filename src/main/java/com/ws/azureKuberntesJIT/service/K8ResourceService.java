@@ -5,25 +5,27 @@ import com.ws.azureAdIntegration.constants.CloudProviderType;
 import com.ws.azureAdIntegration.constants.Constant;
 import com.ws.azureAdIntegration.entity.AzureUser;
 import com.ws.azureAdIntegration.exception.AzureDataException;
-import com.ws.azureAdIntegration.repository.AzureUserRepository;
-import com.ws.azureAdIntegration.service.AzureUserCredentialService;
-import com.ws.azureAdIntegration.util.GenericUtil;
-import com.ws.azureKuberntesJIT.models.K8CustomResourceRequestDTO;
-import com.ws.azureResourcesIntegration.constant.PublishResourceType;
 import com.ws.azureAdIntegration.exception.K8ResourceException;
+import com.ws.azureAdIntegration.repository.AzureUserRepository;
 import com.ws.azureAdIntegration.service.AzureSyncControlService;
+import com.ws.azureAdIntegration.service.AzureUserCredentialService;
 import com.ws.azureAdIntegration.util.EncryptionUtil;
+import com.ws.azureAdIntegration.util.GenericUtil;
 import com.ws.azureKuberntesJIT.constant.*;
 import com.ws.azureKuberntesJIT.dto.ClusterConfigurationRequest;
 import com.ws.azureKuberntesJIT.dto.K8ResourceDataSyncRequest;
 import com.ws.azureKuberntesJIT.dto.K8RolePolicyRuleDTO;
-import com.ws.azureKuberntesJIT.enttity.*;
+import com.ws.azureKuberntesJIT.enttity.K8CustomResourceRequest;
+import com.ws.azureKuberntesJIT.enttity.K8RoleBindRequest;
+import com.ws.azureKuberntesJIT.enttity.K8RolePolicyRule;
+import com.ws.azureKuberntesJIT.enttity.K8RoleRequest;
+import com.ws.azureKuberntesJIT.models.K8CustomResourceRequestDTO;
 import com.ws.azureKuberntesJIT.models.K8ResourceRaiseRequest;
-import com.ws.azureKuberntesJIT.repository.K8IngressRepository;
 import com.ws.azureKuberntesJIT.repository.*;
 import com.ws.azureKuberntesJIT.response.K8RoleResponse;
 import com.ws.azureKuberntesJIT.response.RoleResponse;
 import com.ws.azureKuberntesJIT.response.RoleResponseProjection;
+import com.ws.azureResourcesIntegration.constant.PublishResourceType;
 import com.ws.azureResourcesIntegration.constant.RequestStatus;
 import com.ws.azureResourcesIntegration.constant.StateChangeConstants;
 import com.ws.azureResourcesIntegration.entities.AzureKubernetesCluster;
@@ -31,10 +33,11 @@ import com.ws.azureResourcesIntegration.repository.AzureUserConfigureRepository;
 import com.ws.azureResourcesIntegration.repository.PublishedResourcesRepository;
 import com.ws.azureResourcesIntegration.service.AzureResourceDataService;
 import com.ws.azureResourcesIntegration.service.CustomRoleAssignmentService;
+import com.ws.certificateJIT.k8.EncodingUtil;
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.ApiException;
 import io.kubernetes.client.openapi.Configuration;
-import io.kubernetes.client.openapi.apis.*;
+import io.kubernetes.client.openapi.apis.RbacAuthorizationV1Api;
 import io.kubernetes.client.openapi.models.*;
 import io.kubernetes.client.util.Config;
 import lombok.extern.slf4j.Slf4j;
@@ -83,6 +86,7 @@ public class K8ResourceService {
     final AzureResourceDataService azureResourceDataService;
     final CustomRoleAssignmentService customRoleAssignmentService;
     final AzureUserCredentialService azureUserCredentialService;
+//    final K8CertificateSigningService k8CertificateSigningService;
     RbacAuthorizationV1Api rbacApi;
 
 
@@ -95,7 +99,9 @@ public class K8ResourceService {
                              K8StatefulSetRepository k8StatefulSetRepository, K8DaemonSetRepository k8DaemonSetRepository, K8JobRepository k8JobRepository,
                              K8CronJobRepository k8CronJobRepository, K8IngressRepository k8IngressRepository, K8ServiceRepository k8ServiceRepository,
                              PublishedResourcesRepository publishedResourcesRepository, K8CustomResourceRequestRepository k8CustomResourceRequestRepository,
-                             K8RoleBindRepository k8RoleBindRepository, AzureUserConfigureRepository azureUserConfigureRepository, AzureUserRepository azureUserRepository, AzureSyncControlService azureSyncControlService, K8ClientService k8ClientService, AzureResourceDataService azureResourceDataService, CustomRoleAssignmentService customRoleAssignmentService, AzureUserCredentialService azureUserCredentialService) {
+                             K8RoleBindRepository k8RoleBindRepository, AzureUserConfigureRepository azureUserConfigureRepository, AzureUserRepository azureUserRepository, AzureSyncControlService azureSyncControlService, K8ClientService k8ClientService, AzureResourceDataService azureResourceDataService, CustomRoleAssignmentService customRoleAssignmentService, AzureUserCredentialService azureUserCredentialService
+//            , K8CertificateSigningService k8CertificateSigningService, K8CertificateSigningService k8CertificateSigningService1
+    ) {
         this.k8StorageClassRepository = k8StorageClassRepository;
         this.k8PersistentVolumeRepository = k8PersistentVolumeRepository;
         this.k8NamespaceRepository = k8NamespaceRepository;
@@ -125,6 +131,7 @@ public class K8ResourceService {
         this.azureResourceDataService = azureResourceDataService;
         this.customRoleAssignmentService = customRoleAssignmentService;
         this.azureUserCredentialService = azureUserCredentialService;
+//        this.k8CertificateSigningService = k8CertificateSigningService1;
     }
 
 
@@ -292,35 +299,73 @@ public class K8ResourceService {
     }
 
 
-    @Transactional
-    public Boolean raiseResourceRequest(K8ResourceRaiseRequest request) {
-        boolean isRoleCustomCreated = StringUtils.isEmpty(request.getRoleId());
-        String roleId = null;
-        String roleName;
-        K8RoleKind roleKind;
-        String namespace = StringUtils.isNotEmpty(request.getNamespace()) ? request.getNamespace().trim() : null;
-        List<String> verbs = null;
+//    @Transactional
+//    public Boolean raiseResourceRequest(K8ResourceRaiseRequest request, boolean isCertBasedRequest) {
+//        String csrCertName = null;
+//        String csrPrivateKey = null;
+//        String certificatePem = null;
+//        if (isCertBasedRequest) {
+//            // Create the Csr -> k8 api
+//            int durationSeconds = Math.toIntExact(request.getExpiryTimeAmount() * 60);
+//            if (durationSeconds < 600) {
+//                throw new RuntimeException("Minimum time required for Certificate based resource access request is 10 minutes");
+//            }
+//            Triple<String, String, String> keys = createCsrCertificate(request.getUserId(), request.getUserName(), new ArrayList<>(), durationSeconds, request.getClusterId(), request.getCloudType());
+//            csrCertName = keys.getLeft();
+//            csrPrivateKey = keys.getMiddle();
+//            certificatePem = keys.getRight();
+//        }
+//
+//        boolean isRoleCustomCreated = StringUtils.isEmpty(request.getRoleId());
+//        String roleId = null;
+//        String roleName;
+//        K8RoleKind roleKind;
+//        String namespace = StringUtils.isNotEmpty(request.getNamespace()) ? request.getNamespace().trim() : null;
+//        List<String> verbs = null;
+//
+//        if (isRoleCustomCreated) {
+//            roleKind = StringUtils.isEmpty(namespace) ? K8RoleKind.ClusterRole : K8RoleKind.Role;
+//            if (CollectionUtils.isEmpty(request.getVerbs())) {
+//                throw new K8ResourceException(String.format("Please provide verb(s) for %s creation", roleKind));
+//            }
+//            roleName = "JIT-PAM-ROLE-" + UUID.randomUUID();
+//            verbs = request.getVerbs();
+//        } else {
+//            roleId = request.getRoleId().trim();
+//            roleName = request.getRoleName().trim();
+//            roleKind = K8RoleKind.valueOf(request.getRoleKind().trim());
+//
+//            // Check if already a role binding is present in PENDING or APPROVED statuses
+//            checkExistingRoleBinding(request, namespace, roleId);
+//        }
+//
+//        // Proceed to create and save custom resource request
+//        createAndSaveK8CustomResourceRequest(request, roleId, roleName, roleKind, isRoleCustomCreated, namespace, verbs, csrCertName, csrPrivateKey, certificatePem);
+//        return Boolean.TRUE;
+//    }
+//
 
-        if (isRoleCustomCreated) {
-            roleKind = StringUtils.isEmpty(namespace) ? K8RoleKind.ClusterRole : K8RoleKind.Role;
-            if (CollectionUtils.isEmpty(request.getVerbs())) {
-                throw new K8ResourceException(String.format("Please provide verb(s) for %s creation", roleKind));
-            }
-            roleName = UUID.randomUUID().toString();
-            verbs = request.getVerbs();
-        } else {
-            roleId = request.getRoleId().trim();
-            roleName = request.getRoleName().trim();
-            roleKind = K8RoleKind.valueOf(request.getRoleKind().trim());
+//    private Triple<String, String, String> createCsrCertificate(String userId, String userName, List<String> groups,
+//                                                                Integer durationSeconds, String clusterId, CloudProviderType type) {
+//        try {
+//            Triple<String, String, String> details = findClusterUrlAndToken(clusterId, type);
+//            ApiClient apiClient = initializeK8ApiClient(details.getLeft(), details.getRight());
+//
+//            CertificateSigningRequestData csrData = k8CertificateSigningService.createCertificateSigningRequest(userId, userName, groups, durationSeconds, apiClient);
+//
+//            String csrName = csrData.getCsrName();
+//            log.info("CSR created: {}", csrName);
+//
+//            String signedCertificateBase64 = k8CertificateSigningService.getSignedCertificate(csrName, 10, apiClient);
+//            String certificatePem = EncodingUtil.decodeBase64(signedCertificateBase64);
+//            String csrPrivateKeyPem = csrData.getPrivateKeyPem();
+//            return Triple.of(csrName, csrPrivateKeyPem, certificatePem);
+//        } catch (Exception e) {
+//            log.error("Error creating CSR for user {} in cluster {}: {}", userId, clusterId, e.getMessage(), e);
+//            return null;
+//        }
+//    }
 
-            // Check if already a role binding is present in PENDING or APPROVED statuses
-            checkExistingRoleBinding(request, namespace, roleId);
-        }
-
-        // Proceed to create and save custom resource request
-        createAndSaveK8CustomResourceRequest(request, roleId, roleName, roleKind, isRoleCustomCreated, namespace, verbs);
-        return Boolean.TRUE;
-    }
 
     private void checkExistingRoleBinding(K8ResourceRaiseRequest request, String namespace, String roleId) {
         String[] statuses = {RequestStatus.DECLINE.name(), RequestStatus.EXPIRED.name()};
@@ -333,7 +378,8 @@ public class K8ResourceService {
 
 
     private void createAndSaveK8CustomResourceRequest(K8ResourceRaiseRequest request, String roleId, String roleName, K8RoleKind roleKind,
-                                                      boolean isRoleCustomCreated, String namespace, List<String> verbs) {
+                                                      boolean isRoleCustomCreated, String namespace, List<String> verbs, String csrCertName,
+                                                      String csrPrivateKey, String certificatePem) {
         K8CustomResourceRequest resourceRequest = K8CustomResourceRequest.builder()
                 .id(UUID.randomUUID())
                 .wsTenantName(request.getWsTenantName().trim())
@@ -345,6 +391,9 @@ public class K8ResourceService {
                 .wsUserEmail(request.getWsUserEmail().trim())
                 .expiryTimeAmount(request.getExpiryTimeAmount())
                 .message(request.getMessage())
+                .certCsrName(csrCertName)
+                .privateKeyPem(csrPrivateKey)
+                .certificatePem(certificatePem)
                 .build();
 
         // Setting the role related details
@@ -443,7 +492,7 @@ public class K8ResourceService {
     }
 
 
-    private void processRequest(K8CustomResourceRequest foundRequest, RequestStatus updatedStatus, RequestStatus currentStatus) {
+    private String processRequest(K8CustomResourceRequest foundRequest, RequestStatus updatedStatus, RequestStatus currentStatus) {
         // Validate the state transition
         if (!StateChangeConstants.VALID_STATE_TRANSITIONS.getOrDefault(currentStatus, Set.of()).contains(updatedStatus)) {
             throw new IllegalStateException(String.format("Invalid state transition from %s to %s for resource name: %s for the ws tenant user: %s",
@@ -451,12 +500,15 @@ public class K8ResourceService {
         }
 
         switch (updatedStatus) {
-            case APPROVED -> processApproval(foundRequest);
-            case DECLINE -> processDenial(foundRequest);
+            case APPROVED:
+                return processApproval(foundRequest);
+            case DECLINE:
+                processDenial(foundRequest);
         }
+        return null;
     }
 
-    private void processApproval(K8CustomResourceRequest customResourceRequest) {
+    private String processApproval(K8CustomResourceRequest customResourceRequest) {
         // 1. Initialize the K8 client using cluster ID and CloudType
         Triple<String, String, String> clusterDetails = initializeK8ClientsWithClusterDetails(customResourceRequest.getClusterId(), customResourceRequest.getCloudType());
         createRoleBindingAndRole(customResourceRequest);
@@ -465,9 +517,71 @@ public class K8ResourceService {
         customResourceRequest.setValidTo(validFrom.plusMinutes(customResourceRequest.getExpiryTimeAmount()));
         updateCustomRoleAssignmentCommonFields(customResourceRequest, RequestStatus.APPROVED);
 
+        String csrName = customResourceRequest.getCertCsrName();
+//        if (ObjectUtils.isNotEmpty(csrName)) {
+//            k8CertificateSigningService.approveCertificateSigningRequest(csrName, clusterDetails.getRight(), initializeK8ApiClient(clusterDetails.getLeft(), clusterDetails.getRight()));
+//            log.info("CSR approved: {}", csrName);
+//        }
+
         // 2. Sync the roles and role bindings asynchronously
         azureSyncControlService.syncK8RolesAndBindings(createK8ResourceDataSyncRequest(customResourceRequest, clusterDetails));
+
+        return generateKubeconfig(
+                customResourceRequest.getRoleBindRequest().getUserName(),
+                customResourceRequest.getCertificatePem(),
+                customResourceRequest.getPrivateKeyPem(),
+                customResourceRequest.getClusterName(),
+                clusterDetails.getLeft(),
+                clusterDetails.getMiddle()
+        );
     }
+
+
+    private String generateKubeconfig(
+            String userName,
+            String certificatePem,
+            String privateKeyPem,
+            String clusterName,
+            String server,
+            String caCertBase64) {
+
+        String certBase64 = EncodingUtil.encodeBase64(certificatePem);
+        String keyBase64 = EncodingUtil.encodeBase64(privateKeyPem);
+        String contextName = userName + "@" + clusterName;
+
+        return """
+                apiVersion: v1
+                kind: Config
+                clusters:
+                - name: %s
+                  cluster:
+                    server: %s
+                    certificate-authority-data: %s
+                contexts:
+                - name: %s
+                  context:
+                    cluster: %s
+                    user: %s
+                current-context: %s
+                users:
+                - name: %s
+                  user:
+                    client-certificate-data: %s
+                    client-key-data: %s
+                """.formatted(
+                clusterName,
+                server,
+                caCertBase64,
+                contextName,
+                clusterName,
+                userName,
+                contextName,
+                userName,
+                certBase64,
+                keyBase64
+        );
+    }
+
 
     private void createRoleBindingAndRole(K8CustomResourceRequest customResourceRequest) {
         String namespace = customResourceRequest.getRoleBindRequest().getNamespace();
@@ -499,6 +613,8 @@ public class K8ResourceService {
 
     private void processDenial(K8CustomResourceRequest customResourceRequest) {
         updateCustomRoleAssignmentCommonFields(customResourceRequest, RequestStatus.DECLINE);
+        Triple<String, String, String> details = findClusterUrlAndToken(customResourceRequest.getClusterId(), customResourceRequest.getCloudType());
+//        k8CertificateSigningService.deleteCertificateSigningRequest(customResourceRequest.getCertCsrName(), initializeK8ApiClient(details.getLeft(), details.getRight()));
     }
 
 
@@ -543,6 +659,12 @@ public class K8ResourceService {
         return clusterDetails;
     }
 
+
+    private ApiClient initializeK8ApiClient(String url, String token) {
+        return k8ClientService.initializeK8Client(url, token);
+    }
+
+
     private RbacAuthorizationV1Api initializeK8RbacApiClientByClusterCredential(String clusterId, CloudProviderType cloudType) {
         Triple<String, String, String> clusterDetails = findClusterUrlAndToken(clusterId, cloudType);
         return k8ClientService.initializeK8ClientWithRbacApi(clusterDetails.getLeft(), clusterDetails.getRight());
@@ -575,7 +697,8 @@ public class K8ResourceService {
             AzureKubernetesCluster azureKubernetesCluster = azureResourceDataService.findAksByAzureId(k8ClusterId);
             String severURL = EncryptionUtil.getDecryptedKey(azureKubernetesCluster.getAzureK8ClusterCredentials().get(0).getClusterServerUrl(), Constant.AKS_CLUSTER_SERVER_URL);
             String token = EncryptionUtil.getDecryptedKey(azureKubernetesCluster.getAzureK8ClusterCredentials().get(0).getToken(), Constant.AKS_CLUSTER_TOKEN);
-            return Triple.of(severURL, azureKubernetesCluster.getName(), token);
+            String caData = EncryptionUtil.getDecryptedKey(azureKubernetesCluster.getAzureK8ClusterCredentials().get(0).getCaData(), Constant.AKS_CLUSTER_CA_DATA);
+            return Triple.of(severURL, caData, token);
         } else {
             throw new K8ResourceException("Unsupported cloud type provided: " + cloudType);
         }
@@ -605,6 +728,9 @@ public class K8ResourceService {
         }
         return k8RbacApiClientMap.get(clusterId);
     }
+
+
+    //    changes for Certificate Based JIT
 
 
     //-------------------------------------------------------------//    //-------------------------------------------------------------//
@@ -666,7 +792,8 @@ public class K8ResourceService {
 //                        .status(RequestStatus.APPROVED)
 //                        .build())).toList();
 //
-////        k8CustomResourceRequestRepository.saveAll(roleRequests);
+
+    /// /        k8CustomResourceRequestRepository.saveAll(roleRequests);
 //
 //        return Boolean.TRUE;
 //    }
@@ -674,8 +801,6 @@ public class K8ResourceService {
 
     //-------------------------------------------------------------//    //-------------------------------------------------------------//
     //-------------------------------------------------------------//    //-------------------------------------------------------------//
-
-
     @Transactional(readOnly = true)
     public void assignClusterRole(String clusterRoleName) {
         initialise();

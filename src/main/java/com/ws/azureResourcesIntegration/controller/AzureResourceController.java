@@ -1,11 +1,10 @@
 package com.ws.azureResourcesIntegration.controller;
 
-import com.ws.azureKuberntesJIT.constant.K8ResourceLevel;
-import com.ws.azureResourcesIntegration.constant.PublishResourceType;
 import com.ws.azureResourcesIntegration.constant.AzureResourcesType;
+import com.ws.azureResourcesIntegration.constant.PublishResourceType;
 import com.ws.azureResourcesIntegration.constant.RequestStatus;
 import com.ws.azureResourcesIntegration.dto.*;
-import com.ws.azureResourcesIntegration.entities.*;
+import com.ws.azureResourcesIntegration.entities.CustomRoleAssignment;
 import com.ws.azureResourcesIntegration.service.AzureResourceService;
 import com.ws.azureResourcesIntegration.service.PublishResourceService;
 import jakarta.validation.Valid;
@@ -215,6 +214,13 @@ public class AzureResourceController {
                                                                   @RequestParam("subId") String subId,
                                                                   @RequestParam("pathId") String pathId) {
         azureResourceService.revokeRoleToPrincipalForResourceInAzure(wsTenantName.trim(), subId.trim(), pathId.trim());
+        return ResponseEntity.noContent().build();
+    }
+
+
+    @DeleteMapping("/v2/revokeData")
+    public ResponseEntity revokeRoleToPrincipalForResourceInAzure(@RequestParam("pathId") String pathId) {
+        azureResourceService.revokeRoleToPrincipalForResourceInAzure(pathId.trim());
         return ResponseEntity.noContent().build();
     }
 }

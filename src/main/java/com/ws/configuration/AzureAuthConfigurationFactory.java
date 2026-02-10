@@ -7,14 +7,11 @@ import com.azure.core.management.profile.AzureProfile;
 import com.azure.identity.ClientSecretCredential;
 import com.azure.identity.ClientSecretCredentialBuilder;
 import com.azure.resourcemanager.AzureResourceManager;
-import com.microsoft.graph.authentication.IAuthenticationProvider;
 import com.microsoft.graph.requests.GraphServiceClient;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Request;
-import org.jetbrains.annotations.NotNull;
 import org.springframework.stereotype.Component;
 
-import java.net.URL;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
@@ -47,6 +44,9 @@ public class AzureAuthConfigurationFactory {
         Note: Subscription is required anyhow
     */
     public AzureResourceManager createAzureResourceClient(String clientId, String clientSecret, String tenantId, String subscriptionId) {
+        log.info("clientSecret: " + clientSecret);
+        log.info("clientId: " + clientId);
+        log.info("tenantId: " + tenantId);
         ClientSecretCredential clientSecretCredential = createAzureClientSecretCredential(clientId, clientSecret, tenantId);
         AzureProfile profile = new AzureProfile(tenantId, subscriptionId, AzureEnvironment.AZURE);
         return AzureResourceManager

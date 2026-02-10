@@ -1,6 +1,7 @@
 package com.ws.azureAdIntegration.util;
 
 import com.ws.azureResourcesIntegration.constant.AzureResourcesType;
+import org.apache.commons.lang3.tuple.Triple;
 
 import java.util.*;
 import java.util.function.Supplier;
@@ -24,6 +25,27 @@ public class GenericUtil {
         return value;
     }
 
+
+    public static Triple<String, String, String> extractServerTokenAndCaCertBase64FromKubeConfigYAML(String config) {
+        String[] result = new String[3];
+
+        String serverPrefix = "server: ";
+        int serverStart = config.indexOf(serverPrefix) + serverPrefix.length();
+        int serverEnd = config.indexOf("\n", serverStart);
+        result[0] = config.substring(serverStart, serverEnd).trim();
+
+        String tokenPrefix = "token: ";
+        int tokenStart = config.indexOf(tokenPrefix) + tokenPrefix.length();
+        int tokenEnd = config.indexOf("\n", tokenStart);
+        result[1] = config.substring(tokenStart, tokenEnd).trim();
+
+        String caCertPrefix = "certificate-authority-data: ";
+        int caCertStart = config.indexOf(caCertPrefix) + caCertPrefix.length();
+        int caCertEnd = config.indexOf("\n", caCertStart);
+        result[2] = config.substring(caCertStart, caCertEnd).trim();
+
+        return Triple.of(result[0], result[1], result[2]);
+    }
 
     public static void ensureNotNull(Object object, String message) {
         Optional.ofNullable(object)

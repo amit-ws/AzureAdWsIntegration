@@ -36,6 +36,7 @@ import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
+import org.apache.commons.lang3.tuple.Triple;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
@@ -188,7 +189,7 @@ public class AzureResourceSyncService {
             log.info("azure role definitions data fetched..");
             syncRoleAssignments(azureTenant, azureSubscription);
             log.info("azure role assignments data fetched..");
-//            List<AzureKubernetesCluster> azureKubernetesClusters = syncAzureKubernetesClusters(azureSubscription, azureResourceGroupMap);
+            List<AzureKubernetesCluster> azureKubernetesClusters = syncAzureKubernetesClusters(azureSubscription, azureResourceGroupMap);
 //            syncKubernetesResources(azureSubscription.getAzureSubscriptionId(), azureKubernetesClusters);
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_RESOURCE_DATA_SYNC_END, "Info");
         } catch (Exception ex) {
@@ -597,11 +598,12 @@ public class AzureResourceSyncService {
                                                                       String resourceGroupName, String subscriptionId, KubernetesClusterCredentialType type) {
         return credentialResults.stream()
                 .map(credentialResult -> {
-                    Map<String, String> configMap = GenericUtil.extractServerAndTokenFromKubeConfigYAML(new String(credentialResult.value()));
+                    Triple<String, String, String> configData = GenericUtil.extractServerTokenAndCaCertBase64FromKubeConfigYAML(new String(credentialResult.value()));
                     return AzureK8ClusterCredential.builder()
                             .name(credentialResult.name())
-                            .clusterServerUrl(EncryptionUtil.getEncryptedKey(configMap.get("server"), Constant.AKS_CLUSTER_SERVER_URL))
-                            .token(EncryptionUtil.getEncryptedKey(configMap.get("token"), Constant.AKS_CLUSTER_TOKEN))
+                            .clusterServerUrl(EncryptionUtil.getEncryptedKey(configData.getLeft(), Constant.AKS_CLUSTER_SERVER_URL))
+                            .token(EncryptionUtil.getEncryptedKey(configData.getMiddle(), Constant.AKS_CLUSTER_TOKEN))
+                            .caData(EncryptionUtil.getDecryptedKey(configData.getRight(), Constant.AKS_CLUSTER_CA_DATA))
                             .type(type)
                             .azureKubernetesCluster(cluster)
                             .resourceGroupName(resourceGroupName)

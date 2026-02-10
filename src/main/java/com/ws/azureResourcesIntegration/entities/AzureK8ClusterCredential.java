@@ -30,6 +30,10 @@ public class AzureK8ClusterCredential {
     @Column(nullable = false)
     String token;
 
+//    @Column(nullable = false)
+    @Column
+    String caData; // certificate-authority-data
+
     @Enumerated(EnumType.STRING)
     KubernetesClusterCredentialType type;
 

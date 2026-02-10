@@ -5,6 +5,7 @@ import com.ws.azureKuberntesJIT.service.K8TestService;
 import com.ws.azureKuberntesJIT.service.LogsAndMetricsService;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 
+@Slf4j
 @RestController
 @RequestMapping("/api/k8Test")
 @FieldDefaults(level = AccessLevel.PRIVATE)
@@ -28,6 +30,14 @@ public class K8TestController {
         this.k8TestService = k8TestService;
         this.logsAndMetricsService = logsAndMetricsService;
     }
+//    final CertificateService certificateService;
+
+//    @Autowired
+//    public K8TestController(K8TestService k8TestService, LogsAndMetricsService logsAndMetricsService, CertificateService certificateService) {
+//        this.k8TestService = k8TestService;
+//        this.logsAndMetricsService = logsAndMetricsService;
+//        this.certificateService = certificateService;
+//    }
 
     @GetMapping("/getRG")
     public ResponseEntity getRGListHandler() {
@@ -107,4 +117,39 @@ public class K8TestController {
         k8TestService.createRoleAndBindingForSA(ns, sa);
         return ResponseEntity.ok().build();
     }
+
+//
+//    @PostMapping("/jit/certificate")
+//    public ResponseEntity<?> requestAccess(@RequestBody JitRequest req) {
+//        try {
+//            if (req.username == null || req.username.isBlank())
+//                return ResponseEntity.badRequest().body("username required");
+//            if (req.namespace == null || req.namespace.isBlank())
+//                return ResponseEntity.badRequest().body("namespace required");
+//            if (req.verbs == null || req.verbs.isEmpty()) return ResponseEntity.badRequest().body("verbs required");
+//            String kubeconfig = certificateService.createTemporaryKubeconfig(
+//                    req.username,
+//                    req.namespace,
+//                    req.resourceType,
+//                    req.verbs,
+//                    req.resourceNames,
+//                    req.ttlSeconds
+//            );
+//
+//            return ResponseEntity.ok().body(kubeconfig);
+//        } catch (Exception ex) {
+//            log.error("Error:{}", ex.getMessage());
+//            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(ex.getMessage());
+//        }
+//    }
+//
+//
+//    public static class JitRequest {
+//        public String username;
+//        public String namespace;
+//        public String resourceType;
+//        public List<String> verbs;
+//        public List<String> resourceNames;
+//        public int ttlSeconds;
+//    }
 }
