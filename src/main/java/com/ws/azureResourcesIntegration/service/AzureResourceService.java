@@ -890,7 +890,7 @@ public class AzureResourceService {
 
 
     public void revokeRoleToPrincipalForResourceInAzure(String pathId) {
-        AzureResourceManager azureResourceManager = getAzureResourceManager("cb51e8d1-519c-4e18-9b2f-28d53e6badd1", "yye8Q~FxfhNLvs07nM3PIPF0.H0zAvcvQ1Z5FcCJ",
+        AzureResourceManager azureResourceManager = getAzureResourceManager("cb51e8d1-519c-4e18-9b2f-28d53e6badd1", "",
                 "f875ebf8-f5f0-4915-a2c9-4442e0118fd2", "4769af8e-ca3d-448d-bd1a-80e03ed94158");
         try {
             azureResourceManager.accessManagement()
@@ -954,7 +954,7 @@ public class AzureResourceService {
 //        }
 //        log.info("Success2");
 
-        AzureResourceManager armAdmin = getAzureResourceManager("cb51e8d1-519c-4e18-9b2f-28d53e6badd1", "yye8Q~FxfhNLvs07nM3PIPF0.H0zAvcvQ1Z5FcCJ",
+        AzureResourceManager armAdmin = getAzureResourceManager("cb51e8d1-519c-4e18-9b2f-28d53e6badd1", "",
                 "f875ebf8-f5f0-4915-a2c9-4442e0118fd2", "4769af8e-ca3d-448d-bd1a-80e03ed94158");
 
         try {
