@@ -24,8 +24,8 @@
     }
   },
   "inputs": {
-    "github_token": "",
-    "atlassian_token": "",
+    "github": "",
+    "atlassian": "",
     "jira_url": "http://whiteswansecurity.atlassian.net",
     "confluence_url": "https://whiteswansecurity.atlassian.net/wiki"
   }
