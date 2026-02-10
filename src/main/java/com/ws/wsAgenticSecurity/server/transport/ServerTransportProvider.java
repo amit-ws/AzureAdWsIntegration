@@ -1,5 +1,6 @@
 package com.ws.wsAgenticSecurity.server.transport;
 
+import com.ws.wsAgenticSecurity.audit.service.McpAuditService;
 import com.ws.wsAgenticSecurity.server.session.SessionManager;
 import io.modelcontextprotocol.spec.McpServerSession;
 import io.modelcontextprotocol.spec.McpServerTransportProvider;
@@ -15,9 +16,9 @@ public class ServerTransportProvider implements McpServerTransportProvider {
     private final StdioServerTransport stdioTransport;
     private McpServerSession session;
 
-    public ServerTransportProvider(SessionManager sessionManager) {
+    public ServerTransportProvider(SessionManager sessionManager, McpAuditService auditService) {
         this.sessionManager = sessionManager;
-        this.stdioTransport = new StdioServerTransport(sessionManager);
+        this.stdioTransport = new StdioServerTransport(sessionManager, auditService);
     }
 
     @Override

@@ -23,6 +23,7 @@ public enum AuditEventType {
     SERVER_PROMPTS_LIST_REQUESTED,
     SERVER_TOOL_INVOCATION,
     SERVER_RESOURCE_READ,
+    SERVER_NOTIFICATION_RECEIVED,
 
     // ── Area 2 — WS Client <-> Enterprise MCP Server (Southbound) ────
     CLIENT_SESSION_INITIALIZED,

@@ -372,7 +372,7 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
-                    <mainClass>com.ws.wsAgenticSecurity.server.McpServerApplication</mainClass>
+                    <mainClass>com.ws.AzureAdWsIntegrationApplication</mainClass>
                     <excludes>
                         <exclude>
                             <groupId>org.projectlombok</groupId>

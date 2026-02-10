@@ -399,7 +399,9 @@ public class McpAuditService {
     }
 
     @Async("mcpAuditExecutor")
-    public void auditServerToolsListRequested(String sessionId, int toolCount) {
+    public void auditServerToolsListRequested(String sessionId,
+                                               int toolCount,
+                                               long durationMs) {
         persist(McpAuditLog.builder()
                 .eventType(AuditEventType.SERVER_TOOLS_LIST_REQUESTED)
                 .module(AuditModule.WS_SERVER)
@@ -409,6 +411,7 @@ public class McpAuditService {
                 .mcpMethod("tools/list")
                 .correlationId(generateCorrelationId())
                 .responsePayload(toJson(Map.of("toolCount", toolCount)))
+                .durationMs(durationMs)
                 .build());
     }
 
@@ -436,6 +439,83 @@ public class McpAuditService {
                         "content", responseContent != null ? responseContent : "[]"
                 )))
                 .durationMs(durationMs)
+                .build());
+    }
+
+    /**
+     * Audit: AI agent requested resources list from WS server.
+     */
+    @Async("mcpAuditExecutor")
+    public void auditServerResourcesListRequested(String sessionId,
+                                                   int resourceCount,
+                                                   long durationMs) {
+        persist(McpAuditLog.builder()
+                .eventType(AuditEventType.SERVER_RESOURCES_LIST_REQUESTED)
+                .module(AuditModule.WS_SERVER)
+                .status(AuditStatus.SUCCESS)
+                .severity(AuditSeverity.INFO)
+                .sessionId(sessionId)
+                .mcpMethod("resources/list")
+                .correlationId(generateCorrelationId())
+                .responsePayload(toJson(Map.of("resourceCount", resourceCount)))
+                .durationMs(durationMs)
+                .build());
+    }
+
+    /**
+     * Audit: AI agent requested prompts list from WS server.
+     */
+    @Async("mcpAuditExecutor")
+    public void auditServerPromptsListRequested(String sessionId,
+                                                 int promptCount,
+                                                 long durationMs) {
+        persist(McpAuditLog.builder()
+                .eventType(AuditEventType.SERVER_PROMPTS_LIST_REQUESTED)
+                .module(AuditModule.WS_SERVER)
+                .status(AuditStatus.SUCCESS)
+                .severity(AuditSeverity.INFO)
+                .sessionId(sessionId)
+                .mcpMethod("prompts/list")
+                .correlationId(generateCorrelationId())
+                .responsePayload(toJson(Map.of("promptCount", promptCount)))
+                .durationMs(durationMs)
+                .build());
+    }
+
+    /**
+     * Audit: AI agent sent a notification to WS server.
+     */
+    @Async("mcpAuditExecutor")
+    public void auditServerNotificationReceived(String sessionId,
+                                                 String method,
+                                                 Object params) {
+        persist(McpAuditLog.builder()
+                .eventType(AuditEventType.SERVER_NOTIFICATION_RECEIVED)
+                .module(AuditModule.WS_SERVER)
+                .status(AuditStatus.SUCCESS)
+                .severity(AuditSeverity.DEBUG)
+                .sessionId(sessionId)
+                .mcpMethod(method)
+                .correlationId(generateCorrelationId())
+                .requestPayload(toJson(Map.of(
+                        "method", method != null ? method : "unknown",
+                        "params", params != null ? params : Map.of()
+                )))
+                .build());
+    }
+
+    /**
+     * Audit: AI agent session disconnected from WS server.
+     */
+    @Async("mcpAuditExecutor")
+    public void auditServerSessionDisconnected(String sessionId) {
+        persist(McpAuditLog.builder()
+                .eventType(AuditEventType.SERVER_SESSION_DISCONNECTED)
+                .module(AuditModule.WS_SERVER)
+                .status(AuditStatus.SUCCESS)
+                .severity(AuditSeverity.INFO)
+                .sessionId(sessionId)
+                .correlationId(generateCorrelationId())
                 .build());
     }
 

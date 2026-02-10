@@ -2,6 +2,7 @@ package com.ws.wsAgenticSecurity.server.transport;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ws.wsAgenticSecurity.audit.service.McpAuditService;
 import com.ws.wsAgenticSecurity.server.session.ClientSession;
 import com.ws.wsAgenticSecurity.server.session.SessionManager;
 import io.modelcontextprotocol.spec.McpServerTransport;
@@ -13,6 +14,7 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 @Slf4j
@@ -22,13 +24,26 @@ public class StdioServerTransport implements McpServerTransport {
     private final OutputStream out;
     private final ObjectMapper mapper;
     private final SessionManager sessionManager;
+    private final McpAuditService auditService;
     private volatile boolean closed = false;
 
-    public StdioServerTransport(SessionManager sessionManager) {
+    /**
+     * Tracks in-flight requests by JSON-RPC id so that when the response is sent,
+     * we can calculate duration and dispatch the appropriate audit call.
+     */
+    private final ConcurrentHashMap<Object, RequestContext> inflightRequests = new ConcurrentHashMap<>();
+
+    /**
+     * Context stored for each incoming request, keyed by JSON-RPC id.
+     */
+    private record RequestContext(String method, Object params, long startTimeMs) {}
+
+    public StdioServerTransport(SessionManager sessionManager, McpAuditService auditService) {
         this.in = System.in;
         this.out = System.out;
         this.mapper = new ObjectMapper();
         this.sessionManager = sessionManager;
+        this.auditService = auditService;
     }
 
     public Mono<Void> connect(Function<Mono<McpSchema.JSONRPCMessage>, Mono<McpSchema.JSONRPCMessage>> handler) {
@@ -95,12 +110,15 @@ public class StdioServerTransport implements McpServerTransport {
         return Mono.fromRunnable(() -> {
             try {
                 String json = mapper.writeValueAsString(message);
-//                log.info(">>> SENDING: {}", json);
 
                 synchronized (out) {
                     out.write((json + "\n").getBytes(StandardCharsets.UTF_8));
                     out.flush();
                 }
+
+                // ── Audit response interception ────────────────────────────
+                auditResponseIfTracked(message, json);
+
             } catch (Exception e) {
                 log.error("Failed to send", e);
                 throw new RuntimeException(e);
@@ -113,6 +131,14 @@ public class StdioServerTransport implements McpServerTransport {
         return Mono.fromRunnable(() -> {
             closed = true;
             try {
+                // Audit session disconnect
+                try {
+                    ClientSession session = sessionManager.getCurrentSession();
+                    auditService.auditServerSessionDisconnected(session.getSessionId());
+                } catch (Exception e) {
+                    log.error("Failed to audit session disconnect: {}", e.getMessage());
+                }
+
                 in.close();
                 out.close();
             } catch (IOException e) {
@@ -155,6 +181,15 @@ public class StdioServerTransport implements McpServerTransport {
             // Special handling for initialize
             if ("initialize".equals(method)) {
                 captureClientData(rawData);
+            }
+
+            // ── Track request for audit (request → response matching) ───
+            if (id != null && method != null) {
+                // Request with id — track it so we can audit when response is sent
+                inflightRequests.put(id, new RequestContext(method, params, System.currentTimeMillis()));
+            } else if (id == null && method != null) {
+                // Notification (no id, no response expected) — audit immediately
+                auditNotification(method, params);
             }
 
         } catch (Exception e) {
@@ -240,6 +275,98 @@ public class StdioServerTransport implements McpServerTransport {
     private String maskToken(String token) {
         if (token == null || token.length() <= 8) return "***";
         return token.substring(0, 4) + "..." + token.substring(token.length() - 4);
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  AUDIT — Response interception & notification handling
+    // ════════════════════════════════════════════════════════════════════
+
+    /**
+     * Matches an outgoing response to its original request by JSON-RPC id,
+     * calculates the duration, and dispatches the appropriate audit method.
+     */
+    private void auditResponseIfTracked(McpSchema.JSONRPCMessage message, String json) {
+        try {
+            if (!(message instanceof McpSchema.JSONRPCResponse response)) {
+                return;
+            }
+
+            Object responseId = response.id();
+            if (responseId == null) {
+                return;
+            }
+
+            RequestContext ctx = inflightRequests.remove(responseId);
+            if (ctx == null) {
+                return; // No matching request tracked (e.g., initialize is audited in ClientSession)
+            }
+
+            long durationMs = System.currentTimeMillis() - ctx.startTimeMs();
+            String sessionId = sessionManager.getCurrentSession().getSessionId();
+
+            switch (ctx.method()) {
+                case "tools/list" -> {
+                    int toolCount = extractListCount(json, "tools");
+                    auditService.auditServerToolsListRequested(sessionId, toolCount, durationMs);
+                    log.debug("Audited tools/list — {} tools, {}ms", toolCount, durationMs);
+                }
+                case "resources/list" -> {
+                    int resourceCount = extractListCount(json, "resources");
+                    auditService.auditServerResourcesListRequested(sessionId, resourceCount, durationMs);
+                    log.debug("Audited resources/list — {} resources, {}ms", resourceCount, durationMs);
+                }
+                case "prompts/list" -> {
+                    int promptCount = extractListCount(json, "prompts");
+                    auditService.auditServerPromptsListRequested(sessionId, promptCount, durationMs);
+                    log.debug("Audited prompts/list — {} prompts, {}ms", promptCount, durationMs);
+                }
+                // tools/call is audited in McpServerApplication.handleToolCall() — no duplicate here
+                // initialize is audited in ClientSession.initialize() — no duplicate here
+                default -> log.debug("Response for method '{}' — no specific audit handler", ctx.method());
+            }
+        } catch (Exception e) {
+            log.error("Error auditing response: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Audits an incoming notification (JSON-RPC message with method but no id).
+     */
+    private void auditNotification(String method, Object params) {
+        try {
+            // Skip initialize — it's not a notification, but it's handled separately anyway
+            if ("initialize".equals(method)) {
+                return;
+            }
+
+            String sessionId = sessionManager.getCurrentSession().getSessionId();
+            auditService.auditServerNotificationReceived(sessionId, method, params);
+            log.debug("Audited notification: {}", method);
+        } catch (Exception e) {
+            log.error("Error auditing notification '{}': {}", method, e.getMessage());
+        }
+    }
+
+    /**
+     * Extracts the count of items in a list result from the JSON response.
+     * For example, for tools/list, the response is: {"result": {"tools": [...]}}
+     * This parses the JSON to count the array items.
+     */
+    @SuppressWarnings("unchecked")
+    private int extractListCount(String json, String listKey) {
+        try {
+            Map<String, Object> responseMap = mapper.readValue(json, Map.class);
+            Object result = responseMap.get("result");
+            if (result instanceof Map) {
+                Object list = ((Map<String, Object>) result).get(listKey);
+                if (list instanceof List) {
+                    return ((List<?>) list).size();
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Could not extract {} count from response: {}", listKey, e.getMessage());
+        }
+        return -1; // Unknown count
     }
 
     private McpSchema.JSONRPCMessage parseMessage(Map<String, Object> rawData) {

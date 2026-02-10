@@ -46,6 +46,7 @@ public class McpServerApplication implements ApplicationRunner {
     private final McpAuditService auditService;
 
     private McpSyncServer server;
+    private SessionManager sessionManager;
 
     public McpServerApplication(CapabilityRegistryService registryService,
                                 McpAuditService auditService) {
@@ -60,11 +61,11 @@ public class McpServerApplication implements ApplicationRunner {
             log.info("🚀 WS MCP SERVER INITIALIZATION STARTED");
             log.info("═══════════════════════════════════════════════════════════");
 
-            // Session manager for tracking AI client sessions
-            SessionManager sessionManager = new SessionManager();
+            // Session manager for tracking AI client sessions (passes audit service to sessions)
+            sessionManager = new SessionManager(auditService);
 
-            // Create transport provider (stdio-based)
-            ServerTransportProvider transportProvider = new ServerTransportProvider(sessionManager);
+            // Create transport provider (stdio-based, passes audit service for request/response interception)
+            ServerTransportProvider transportProvider = new ServerTransportProvider(sessionManager, auditService);
 
             // ── Get all tool descriptors from registry ─────────────────
             List<CapabilityDescriptor> toolDescriptors = registryService.getToolDescriptors();
@@ -74,7 +75,7 @@ public class McpServerApplication implements ApplicationRunner {
             McpSchema.ServerCapabilities capabilities = McpSchema.ServerCapabilities.builder()
                     .tools(true)     // Enable tools with list change notifications
                     .resources(false, false) // Enable resources listing
-                    .prompts(false)  // Enable prompts listing
+                    .prompts(true)  // Enable prompts listing
                     .build();
 
             // ── Build MCP server with dynamic tools from registry ──────
@@ -155,9 +156,17 @@ public class McpServerApplication implements ApplicationRunner {
                 toolName, descriptor.getServerConfigName(), descriptor.getOriginalName());
 
         try {
+            // Get session ID for audit context
+            String sessionId = null;
+            try {
+                sessionId = sessionManager.getCurrentSession().getSessionId();
+            } catch (Exception e) {
+                log.debug("Could not get session ID for audit: {}", e.getMessage());
+            }
+
             // Audit the server-side tool invocation
             auditService.auditServerToolInvocation(
-                    null, // sessionId — will be populated when session tracking is enhanced
+                    sessionId,
                     toolName,
                     request.arguments(),
                     null,

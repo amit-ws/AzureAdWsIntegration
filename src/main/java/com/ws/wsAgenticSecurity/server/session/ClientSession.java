@@ -1,5 +1,6 @@
 package com.ws.wsAgenticSecurity.server.session;
 
+import com.ws.wsAgenticSecurity.audit.service.McpAuditService;
 import io.modelcontextprotocol.spec.McpSchema;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -15,6 +16,7 @@ public class ClientSession {
 
     private final String sessionId;
     private final Instant createdAt;
+    private final McpAuditService auditService;
 
     private String protocolVersion;
     private McpSchema.ClientCapabilities capabilities;
@@ -24,9 +26,10 @@ public class ClientSession {
     private boolean initialized;
     private Instant initializedAt;
 
-    public ClientSession() {
+    public ClientSession(McpAuditService auditService) {
         this.sessionId = UUID.randomUUID().toString();
         this.createdAt = Instant.now();
+        this.auditService = auditService;
         this.metadata = new HashMap<>();
         this.tokens = new HashMap<>();
         this.initialized = false;
@@ -49,6 +52,18 @@ public class ClientSession {
         }
 
         logSession();
+
+        // Audit — session initialization
+        try {
+            auditService.auditServerSessionInitialized(
+                    sessionId,
+                    protocolVersion,
+                    clientInfo,
+                    capabilities
+            );
+        } catch (Exception e) {
+            log.error("Failed to audit session initialization: {}", e.getMessage());
+        }
     }
 
     private void logSession() {

@@ -56,11 +56,15 @@ public class CapabilityRegistryService {
     private final McpAuditService auditService;
 
     // ── In-Memory Indexes ──────────────────────────────────────────────
-    /** Primary index: publicName → CapabilityDescriptor (O(1) lookup). */
+    /**
+     * Primary index: publicName → CapabilityDescriptor (O(1) lookup).
+     */
     private final ConcurrentHashMap<String, CapabilityDescriptor> primaryIndex =
             new ConcurrentHashMap<>();
 
-    /** Secondary index: serverConfigName → Set<publicName> (server-scoped). */
+    /**
+     * Secondary index: serverConfigName → Set<publicName> (server-scoped).
+     */
     private final ConcurrentHashMap<String, Set<String>> serverIndex =
             new ConcurrentHashMap<>();
 
@@ -510,7 +514,8 @@ public class CapabilityRegistryService {
      * Build a namespaced public name: {@code serverConfigName.originalName}.
      */
     private String buildPublicName(String serverConfigName, String originalName) {
-        return serverConfigName + "." + originalName;
+//        return serverConfigName + "." + originalName;
+        return serverConfigName + "_" + originalName;
     }
 
     /**
