@@ -6,7 +6,10 @@ import com.ws.wsAgenticSecurity.registry.model.CapabilityDescriptor;
 import com.ws.wsAgenticSecurity.registry.service.CapabilityRegistryService;
 import com.ws.wsAgenticSecurity.server.session.SessionManager;
 import com.ws.wsAgenticSecurity.server.transport.ServerTransportProvider;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.modelcontextprotocol.server.McpServer;
+import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.server.McpSyncServer;
 import io.modelcontextprotocol.server.McpSyncServerExchange;
 import io.modelcontextprotocol.spec.McpSchema;
@@ -16,6 +19,8 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -33,11 +38,13 @@ import java.util.List;
  *   <li>AI Agent → {@code resources/list} → returns all resources from registry</li>
  *   <li>AI Agent → {@code prompts/list} → returns all prompts from registry</li>
  *   <li>AI Agent → {@code tools/call} → {@link ToolCallOrchestrator} routes to enterprise server</li>
+ *   <li>AI Agent → {@code prompts/get} → {@link ToolCallOrchestrator} forwards to enterprise server</li>
+ *   <li>AI Agent → {@code resources/read} → {@link ToolCallOrchestrator} forwards to enterprise server</li>
  * </ol>
  *
- * <p>Tool calls are delegated to the {@link ToolCallOrchestrator}, which handles
- * registry lookup, request forwarding via WS MCP Client, audit logging, and
- * in-flight request tracking.
+ * <p>All capability requests (tools, prompts, resources) are delegated to the
+ * {@link ToolCallOrchestrator}, which handles registry lookup, request forwarding
+ * via WS MCP Client, audit logging, and in-flight request tracking.
  */
 @Component
 @Slf4j
@@ -47,16 +54,19 @@ public class McpServerApplication implements ApplicationRunner {
     private final CapabilityRegistryService registryService;
     private final McpAuditService auditService;
     private final ToolCallOrchestrator orchestrator;
+    private final ObjectMapper objectMapper;
 
     private McpSyncServer server;
     private SessionManager sessionManager;
 
     public McpServerApplication(CapabilityRegistryService registryService,
                                 McpAuditService auditService,
-                                ToolCallOrchestrator orchestrator) {
+                                ToolCallOrchestrator orchestrator,
+                                ObjectMapper objectMapper) {
         this.registryService = registryService;
         this.auditService = auditService;
         this.orchestrator = orchestrator;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -91,7 +101,8 @@ public class McpServerApplication implements ApplicationRunner {
                     .serverInfo("ws-mcp-gateway", "1.0.0")
                     .capabilities(capabilities);
 
-            // Register each tool from the registry
+            // ── Register tools from registry ────────────────────────────
+            List<McpServerFeatures.SyncToolSpecification> toolSpecs = new ArrayList<>();
             for (CapabilityDescriptor descriptor : toolDescriptors) {
                 McpSchema.Tool toolDefinition = McpSchema.Tool.builder()
                         .name(descriptor.getPublicName())
@@ -99,12 +110,54 @@ public class McpServerApplication implements ApplicationRunner {
                         .inputSchema(descriptor.getInputSchema())
                         .build();
 
-                // Tool call handler — delegates to ToolCallOrchestrator for full routing
-                serverBuilder.toolCall(toolDefinition, (exchange, request) ->
-                        handleToolCall(exchange, request));
+                toolSpecs.add(new McpServerFeatures.SyncToolSpecification(toolDefinition, null, this::handleToolCall));
+                log.info("   🔧 Registered tool: {} (from server '{}')", descriptor.getPublicName(), descriptor.getServerConfigName());
+            }
+            if (!toolSpecs.isEmpty()) {
+                serverBuilder.tools(toolSpecs);
+            }
 
-                log.info("   🔧 Registered tool: {} (from server '{}')",
-                        descriptor.getPublicName(), descriptor.getServerConfigName());
+            // ── Register prompts from registry ──────────────────────────
+            List<CapabilityDescriptor> promptDescriptors = registryService.getPromptDescriptors();
+            if (!promptDescriptors.isEmpty()) {
+                List<McpServerFeatures.SyncPromptSpecification> promptSpecs = new ArrayList<>();
+
+                for (CapabilityDescriptor descriptor : promptDescriptors) {
+                    // Parse prompt arguments from JSON string stored in registry
+                    List<McpSchema.PromptArgument> promptArgs = parsePromptArguments(descriptor.getArguments());
+
+                    McpSchema.Prompt promptDef = new McpSchema.Prompt(
+                            descriptor.getPublicName(),
+                            descriptor.getDescription(),
+                            promptArgs);
+
+                    promptSpecs.add(new McpServerFeatures.SyncPromptSpecification(promptDef, this::handleGetPrompt));
+                    log.info("   📝 Registered prompt: {} (from server '{}')", descriptor.getPublicName(), descriptor.getServerConfigName());
+                }
+
+                serverBuilder.prompts(promptSpecs);
+                log.info("🗂️  Registered {} prompts with MCP server", promptSpecs.size());
+            }
+
+            // ── Register resources from registry ────────────────────────
+            List<CapabilityDescriptor> resourceDescriptors = registryService.getResourceDescriptors();
+            if (!resourceDescriptors.isEmpty()) {
+                List<McpServerFeatures.SyncResourceSpecification> resourceSpecs = new ArrayList<>();
+
+                for (CapabilityDescriptor descriptor : resourceDescriptors) {
+                    McpSchema.Resource resourceDef = McpSchema.Resource.builder()
+                            .uri(descriptor.getResourceUri())
+                            .name(descriptor.getPublicName())
+                            .description(descriptor.getDescription())
+                            .mimeType(descriptor.getMimeType())
+                            .build();
+
+                    resourceSpecs.add(new McpServerFeatures.SyncResourceSpecification(resourceDef, this::handleReadResource));
+                    log.info("   📁 Registered resource: {} → {} (from server '{}')", descriptor.getPublicName(), descriptor.getResourceUri(), descriptor.getServerConfigName());
+                }
+
+                serverBuilder.resources(resourceSpecs);
+                log.info("🗂️  Registered {} resources with MCP server", resourceSpecs.size());
             }
 
             // Build the server
@@ -113,10 +166,10 @@ public class McpServerApplication implements ApplicationRunner {
             log.info("═══════════════════════════════════════════════════════════");
             log.info("✅ WS MCP SERVER STARTED SUCCESSFULLY");
             log.info("   Server: ws-mcp-gateway v1.0.0");
-            log.info("   Tools:  {} (from {} enterprise servers)",
+            log.info("   Tools:     {} (from {} enterprise servers)",
                     toolDescriptors.size(), registryService.getRegisteredServerNames().size());
-            log.info("   Resources: {}", registryService.getResourceDescriptors().size());
-            log.info("   Prompts:   {}", registryService.getPromptDescriptors().size());
+            log.info("   Prompts:   {} (registered with SDK)", promptDescriptors.size());
+            log.info("   Resources: {} (registered with SDK)", resourceDescriptors.size());
             log.info("   Waiting for AI agent connection via stdio...");
             log.info("═══════════════════════════════════════════════════════════");
 
@@ -162,5 +215,63 @@ public class McpServerApplication implements ApplicationRunner {
     private McpSchema.CallToolResult handleToolCall(McpSyncServerExchange exchange,
                                                     McpSchema.CallToolRequest request) {
         return orchestrator.orchestrate(exchange, request.name(), request.arguments());
+    }
+
+    /**
+     * Prompt get handler — delegates to the {@link ToolCallOrchestrator}.
+     *
+     * <p>The orchestrator performs registry lookup to resolve the public prompt name
+     * to the enterprise server + original prompt name, then forwards the request.
+     */
+    private McpSchema.GetPromptResult handleGetPrompt(McpSyncServerExchange exchange,
+                                                      McpSchema.GetPromptRequest request) {
+        return orchestrator.orchestrateGetPrompt(exchange, request.name(), request.arguments());
+    }
+
+    /**
+     * Resource read handler — delegates to the {@link ToolCallOrchestrator}.
+     *
+     * <p>The orchestrator performs registry lookup by resource URI to resolve to
+     * the enterprise server, then forwards the read request.
+     */
+    private McpSchema.ReadResourceResult handleReadResource(McpSyncServerExchange exchange,
+                                                            McpSchema.ReadResourceRequest request) {
+        // Look up the resource by URI to find the public name for orchestration
+        String publicName = resolvePublicNameByUri(request.uri());
+        return orchestrator.orchestrateReadResource(exchange, publicName, request.uri());
+    }
+
+    /**
+     * Resolve the public name of a resource by its URI.
+     * Resources are registered with the SDK by URI, but our registry indexes by publicName.
+     * This does a reverse lookup from URI → publicName.
+     */
+    private String resolvePublicNameByUri(String uri) {
+        List<CapabilityDescriptor> resources = registryService.getResourceDescriptors();
+        for (CapabilityDescriptor descriptor : resources) {
+            if (uri.equals(descriptor.getResourceUri())) {
+                return descriptor.getPublicName();
+            }
+        }
+        // If not found by exact URI match, use the URI itself as the identifier
+        return uri;
+    }
+
+    /**
+     * Parse prompt arguments from JSON string stored in the capability registry.
+     * Returns empty list if the JSON is null, blank, or unparseable.
+     */
+    private List<McpSchema.PromptArgument> parsePromptArguments(String argumentsJson) {
+        if (argumentsJson == null || argumentsJson.isBlank()) {
+            return Collections.emptyList();
+        }
+        try {
+            return objectMapper.readValue(argumentsJson,
+                    new TypeReference<List<McpSchema.PromptArgument>>() {
+                    });
+        } catch (Exception e) {
+            log.warn("Failed to parse prompt arguments JSON: {}", e.getMessage());
+            return Collections.emptyList();
+        }
     }
 }

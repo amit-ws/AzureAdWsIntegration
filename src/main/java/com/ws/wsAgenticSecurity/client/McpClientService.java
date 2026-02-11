@@ -226,6 +226,34 @@ public class McpClientService {
     }
 
     /**
+     * Get a prompt from a specific server (forwards the getPrompt request to enterprise server).
+     */
+    public McpSchema.GetPromptResult getPrompt(String serverName, String promptName,
+                                                Map<String, Object> arguments) {
+        log.info("📝 Getting prompt '{}' from server '{}'", promptName, serverName);
+        long start = System.currentTimeMillis();
+
+        McpSession session = sessionManager.getSession(serverName);
+        McpSyncClient client = session.getClient();
+
+        McpSchema.GetPromptRequest request = new McpSchema.GetPromptRequest(promptName, arguments);
+
+        try {
+            McpSchema.GetPromptResult result = client.getPrompt(request);
+            long duration = System.currentTimeMillis() - start;
+
+            int messageCount = result.messages() != null ? result.messages().size() : 0;
+            log.info("✅ Prompt '{}' retrieved successfully, {} message(s)", promptName, messageCount);
+
+            return result;
+        } catch (Exception e) {
+            long duration = System.currentTimeMillis() - start;
+            log.error("❌ Failed to get prompt '{}' from '{}': {}", promptName, serverName, e.getMessage());
+            throw e;
+        }
+    }
+
+    /**
      * Read a resource from a specific server
      */
     public List<McpSchema.ResourceContents> readResource(String serverName, String uri) {

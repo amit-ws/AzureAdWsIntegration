@@ -440,4 +440,255 @@ public class ToolCallOrchestrator {
                 publicName, serverName, detail);
         return new McpSchema.CallToolResult(message, true);
     }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  PROMPT ORCHESTRATION
+    // ════════════════════════════════════════════════════════════════════
+
+    /**
+     * Orchestrate a getPrompt request from an AI agent to the correct enterprise MCP server.
+     *
+     * <p>Follows the same audited flow as tool call orchestration:
+     * correlation ID → session resolution → registry lookup → forward → audit → return.
+     *
+     * @param exchange   the MCP SDK exchange
+     * @param publicName the namespaced prompt name as registered with the AI agent (e.g., "github_generate_pr_description")
+     * @param arguments  the prompt arguments from GetPromptRequest.arguments()
+     * @return GetPromptResult from the enterprise server
+     */
+    public McpSchema.GetPromptResult orchestrateGetPrompt(McpSyncServerExchange exchange,
+                                                            String publicName,
+                                                            Map<String, Object> arguments) {
+        String correlationId = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+        String sessionId = resolveSessionId(exchange);
+        String clientName = resolveClientName(exchange);
+
+        log.info("═══════════════════════════════════════════════════════════");
+        log.info("📝 PROMPT ORCHESTRATION START [{}]", correlationId);
+        log.info("   Prompt: {}", publicName);
+        log.info("   Args: {}", arguments != null ? arguments.keySet() : "null");
+        log.info("   Session: {}", sessionId != null ? sessionId : "unknown");
+        log.info("   Agent: {}", clientName);
+        log.info("═══════════════════════════════════════════════════════════");
+
+        long orchestrationStart = System.currentTimeMillis();
+
+        // Audit — prompt extracted
+        auditService.auditOrchestrationToolExtracted(correlationId, publicName, sessionId);
+
+        // Registry lookup
+        long lookupStart = System.currentTimeMillis();
+        Optional<CapabilityDescriptor> optDescriptor = registryService.lookupByPublicName(publicName);
+        long lookupDuration = System.currentTimeMillis() - lookupStart;
+
+        if (optDescriptor.isEmpty()) {
+            log.error("❌ [{}] Prompt '{}' NOT FOUND in capability registry", correlationId, publicName);
+            auditService.auditOrchestrationError(
+                    correlationId, null, publicName,
+                    McpErrorCode.CAPABILITY_NOT_FOUND,
+                    "Prompt '" + publicName + "' not found in capability registry");
+            throw new RuntimeException(String.format("[%d] %s: prompt '%s'",
+                    McpErrorCode.CAPABILITY_NOT_FOUND.getCode(),
+                    McpErrorCode.CAPABILITY_NOT_FOUND.getMessage(), publicName));
+        }
+
+        CapabilityDescriptor descriptor = optDescriptor.get();
+        String serverName = descriptor.getServerConfigName();
+        String originalName = descriptor.getOriginalName();
+
+        log.info("🔍 [{}] Registry resolved: {} → server='{}', original='{}'",
+                correlationId, publicName, serverName, originalName);
+
+        auditService.auditOrchestrationRegistryLookup(
+                correlationId, publicName, serverName, lookupDuration);
+
+        // Register in-flight
+        inFlightRegistry.register(correlationId, publicName, serverName, originalName, sessionId);
+
+        // Resolve agent token override
+        boolean usingAgentToken = resolveAndApplyAgentToken(correlationId, serverName);
+
+        // Forward to enterprise server
+        long callStart = System.currentTimeMillis();
+        try {
+            log.info("📤 [{}] Forwarding getPrompt to '{}' → prompt '{}' (token: {})",
+                    correlationId, serverName, originalName,
+                    usingAgentToken ? "AGENT-PROVIDED" : "CONFIG");
+
+            McpSchema.GetPromptResult result =
+                    mcpClientService.getPrompt(serverName, originalName, arguments);
+
+            long callDuration = System.currentTimeMillis() - callStart;
+            long totalDuration = System.currentTimeMillis() - orchestrationStart;
+
+            auditService.auditOrchestrationCallForwarded(
+                    correlationId, serverName, originalName, callDuration);
+
+            inFlightRegistry.complete(correlationId);
+
+            int messageCount = result.messages() != null ? result.messages().size() : 0;
+            log.info("═══════════════════════════════════════════════════════════");
+            log.info("✅ PROMPT ORCHESTRATION COMPLETE [{}]", correlationId);
+            log.info("   Prompt: {} → {}.{}", publicName, serverName, originalName);
+            log.info("   Response: {} message(s)", messageCount);
+            log.info("   Forward: {}ms | Total: {}ms", callDuration, totalDuration);
+            log.info("   In-flight: {} active", inFlightRegistry.getActiveCount());
+            log.info("═══════════════════════════════════════════════════════════");
+
+            return result;
+
+        } catch (IllegalArgumentException e) {
+            log.error("❌ [{}] Server '{}' unavailable: {}", correlationId, serverName, e.getMessage());
+            inFlightRegistry.fail(correlationId, e.getMessage());
+            auditService.auditOrchestrationError(
+                    correlationId, serverName, publicName,
+                    McpErrorCode.SERVER_UNAVAILABLE, e.getMessage());
+            throw new RuntimeException(String.format("[%d] %s: prompt '%s' on server '%s' — %s",
+                    McpErrorCode.SERVER_UNAVAILABLE.getCode(),
+                    McpErrorCode.SERVER_UNAVAILABLE.getMessage(),
+                    publicName, serverName, e.getMessage()), e);
+
+        } catch (Exception e) {
+            log.error("❌ [{}] Prompt orchestration failure for '{}' on '{}': {}",
+                    correlationId, publicName, serverName, e.getMessage(), e);
+            inFlightRegistry.fail(correlationId, e.getMessage());
+            auditService.auditOrchestrationError(
+                    correlationId, serverName, publicName,
+                    McpErrorCode.ORCHESTRATION_FAILURE, e.getMessage());
+            throw new RuntimeException(String.format("[%d] %s: prompt '%s' on server '%s' — %s",
+                    McpErrorCode.ORCHESTRATION_FAILURE.getCode(),
+                    McpErrorCode.ORCHESTRATION_FAILURE.getMessage(),
+                    publicName, serverName, e.getMessage()), e);
+        } finally {
+            if (usingAgentToken) {
+                HttpMcpTransport.clearRequestOverrideHeaders();
+                log.debug("🔑 [{}] Cleared agent token override from ThreadLocal", correlationId);
+            }
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  RESOURCE ORCHESTRATION
+    // ════════════════════════════════════════════════════════════════════
+
+    /**
+     * Orchestrate a readResource request from an AI agent to the correct enterprise MCP server.
+     *
+     * <p>Follows the same audited flow as tool call orchestration:
+     * correlation ID → session resolution → registry lookup → forward → audit → return.
+     *
+     * @param exchange      the MCP SDK exchange
+     * @param publicName    the namespaced resource name as registered with the AI agent
+     * @param resourceUri   the resource URI from ReadResourceRequest
+     * @return ReadResourceResult from the enterprise server
+     */
+    public McpSchema.ReadResourceResult orchestrateReadResource(McpSyncServerExchange exchange,
+                                                                  String publicName,
+                                                                  String resourceUri) {
+        String correlationId = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+        String sessionId = resolveSessionId(exchange);
+        String clientName = resolveClientName(exchange);
+
+        log.info("═══════════════════════════════════════════════════════════");
+        log.info("📖 RESOURCE ORCHESTRATION START [{}]", correlationId);
+        log.info("   Resource: {}", publicName);
+        log.info("   URI: {}", resourceUri);
+        log.info("   Session: {}", sessionId != null ? sessionId : "unknown");
+        log.info("   Agent: {}", clientName);
+        log.info("═══════════════════════════════════════════════════════════");
+
+        long orchestrationStart = System.currentTimeMillis();
+
+        // Audit — resource extracted
+        auditService.auditOrchestrationToolExtracted(correlationId, publicName, sessionId);
+
+        // Registry lookup by public name
+        long lookupStart = System.currentTimeMillis();
+        Optional<CapabilityDescriptor> optDescriptor = registryService.lookupByPublicName(publicName);
+        long lookupDuration = System.currentTimeMillis() - lookupStart;
+
+        if (optDescriptor.isEmpty()) {
+            log.error("❌ [{}] Resource '{}' NOT FOUND in capability registry", correlationId, publicName);
+            auditService.auditOrchestrationError(
+                    correlationId, null, publicName,
+                    McpErrorCode.CAPABILITY_NOT_FOUND,
+                    "Resource '" + publicName + "' not found in capability registry");
+            throw new RuntimeException(String.format("[%d] %s: resource '%s'",
+                    McpErrorCode.CAPABILITY_NOT_FOUND.getCode(),
+                    McpErrorCode.CAPABILITY_NOT_FOUND.getMessage(), publicName));
+        }
+
+        CapabilityDescriptor descriptor = optDescriptor.get();
+        String serverName = descriptor.getServerConfigName();
+        String originalUri = descriptor.getResourceUri();
+
+        log.info("🔍 [{}] Registry resolved: {} → server='{}', uri='{}'",
+                correlationId, publicName, serverName, originalUri);
+
+        auditService.auditOrchestrationRegistryLookup(
+                correlationId, publicName, serverName, lookupDuration);
+
+        // Register in-flight
+        inFlightRegistry.register(correlationId, publicName, serverName, originalUri, sessionId);
+
+        // Resolve agent token override
+        boolean usingAgentToken = resolveAndApplyAgentToken(correlationId, serverName);
+
+        // Forward to enterprise server
+        long callStart = System.currentTimeMillis();
+        try {
+            log.info("📤 [{}] Forwarding readResource to '{}' → uri '{}' (token: {})",
+                    correlationId, serverName, originalUri,
+                    usingAgentToken ? "AGENT-PROVIDED" : "CONFIG");
+
+            List<McpSchema.ResourceContents> contents =
+                    mcpClientService.readResource(serverName, originalUri);
+
+            long callDuration = System.currentTimeMillis() - callStart;
+            long totalDuration = System.currentTimeMillis() - orchestrationStart;
+
+            auditService.auditOrchestrationCallForwarded(
+                    correlationId, serverName, publicName, callDuration);
+
+            inFlightRegistry.complete(correlationId);
+
+            log.info("═══════════════════════════════════════════════════════════");
+            log.info("✅ RESOURCE ORCHESTRATION COMPLETE [{}]", correlationId);
+            log.info("   Resource: {} → {}", publicName, originalUri);
+            log.info("   Response: {} content item(s)", contents.size());
+            log.info("   Forward: {}ms | Total: {}ms", callDuration, totalDuration);
+            log.info("   In-flight: {} active", inFlightRegistry.getActiveCount());
+            log.info("═══════════════════════════════════════════════════════════");
+
+            return new McpSchema.ReadResourceResult(contents);
+
+        } catch (IllegalArgumentException e) {
+            log.error("❌ [{}] Server '{}' unavailable: {}", correlationId, serverName, e.getMessage());
+            inFlightRegistry.fail(correlationId, e.getMessage());
+            auditService.auditOrchestrationError(
+                    correlationId, serverName, publicName,
+                    McpErrorCode.SERVER_UNAVAILABLE, e.getMessage());
+            throw new RuntimeException(String.format("[%d] %s: resource '%s' on server '%s' — %s",
+                    McpErrorCode.SERVER_UNAVAILABLE.getCode(),
+                    McpErrorCode.SERVER_UNAVAILABLE.getMessage(),
+                    publicName, serverName, e.getMessage()), e);
+
+        } catch (Exception e) {
+            log.error("❌ [{}] Resource orchestration failure for '{}' on '{}': {}",
+                    correlationId, publicName, serverName, e.getMessage(), e);
+            inFlightRegistry.fail(correlationId, e.getMessage());
+            auditService.auditOrchestrationError(
+                    correlationId, serverName, publicName,
+                    McpErrorCode.ORCHESTRATION_FAILURE, e.getMessage());
+            throw new RuntimeException(String.format("[%d] %s: resource '%s' on server '%s' — %s",
+                    McpErrorCode.ORCHESTRATION_FAILURE.getCode(),
+                    McpErrorCode.ORCHESTRATION_FAILURE.getMessage(),
+                    publicName, serverName, e.getMessage()), e);
+        } finally {
+            if (usingAgentToken) {
+                HttpMcpTransport.clearRequestOverrideHeaders();
+                log.debug("🔑 [{}] Cleared agent token override from ThreadLocal", correlationId);
+            }
+        }
+    }
 }
