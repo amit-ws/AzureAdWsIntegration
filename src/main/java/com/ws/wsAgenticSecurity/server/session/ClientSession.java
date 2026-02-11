@@ -40,7 +40,8 @@ public class ClientSession {
             String protocolVersion,
             McpSchema.ClientCapabilities capabilities,
             McpSchema.Implementation clientInfo,
-            Map<String, Object> allData
+            Map<String, Object> allData,
+            String requestId
     ) {
         this.protocolVersion = protocolVersion;
         this.capabilities = capabilities;
@@ -60,7 +61,8 @@ public class ClientSession {
                     sessionId,
                     protocolVersion,
                     clientInfo,
-                    capabilities
+                    capabilities,
+                    requestId
             );
         } catch (Exception e) {
             log.error("Failed to audit session initialization: {}", e.getMessage());

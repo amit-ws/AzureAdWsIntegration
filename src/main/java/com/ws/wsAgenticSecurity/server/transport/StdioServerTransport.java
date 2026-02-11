@@ -223,7 +223,7 @@ public class StdioServerTransport implements McpServerTransport {
 
             // Special handling for initialize
             if ("initialize".equals(method)) {
-                captureClientData(rawData);
+                captureClientData(rawData, id);
             }
 
             // ── Track request for audit (request → response matching) ───
@@ -240,7 +240,7 @@ public class StdioServerTransport implements McpServerTransport {
         }
     }
 
-    private void captureClientData(Map<String, Object> rawData) {
+    private void captureClientData(Map<String, Object> rawData, Object requestId) {
         try {
             log.info("🔍 CAPTURING CLIENT DATA...");
 
@@ -282,7 +282,8 @@ public class StdioServerTransport implements McpServerTransport {
                 extractTokens(rawData);
 
                 ClientSession session = sessionManager.getCurrentSession();
-                session.initialize(protocolVersion, capabilities, clientInfo, params);
+                String requestIdStr = requestId != null ? String.valueOf(requestId) : null;
+                session.initialize(protocolVersion, capabilities, clientInfo, params, requestIdStr);
             }
 
         } catch (Exception e) {

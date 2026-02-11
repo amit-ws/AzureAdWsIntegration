@@ -406,7 +406,8 @@ public class McpAuditService {
     public void auditServerSessionInitialized(String sessionId,
                                               String protocolVersion,
                                               Object clientInfo,
-                                              Object clientCapabilities) {
+                                              Object clientCapabilities,
+                                              String requestId) {
         persist(McpAuditLog.builder()
                 .eventType(AuditEventType.SERVER_SESSION_INITIALIZED)
                 .module(AuditModule.WS_SERVER)
@@ -415,6 +416,7 @@ public class McpAuditService {
                 .sessionId(sessionId)
                 .mcpMethod("initialize")
                 .protocolVersion(protocolVersion)
+                .requestId(requestId)
                 .correlationId(generateCorrelationId())
                 .requestPayload(toJson(Map.of(
                         "clientInfo", clientInfo != null ? clientInfo : Map.of(),
