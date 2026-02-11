@@ -114,11 +114,11 @@ public class McpClientService {
             session.setTools(tools);
             long duration = System.currentTimeMillis() - start;
             List<String> toolNames = tools.stream().map(McpSchema.Tool::name).toList();
-            auditService.auditClientToolsListFetched(serverName, tools.size(), toolNames, duration);
+            auditService.auditClientToolsListFetched(session.getSessionId(), serverName, tools.size(), toolNames, duration);
             return tools;
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - start;
-            auditService.auditClientToolsListFailed(serverName, e.getMessage(), duration);
+            auditService.auditClientToolsListFailed(session.getSessionId(), serverName, e.getMessage(), duration);
             throw e;
         }
     }
@@ -140,11 +140,11 @@ public class McpClientService {
             session.setResources(resources);
             long duration = System.currentTimeMillis() - start;
             List<String> uris = resources.stream().map(McpSchema.Resource::uri).toList();
-            auditService.auditClientResourcesListFetched(serverName, resources.size(), uris, duration);
+            auditService.auditClientResourcesListFetched(session.getSessionId(), serverName, resources.size(), uris, duration);
             return resources;
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - start;
-            auditService.auditClientResourcesListFailed(serverName, e.getMessage(), duration);
+            auditService.auditClientResourcesListFailed(session.getSessionId(), serverName, e.getMessage(), duration);
             throw e;
         }
     }
@@ -166,11 +166,11 @@ public class McpClientService {
             session.setPrompts(prompts);
             long duration = System.currentTimeMillis() - start;
             List<String> promptNames = prompts.stream().map(McpSchema.Prompt::name).toList();
-            auditService.auditClientPromptsListFetched(serverName, prompts.size(), promptNames, duration);
+            auditService.auditClientPromptsListFetched(session.getSessionId(), serverName, prompts.size(), promptNames, duration);
             return prompts;
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - start;
-            auditService.auditClientPromptsListFailed(serverName, e.getMessage(), duration);
+            auditService.auditClientPromptsListFailed(session.getSessionId(), serverName, e.getMessage(), duration);
             throw e;
         }
     }
@@ -214,13 +214,13 @@ public class McpClientService {
             });
 
             // Audit — tool invocation success
-            auditService.auditClientToolInvocation(serverName, toolName, args, result, duration);
+            auditService.auditClientToolInvocation(session.getSessionId(), serverName, toolName, args, result, duration);
 
             return result;
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - start;
             auditService.auditClientToolInvocationFailed(
-                    serverName, toolName, args, e.getMessage(), McpErrorCode.INTERNAL_ERROR, duration);
+                    session.getSessionId(), serverName, toolName, args, e.getMessage(), McpErrorCode.INTERNAL_ERROR, duration);
             throw e;
         }
     }
@@ -272,12 +272,12 @@ public class McpClientService {
             log.info("✅ Resource read successfully, {} content item(s)", contents.size());
 
             // Audit — resource read success
-            auditService.auditClientResourceRead(serverName, uri, contents, duration);
+            auditService.auditClientResourceRead(session.getSessionId(), serverName, uri, contents, duration);
 
             return contents;
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - start;
-            auditService.auditClientResourceReadFailed(serverName, uri, e.getMessage(), duration);
+            auditService.auditClientResourceReadFailed(session.getSessionId(), serverName, uri, e.getMessage(), duration);
             throw e;
         }
     }

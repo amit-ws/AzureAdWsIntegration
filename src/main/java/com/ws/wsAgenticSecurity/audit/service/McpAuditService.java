@@ -61,7 +61,8 @@ public class McpAuditService {
      * Audit: client successfully initialized a session with an enterprise MCP server.
      */
     @Async("mcpAuditExecutor")
-    public void auditClientSessionInitialized(String serverName,
+    public void auditClientSessionInitialized(String sessionId,
+                                              String serverName,
                                               String protocolVersion,
                                               Map<String, Object> serverInfo,
                                               Map<String, Object> capabilities,
@@ -71,6 +72,7 @@ public class McpAuditService {
                 .module(AuditModule.WS_CLIENT)
                 .status(AuditStatus.SUCCESS)
                 .severity(AuditSeverity.INFO)
+                .sessionId(sessionId)
                 .serverName(serverName)
                 .mcpMethod("initialize")
                 .protocolVersion(protocolVersion)
@@ -88,7 +90,8 @@ public class McpAuditService {
      * Audit: client session initialization failed.
      */
     @Async("mcpAuditExecutor")
-    public void auditClientSessionInitFailed(String serverName,
+    public void auditClientSessionInitFailed(String sessionId,
+                                             String serverName,
                                              String errorMessage,
                                              long durationMs) {
         persist(McpAuditLog.builder()
@@ -96,6 +99,7 @@ public class McpAuditService {
                 .module(AuditModule.WS_CLIENT)
                 .status(AuditStatus.FAILURE)
                 .severity(AuditSeverity.ERROR)
+                .sessionId(sessionId)
                 .serverName(serverName)
                 .mcpMethod("initialize")
                 .correlationId(generateCorrelationId())
@@ -109,12 +113,14 @@ public class McpAuditService {
      * Audit: client disconnected from an enterprise MCP server.
      */
     @Async("mcpAuditExecutor")
-    public void auditClientSessionDisconnected(String serverName) {
+    public void auditClientSessionDisconnected(String sessionId,
+                                               String serverName) {
         persist(McpAuditLog.builder()
                 .eventType(AuditEventType.CLIENT_SESSION_DISCONNECTED)
                 .module(AuditModule.WS_CLIENT)
                 .status(AuditStatus.SUCCESS)
                 .severity(AuditSeverity.INFO)
+                .sessionId(sessionId)
                 .serverName(serverName)
                 .correlationId(generateCorrelationId())
                 .build());
@@ -124,7 +130,8 @@ public class McpAuditService {
      * Audit: tools list fetched from enterprise MCP server.
      */
     @Async("mcpAuditExecutor")
-    public void auditClientToolsListFetched(String serverName,
+    public void auditClientToolsListFetched(String sessionId,
+                                            String serverName,
                                             int toolCount,
                                             Object toolsList,
                                             long durationMs) {
@@ -133,6 +140,7 @@ public class McpAuditService {
                 .module(AuditModule.WS_CLIENT)
                 .status(AuditStatus.SUCCESS)
                 .severity(AuditSeverity.INFO)
+                .sessionId(sessionId)
                 .serverName(serverName)
                 .mcpMethod("tools/list")
                 .capabilityType("TOOL")
@@ -149,7 +157,8 @@ public class McpAuditService {
      * Audit: tools list fetch failed.
      */
     @Async("mcpAuditExecutor")
-    public void auditClientToolsListFailed(String serverName,
+    public void auditClientToolsListFailed(String sessionId,
+                                           String serverName,
                                            String errorMessage,
                                            long durationMs) {
         persist(McpAuditLog.builder()
@@ -157,6 +166,7 @@ public class McpAuditService {
                 .module(AuditModule.WS_CLIENT)
                 .status(AuditStatus.FAILURE)
                 .severity(AuditSeverity.ERROR)
+                .sessionId(sessionId)
                 .serverName(serverName)
                 .mcpMethod("tools/list")
                 .capabilityType("TOOL")
@@ -171,7 +181,8 @@ public class McpAuditService {
      * Audit: resources list fetched from enterprise MCP server.
      */
     @Async("mcpAuditExecutor")
-    public void auditClientResourcesListFetched(String serverName,
+    public void auditClientResourcesListFetched(String sessionId,
+                                                String serverName,
                                                 int resourceCount,
                                                 Object resourcesList,
                                                 long durationMs) {
@@ -180,6 +191,7 @@ public class McpAuditService {
                 .module(AuditModule.WS_CLIENT)
                 .status(AuditStatus.SUCCESS)
                 .severity(AuditSeverity.INFO)
+                .sessionId(sessionId)
                 .serverName(serverName)
                 .mcpMethod("resources/list")
                 .capabilityType("RESOURCE")
@@ -196,7 +208,8 @@ public class McpAuditService {
      * Audit: resources list fetch failed.
      */
     @Async("mcpAuditExecutor")
-    public void auditClientResourcesListFailed(String serverName,
+    public void auditClientResourcesListFailed(String sessionId,
+                                               String serverName,
                                                String errorMessage,
                                                long durationMs) {
         persist(McpAuditLog.builder()
@@ -204,6 +217,7 @@ public class McpAuditService {
                 .module(AuditModule.WS_CLIENT)
                 .status(AuditStatus.FAILURE)
                 .severity(AuditSeverity.ERROR)
+                .sessionId(sessionId)
                 .serverName(serverName)
                 .mcpMethod("resources/list")
                 .capabilityType("RESOURCE")
@@ -218,7 +232,8 @@ public class McpAuditService {
      * Audit: prompts list fetched from enterprise MCP server.
      */
     @Async("mcpAuditExecutor")
-    public void auditClientPromptsListFetched(String serverName,
+    public void auditClientPromptsListFetched(String sessionId,
+                                              String serverName,
                                               int promptCount,
                                               Object promptsList,
                                               long durationMs) {
@@ -227,6 +242,7 @@ public class McpAuditService {
                 .module(AuditModule.WS_CLIENT)
                 .status(AuditStatus.SUCCESS)
                 .severity(AuditSeverity.INFO)
+                .sessionId(sessionId)
                 .serverName(serverName)
                 .mcpMethod("prompts/list")
                 .capabilityType("PROMPT")
@@ -243,7 +259,8 @@ public class McpAuditService {
      * Audit: prompts list fetch failed.
      */
     @Async("mcpAuditExecutor")
-    public void auditClientPromptsListFailed(String serverName,
+    public void auditClientPromptsListFailed(String sessionId,
+                                             String serverName,
                                              String errorMessage,
                                              long durationMs) {
         persist(McpAuditLog.builder()
@@ -251,6 +268,7 @@ public class McpAuditService {
                 .module(AuditModule.WS_CLIENT)
                 .status(AuditStatus.FAILURE)
                 .severity(AuditSeverity.ERROR)
+                .sessionId(sessionId)
                 .serverName(serverName)
                 .mcpMethod("prompts/list")
                 .capabilityType("PROMPT")
@@ -265,7 +283,8 @@ public class McpAuditService {
      * Audit: tool invoked on an enterprise MCP server.
      */
     @Async("mcpAuditExecutor")
-    public void auditClientToolInvocation(String serverName,
+    public void auditClientToolInvocation(String sessionId,
+                                          String serverName,
                                           String toolName,
                                           Object requestArgs,
                                           Object responseContent,
@@ -275,6 +294,7 @@ public class McpAuditService {
                 .module(AuditModule.WS_CLIENT)
                 .status(AuditStatus.SUCCESS)
                 .severity(AuditSeverity.INFO)
+                .sessionId(sessionId)
                 .serverName(serverName)
                 .capabilityName(toolName)
                 .capabilityType("TOOL")
@@ -295,7 +315,8 @@ public class McpAuditService {
      * Audit: tool invocation failed on an enterprise MCP server.
      */
     @Async("mcpAuditExecutor")
-    public void auditClientToolInvocationFailed(String serverName,
+    public void auditClientToolInvocationFailed(String sessionId,
+                                                String serverName,
                                                 String toolName,
                                                 Object requestArgs,
                                                 String errorMessage,
@@ -306,6 +327,7 @@ public class McpAuditService {
                 .module(AuditModule.WS_CLIENT)
                 .status(AuditStatus.FAILURE)
                 .severity(AuditSeverity.ERROR)
+                .sessionId(sessionId)
                 .serverName(serverName)
                 .capabilityName(toolName)
                 .capabilityType("TOOL")
@@ -325,7 +347,8 @@ public class McpAuditService {
      * Audit: resource read from enterprise MCP server.
      */
     @Async("mcpAuditExecutor")
-    public void auditClientResourceRead(String serverName,
+    public void auditClientResourceRead(String sessionId,
+                                        String serverName,
                                         String resourceUri,
                                         Object responseContent,
                                         long durationMs) {
@@ -334,6 +357,7 @@ public class McpAuditService {
                 .module(AuditModule.WS_CLIENT)
                 .status(AuditStatus.SUCCESS)
                 .severity(AuditSeverity.INFO)
+                .sessionId(sessionId)
                 .serverName(serverName)
                 .capabilityName(resourceUri)
                 .capabilityType("RESOURCE")
@@ -351,7 +375,8 @@ public class McpAuditService {
      * Audit: resource read failed on enterprise MCP server.
      */
     @Async("mcpAuditExecutor")
-    public void auditClientResourceReadFailed(String serverName,
+    public void auditClientResourceReadFailed(String sessionId,
+                                              String serverName,
                                               String resourceUri,
                                               String errorMessage,
                                               long durationMs) {
@@ -360,6 +385,7 @@ public class McpAuditService {
                 .module(AuditModule.WS_CLIENT)
                 .status(AuditStatus.FAILURE)
                 .severity(AuditSeverity.ERROR)
+                .sessionId(sessionId)
                 .serverName(serverName)
                 .capabilityName(resourceUri)
                 .capabilityType("RESOURCE")
@@ -374,7 +400,6 @@ public class McpAuditService {
 
     // ════════════════════════════════════════════════════════════════════
     //  AREA 1 — AI Client <-> WS Server (Northbound)
-    //  (Stub methods — to be wired when Orchestration Layer is built)
     // ════════════════════════════════════════════════════════════════════
 
     @Async("mcpAuditExecutor")
@@ -521,11 +546,11 @@ public class McpAuditService {
 
     // ════════════════════════════════════════════════════════════════════
     //  AREA 3 — Capability Registry CRUD
-    //  (Stub methods — to be wired when Registry Service is built)
     // ════════════════════════════════════════════════════════════════════
 
     @Async("mcpAuditExecutor")
-    public void auditRegistryCapabilityRegistered(String serverName,
+    public void auditRegistryCapabilityRegistered(String sessionId,
+                                                  String serverName,
                                                   String publicName,
                                                   String capabilityType) {
         persist(McpAuditLog.builder()
@@ -533,6 +558,7 @@ public class McpAuditService {
                 .module(AuditModule.CAPABILITY_REGISTRY)
                 .status(AuditStatus.SUCCESS)
                 .severity(AuditSeverity.INFO)
+                .sessionId(sessionId)
                 .serverName(serverName)
                 .capabilityName(publicName)
                 .capabilityType(capabilityType)
@@ -541,7 +567,8 @@ public class McpAuditService {
     }
 
     @Async("mcpAuditExecutor")
-    public void auditRegistryCapabilityRemoved(String serverName,
+    public void auditRegistryCapabilityRemoved(String sessionId,
+                                               String serverName,
                                                String publicName,
                                                String capabilityType) {
         persist(McpAuditLog.builder()
@@ -549,6 +576,7 @@ public class McpAuditService {
                 .module(AuditModule.CAPABILITY_REGISTRY)
                 .status(AuditStatus.SUCCESS)
                 .severity(AuditSeverity.INFO)
+                .sessionId(sessionId)
                 .serverName(serverName)
                 .capabilityName(publicName)
                 .capabilityType(capabilityType)
@@ -557,7 +585,8 @@ public class McpAuditService {
     }
 
     @Async("mcpAuditExecutor")
-    public void auditRegistryCapabilityUpdated(String serverName,
+    public void auditRegistryCapabilityUpdated(String sessionId,
+                                               String serverName,
                                                String publicName,
                                                String capabilityType) {
         persist(McpAuditLog.builder()
@@ -565,6 +594,7 @@ public class McpAuditService {
                 .module(AuditModule.CAPABILITY_REGISTRY)
                 .status(AuditStatus.SUCCESS)
                 .severity(AuditSeverity.INFO)
+                .sessionId(sessionId)
                 .serverName(serverName)
                 .capabilityName(publicName)
                 .capabilityType(capabilityType)
@@ -573,7 +603,8 @@ public class McpAuditService {
     }
 
     @Async("mcpAuditExecutor")
-    public void auditRegistryBulkLoad(String serverName,
+    public void auditRegistryBulkLoad(String sessionId,
+                                      String serverName,
                                       int toolCount,
                                       int resourceCount,
                                       int promptCount,
@@ -583,6 +614,7 @@ public class McpAuditService {
                 .module(AuditModule.CAPABILITY_REGISTRY)
                 .status(AuditStatus.SUCCESS)
                 .severity(AuditSeverity.INFO)
+                .sessionId(sessionId)
                 .serverName(serverName)
                 .correlationId(generateCorrelationId())
                 .responsePayload(toJson(Map.of(
@@ -595,7 +627,8 @@ public class McpAuditService {
     }
 
     @Async("mcpAuditExecutor")
-    public void auditRegistryServerRefresh(String serverName,
+    public void auditRegistryServerRefresh(String sessionId,
+                                           String serverName,
                                            AuditStatus status,
                                            String errorMessage,
                                            long durationMs) {
@@ -604,6 +637,7 @@ public class McpAuditService {
                 .module(AuditModule.CAPABILITY_REGISTRY)
                 .status(status)
                 .severity(status == AuditStatus.SUCCESS ? AuditSeverity.INFO : AuditSeverity.ERROR)
+                .sessionId(sessionId)
                 .serverName(serverName)
                 .correlationId(generateCorrelationId())
                 .durationMs(durationMs);
@@ -618,7 +652,6 @@ public class McpAuditService {
 
     // ════════════════════════════════════════════════════════════════════
     //  AREA 4 — Orchestration Layer
-    //  (Stub methods — to be wired when Orchestration Layer is built)
     // ════════════════════════════════════════════════════════════════════
 
     @Async("mcpAuditExecutor")
@@ -639,6 +672,7 @@ public class McpAuditService {
 
     @Async("mcpAuditExecutor")
     public void auditOrchestrationRegistryLookup(String correlationId,
+                                                 String sessionId,
                                                  String publicCapabilityName,
                                                  String resolvedServerName,
                                                  long durationMs) {
@@ -648,6 +682,7 @@ public class McpAuditService {
                 .status(AuditStatus.SUCCESS)
                 .severity(AuditSeverity.DEBUG)
                 .correlationId(correlationId)
+                .sessionId(sessionId)
                 .capabilityName(publicCapabilityName)
                 .serverName(resolvedServerName)
                 .durationMs(durationMs)
@@ -656,6 +691,7 @@ public class McpAuditService {
 
     @Async("mcpAuditExecutor")
     public void auditOrchestrationCallForwarded(String correlationId,
+                                                String sessionId,
                                                 String serverName,
                                                 String toolName,
                                                 long durationMs) {
@@ -665,6 +701,7 @@ public class McpAuditService {
                 .status(AuditStatus.SUCCESS)
                 .severity(AuditSeverity.INFO)
                 .correlationId(correlationId)
+                .sessionId(sessionId)
                 .serverName(serverName)
                 .capabilityName(toolName)
                 .capabilityType("TOOL")
@@ -675,6 +712,7 @@ public class McpAuditService {
 
     @Async("mcpAuditExecutor")
     public void auditOrchestrationError(String correlationId,
+                                        String sessionId,
                                         String serverName,
                                         String capabilityName,
                                         McpErrorCode errorCode,
@@ -685,6 +723,7 @@ public class McpAuditService {
                 .status(AuditStatus.ERROR)
                 .severity(AuditSeverity.ERROR)
                 .correlationId(correlationId)
+                .sessionId(sessionId)
                 .serverName(serverName)
                 .capabilityName(capabilityName)
                 .errorCode(errorCode.getCode())

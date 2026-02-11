@@ -6,6 +6,7 @@ import lombok.Getter;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Represents an active HTTP-based MCP session with complete server metadata.
@@ -14,6 +15,7 @@ import java.util.List;
 @Getter
 public class McpSession {
 
+    private final String sessionId;
     private final String serverName;
     private final McpSyncClient client;
     private final HttpMcpTransport transport;
@@ -29,6 +31,7 @@ public class McpSession {
     public McpSession(String serverName,
                       McpSyncClient client,
                       HttpMcpTransport transport) {
+        this.sessionId = UUID.randomUUID().toString();
         this.serverName = serverName;
         this.client = client;
         this.transport = transport;

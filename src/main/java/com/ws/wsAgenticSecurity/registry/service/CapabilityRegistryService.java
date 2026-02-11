@@ -165,7 +165,8 @@ public class CapabilityRegistryService {
      * @param prompts          discovered prompts (may be null)
      */
     @Transactional
-    public void registerServer(String serverConfigName,
+    public void registerServer(String sessionId,
+                               String serverConfigName,
                                String displayName,
                                String version,
                                String protocolVersion,
@@ -252,7 +253,7 @@ public class CapabilityRegistryService {
                     toolCount++;
 
                     auditService.auditRegistryCapabilityRegistered(
-                            serverConfigName, publicName, "TOOL");
+                            sessionId, serverConfigName, publicName, "TOOL");
                 }
             }
 
@@ -286,7 +287,7 @@ public class CapabilityRegistryService {
                     resourceCount++;
 
                     auditService.auditRegistryCapabilityRegistered(
-                            serverConfigName, publicName, "RESOURCE");
+                            sessionId, serverConfigName, publicName, "RESOURCE");
                 }
             }
 
@@ -324,7 +325,7 @@ public class CapabilityRegistryService {
                     promptCount++;
 
                     auditService.auditRegistryCapabilityRegistered(
-                            serverConfigName, publicName, "PROMPT");
+                            sessionId, serverConfigName, publicName, "PROMPT");
                 }
             }
 
@@ -337,13 +338,13 @@ public class CapabilityRegistryService {
 
             // Audit — bulk load
             auditService.auditRegistryBulkLoad(
-                    serverConfigName, toolCount, resourceCount, promptCount, duration);
+                    sessionId, serverConfigName, toolCount, resourceCount, promptCount, duration);
 
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - start;
             log.error("❌ Failed to register server '{}': {}", serverConfigName, e.getMessage(), e);
             auditService.auditRegistryServerRefresh(
-                    serverConfigName, AuditStatus.ERROR, e.getMessage(), duration);
+                    sessionId, serverConfigName, AuditStatus.ERROR, e.getMessage(), duration);
             throw e;
         }
     }
@@ -358,7 +359,7 @@ public class CapabilityRegistryService {
      * <p>Called by {@code McpSessionManager.disconnect()}.
      */
     @Transactional
-    public void removeServer(String serverConfigName) {
+    public void removeServer(String sessionId, String serverConfigName) {
         long start = System.currentTimeMillis();
         log.info("🗑️  Removing server '{}' from capability registry...", serverConfigName);
 
@@ -376,7 +377,7 @@ public class CapabilityRegistryService {
                     CapabilityDescriptor desc = primaryIndex.get(publicName);
                     if (desc != null) {
                         auditService.auditRegistryCapabilityRemoved(
-                                serverConfigName, publicName, desc.getType().name());
+                                sessionId, serverConfigName, publicName, desc.getType().name());
                     }
                 }
 
@@ -396,7 +397,7 @@ public class CapabilityRegistryService {
                 log.info("✅ Server '{}' removed from registry ({}ms)", serverConfigName, duration);
 
                 auditService.auditRegistryServerRefresh(
-                        serverConfigName, AuditStatus.SUCCESS, null, duration);
+                        sessionId, serverConfigName, AuditStatus.SUCCESS, null, duration);
             } else {
                 log.warn("⚠️  Server '{}' not found in registry — nothing to remove", serverConfigName);
             }
@@ -404,7 +405,7 @@ public class CapabilityRegistryService {
             long duration = System.currentTimeMillis() - start;
             log.error("❌ Failed to remove server '{}': {}", serverConfigName, e.getMessage(), e);
             auditService.auditRegistryServerRefresh(
-                    serverConfigName, AuditStatus.ERROR, e.getMessage(), duration);
+                    sessionId, serverConfigName, AuditStatus.ERROR, e.getMessage(), duration);
         }
     }
 
@@ -414,7 +415,8 @@ public class CapabilityRegistryService {
      * <p>Equivalent to {@code removeServer + registerServer} in a single atomic block.
      */
     @Transactional
-    public void refreshServer(String serverConfigName,
+    public void refreshServer(String sessionId,
+                              String serverConfigName,
                               String displayName,
                               String version,
                               String protocolVersion,
@@ -424,7 +426,7 @@ public class CapabilityRegistryService {
                               List<McpSchema.Prompt> prompts) {
 
         // registerServer already handles the "upsert + clean slate" pattern
-        registerServer(serverConfigName, displayName, version,
+        registerServer(sessionId, serverConfigName, displayName, version,
                 protocolVersion, capabilities, tools, resources, prompts);
     }
 

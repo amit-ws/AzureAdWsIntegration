@@ -144,7 +144,7 @@ public class ToolCallOrchestrator {
         if (optDescriptor.isEmpty()) {
             log.error("❌ [{}] Tool '{}' NOT FOUND in capability registry", correlationId, publicName);
             auditService.auditOrchestrationError(
-                    correlationId, null, publicName,
+                    correlationId, sessionId, null, publicName,
                     McpErrorCode.CAPABILITY_NOT_FOUND,
                     "Tool '" + publicName + "' not found in capability registry");
             return buildErrorResult(McpErrorCode.CAPABILITY_NOT_FOUND, publicName);
@@ -159,7 +159,7 @@ public class ToolCallOrchestrator {
 
         // ── Step 5: Audit — registry lookup success ─────────────────────
         auditService.auditOrchestrationRegistryLookup(
-                correlationId, publicName, serverName, lookupDuration);
+                correlationId, sessionId, publicName, serverName, lookupDuration);
 
         // ── Step 6: Register in-flight ──────────────────────────────────
         inFlightRegistry.register(correlationId, publicName, serverName, originalName, sessionId);
@@ -173,7 +173,7 @@ public class ToolCallOrchestrator {
             log.error("❌ [{}] Failed to convert arguments: {}", correlationId, e.getMessage());
             inFlightRegistry.fail(correlationId, "Argument conversion failed: " + e.getMessage());
             auditService.auditOrchestrationError(
-                    correlationId, serverName, publicName,
+                    correlationId, sessionId, serverName, publicName,
                     McpErrorCode.ORCHESTRATION_FAILURE,
                     "Argument conversion failed: " + e.getMessage());
             return buildErrorResult(McpErrorCode.ORCHESTRATION_FAILURE,
@@ -198,7 +198,7 @@ public class ToolCallOrchestrator {
 
             // ── Step 9: Audit — call forwarded successfully ─────────────
             auditService.auditOrchestrationCallForwarded(
-                    correlationId, serverName, originalName, callDuration);
+                    correlationId, sessionId, serverName, originalName, callDuration);
 
             // ── Step 10: Deregister in-flight, return result ────────────
             inFlightRegistry.complete(correlationId);
@@ -221,7 +221,7 @@ public class ToolCallOrchestrator {
 
             inFlightRegistry.fail(correlationId, e.getMessage());
             auditService.auditOrchestrationError(
-                    correlationId, serverName, publicName,
+                    correlationId, sessionId, serverName, publicName,
                     McpErrorCode.SERVER_UNAVAILABLE, e.getMessage());
 
             return buildErrorResult(McpErrorCode.SERVER_UNAVAILABLE,
@@ -235,7 +235,7 @@ public class ToolCallOrchestrator {
 
             inFlightRegistry.fail(correlationId, e.getMessage());
             auditService.auditOrchestrationError(
-                    correlationId, serverName, publicName,
+                    correlationId, sessionId, serverName, publicName,
                     McpErrorCode.ORCHESTRATION_FAILURE, e.getMessage());
 
             return buildErrorResult(McpErrorCode.ORCHESTRATION_FAILURE,
@@ -484,7 +484,7 @@ public class ToolCallOrchestrator {
         if (optDescriptor.isEmpty()) {
             log.error("❌ [{}] Prompt '{}' NOT FOUND in capability registry", correlationId, publicName);
             auditService.auditOrchestrationError(
-                    correlationId, null, publicName,
+                    correlationId, sessionId, null, publicName,
                     McpErrorCode.CAPABILITY_NOT_FOUND,
                     "Prompt '" + publicName + "' not found in capability registry");
             throw new RuntimeException(String.format("[%d] %s: prompt '%s'",
@@ -500,7 +500,7 @@ public class ToolCallOrchestrator {
                 correlationId, publicName, serverName, originalName);
 
         auditService.auditOrchestrationRegistryLookup(
-                correlationId, publicName, serverName, lookupDuration);
+                correlationId, sessionId, publicName, serverName, lookupDuration);
 
         // Register in-flight
         inFlightRegistry.register(correlationId, publicName, serverName, originalName, sessionId);
@@ -522,7 +522,7 @@ public class ToolCallOrchestrator {
             long totalDuration = System.currentTimeMillis() - orchestrationStart;
 
             auditService.auditOrchestrationCallForwarded(
-                    correlationId, serverName, originalName, callDuration);
+                    correlationId, sessionId, serverName, originalName, callDuration);
 
             inFlightRegistry.complete(correlationId);
 
@@ -541,7 +541,7 @@ public class ToolCallOrchestrator {
             log.error("❌ [{}] Server '{}' unavailable: {}", correlationId, serverName, e.getMessage());
             inFlightRegistry.fail(correlationId, e.getMessage());
             auditService.auditOrchestrationError(
-                    correlationId, serverName, publicName,
+                    correlationId, sessionId, serverName, publicName,
                     McpErrorCode.SERVER_UNAVAILABLE, e.getMessage());
             throw new RuntimeException(String.format("[%d] %s: prompt '%s' on server '%s' — %s",
                     McpErrorCode.SERVER_UNAVAILABLE.getCode(),
@@ -553,7 +553,7 @@ public class ToolCallOrchestrator {
                     correlationId, publicName, serverName, e.getMessage(), e);
             inFlightRegistry.fail(correlationId, e.getMessage());
             auditService.auditOrchestrationError(
-                    correlationId, serverName, publicName,
+                    correlationId, sessionId, serverName, publicName,
                     McpErrorCode.ORCHESTRATION_FAILURE, e.getMessage());
             throw new RuntimeException(String.format("[%d] %s: prompt '%s' on server '%s' — %s",
                     McpErrorCode.ORCHESTRATION_FAILURE.getCode(),
@@ -610,7 +610,7 @@ public class ToolCallOrchestrator {
         if (optDescriptor.isEmpty()) {
             log.error("❌ [{}] Resource '{}' NOT FOUND in capability registry", correlationId, publicName);
             auditService.auditOrchestrationError(
-                    correlationId, null, publicName,
+                    correlationId, sessionId, null, publicName,
                     McpErrorCode.CAPABILITY_NOT_FOUND,
                     "Resource '" + publicName + "' not found in capability registry");
             throw new RuntimeException(String.format("[%d] %s: resource '%s'",
@@ -626,7 +626,7 @@ public class ToolCallOrchestrator {
                 correlationId, publicName, serverName, originalUri);
 
         auditService.auditOrchestrationRegistryLookup(
-                correlationId, publicName, serverName, lookupDuration);
+                correlationId, sessionId, publicName, serverName, lookupDuration);
 
         // Register in-flight
         inFlightRegistry.register(correlationId, publicName, serverName, originalUri, sessionId);
@@ -648,7 +648,7 @@ public class ToolCallOrchestrator {
             long totalDuration = System.currentTimeMillis() - orchestrationStart;
 
             auditService.auditOrchestrationCallForwarded(
-                    correlationId, serverName, publicName, callDuration);
+                    correlationId, sessionId, serverName, publicName, callDuration);
 
             inFlightRegistry.complete(correlationId);
 
@@ -666,7 +666,7 @@ public class ToolCallOrchestrator {
             log.error("❌ [{}] Server '{}' unavailable: {}", correlationId, serverName, e.getMessage());
             inFlightRegistry.fail(correlationId, e.getMessage());
             auditService.auditOrchestrationError(
-                    correlationId, serverName, publicName,
+                    correlationId, sessionId, serverName, publicName,
                     McpErrorCode.SERVER_UNAVAILABLE, e.getMessage());
             throw new RuntimeException(String.format("[%d] %s: resource '%s' on server '%s' — %s",
                     McpErrorCode.SERVER_UNAVAILABLE.getCode(),
@@ -678,7 +678,7 @@ public class ToolCallOrchestrator {
                     correlationId, publicName, serverName, e.getMessage(), e);
             inFlightRegistry.fail(correlationId, e.getMessage());
             auditService.auditOrchestrationError(
-                    correlationId, serverName, publicName,
+                    correlationId, sessionId, serverName, publicName,
                     McpErrorCode.ORCHESTRATION_FAILURE, e.getMessage());
             throw new RuntimeException(String.format("[%d] %s: resource '%s' on server '%s' — %s",
                     McpErrorCode.ORCHESTRATION_FAILURE.getCode(),

@@ -74,7 +74,7 @@ public class McpSessionManager {
             config.validate();
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - startTime;
-            auditService.auditClientSessionInitFailed(serverName,
+            auditService.auditClientSessionInitFailed(null, serverName,
                     "Invalid configuration: " + e.getMessage(), duration);
             throw new RuntimeException("Invalid configuration for server '" + serverName + "': " + e.getMessage(), e);
         }
@@ -123,7 +123,7 @@ public class McpSessionManager {
 
             if (!client.isInitialized()) {
                 long duration = System.currentTimeMillis() - startTime;
-                auditService.auditClientSessionInitFailed(serverName,
+                auditService.auditClientSessionInitFailed(null, serverName,
                         "Client initialization returned false", duration);
                 throw new RuntimeException("Client initialization failed for server: " + serverName);
             }
@@ -159,6 +159,7 @@ public class McpSessionManager {
                 }
 
                 registryService.registerServer(
+                        session.getSessionId(),
                         serverName,
                         client.getServerInfo() != null ? client.getServerInfo().name() : serverName,
                         client.getServerInfo() != null ? client.getServerInfo().version() : null,
@@ -195,14 +196,14 @@ public class McpSessionManager {
 
             // Async audit — session initialization success
             auditService.auditClientSessionInitialized(
-                    serverName, null, serverInfoMap, capsMap, duration);
+                    session.getSessionId(), serverName, null, serverInfoMap, capsMap, duration);
 
             log.info("🎉 Server '{}' ready with {} tools",
                     serverName, session.getToolCount());
 
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - startTime;
-            auditService.auditClientSessionInitFailed(serverName, e.getMessage(), duration);
+            auditService.auditClientSessionInitFailed(null, serverName, e.getMessage(), duration);
             log.error("❌ Failed to connect to server '{}': {}", serverName, e.getMessage(), e);
             throw new RuntimeException("Failed to connect to MCP server '" + serverName + "': " + e.getMessage(), e);
         }
@@ -233,7 +234,7 @@ public class McpSessionManager {
 
                 // Audit — tools list fetched
                 List<String> toolNames = tools.stream().map(McpSchema.Tool::name).toList();
-                auditService.auditClientToolsListFetched(serverName, tools.size(), toolNames, toolsDuration);
+                auditService.auditClientToolsListFetched(session.getSessionId(), serverName, tools.size(), toolNames, toolsDuration);
             } else {
                 log.info("ℹ️  Server '{}' does not support tools capability", serverName);
             }
@@ -251,7 +252,7 @@ public class McpSessionManager {
 
                 // Audit — resources list fetched
                 List<String> resourceUris = resources.stream().map(McpSchema.Resource::uri).toList();
-                auditService.auditClientResourcesListFetched(serverName, resources.size(), resourceUris, resDuration);
+                auditService.auditClientResourcesListFetched(session.getSessionId(), serverName, resources.size(), resourceUris, resDuration);
             }
 
             // Optionally fetch prompts
@@ -267,12 +268,12 @@ public class McpSessionManager {
 
                 // Audit — prompts list fetched
                 List<String> promptNames = prompts.stream().map(McpSchema.Prompt::name).toList();
-                auditService.auditClientPromptsListFetched(serverName, prompts.size(), promptNames, promptDuration);
+                auditService.auditClientPromptsListFetched(session.getSessionId(), serverName, prompts.size(), promptNames, promptDuration);
             }
 
         } catch (Exception e) {
             log.error("⚠️  Failed to fetch capabilities for '{}': {}", serverName, e.getMessage());
-            auditService.auditClientToolsListFailed(serverName, e.getMessage(), 0);
+            auditService.auditClientToolsListFailed(session.getSessionId(), serverName, e.getMessage(), 0);
             // Don't throw - connection is still valid even if fetching fails
         }
     }
@@ -327,14 +328,14 @@ public class McpSessionManager {
             try {
                 session.close();
                 log.info("✅ Server '{}' disconnected successfully", serverName);
-                auditService.auditClientSessionDisconnected(serverName);
+                auditService.auditClientSessionDisconnected(session.getSessionId(), serverName);
             } catch (Exception e) {
                 log.error("⚠️  Error during disconnect for '{}': {}", serverName, e.getMessage());
             }
 
             // Remove capabilities from registry
             try {
-                registryService.removeServer(serverName);
+                registryService.removeServer(session.getSessionId(), serverName);
             } catch (Exception e) {
                 log.error("⚠️  Failed to remove server '{}' from registry: {}",
                         serverName, e.getMessage());
