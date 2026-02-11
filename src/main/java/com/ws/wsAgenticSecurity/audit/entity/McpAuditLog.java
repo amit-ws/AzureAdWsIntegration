@@ -42,7 +42,8 @@ import java.util.UUID;
                 @Index(name = "idx_audit_timestamp", columnList = "timestamp"),
                 @Index(name = "idx_audit_correlation_id", columnList = "correlation_id"),
                 @Index(name = "idx_audit_server_name", columnList = "server_name"),
-                @Index(name = "idx_audit_session_id", columnList = "session_id")
+                @Index(name = "idx_audit_session_id", columnList = "session_id"),
+                @Index(name = "idx_audit_request_id", columnList = "request_id")
         })
 @Data
 @NoArgsConstructor
@@ -82,6 +83,10 @@ public class McpAuditLog {
     /** MCP session identifier (Northbound or Southbound). */
     @Column(name = "session_id", length = 128)
     private String sessionId;
+
+    /** Agent's JSON-RPC request id — links audit records to specific agent requests. */
+    @Column(name = "request_id", length = 64)
+    private String requestId;
 
     // ── Server / Capability Context ───────────────────────────────────
 

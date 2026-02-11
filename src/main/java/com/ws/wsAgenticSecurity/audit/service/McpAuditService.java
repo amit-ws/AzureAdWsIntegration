@@ -426,13 +426,15 @@ public class McpAuditService {
     @Async("mcpAuditExecutor")
     public void auditServerToolsListRequested(String sessionId,
                                                int toolCount,
-                                               long durationMs) {
+                                               long durationMs,
+                                               String requestId) {
         persist(McpAuditLog.builder()
                 .eventType(AuditEventType.SERVER_TOOLS_LIST_REQUESTED)
                 .module(AuditModule.WS_SERVER)
                 .status(AuditStatus.SUCCESS)
                 .severity(AuditSeverity.INFO)
                 .sessionId(sessionId)
+                .requestId(requestId)
                 .mcpMethod("tools/list")
                 .correlationId(generateCorrelationId())
                 .responsePayload(toJson(Map.of("toolCount", toolCount)))
@@ -473,13 +475,15 @@ public class McpAuditService {
     @Async("mcpAuditExecutor")
     public void auditServerResourcesListRequested(String sessionId,
                                                    int resourceCount,
-                                                   long durationMs) {
+                                                   long durationMs,
+                                                   String requestId) {
         persist(McpAuditLog.builder()
                 .eventType(AuditEventType.SERVER_RESOURCES_LIST_REQUESTED)
                 .module(AuditModule.WS_SERVER)
                 .status(AuditStatus.SUCCESS)
                 .severity(AuditSeverity.INFO)
                 .sessionId(sessionId)
+                .requestId(requestId)
                 .mcpMethod("resources/list")
                 .correlationId(generateCorrelationId())
                 .responsePayload(toJson(Map.of("resourceCount", resourceCount)))
@@ -493,13 +497,15 @@ public class McpAuditService {
     @Async("mcpAuditExecutor")
     public void auditServerPromptsListRequested(String sessionId,
                                                  int promptCount,
-                                                 long durationMs) {
+                                                 long durationMs,
+                                                 String requestId) {
         persist(McpAuditLog.builder()
                 .eventType(AuditEventType.SERVER_PROMPTS_LIST_REQUESTED)
                 .module(AuditModule.WS_SERVER)
                 .status(AuditStatus.SUCCESS)
                 .severity(AuditSeverity.INFO)
                 .sessionId(sessionId)
+                .requestId(requestId)
                 .mcpMethod("prompts/list")
                 .correlationId(generateCorrelationId())
                 .responsePayload(toJson(Map.of("promptCount", promptCount)))
@@ -657,7 +663,8 @@ public class McpAuditService {
     @Async("mcpAuditExecutor")
     public void auditOrchestrationToolExtracted(String correlationId,
                                                 String toolName,
-                                                String sessionId) {
+                                                String sessionId,
+                                                String requestId) {
         persist(McpAuditLog.builder()
                 .eventType(AuditEventType.ORCHESTRATION_TOOL_EXTRACTED)
                 .module(AuditModule.ORCHESTRATION_LAYER)
@@ -665,6 +672,7 @@ public class McpAuditService {
                 .severity(AuditSeverity.DEBUG)
                 .correlationId(correlationId)
                 .sessionId(sessionId)
+                .requestId(requestId)
                 .capabilityName(toolName)
                 .capabilityType("TOOL")
                 .build());
@@ -675,7 +683,8 @@ public class McpAuditService {
                                                  String sessionId,
                                                  String publicCapabilityName,
                                                  String resolvedServerName,
-                                                 long durationMs) {
+                                                 long durationMs,
+                                                 String requestId) {
         persist(McpAuditLog.builder()
                 .eventType(AuditEventType.ORCHESTRATION_REGISTRY_LOOKUP)
                 .module(AuditModule.ORCHESTRATION_LAYER)
@@ -683,6 +692,7 @@ public class McpAuditService {
                 .severity(AuditSeverity.DEBUG)
                 .correlationId(correlationId)
                 .sessionId(sessionId)
+                .requestId(requestId)
                 .capabilityName(publicCapabilityName)
                 .serverName(resolvedServerName)
                 .durationMs(durationMs)
@@ -694,7 +704,8 @@ public class McpAuditService {
                                                 String sessionId,
                                                 String serverName,
                                                 String toolName,
-                                                long durationMs) {
+                                                long durationMs,
+                                                String requestId) {
         persist(McpAuditLog.builder()
                 .eventType(AuditEventType.ORCHESTRATION_CALL_FORWARDED)
                 .module(AuditModule.ORCHESTRATION_LAYER)
@@ -702,6 +713,7 @@ public class McpAuditService {
                 .severity(AuditSeverity.INFO)
                 .correlationId(correlationId)
                 .sessionId(sessionId)
+                .requestId(requestId)
                 .serverName(serverName)
                 .capabilityName(toolName)
                 .capabilityType("TOOL")
@@ -716,7 +728,8 @@ public class McpAuditService {
                                         String serverName,
                                         String capabilityName,
                                         McpErrorCode errorCode,
-                                        String errorMessage) {
+                                        String errorMessage,
+                                        String requestId) {
         persist(McpAuditLog.builder()
                 .eventType(AuditEventType.ORCHESTRATION_ERROR)
                 .module(AuditModule.ORCHESTRATION_LAYER)
@@ -724,6 +737,7 @@ public class McpAuditService {
                 .severity(AuditSeverity.ERROR)
                 .correlationId(correlationId)
                 .sessionId(sessionId)
+                .requestId(requestId)
                 .serverName(serverName)
                 .capabilityName(capabilityName)
                 .errorCode(errorCode.getCode())

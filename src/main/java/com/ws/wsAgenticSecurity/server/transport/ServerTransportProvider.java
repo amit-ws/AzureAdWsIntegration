@@ -2,12 +2,14 @@ package com.ws.wsAgenticSecurity.server.transport;
 
 import com.ws.wsAgenticSecurity.audit.service.McpAuditService;
 import com.ws.wsAgenticSecurity.server.session.SessionManager;
+import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.spec.McpServerSession;
 import io.modelcontextprotocol.spec.McpServerTransportProvider;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 public class ServerTransportProvider implements McpServerTransportProvider {
@@ -32,12 +34,32 @@ public class ServerTransportProvider implements McpServerTransportProvider {
             log.info("Session created.....");
 
             // Start the transport with proper handler that uses session.handle()
+            //
+            // IMPORTANT: We inject the agent's JSON-RPC request id into Reactor Context
+            // via .contextWrite(). This is the same pattern used by the SDK's HTTP transports
+            // (HttpServletSseServerTransportProvider). The SDK reads this in
+            // McpServerSession.handle() via Mono.deferContextual() and passes it to
+            // handlers through McpSyncServerExchange.transportContext().
+            //
+            // This replaces the broken ThreadLocal approach (JsonRpcRequestContext)
+            // which failed because the SDK dispatches handlers on a different thread.
             stdioTransport.connect(messageMonoIn ->
                     messageMonoIn.flatMap(message -> {
                         log.debug("Processing message through session");
-                        // session.handle() processes the message and sends response via transport
-                        // We need to return an empty message since responses are sent inside handle()
+
+                        // Look up the JSON-RPC id that the transport extracted from the raw message
+                        Object jsonRpcId = stdioTransport.removeRequestId(message);
+
+                        // Build transport context with the request id (same as SDK HTTP transports)
+                        McpTransportContext transportContext = (jsonRpcId != null)
+                                ? McpTransportContext.create(Map.of("jsonRpcRequestId", jsonRpcId))
+                                : McpTransportContext.EMPTY;
+
+                        // session.handle() processes the message and sends response via transport.
+                        // .contextWrite() injects our transport context into the Reactor chain
+                        // so the SDK can propagate it to the handler exchange (thread-safe).
                         return session.handle(message)
+                                .contextWrite(ctx -> ctx.put(McpTransportContext.KEY, transportContext))
                                 .then(Mono.empty()); // Return empty Mono<JSONRPCMessage>
                     })
             ).subscribe(

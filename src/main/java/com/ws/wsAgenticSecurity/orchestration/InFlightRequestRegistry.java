@@ -35,13 +35,14 @@ public class InFlightRequestRegistry {
                                    String publicName,
                                    String serverName,
                                    String originalToolName,
-                                   String sessionId) {
+                                   String sessionId,
+                                   String requestId) {
         InFlightEntry entry = new InFlightEntry(
                 correlationId, publicName, serverName,
-                originalToolName, sessionId, Instant.now());
+                originalToolName, sessionId, requestId, Instant.now());
         registry.put(correlationId, entry);
-        log.debug("In-flight registered: {} → {}.{} (session={})",
-                correlationId, serverName, originalToolName, sessionId);
+        log.debug("In-flight registered: {} → {}.{} (session={}, requestId={})",
+                correlationId, serverName, originalToolName, sessionId, requestId);
         return entry;
     }
 
@@ -99,6 +100,7 @@ public class InFlightRequestRegistry {
         private final String serverName;
         private final String originalToolName;
         private final String sessionId;
+        private final String requestId;
         private final Instant startedAt;
 
         public InFlightEntry(String correlationId,
@@ -106,19 +108,21 @@ public class InFlightRequestRegistry {
                              String serverName,
                              String originalToolName,
                              String sessionId,
+                             String requestId,
                              Instant startedAt) {
             this.correlationId = correlationId;
             this.publicName = publicName;
             this.serverName = serverName;
             this.originalToolName = originalToolName;
             this.sessionId = sessionId;
+            this.requestId = requestId;
             this.startedAt = startedAt;
         }
 
         @Override
         public String toString() {
-            return String.format("InFlight[%s: %s → %s.%s (session=%s, started=%s)]",
-                    correlationId, publicName, serverName, originalToolName, sessionId, startedAt);
+            return String.format("InFlight[%s: %s → %s.%s (session=%s, requestId=%s, started=%s)]",
+                    correlationId, publicName, serverName, originalToolName, sessionId, requestId, startedAt);
         }
     }
 }

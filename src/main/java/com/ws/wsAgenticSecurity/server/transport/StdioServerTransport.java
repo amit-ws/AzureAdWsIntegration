@@ -34,6 +34,22 @@ public class StdioServerTransport implements McpServerTransport {
     private final ConcurrentHashMap<Object, RequestContext> inflightRequests = new ConcurrentHashMap<>();
 
     /**
+     * Maps a parsed JSONRPCMessage → its JSON-RPC {@code id}, so that
+     * {@link ServerTransportProvider} can look up the id and inject it into
+     * Reactor Context via {@code .contextWrite()} before the SDK dispatches
+     * the handler on a (possibly different) thread.
+     *
+     * <p>Entries are removed by {@link #removeRequestId(McpSchema.JSONRPCMessage)}
+     * to prevent memory leaks.
+     *
+     * <p><strong>Why not ThreadLocal?</strong> The SDK's Reactor {@code flatMap()}
+     * chain in {@code McpServerSession.handle()} can switch threads between transport
+     * and handler — ThreadLocal values set on the reader thread are invisible to the
+     * handler thread.
+     */
+    private final ConcurrentHashMap<McpSchema.JSONRPCMessage, Object> messageToRequestId = new ConcurrentHashMap<>();
+
+    /**
      * Context stored for each incoming request, keyed by JSON-RPC id.
      */
     private record RequestContext(String method, Object params, long startTimeMs) {}
@@ -77,6 +93,14 @@ public class StdioServerTransport implements McpServerTransport {
 
                             // Parse message
                             McpSchema.JSONRPCMessage message = parseMessage(rawData);
+
+                            // Store JSON-RPC id → message mapping for Reactor Context injection.
+                            // ServerTransportProvider will call removeRequestId(message) to look this up
+                            // and inject it into Reactor Context via .contextWrite().
+                            Object jsonRpcId = rawData.get("id");
+                            if (jsonRpcId != null) {
+                                messageToRequestId.put(message, jsonRpcId);
+                            }
 
                             // Pass to handler
                             // The handler (session.handle) will process and send response internally
@@ -157,11 +181,30 @@ public class StdioServerTransport implements McpServerTransport {
         return List.of("2024-11-05", "2025-03-26");
     }
 
+    /**
+     * Removes and returns the JSON-RPC id associated with the given parsed message.
+     *
+     * <p>Called by {@link ServerTransportProvider} in the Reactor chain, BEFORE
+     * the SDK dispatches the handler. The id is then injected into Reactor Context
+     * as a {@code McpTransportContext} so the orchestrator can read it from
+     * {@code exchange.transportContext().get("jsonRpcRequestId")}.
+     *
+     * @param message the parsed JSONRPCMessage
+     * @return the JSON-RPC id (String or Integer), or null if not a request
+     */
+    public Object removeRequestId(McpSchema.JSONRPCMessage message) {
+        return messageToRequestId.remove(message);
+    }
+
     private void captureAllRequestData(Map<String, Object> rawData) {
         try {
             String method = (String) rawData.get("method");
             Object id = rawData.get("id");
             Object params = rawData.get("params");
+
+            // JSON-RPC id is now stored in messageToRequestId map (in connect()),
+            // NOT ThreadLocal. ServerTransportProvider injects it into Reactor Context
+            // via .contextWrite() so it's available in exchange.transportContext().
 
             log.info("====================================");
             log.info("INCOMING REQUEST");
@@ -325,22 +368,23 @@ public class StdioServerTransport implements McpServerTransport {
 
             long durationMs = System.currentTimeMillis() - ctx.startTimeMs();
             String sessionId = sessionManager.getCurrentSession().getSessionId();
+            String requestId = String.valueOf(responseId);
 
             switch (ctx.method()) {
                 case "tools/list" -> {
                     int toolCount = extractListCount(json, "tools");
-                    auditService.auditServerToolsListRequested(sessionId, toolCount, durationMs);
-                    log.debug("Audited tools/list — {} tools, {}ms", toolCount, durationMs);
+                    auditService.auditServerToolsListRequested(sessionId, toolCount, durationMs, requestId);
+                    log.debug("Audited tools/list — {} tools, {}ms (requestId={})", toolCount, durationMs, requestId);
                 }
                 case "resources/list" -> {
                     int resourceCount = extractListCount(json, "resources");
-                    auditService.auditServerResourcesListRequested(sessionId, resourceCount, durationMs);
-                    log.debug("Audited resources/list — {} resources, {}ms", resourceCount, durationMs);
+                    auditService.auditServerResourcesListRequested(sessionId, resourceCount, durationMs, requestId);
+                    log.debug("Audited resources/list — {} resources, {}ms (requestId={})", resourceCount, durationMs, requestId);
                 }
                 case "prompts/list" -> {
                     int promptCount = extractListCount(json, "prompts");
-                    auditService.auditServerPromptsListRequested(sessionId, promptCount, durationMs);
-                    log.debug("Audited prompts/list — {} prompts, {}ms", promptCount, durationMs);
+                    auditService.auditServerPromptsListRequested(sessionId, promptCount, durationMs, requestId);
+                    log.debug("Audited prompts/list — {} prompts, {}ms (requestId={})", promptCount, durationMs, requestId);
                 }
                 // tools/call is audited in McpServerApplication.handleToolCall() — no duplicate here
                 // initialize is audited in ClientSession.initialize() — no duplicate here
