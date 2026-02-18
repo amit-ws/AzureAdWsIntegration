@@ -1,0 +1,31 @@
+package com.ws.azureKuberntesJIT.enttity;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
+
+@EqualsAndHashCode(callSuper = true)
+@Data
+@SuperBuilder
+@AllArgsConstructor
+@NoArgsConstructor
+@Entity
+@Table(name = "kubernetes_stateful_set", schema = "azure_test")
+public class K8StatefulSet extends K8Metadata {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    Long id;
+
+//    Integer currentReplicas;
+//    String currentRevision;
+//    Integer readyReplicas;
+//    String updateRevision;
+//    Integer updatedReplicas;
+//    Integer collisionCount;
+
+//    @Embedded
+//    K8PodManagementControllerStatus statefulStatus;
+}

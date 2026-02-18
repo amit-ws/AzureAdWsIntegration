@@ -31,4 +31,8 @@ public class BackendApplicationLogservice {
                         .logLevel(logLevel)
                         .build());
     }
+
+    public void deleteLogsForTenant(String wsTenantName) {
+        backendApplicationLogsRepository.deleteAllByWsTenantName(wsTenantName);
+    }
 }

@@ -1,7 +1,6 @@
 package com.ws.azureResourcesIntegration.entities;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.ws.azureAdIntegration.entity.AzureTenant;
 import jakarta.persistence.*;
 import lombok.*;
@@ -26,10 +25,13 @@ public class AzureRoleDefinition {
     String azureId;
     String roleName;
     String description;
-    Boolean isPublished;
     String roleType;
     String createdBy;
     OffsetDateTime createdOn;
+    Date syncedAt;
+    String subscriptionId;
+    String wsTenantName; // WhiteSwan account organization name
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(
             name = "azure_role_definition_assignable_scopes",
@@ -37,14 +39,17 @@ public class AzureRoleDefinition {
     )
     Set<String> assignableScope;
 
-    Date syncedAt;
-    String wsTenantName; // WhiteSwan account organization name
+    @JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "ws_azure_subscription_id", referencedColumnName = "id")
+    AzureSubscription azureSubscription;
 
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ws_azure_tenant_id", referencedColumnName = "id")
     AzureTenant azureTenant;
 
-    @OneToMany(mappedBy = "azureRoleDefinition", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+
+    @OneToMany(mappedBy = "azureRoleDefinition", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     Set<AzureRoleDefinitionPermission> azureRoleDefinitionPermissions = new LinkedHashSet<>();
 }

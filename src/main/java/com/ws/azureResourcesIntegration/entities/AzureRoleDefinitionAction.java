@@ -25,6 +25,9 @@ public class AzureRoleDefinitionAction {
     Date createdAt;
     Date updatedAt;
 
+    String subscriptionId;
+    String wsTenantName;
+
     @JsonBackReference
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
@@ -36,8 +39,8 @@ public class AzureRoleDefinitionAction {
     @JoinColumn(name = "ws_azure_role_definition_id", referencedColumnName = "id")
     AzureRoleDefinition azureRoleDefinition;
 
-    @JsonIgnore
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "ws_azure_tenant_id", referencedColumnName = "id")
-    AzureTenant azureTenant;
+//    @JsonIgnore
+//    @ManyToOne(fetch = FetchType.LAZY)
+//    @JoinColumn(name = "ws_azure_tenant_id", referencedColumnName = "id")
+//    AzureTenant azureTenant;
 }

@@ -234,14 +234,14 @@
             <version>2.44.0</version>
         </dependency>
 
-        <!-- https://mvnrepository.com/artifact/com.microsoft.azure.resources.v2016_06_01/azure-mgmt-subscriptions -->
-        <dependency>
-            <groupId>com.microsoft.azure.resources.v2016_06_01</groupId>
-            <artifactId>azure-mgmt-subscriptions</artifactId>
-            <version>1.0.0-beta</version>
-        </dependency>
+        <!--        &lt;!&ndash; https://mvnrepository.com/artifact/com.microsoft.azure.resources.v2016_06_01/azure-mgmt-subscriptions &ndash;&gt;-->
+        <!--        <dependency>-->
+        <!--            <groupId>com.microsoft.azure.resources.v2016_06_01</groupId>-->
+        <!--            <artifactId>azure-mgmt-subscriptions</artifactId>-->
+        <!--            <version>1.0.0-beta</version>-->
+        <!--        </dependency>-->
 
-<!--        &lt;!&ndash; SWAGGER   &ndash;&gt;-->
+        <!--        &lt;!&ndash; SWAGGER   &ndash;&gt;-->
         <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
@@ -251,6 +251,88 @@
         <!-- just a comment -->
 
 
+
+        <dependency>
+            <groupId>org.mapstruct</groupId>
+            <artifactId>mapstruct</artifactId>
+            <version>1.5.3.Final</version>
+        </dependency>
+        <dependency>
+            <groupId>org.mapstruct</groupId>
+            <artifactId>mapstruct-processor</artifactId>
+            <version>1.5.3.Final</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- https://mvnrepository.com/artifact/org.springframework.statemachine/spring-statemachine-core -->
+        <!--        <dependency>-->
+        <!--            <groupId>org.springframework.statemachine</groupId>-->
+        <!--            <artifactId>spring-statemachine-core</artifactId>-->
+        <!--            <version>3.2.1</version>-->
+        <!--        </dependency>-->
+
+
+        <!-- https://mvnrepository.com/artifact/io.kubernetes/client-java -->
+        <dependency>
+            <groupId>io.kubernetes</groupId>
+            <artifactId>client-java</artifactId>
+            <!--            <version>22.0.0</version>-->
+            <version>22.0.1</version>
+        </dependency>
+
+
+        <!-- https://mvnrepository.com/artifact/com.azure/azure-monitor-query -->
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-monitor-query</artifactId>
+            <version>1.5.7</version>
+        </dependency>
+
+
+        <!-- https://mvnrepository.com/artifact/com.squareup.okhttp3/logging-interceptor -->
+        <!--        <dependency>-->
+        <!--            <groupId>com.squareup.okhttp3</groupId>-->
+        <!--            <artifactId>logging-interceptor</artifactId>-->
+        <!--            <version>5.3.0</version>-->
+        <!--        </dependency>-->
+
+
+        <!-- https://mvnrepository.com/artifact/org.bouncycastle/bcprov-jdk18on -->
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk18on</artifactId>
+            <version>1.82</version>
+        </dependency>
+
+        <!-- https://mvnrepository.com/artifact/org.bouncycastle/bcpkix-jdk18on -->
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcpkix-jdk18on</artifactId>
+            <version>1.82</version>
+        </dependency>
+
+
+        <!-- MCP RELATED  -->
+        <dependency>
+            <groupId>io.modelcontextprotocol.sdk</groupId>
+            <artifactId>mcp</artifactId>
+        </dependency>
+
+        <!-- Source: https://mvnrepository.com/artifact/com.github.briandilley.jsonrpc4j/jsonrpc4j -->
+        <dependency>
+            <groupId>com.github.briandilley.jsonrpc4j</groupId>
+            <artifactId>jsonrpc4j</artifactId>
+            <version>1.6</version>
+            <scope>compile</scope>
+        </dependency>
+
+        <!-- Source: https://mvnrepository.com/artifact/org.springframework.boot/spring-boot-starter-webflux -->
+        <!--        <dependency>-->
+        <!--            <groupId>org.springframework.boot</groupId>-->
+        <!--            <artifactId>spring-boot-starter-webflux</artifactId>-->
+        <!--            <version>4.0.2</version>-->
+        <!--            <scope>compile</scope>-->
+        <!--        </dependency>-->
 
     </dependencies>
     <dependencyManagement>
@@ -267,6 +349,23 @@
                 <artifactId>jackson-core</artifactId>
                 <version>2.18.0</version>
             </dependency>
+
+            <!-- https://mvnrepository.com/artifact/com.fasterxml.jackson.datatype/jackson-datatype-jsr310 -->
+            <dependency>
+                <groupId>com.fasterxml.jackson.datatype</groupId>
+                <artifactId>jackson-datatype-jsr310</artifactId>
+                <version>2.19.0</version>
+            </dependency>
+
+            <!-- MCP RELATED  -->
+            <dependency>
+                <groupId>io.modelcontextprotocol.sdk</groupId>
+                <artifactId>mcp-bom</artifactId>
+                <version>0.12.1</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
         </dependencies>
     </dependencyManagement>
 
@@ -276,6 +375,7 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
+                    <mainClass>com.ws.AzureAdWsIntegrationApplication</mainClass>
                     <excludes>
                         <exclude>
                             <groupId>org.projectlombok</groupId>
@@ -286,4 +386,5 @@
             </plugin>
         </plugins>
     </build>
+
 </project>

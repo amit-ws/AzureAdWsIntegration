@@ -1,7 +1,6 @@
 package com.ws.azureResourcesIntegration.entities;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.ws.azureAdIntegration.entity.AzureTenant;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
@@ -27,6 +26,7 @@ public class AzureResourceGroup {
     String regionName;
     String location;
     Date syncedAt;
+    String subscriptionId;
     String wsTenantName; // WhiteSwan account organization name
 
     @ElementCollection(fetch = FetchType.EAGER)
@@ -39,13 +39,34 @@ public class AzureResourceGroup {
     Map<String, String> tags;
 
     @JsonIgnore
+    @OneToMany(mappedBy = "azureResourceGroup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    List<AzureServer> azureServers = new ArrayList<>();
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "azureResourceGroup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    List<AzureStorageAccount> azureStorageAccounts = new ArrayList<>();
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "azureResourceGroup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    List<AzureVM> azureVMS = new ArrayList<>();
+
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ws_azure_subscription_id", referencedColumnName = "id")
     AzureSubscription azureSubscription;
 
+    //    @JsonIgnore
+//    @OneToMany(mappedBy = "azureResourceGroup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+//    List<AzureDatabase> azureDatabases = new ArrayList<>();
+
+//    @JsonIgnore
+//    @ManyToOne(fetch = FetchType.LAZY)
+//    @JoinColumn(name = "ws_azure_tenant_id", referencedColumnName = "id")
+//    AzureTenant azureTenant;
+
+
     @JsonIgnore
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "ws_azure_tenant_id", referencedColumnName = "id")
-    AzureTenant azureTenant;
+    @OneToMany(mappedBy = "azureResourceGroup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    List<AzureKubernetesCluster> azureKubernetesClusters = new ArrayList<>();
 
 }

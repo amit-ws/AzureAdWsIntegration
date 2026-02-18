@@ -2,23 +2,41 @@ package com.ws.azureResourcesIntegration.service;
 
 import com.azure.core.http.rest.PagedIterable;
 import com.azure.resourcemanager.AzureResourceManager;
-import com.azure.resourcemanager.authorization.models.Permission;
 import com.azure.resourcemanager.authorization.models.RoleAssignment;
 import com.azure.resourcemanager.authorization.models.RoleDefinition;
 import com.azure.resourcemanager.compute.models.VirtualMachine;
+import com.azure.resourcemanager.containerservice.models.Code;
+import com.azure.resourcemanager.containerservice.models.CredentialResult;
+import com.azure.resourcemanager.containerservice.models.KubernetesCluster;
+import com.azure.resourcemanager.network.models.NetworkInterface;
+import com.azure.resourcemanager.network.models.NicIpConfiguration;
+import com.azure.resourcemanager.network.models.PublicIpAddress;
 import com.azure.resourcemanager.resources.models.ResourceGroup;
 import com.azure.resourcemanager.resources.models.Subscription;
+import com.ws.azureAdIntegration.constants.CloudProviderType;
 import com.ws.azureAdIntegration.constants.Constant;
+import com.ws.azureAdIntegration.dto.AzureUserCredentialDTO;
 import com.ws.azureAdIntegration.entity.*;
+import com.ws.azureAdIntegration.exception.K8ResourceException;
+import com.ws.azureAdIntegration.repository.AzureNetworkInterfaceRepository;
 import com.ws.azureAdIntegration.service.BackendApplicationLogservice;
 import com.ws.azureAdIntegration.util.AzureAuthUtil;
+import com.ws.azureAdIntegration.util.AzureEntityUtil;
+import com.ws.azureAdIntegration.util.EncryptionUtil;
 import com.ws.azureAdIntegration.util.GenericUtil;
+import com.ws.azureKuberntesJIT.dto.ClusterConfigurationRequest;
+import com.ws.azureKuberntesJIT.dto.K8ResourceDataSyncRequest;
+import com.ws.azureKuberntesJIT.service.K8ResourcesDataService;
+import com.ws.azureKuberntesJIT.service.K8ResourcesSyncService;
+import com.ws.azureResourcesIntegration.constant.KubernetesClusterCredentialType;
 import com.ws.azureResourcesIntegration.entities.*;
 import com.ws.azureResourcesIntegration.repository.*;
+import io.micrometer.common.util.StringUtils;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
+import org.apache.commons.lang3.tuple.Triple;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
@@ -31,7 +49,8 @@ import java.util.stream.Collectors;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class AzureResourceSyncService {
     String wsTenantName;
-    String tenantEmail = "dummy@gmail.com";
+    AzureTenant azureTenant;
+    final String tenantEmail = "dummy@gmail.com";
     AzureResourceManager azureResourceManager;
     final AzureSubscriptionRepository azureSubscriptionRepository;
     final AzureResourceGroupRepository azureResourceGroupRepository;
@@ -40,11 +59,15 @@ public class AzureResourceSyncService {
     final AzureRoleAssignmentRepository azureRoleAssignmentRepository;
     final AzureVMRepository azureVMRepository;
     final AzureStorageRepository azureStorageRepository;
+    final AzureNetworkInterfaceRepository azureNetworkInterfaceRepository;
     final BackendApplicationLogservice backendApplicationLogservice;
+    final AzureKubernetesClusterRepository azureKubernetesClusterRepository;
     final AzureAuthUtil azureAuthUtil;
+    final K8ResourcesSyncService k8ResourcesSyncService;
+    final K8ResourcesDataService k8ResourcesDataService;
 
     @Autowired
-    public AzureResourceSyncService(AzureSubscriptionRepository azureSubscriptionRepository, AzureResourceGroupRepository azureResourceGroupRepository, AzureServerRepository azureServerRepository, AzureRoleDefinitionRepository azureRoleDefinitionRepository, AzureRoleAssignmentRepository azureRoleAssignmentRepository, AzureVMRepository azureVMRepository, AzureStorageRepository azureStorageRepository, BackendApplicationLogservice backendApplicationLogservice, AzureAuthUtil azureAuthUtil) {
+    public AzureResourceSyncService(AzureSubscriptionRepository azureSubscriptionRepository, AzureResourceGroupRepository azureResourceGroupRepository, AzureServerRepository azureServerRepository, AzureRoleDefinitionRepository azureRoleDefinitionRepository, AzureRoleAssignmentRepository azureRoleAssignmentRepository, AzureVMRepository azureVMRepository, AzureStorageRepository azureStorageRepository, AzureNetworkInterfaceRepository azureNetworkInterfaceRepository, BackendApplicationLogservice backendApplicationLogservice, AzureKubernetesClusterRepository azureKubernetesClusterRepository, AzureAuthUtil azureAuthUtil, K8ResourcesSyncService k8ResourcesSyncService, K8ResourcesDataService k8ResourcesDataService) {
         this.azureSubscriptionRepository = azureSubscriptionRepository;
         this.azureResourceGroupRepository = azureResourceGroupRepository;
         this.azureServerRepository = azureServerRepository;
@@ -52,24 +75,122 @@ public class AzureResourceSyncService {
         this.azureRoleAssignmentRepository = azureRoleAssignmentRepository;
         this.azureVMRepository = azureVMRepository;
         this.azureStorageRepository = azureStorageRepository;
+        this.azureNetworkInterfaceRepository = azureNetworkInterfaceRepository;
         this.backendApplicationLogservice = backendApplicationLogservice;
+        this.azureKubernetesClusterRepository = azureKubernetesClusterRepository;
         this.azureAuthUtil = azureAuthUtil;
+        this.k8ResourcesSyncService = k8ResourcesSyncService;
+        this.k8ResourcesDataService = k8ResourcesDataService;
     }
 
-    public void syncAzureResourceData(AzureTenant azureTenant, AzureUserCredential azureUserCredential) {
+
+    public void syncAzureResourcesData(AzureTenant azureTenant, AzureUserCredentialDTO azureUserCredentialDTO, boolean syncRoleAssignments) {
+        this.wsTenantName = azureUserCredentialDTO.getWsTenantName();
+        this.azureTenant = azureTenant;
+        azureUserCredentialDTO.getSubscriptionIds().forEach(subscriptionId -> {
+            initializeAzureResourceManagerBySubscriptionId(
+                    azureUserCredentialDTO.getTenantId(),
+                    azureUserCredentialDTO.getClientId(),
+                    azureUserCredentialDTO.getClientSecret(),
+                    subscriptionId
+            );
+            if (syncRoleAssignments) {
+                syncRoleAssignmentsForSubscription(azureTenant);
+            } else {
+                executeAzureResourceSync();
+            }
+        });
+    }
+
+    public void syncK8ResourcesData(String wsTenantName, AzureUserCredentialDTO azureUserCredentialDTO) {
+        List<AzureKubernetesCluster> azureKubernetesClusters = azureKubernetesClusterRepository.findAllByWsTenantNameAndSubscriptionIdInAndPowerState(wsTenantName,
+                azureUserCredentialDTO.getSubscriptionIds(), Code.RUNNING.getValue());
+        if (CollectionUtils.isEmpty(azureKubernetesClusters)) {
+            throw new K8ResourceException("No AKS clusters found for provided tenant: " + wsTenantName);
+        }
+//        k8ResourcesDataService.deleteByWsTenantNameAndSubscriptionIds(this.wsTenantName, CloudProviderType.AZURE, azureKubernetesClusterMap.keySet());
+        Map<String, List<AzureKubernetesCluster>> azureKubernetesClusterMap = groupClustersBySubscriptionId(azureKubernetesClusters);
+        this.wsTenantName = wsTenantName;
+        azureUserCredentialDTO.getSubscriptionIds().forEach((subscriptionId) -> {
+            syncKubernetesResources(subscriptionId, azureKubernetesClusterMap.get(subscriptionId));
+        });
+    }
+
+    public Map<String, List<AzureKubernetesCluster>> groupClustersBySubscriptionId(List<AzureKubernetesCluster> azureKubernetesClusters) {
+        return azureKubernetesClusters.stream().collect(Collectors.groupingBy(AzureKubernetesCluster::getSubscriptionId));
+    }
+
+
+    private void initializeAzureResourceManagerBySubscriptionId(String tenantId, String clientId, String clientSecret, String subscriptionId) {
+        this.azureResourceManager = azureAuthUtil.validateAzureAuthenticationCredentialsWithSubscriptionId(tenantId, clientId, clientSecret, subscriptionId);
+    }
+
+    private void executeAzureResourceSync() {
+        executeSync();
+    }
+
+    private void syncRoleAssignmentsForSubscription(AzureTenant azureTenant) {
+        AzureSubscription azureSubscription = syncOrGetAzureSubscription(azureTenant);
+        syncRoleAssignments(azureTenant, azureSubscription);
+    }
+
+
+//    public void syncAzureResourcesData(AzureTenant azureTenant, AzureUserCredentialDTO azureUserCredentialDTO) {
+//        this.wsTenantName = azureUserCredentialDTO.getWsTenantName();
+//        this.azureTenant = azureTenant;
+//        azureUserCredentialDTO.getSubscriptionIds().forEach(subscriptionId -> {
+//            initializeAzureResourceManagerBySubscriptionId(azureUserCredentialDTO.getTenantId(),
+//                    azureUserCredentialDTO.getClientId(),
+//                    azureUserCredentialDTO.getClientSecret(), subscriptionId);
+//            executeSync();
+//        });
+//    }
+//
+//
+//    public void syncAzureRoleAssignmentsData(AzureTenant azureTenant, AzureUserCredentialDTO azureUserCredentialDTO){
+//        this.wsTenantName = azureUserCredentialDTO.getWsTenantName();
+//        this.azureTenant = azureTenant;
+//        azureUserCredentialDTO.getSubscriptionIds().forEach(subscriptionId -> {
+//            initializeAzureResourceManagerBySubscriptionId(azureUserCredentialDTO.getTenantId(),
+//                    azureUserCredentialDTO.getClientId(),
+//                    azureUserCredentialDTO.getClientSecret(), subscriptionId);
+//            AzureSubscription azureSubscription = syncOrGetAzureSubscription(azureTenant);
+//            syncRoleAssignments(azureTenant, azureSubscription);
+//        });
+//    }
+
+//    private void initializeAzureResourceForSubscriptions(AzureUserCredentialDTO azureUserCredentialDTO) {
+//        azureUserCredentialDTO.getSubscriptionIds().forEach(subscriptionId -> {
+//            initializeAzureResourceManagerBySubscriptionId(azureUserCredentialDTO.getTenantId(),
+//                    azureUserCredentialDTO.getClientId(),
+//                    azureUserCredentialDTO.getClientSecret(), subscriptionId);
+//        });
+//    }
+
+
+//    public void syncAzureResourceData(AzureTenant azureTenant, AzureUserCredentialDTO azureUserCredentialDTO) {
+//        this.azureTenant = azureTenant;
+//        initializeWsTenantNameAndAzureResourceManager(azureUserCredentialDTO);
+//        executeSync();
+//    }
+
+
+    private void executeSync() {
         try {
-            this.wsTenantName = azureUserCredential.getWsTenantName();
-            this.azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredential);
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_RESOURCE_DATA_SYNC_START, "Info");
-            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_RESOURCE_DATA_TRUNCATED, "Info");
             truncateAzureResourcesDataThroughAzureTenant(azureTenant);
+            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_RESOURCE_DATA_TRUNCATED, "Info");
             AzureSubscription azureSubscription = syncSubscription(azureTenant);
-            syncResourceGroups(azureTenant, azureSubscription);
-            syncAzureVMs(azureTenant, azureSubscription);
-            syncStorageData(azureTenant, azureSubscription);
-            syncServersAndDatabases(azureTenant, azureSubscription);
-            syncRoleDefinitions(azureTenant);
-            syncRoleAssignments(azureTenant);
+            Map<String, AzureResourceGroup> azureResourceGroupMap = createAzureResourceGroupMap(syncResourceGroups(azureSubscription));
+//            syncAzureVMs(azureSubscription, azureResourceGroupMap);
+            syncStorageData(azureSubscription, azureResourceGroupMap);
+            syncServersAndDatabases(azureSubscription, azureResourceGroupMap);
+            syncRoleDefinitions(azureTenant, azureSubscription);
+            log.info("azure role definitions data fetched..");
+            syncRoleAssignments(azureTenant, azureSubscription);
+            log.info("azure role assignments data fetched..");
+            List<AzureKubernetesCluster> azureKubernetesClusters = syncAzureKubernetesClusters(azureSubscription, azureResourceGroupMap);
+//            syncKubernetesResources(azureSubscription.getAzureSubscriptionId(), azureKubernetesClusters);
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_RESOURCE_DATA_SYNC_END, "Info");
         } catch (Exception ex) {
             log.error("Error occurred in syncing data from Azure Resources");
@@ -78,9 +199,44 @@ public class AzureResourceSyncService {
         }
     }
 
+
+//    private void initializeWsTenantNameAndAzureResourceManager(AzureUserCredentialDTO azureUserCredentialDTO) {
+//        this.wsTenantName = azureUserCredentialDTO.getWsTenantName();
+//        this.azureResourceManager = azureAuthUtil.validateAzureCredentialsWithSubscriptionId(azureUserCredentialDTO);
+//    }
+
+
+    private AzureSubscription syncOrGetAzureSubscription(AzureTenant azureTenant) {
+        return Optional.ofNullable(azureTenant.getAzureSubscriptions())
+                .filter(subscriptions -> !subscriptions.isEmpty())
+                .map(subscriptions -> subscriptions.get(0))
+                .orElseGet(() -> syncSubscription(azureTenant));
+    }
+
     /* Source parent for all azure resource models like AzureVM, Storages => AzureSubscription */
     private void truncateAzureResourcesDataThroughAzureTenant(AzureTenant azureTenant) {
         azureSubscriptionRepository.deleteByAzureTenant(azureTenant);
+    }
+
+    private Map<String, AzureResourceGroup> createAzureResourceGroupMap(List<AzureResourceGroup> azureResourceGroups) {
+        return azureResourceGroups.stream().collect(Collectors.toMap(
+                azureResourceGroup -> azureResourceGroup.getName().toUpperCase(),
+                azureResourceGroup -> azureResourceGroup));
+    }
+
+    private List<ClusterConfigurationRequest> createK8ClusterAndConfigTriples(List<AzureKubernetesCluster> azureKubernetesClusters) {
+        return azureKubernetesClusters.stream()
+                .map(azureCluster -> {
+                    String severURL = EncryptionUtil.getDecryptedKey(azureCluster.getAzureK8ClusterCredentials().get(0).getClusterServerUrl(), Constant.AKS_CLUSTER_SERVER_URL);
+                    String token = EncryptionUtil.getDecryptedKey(azureCluster.getAzureK8ClusterCredentials().get(0).getToken(), Constant.AKS_CLUSTER_TOKEN);
+                    return ClusterConfigurationRequest.builder()
+                            .clusterId(azureCluster.getAzureId())
+                            .clusterName(azureCluster.getName())
+                            .server(severURL)
+                            .token(token)
+                            .build();
+                })
+                .collect(Collectors.toList());
     }
 
 
@@ -114,10 +270,11 @@ public class AzureResourceSyncService {
     }
 
 
-    private void syncResourceGroups(AzureTenant azureTenant, AzureSubscription azureSubscription) {
+    private List<AzureResourceGroup> syncResourceGroups(AzureSubscription azureSubscription) {
+        List<AzureResourceGroup> azureResourceGroups = null;
         try {
             PagedIterable<ResourceGroup> resourceGroups = this.azureResourceManager.resourceGroups().list();
-            List<AzureResourceGroup> azureResourceGroups = resourceGroups.stream()
+            azureResourceGroups = azureResourceGroupRepository.saveAllAndFlush(resourceGroups.stream()
                     .map(resourceGroup -> AzureResourceGroup.builder()
                             .azureResourceId(resourceGroup.id())
                             .name(resourceGroup.name())
@@ -125,56 +282,69 @@ public class AzureResourceSyncService {
                             .syncedAt(new Date())
                             .tags(resourceGroup.tags())
                             .location(GenericUtil.getOrNull(() -> resourceGroup.innerModel().location()))
+                            .subscriptionId(azureSubscription.getAzureSubscriptionId())
                             .wsTenantName(this.wsTenantName)
                             .azureSubscription(azureSubscription)
-                            .azureTenant(azureTenant)
                             .build()
                     )
-                    .collect(Collectors.toList());
-            azureResourceGroupRepository.saveAll(azureResourceGroups);
+                    .collect(Collectors.toList()));
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_RESOURCE_GROUPS_SYNCED, "Info");
         } catch (Exception ignored) {
             log.error(String.format("Error in syncing %s with message: %s", ResourceGroup.class.getName(), ignored.getMessage()));
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, (Constant.ERROR_IN_SYNCING_AZURE_RESOURCES + ResourceGroup.class.getName()), "Info");
         }
+
+        if (CollectionUtils.isEmpty(azureResourceGroups)) {
+            throw new RuntimeException("Failed to sync resource groups data");
+        }
+        return azureResourceGroups;
     }
 
 
-    private void syncAzureVMs(AzureTenant azureTenant, AzureSubscription azureSubscription) {
+    private void syncAzureVMs(AzureSubscription azureSubscription, Map<String, AzureResourceGroup> azureResourceGroupMap) {
         try {
             List<AzureVM> azureVMs = this.azureResourceManager.virtualMachines().list().stream()
-                    .map(vm -> AzureVM.builder()
-                            .azureVmId(vm.vmId())
-                            .instanceId(vm.id())
-                            .name(vm.name())
-                            .computerName(vm.computerName())
-                            .powerState(GenericUtil.getOrNull(() -> vm.powerState().toString()))
-                            .size(GenericUtil.getOrNull(() -> vm.size().getValue()))
-                            .osType(GenericUtil.getOrNull(() -> vm.osType().toString()))
-                            .publicIpInstanceId(vm.getPrimaryPublicIPAddressId())
-                            .resourceGroupName(vm.resourceGroupName())
-                            .osDiskSize(vm.osDiskSize())
-                            .region(vm.region().name())
-                            .securityType(GenericUtil.getOrNull(() -> vm.securityType().toString()))
-                            .type(vm.type())
-                            .resourceIdentityType(GenericUtil.getOrNull(() -> vm.innerModel().identity().type().name()))
-                            .ipAddress(GenericUtil.getOrNull(() -> vm.getPrimaryPublicIPAddress().ipAddress()))
-                            .syncedAt(new Date())
-                            .azureSubscription(azureSubscription)
-                            .azureTenant(azureTenant)
-                            .wsTenantName(wsTenantName)
-                            .build())
+                    .map(vm -> {
+                        AzureVM azureVM = AzureVM.builder()
+                                .azureVmId(vm.vmId())
+                                .instanceId(vm.id())
+                                .name(vm.name())
+                                .computerName(vm.computerName())
+                                .powerState(GenericUtil.getOrNull(() -> vm.powerState().toString()))
+                                .size(GenericUtil.getOrNull(() -> vm.size().getValue()))
+                                .osType(GenericUtil.getOrNull(() -> vm.osType().toString()))
+                                .publicIpInstanceId(vm.getPrimaryPublicIPAddressId())
+                                .resourceGroupName(vm.resourceGroupName())
+                                .osDiskSize(vm.osDiskSize())
+                                .region(vm.region().name())
+                                .securityType(GenericUtil.getOrNull(() -> vm.securityType().toString()))
+                                .resourceType(vm.type())
+                                .resourceIdentityType(GenericUtil.getOrNull(() -> vm.innerModel().identity().type().name()))
+                                .ipAddress(GenericUtil.getOrNull(() -> vm.getPrimaryPublicIPAddress().ipAddress()))
+                                .syncedAt(new Date())
+                                .subscriptionId(azureSubscription.getAzureSubscriptionId())
+                                .azureResourceGroup(azureResourceGroupMap.get(vm.resourceGroupName().toUpperCase()))
+                                .azureSubscription(azureSubscription)
+                                .wsTenantName(wsTenantName)
+                                .build();
+
+                        azureVM.setAzureNetworkInterfaces(determineAndCreatePublicNetworkInterfacesForVM(azureVM, vm.networkInterfaceIds()));
+                        return azureVM;
+                    })
                     .collect(Collectors.toList());
+
+            log.info("vm synced");
             azureVMRepository.saveAll(azureVMs);
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_VMS_SYNCED, "Info");
         } catch (Exception ignored) {
+            log.info("v -> Error");
             log.error(String.format("Error in syncing %s with message: %s", VirtualMachine.class.getName(), ignored.getMessage()));
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, (Constant.ERROR_IN_SYNCING_AZURE_RESOURCES + VirtualMachine.class.getName()), "Info");
         }
     }
 
 
-    private void syncStorageData(AzureTenant azureTenant, AzureSubscription azureSubscription) {
+    private void syncStorageData(AzureSubscription azureSubscription, Map<String, AzureResourceGroup> azureResourceGroupMap) {
         try {
             List<AzureStorageAccount> azureStorageAccounts = this.azureResourceManager.storageAccounts().list().stream().map(storageAccount -> AzureStorageAccount.builder()
                             .azureStorageAccountId(storageAccount.id())
@@ -189,13 +359,16 @@ public class AzureResourceSyncService {
                             .publicAccess(GenericUtil.getOrNull(() -> storageAccount.publicNetworkAccess().toString()))
                             .accessTier(GenericUtil.getOrNull(() -> storageAccount.accessTier().name()))
                             .skuTier(GenericUtil.getOrNull(() -> storageAccount.innerModel().sku().tier().name()))
+                            .resourceType(storageAccount.type())
+                            .resourceGroupName(storageAccount.resourceGroupName())
                             .tags(storageAccount.tags())
+                            .subscriptionId(azureSubscription.getAzureSubscriptionId())
+                            .azureResourceGroup(azureResourceGroupMap.get(storageAccount.resourceGroupName().toUpperCase()))
                             .azureSubscription(azureSubscription)
                             .wsTenantName(this.wsTenantName)
-                            .azureTenant(azureTenant)
                             .syncedAt(new Date())
                             .build())
-                    .toList();
+                    .collect(Collectors.toList());
             azureStorageRepository.saveAll(azureStorageAccounts);
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_STORAGES_SYNCED, "Info");
         } catch (Exception ignored) {
@@ -204,12 +377,13 @@ public class AzureResourceSyncService {
         }
     }
 
-    private void syncServersAndDatabases(AzureTenant azureTenant, AzureSubscription azureSubscription) {
+    private void syncServersAndDatabases(AzureSubscription azureSubscription, Map<String, AzureResourceGroup> azureResourceGroupMap) {
         try {
             List<AzureServer> azureServers = this.azureResourceManager.sqlServers().list().stream()
                     .map(sqlServer -> {
                         List<AzureDatabase> azureDatabases = sqlServer.databases().list().stream()
                                 .map(sqlDatabase -> AzureDatabase.builder()
+                                        .instanceId(sqlDatabase.id())
                                         .azureDatabaseId(sqlDatabase.databaseId())
                                         .databaseName(sqlDatabase.name())
                                         .azureServerId(sqlServer.id())
@@ -223,15 +397,17 @@ public class AzureResourceSyncService {
                                         .minCapacity(GenericUtil.getOrNull(() -> sqlDatabase.innerModel().minCapacity()))
                                         .pausedDate(GenericUtil.getOrNull(() -> sqlDatabase.innerModel().pausedDate()))
                                         .resumedDate(GenericUtil.getOrNull(() -> sqlDatabase.innerModel().resumedDate()))
+                                        .resourceGroupName(sqlDatabase.resourceGroupName())
+                                        .subscriptionId(azureSubscription.getAzureSubscriptionId())
+                                        .resourceType(GenericUtil.getOrNull(() -> sqlDatabase.innerModel().type()))
                                         .syncedAt(new Date())
                                         .wsTenantName(this.wsTenantName)
-                                        .azureTenant(azureTenant)
                                         .build())
                                 .collect(Collectors.toList());
                         return AzureServer.builder()
                                 .azureServerId(sqlServer.id())
                                 .serverName(sqlServer.name())
-                                .type(GenericUtil.getOrNull(() -> sqlServer.type()))
+                                .type(GenericUtil.getOrNull(sqlServer::type))
                                 .region(GenericUtil.getOrNull(() -> sqlServer.region().name()))
                                 .serverVersion(sqlServer.version())
                                 .kind(sqlServer.kind())
@@ -244,16 +420,18 @@ public class AzureResourceSyncService {
                                 .administratorType(GenericUtil.getOrNull(() -> sqlServer.getActiveDirectoryAdministrator().administratorType().toString()))
                                 .administratorSignInName(GenericUtil.getOrNull(() -> sqlServer.getActiveDirectoryAdministrator().signInName()))
                                 .administratorId(GenericUtil.getOrNull(() -> sqlServer.getActiveDirectoryAdministrator().id()))
+                                .resourceType(sqlServer.type())
                                 .syncedAt(new Date())
+                                .subscriptionId(azureSubscription.getAzureSubscriptionId())
+                                .azureResourceGroup(azureResourceGroupMap.get(sqlServer.resourceGroupName().toUpperCase()))
                                 .azureSubscription(azureSubscription)
                                 .wsTenantName(this.wsTenantName)
-                                .azureTenant(azureTenant)
                                 .location(GenericUtil.getOrNull(() -> sqlServer.innerModel().location()))
                                 .administratorLogin(sqlServer.administratorLogin())
                                 .azureDatabases(azureDatabases)
                                 .build();
                     })
-                    .toList();
+                    .collect(Collectors.toList());
             azureServerRepository.saveAll(azureServers);
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_SERVER_DATABASES_SYNCED, "Info");
         } catch (Exception ignored) {
@@ -263,20 +441,20 @@ public class AzureResourceSyncService {
         }
     }
 
-    private void syncRoleDefinitions(AzureTenant azureTenant) {
+    private void syncRoleDefinitions(AzureTenant azureTenant, AzureSubscription azureSubscription) {
         try {
             azureRoleDefinitionRepository.deleteAllByAzureTenant(azureTenant);
 
             /* FETCHING AT SUBSCRIPTION LEVEL (includes Roles inherited from top hierarchies + created specifically for Subscription as well) */
-            PagedIterable<RoleDefinition> subsRoleDefinitionsPage = azureResourceManager.accessManagement().roleDefinitions().listByScope(String.format("/subscriptions/%s", azureResourceManager.subscriptionId()));
+            PagedIterable<RoleDefinition> subsRoleDefinitionsPage = azureResourceManager.accessManagement().roleDefinitions().listByScope(String.format(Constant.SUBSCRIPTION_LEVEL_SCOPE, azureResourceManager.subscriptionId()));
             Set<RoleDefinition> roleDefinitionSet = subsRoleDefinitionsPage.stream().collect(Collectors.toSet());
 
             /* FETCHING AT EACH RESOURCE-GROUP LEVEL ONLY */
             PagedIterable<ResourceGroup> resourceGroups = azureResourceManager.resourceGroups().list();
             resourceGroups.forEach((resourceGroup -> {
-                PagedIterable<RoleDefinition> rgRoles = azureResourceManager.accessManagement().roleDefinitions().listByScope(String.format("/subscriptions/%s/resourceGroups/%s", azureResourceManager.subscriptionId(), resourceGroup.name()));
+                PagedIterable<RoleDefinition> rgRoles = azureResourceManager.accessManagement().roleDefinitions().listByScope(String.format(Constant.RESOURCE_GROUP_LEVEL_SCOPE, azureResourceManager.subscriptionId(), resourceGroup.name()));
                 Set<RoleDefinition> rgRoleDefinitionSet = rgRoles.stream()
-                        .filter(rgRole -> rgRole.innerModel().roleType().equals("CustomRole") && rgRole.assignableScopes().contains(String.format("/subscriptions/%s/resourceGroups/%s", azureResourceManager.subscriptionId(), resourceGroup.name())))
+                        .filter(rgRole -> rgRole.innerModel().roleType().equals("CustomRole") && rgRole.assignableScopes().contains(String.format(Constant.RESOURCE_GROUP_LEVEL_SCOPE, azureResourceManager.subscriptionId(), resourceGroup.name())))
                         .collect(Collectors.toSet());
                 roleDefinitionSet.addAll(rgRoleDefinitionSet);
             }));
@@ -293,6 +471,8 @@ public class AzureResourceSyncService {
                                 .createdOn(GenericUtil.getOrNull(() -> role.innerModel().createdOn()))
                                 .assignableScope(role.assignableScopes())
                                 .syncedAt(new Date())
+                                .azureSubscription(azureSubscription)
+                                .subscriptionId(azureSubscription.getAzureSubscriptionId())
                                 .wsTenantName(this.wsTenantName)
                                 .azureTenant(azureTenant)
                                 .build();
@@ -336,51 +516,175 @@ public class AzureResourceSyncService {
                 .map(action -> AzureRoleDefinitionAction.builder()
                         .action(action)
                         .type(type)
+                        .createdAt(new Date())
+                        .subscriptionId(azureRoleDefinition.getAzureSubscription().getAzureSubscriptionId())
+                        .wsTenantName(this.wsTenantName)
                         .azureRoleDefinitionPermission(azurePermission)
                         .azureRoleDefinition(azureRoleDefinition)
-                        .azureTenant(azureTenant)
                         .build())
                 .toList();
     }
 
-    private void syncRoleAssignments(AzureTenant azureTenant) {
+    private void syncRoleAssignments(AzureTenant azureTenant, AzureSubscription azureSubscription) {
         try {
             azureRoleAssignmentRepository.deleteAllByAzureTenant(azureTenant);
-            List<AzureRoleDefinition> azureRoleDefinitions = azureRoleDefinitionRepository.findAllByAzureTenant(azureTenant);
-            Map<String, AzureRoleDefinition> azureRoleDefinitionMap = new HashMap<>();
-            azureRoleDefinitions.forEach((azureRoleDefinition -> {
-                azureRoleDefinitionMap.put(azureRoleDefinition.getRolePathId(), azureRoleDefinition);
-            }));
-            PagedIterable<RoleAssignment> roleAssignmentPage = this.azureResourceManager.accessManagement().roleAssignments().listByScope(String.format("/subscriptions/%s", this.azureResourceManager.subscriptionId()));
+            PagedIterable<RoleAssignment> roleAssignmentPage = this.azureResourceManager.accessManagement().roleAssignments().listByScope(String.format(Constant.SUBSCRIPTION_LEVEL_SCOPE, this.azureResourceManager.subscriptionId()));
             List<AzureRoleAssignment> azureRoleAssignments = new ArrayList<>();
             for (RoleAssignment roleAssignment : roleAssignmentPage) {
-                AzureRoleAssignment azureRoleAssignment = AzureRoleAssignment.builder()
-                        .azureRoleAssignmentPathId(roleAssignment.id())
-                        .azureId(roleAssignment.name())
-                        .description(roleAssignment.description())
-                        .assignee(roleAssignment.principalId())
-                        .principalType(GenericUtil.getOrNull(() -> roleAssignment.innerModel().principalType().getValue()))
-                        .scope(roleAssignment.scope())
-                        .scopeType(GenericUtil.determineScopeType(roleAssignment.scope()))
-                        .condition(roleAssignment.condition())
-                        .azureRoleDefinitionId(GenericUtil.getOrNull(() -> azureRoleDefinitionMap.get(roleAssignment.roleDefinitionId()).getAzureId()))
-                        .isRoleInherited(false)
-                        .createdOn(GenericUtil.getOrNull(() -> roleAssignment.innerModel().createdOn()))
-                        .createdBy(GenericUtil.getOrNull(() -> roleAssignment.innerModel().createdBy()))
-                        .requestedAt(null)
-                        .expiryTimeAmount(null)
-                        .syncedAt(new Date())
-                        .wsTenantName(this.wsTenantName)
-                        .azureTenant(azureTenant)
-                        .build();
+                AzureRoleAssignment azureRoleAssignment = AzureEntityUtil.createAzureRoleAssignmentFromResourceEntity(roleAssignment, GenericUtil.determineScopeType(roleAssignment.scope()),
+                        AzureRoleAssignment.builder()
+                                .subscriptionId(azureSubscription.getAzureSubscriptionId())
+                                .azureSubscription(azureSubscription)
+                                .wsTenantName(this.wsTenantName)
+                                .azureTenant(azureTenant)
+                                .build());
                 azureRoleAssignments.add(azureRoleAssignment);
             }
-
             azureRoleAssignmentRepository.saveAll(azureRoleAssignments);
+            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_SERVER_ROLE_ASSIGNMENT_SYNCED, "Info");
         } catch (Exception ignored) {
-            log.error(String.format("Error in syncing %s with message: %s", RoleDefinition.class.getName(), ignored.getMessage()));
+            log.error(String.format("Error in syncing %s with message: %s", RoleAssignment.class.getName(), ignored.getMessage()));
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, (Constant.ERROR_IN_SYNCING_AZURE_RESOURCES + RoleDefinition.class.getName()), "Error");
         }
     }
+
+
+    private List<AzureKubernetesCluster> syncAzureKubernetesClusters(AzureSubscription azureSubscription, Map<String, AzureResourceGroup> azureResourceGroupMap) {
+        List<AzureKubernetesCluster> savedKubernetesClusters = new ArrayList<>();
+        try {
+            PagedIterable<KubernetesCluster> kubernetesClusters = azureResourceManager.kubernetesClusters().list();
+            List<AzureKubernetesCluster> azureKubernetesClusters = kubernetesClusters.stream()
+                    .map(kubernetesCluster -> {
+                        AzureKubernetesCluster azureKubernetesCluster = AzureKubernetesCluster.builder()
+                                .azureId(kubernetesCluster.id())
+                                .name(kubernetesCluster.name())
+                                .powerState(GenericUtil.getOrNull(() -> kubernetesCluster.powerState().code().getValue()))
+                                .resourceGroupName(kubernetesCluster.resourceGroupName())
+                                .regionName(kubernetesCluster.regionName())
+                                .publicNetworkAccess(GenericUtil.getOrNull(() -> kubernetesCluster.publicNetworkAccess().getValue()))
+                                .nodeResourceGroup(kubernetesCluster.nodeResourceGroup())
+                                .isLocalAccountsEnabled(String.valueOf(kubernetesCluster.isLocalAccountsEnabled()))
+                                .managedClusterIdentityType(GenericUtil.getOrNull(() -> kubernetesCluster.innerModel().identity().type().name()))
+                                .kubernetesVersion(kubernetesCluster.version())
+                                .isAzureRbacEnabled(kubernetesCluster.isAzureRbacEnabled())
+                                .type(kubernetesCluster.type())
+                                .resourceType(GenericUtil.getOrNull(() -> kubernetesCluster.innerModel().type()))
+                                .subscriptionId(azureSubscription.getAzureSubscriptionId())
+                                .azureResourceGroup(azureResourceGroupMap.get(kubernetesCluster.resourceGroupName().toUpperCase()))
+                                .azureSubscription(azureSubscription)
+                                .wsTenantName(this.wsTenantName)
+                                .build();
+
+                        azureKubernetesCluster.setAzureK8ClusterCredentials(createK8ClusterCredentials(azureKubernetesCluster, kubernetesCluster.adminKubeConfigs(), kubernetesCluster.resourceGroupName(), azureSubscription.getAzureSubscriptionId(), KubernetesClusterCredentialType.ADMIN));
+                        return azureKubernetesCluster;
+                    })
+                    .toList();
+
+            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_KUBERNETES_CLUSTERS_SYNCED, "Info");
+            savedKubernetesClusters = azureKubernetesClusterRepository.saveAll(azureKubernetesClusters);
+        } catch (Exception e) {
+            log.error(String.format("Error in syncing %s with message: %s", KubernetesCluster.class.getName(), e.getMessage()));
+            if (e.getMessage().contains("403")) {
+                backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.INSUFFICIENT_PRIVILEGEE_FOR_AKS_ADMIN_CONFIG_FETCH, "Error");
+            }
+            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, (Constant.ERROR_IN_SYNCING_AZURE_RESOURCES + KubernetesCluster.class.getName()), "Error");
+        }
+
+        return savedKubernetesClusters;
+    }
+
+
+    private List<AzureK8ClusterCredential> createK8ClusterCredentials(AzureKubernetesCluster cluster, List<CredentialResult> credentialResults,
+                                                                      String resourceGroupName, String subscriptionId, KubernetesClusterCredentialType type) {
+        return credentialResults.stream()
+                .map(credentialResult -> {
+                    Triple<String, String, String> configData = GenericUtil.extractServerTokenAndCaCertBase64FromKubeConfigYAML(new String(credentialResult.value()));
+                    return AzureK8ClusterCredential.builder()
+                            .name(credentialResult.name())
+                            .clusterServerUrl(EncryptionUtil.getEncryptedKey(configData.getLeft(), Constant.AKS_CLUSTER_SERVER_URL))
+                            .token(EncryptionUtil.getEncryptedKey(configData.getMiddle(), Constant.AKS_CLUSTER_TOKEN))
+                            .caData(EncryptionUtil.getDecryptedKey(configData.getRight(), Constant.AKS_CLUSTER_CA_DATA))
+                            .type(type)
+                            .azureKubernetesCluster(cluster)
+                            .resourceGroupName(resourceGroupName)
+                            .subscriptionId(subscriptionId)
+                            .syncedAt(new Date())
+                            .build();
+                })
+                .collect(Collectors.toList());
+    }
+
+
+    private List<AzureNetworkInterface> determineAndCreatePublicNetworkInterfacesForVM(AzureVM azureVM, List<String> networkInterfaceIds) {
+        List<AzureNetworkInterface> publicAzureNetworkInterfaces = new ArrayList<>();
+        List<NetworkInterface> networkInterfaces = networkInterfaceIds.stream()
+                .map(nicId -> this.azureResourceManager.networkInterfaces().getById(nicId))
+                .toList();
+
+        for (NetworkInterface networkInterface : networkInterfaces) {
+            for (Map.Entry<String, NicIpConfiguration> stringNicIpConfigurationEntry : networkInterface.ipConfigurations().entrySet()) {
+                NicIpConfiguration nicIpConfiguration = stringNicIpConfigurationEntry.getValue();
+                String publicPathId = nicIpConfiguration.publicIpAddressId();
+
+                if (StringUtils.isNotEmpty(publicPathId)) {
+                    PublicIpAddress publicIpAddress = nicIpConfiguration.getPublicIpAddress();
+                    if (ObjectUtils.isNotEmpty(publicIpAddress)) {
+                        publicAzureNetworkInterfaces.add(AzureNetworkInterface.builder()
+                                .azureId(networkInterface.id())
+                                .name(networkInterface.name())
+                                .virtualMachineId(networkInterface.virtualMachineId())
+                                .azureVM(azureVM)
+                                .resourceGroupName(azureVM.getResourceGroupName())
+                                .subscriptionId(azureVM.getSubscriptionId())
+                                .syncedAt(new Date())
+                                .wsTenantName(this.wsTenantName)
+                                .build());
+                        break;
+                    }
+                }
+            }
+        }
+        return publicAzureNetworkInterfaces;
+    }
+
+
+    /* SYNC Azure Clusters resources (Kubernetes resources for AKS) */
+    private void syncKubernetesResources(String subscriptionId, List<AzureKubernetesCluster> azureKubernetesClusters) {
+        List<ClusterConfigurationRequest> credentialConfigs = createK8ClusterAndConfigTriples(azureKubernetesClusters);
+        if (CollectionUtils.isEmpty(credentialConfigs)) {
+            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.KUBERNETES_RESOURCES_DATA_SYNC_SKIPPED, "Info");
+            return;
+        }
+        K8ResourceDataSyncRequest k8ResourceDataSyncRequest = K8ResourceDataSyncRequest.builder()
+                .configurations(credentialConfigs)
+                .resourceAccountId(subscriptionId)
+                .cloudProviderType(CloudProviderType.AZURE)
+                .wsTenantName(this.wsTenantName)
+                .tenantEmail(this.tenantEmail)
+                .build();
+        try {
+            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.KUBERNETES_RESOURCES_SYNC_STARTED, "Info");
+            k8ResourcesSyncService.syncKubernetesData(k8ResourceDataSyncRequest);
+            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.KUBERNETES_RESOURCES_SYNC_ENDED, "Info");
+        } catch (Exception ignored) {
+            log.info("Inside AzureResourceSyncService at -> syncKubernetesResources");
+            log.warn(String.format("Error in syncing Kubernetes resources with message %s:", ignored.getMessage()));
+            backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.ERROR_IN_SYNCING_KUBERNETES_DATA, "Error");
+        }
+    }
+
+    //    public void syncK8ResourcesData(AzureTenant azureTenant, AzureUserCredentialDTO azureUserCredentialDTO) {
+//        List<AzureKubernetesCluster> azureKubernetesClusters = azureKubernetesClusterRepository.findAllByWsTenantNameAndPowerState(azureUserCredentialDTO.getWsTenantName(),
+//                Code.RUNNING.getValue());
+//        if (CollectionUtils.isEmpty(azureKubernetesClusters)) {
+//            throw new K8ResourceException("No AKS found for provided tenant: " + wsTenantName);
+//        }
+//
+//        initializeWsTenantNameAndAzureResourceManager(azureUserCredentialDTO);
+//        AzureSubscription azureSubscription = syncOrGetAzureSubscription(azureTenant);
+//        k8ResourcesDataService.deleteK8ResourcesByWsTenantName(this.wsTenantName);
+//        syncKubernetesResources(azureSubscription.getAzureSubscriptionId(), azureKubernetesClusters);
+//    }
+
 
 }

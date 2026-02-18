@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -102,4 +103,32 @@ public class AzureResourcesTestController {
 //    public void fetchRoleDefinitionEntityHandler() {
 //        azureResourcesTestService.fetchRoleDefinitionEntity();
 //    }
+
+
+    @GetMapping("/k8")
+    public ResponseEntity k8ClustersHandler() {
+        return ResponseEntity
+                .status(HttpStatus.OK)
+                .body(azureResourcesTestService.listK8Clusters());
+    }
+
+    @GetMapping("/console")
+    public ResponseEntity generateConsoleURLHandler() {
+        return ResponseEntity.status(HttpStatus.OK).body(azureResourcesTestService.generateConsoleURL());
+    }
+
+
+    @GetMapping("/publicIpAddress")
+    public ResponseEntity listPublicIPAddressInstancesHandler() {
+        azureResourcesTestService.listPublicIPAddressInstances();
+        return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/determinePublicNIC")
+    public ResponseEntity determineNicWithPublicIpAddressForVMHandler(@RequestParam String rgName,
+                                                                      @RequestParam String vmName) {
+        return ResponseEntity.status(HttpStatus.OK)
+                .body(azureResourcesTestService.determineNicWithPublicIpAddressForVM(rgName, vmName));
+    }
+
 }

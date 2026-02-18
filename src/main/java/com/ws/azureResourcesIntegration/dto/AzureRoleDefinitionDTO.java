@@ -23,4 +23,9 @@ public class AzureRoleDefinitionDTO {
     String wsTenantName;
     List<String> actions = new ArrayList<>();
     List<String> notActions = new ArrayList<>();
+
+    public AzureRoleDefinitionDTO(String rolePathId, String roleName){
+        this.rolePathId = rolePathId;
+        this.roleName = roleName;
+    }
 }

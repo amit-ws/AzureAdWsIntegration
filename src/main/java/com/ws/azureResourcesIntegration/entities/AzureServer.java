@@ -5,21 +5,20 @@ import com.ws.azureAdIntegration.entity.AzureTenant;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
+import lombok.experimental.SuperBuilder;
 
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
-import java.util.UUID;
 
-@Builder
+@EqualsAndHashCode(callSuper = true)
+@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
 @Data
 @Entity
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @Table(name = "azure_server", schema = "azure_test")
-public class AzureServer {
+public class AzureServer extends BaseAzureResource{
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Integer id;
@@ -34,7 +33,6 @@ public class AzureServer {
     Boolean managedServiceIdentityEnabled;
     String managedServiceIdentityType;
     String publicNetworkAccess;
-    String resourceGroupName;
     String innerModelState;
     String administratorType;
     String administratorSignInName;
@@ -42,20 +40,23 @@ public class AzureServer {
     String location;
     String administratorLogin;
     String endpointId;
-    Boolean isPublished;
-    Date syncedAt;
-    String wsTenantName; // WhiteSwan account organization name
+    String resourceType;
+
+    @OneToMany(mappedBy = "azureServer", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    List<AzureDatabase> azureDatabases = new ArrayList<>();
+
+    @JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "ws_azure_resource_group_id", referencedColumnName = "id")
+    AzureResourceGroup azureResourceGroup;
 
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ws_azure_subscription_id", referencedColumnName = "id")
     AzureSubscription azureSubscription;
 
-    @JsonIgnore
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "ws_azure_tenant_id", referencedColumnName = "id")
-    AzureTenant azureTenant;
-
-    @OneToMany(mappedBy = "azureServer", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
-    List<AzureDatabase> azureDatabases = new ArrayList<>();
+//    @JsonIgnore
+//    @ManyToOne(fetch = FetchType.LAZY)
+//    @JoinColumn(name = "ws_azure_tenant_id", referencedColumnName = "id")
+//    AzureTenant azureTenant;
 }

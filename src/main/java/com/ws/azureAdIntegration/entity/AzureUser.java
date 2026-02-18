@@ -6,6 +6,7 @@ import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -34,6 +35,7 @@ public class AzureUser {
     String jobTitle;
     String department;
     String officeLocation;
+    OffsetDateTime createdDateTime;
     String preferredLanguage;
     String userType;
 

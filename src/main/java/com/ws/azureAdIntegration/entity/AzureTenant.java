@@ -34,9 +34,10 @@ public class AzureTenant {
     OffsetDateTime azureCreatedDateTime;
 
     Date syncedAt;
-    String wsTenantName; // Whiteswan account organization name
+    String wsTenantName; // Whiteswan organization (tenant) name
 
-    Boolean isSSOEnabled;
+    @Column(name = "is_sso_enabled", columnDefinition = "boolean default false")
+    Boolean isSSOEnabled; // If a an azure_tenant is sso enabled means all the associated users of it will be too
 
     @JsonIgnore
     @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
@@ -56,23 +57,36 @@ public class AzureTenant {
 
     @JsonIgnore
     @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    List<AzureResourceGroup> azureResourceGroups = new ArrayList<>();
-
-    @JsonIgnore
-    @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     List<AzureSubscription> azureSubscriptions = new ArrayList<>();
 
     @JsonIgnore
     @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    List<AzureServer> azureServers = new ArrayList<>();
+    List<AzureRoleDefinition> azureRoleDefinitions = new ArrayList<>();
 
     @JsonIgnore
     @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    List<AzureStorageAccount> azureStorageAccounts = new ArrayList<>();
+    List<AzureRoleAssignment> azureRoleAssignments = new ArrayList<>();
 
-    @JsonIgnore
-    @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    List<AzureVM> azureVMS = new ArrayList<>();
+//    @JsonIgnore
+//    @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+//    List<CustomRoleAssignment> customRoleAssignments = new ArrayList<>();
 
+
+//    @JsonIgnore
+//    @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+//    List<AzureResourceGroup> azureResourceGroups = new ArrayList<>();
+//
+//    @JsonIgnore
+//    @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+//    List<AzureServer> azureServers = new ArrayList<>();
+//
+//    @JsonIgnore
+//    @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+//    List<AzureStorageAccount> azureStorages = new ArrayList<>();
+//
+//    @JsonIgnore
+//    @OneToMany(mappedBy = "azureTenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+//    List<AzureVM> azureVMS = new ArrayList<>();
 }
+
 

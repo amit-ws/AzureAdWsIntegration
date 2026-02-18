@@ -1,0 +1,8 @@
+package com.ws.mcpAgenticAIMgmt.constant;
+
+public enum PdpProcessedReason {
+    POLICY_NOT_FOUND_FOR_ENTERPRISE,
+    POLICY_RULE_NOT_FOUND_FOR_AGENT,
+    POLICY_CONDITIONS_NOT_SATISFIED,
+    POLICY_CONDITIONS_SATISFIED;
+}

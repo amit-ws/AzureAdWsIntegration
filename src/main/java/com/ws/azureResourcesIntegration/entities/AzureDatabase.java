@@ -5,22 +5,24 @@ import com.ws.azureAdIntegration.entity.AzureTenant;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
+import lombok.experimental.SuperBuilder;
 
 import java.time.OffsetDateTime;
-import java.util.Date;
 
-@Builder
+@EqualsAndHashCode(callSuper = true)
+@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
 @Data
 @Entity
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @Table(name = "azure_database", schema = "azure_test")
-public class AzureDatabase {
+public class AzureDatabase extends BaseAzureResource{
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Integer id;
-    String azureDatabaseId;
+    String instanceId;  /* Path (instance) ID  */
+    String azureDatabaseId; /* UUID of the database (sent by azure) */
     String databaseName;
     String azureServerId;
     String databaseType;
@@ -38,15 +40,21 @@ public class AzureDatabase {
     OffsetDateTime pausedDate;
     OffsetDateTime resumedDate;
     String defaultSecondaryLocation;
-    Boolean isPublished;
-    Date syncedAt;
-    String wsTenantName; // WhiteSwan account organization name
-    @JsonIgnore
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "ws_azure_tenant_id", referencedColumnName = "id")
-    AzureTenant azureTenant;
+    String resourceType;
+
+
+//    @JsonIgnore
+//    @ManyToOne(fetch = FetchType.LAZY)
+//    @JoinColumn(name = "ws_azure_resource_group_id", referencedColumnName = "id")
+//    AzureResourceGroup azureResourceGroup;
+
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ws_azure_server_id", referencedColumnName = "id")
     AzureServer azureServer;
+
+//    @JsonIgnore
+//    @ManyToOne(fetch = FetchType.LAZY)
+//    @JoinColumn(name = "ws_azure_tenant_id", referencedColumnName = "id")
+//    AzureTenant azureTenant;
 }

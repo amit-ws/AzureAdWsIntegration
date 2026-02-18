@@ -1,0 +1,26 @@
+package com.ws.azureAdIntegration.dto;
+
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.util.Date;
+import java.util.List;
+import java.util.Set;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class AzureUserCredentialDTO {
+    Integer id;
+    String clientId;
+    String tenantId;
+    String clientSecret;
+//    String subscriptionId;
+    Set<String> subscriptionIds;
+    Date createdAt;
+    Date updatedAt;
+    boolean syncStatus;
+    String wsTenantName;
+}

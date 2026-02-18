@@ -3,9 +3,7 @@ package com.ws.azureAdIntegration.repository;
 import com.ws.azureAdIntegration.entity.AzureApplication;
 import com.ws.azureAdIntegration.entity.AzureTenant;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import org.springframework.stereotype.Repository;
 
 import java.util.List;
 
@@ -23,4 +21,5 @@ public interface AzureApplicationRepository extends JpaRepository<AzureApplicati
 //            "FROM AzureApplication a " +
 //            "WHERE a.azureTenant = :azureTenant")
 //    List<AzureApplicationDto> findAllByAzureTenant(@Param("azureTenant") AzureTenant azureTenant);
+
 }

@@ -1,23 +1,23 @@
 package com.ws.azureResourcesIntegration.entities;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.ws.azureAdIntegration.entity.AzureTenant;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
+import lombok.experimental.SuperBuilder;
 
 import java.time.OffsetDateTime;
-import java.util.Date;
 import java.util.Map;
 
-@Builder
+@EqualsAndHashCode(callSuper = true)
+@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
 @Data
 @Entity
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @Table(name = "azure_storage_account", schema = "azure_test")
-public class AzureStorageAccount {
+public class AzureStorageAccount extends BaseAzureResource{
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Integer id;
@@ -34,7 +34,8 @@ public class AzureStorageAccount {
     String publicAccess;
     String skuTier;
     String accessTier;
-    Boolean isPublished;
+    String resourceType;
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(
             name = "azure_storage_account_tags",
@@ -43,16 +44,20 @@ public class AzureStorageAccount {
     @MapKeyColumn(name = "tag_key")
     @Column(name = "tag_value")
     private Map<String, String> tags;
-    Date syncedAt;
-    String wsTenantName; // WhiteSwan account organization name
+
+    @JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "ws_azure_resource_group_id", referencedColumnName = "id")
+    AzureResourceGroup azureResourceGroup;
 
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ws_azure_subscription_id", referencedColumnName = "id")
     AzureSubscription azureSubscription;
 
-    @JsonIgnore
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "ws_azure_tenant_id", referencedColumnName = "id")
-    AzureTenant azureTenant;
+
+//    @JsonIgnore
+//    @ManyToOne(fetch = FetchType.LAZY)
+//    @JoinColumn(name = "ws_azure_tenant_id", referencedColumnName = "id")
+//    AzureTenant azureTenant;
 }

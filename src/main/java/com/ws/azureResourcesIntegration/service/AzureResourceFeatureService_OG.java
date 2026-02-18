@@ -13,7 +13,7 @@ import com.ws.azureAdIntegration.repository.AzureUserCredentialRepository;
 import com.ws.azureAdIntegration.repository.AzureUserGroupMembershipRepository;
 import com.ws.azureAdIntegration.repository.AzureUserRepository;
 import com.ws.azureAdIntegration.util.EncryptionUtil;
-import com.ws.azureResourcesIntegration.configuration.AzureAuthConfigurationFactory;
+import com.ws.configuration.AzureAuthConfigurationFactory;
 import com.ws.azureResourcesIntegration.dto.*;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
@@ -150,12 +150,13 @@ public class AzureResourceFeatureService_OG {
             throw new RuntimeException("No role found with provided role definition id: " + roleDefinitionId);
         }
 
-        azureResourceManager.accessManagement()
+        RoleAssignment createdRoleAssignment = azureResourceManager.accessManagement()
                 .roleAssignments()
                 .define(assignment.get().id())
                 .forObjectId(principleId)
                 .withRoleDefinition(roleDefinitionId)
                 .withScope(String.format("/subscriptions/%s", azureResourceManager.subscriptionId()))
+                .withDescription("Blah Blah")
                 .create();
     }
 
