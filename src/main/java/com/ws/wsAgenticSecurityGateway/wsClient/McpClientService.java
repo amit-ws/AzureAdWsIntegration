@@ -47,6 +47,8 @@ public class McpClientService {
             info.put("status", session.isActive() ? "connected" : "disconnected");
             info.put("connectedAt", session.getConnectedAt().toString());
             info.put("toolCount", session.getToolCount());
+            info.put("resourceCount", session.getResources() != null ? session.getResources().size() : 0);
+            info.put("promptCount", session.getPrompts() != null ? session.getPrompts().size() : 0);
 
             if (session.getServerInfo() != null) {
                 info.put("serverName", session.getServerInfo().name());  // Actual server name

@@ -2,11 +2,15 @@ package com.ws.wsAgenticSecurityGateway.audit.repository;
 
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditEventType;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditModule;
+import com.ws.wsAgenticSecurityGateway.audit.constants.AuditSeverity;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditStatus;
 import com.ws.wsAgenticSecurityGateway.audit.entity.McpAuditLog;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
@@ -15,9 +19,13 @@ import java.util.UUID;
 
 /**
  * Persistence gateway for {@link McpAuditLog} records.
+ *
+ * <p>Extends {@link JpaSpecificationExecutor} for dynamic multi-field
+ * filtering used by the admin dashboard audit log page.
  */
 @Repository
-public interface McpAuditLogRepository extends JpaRepository<McpAuditLog, UUID> {
+public interface McpAuditLogRepository
+        extends JpaRepository<McpAuditLog, UUID>, JpaSpecificationExecutor<McpAuditLog> {
 
     Page<McpAuditLog> findByModule(AuditModule module, Pageable pageable);
 
@@ -39,4 +47,35 @@ public interface McpAuditLogRepository extends JpaRepository<McpAuditLog, UUID> 
     Page<McpAuditLog> findByModuleAndStatus(AuditModule module, AuditStatus status, Pageable pageable);
 
     long countByModuleAndStatus(AuditModule module, AuditStatus status);
+
+    // ── Dashboard stat queries ─────────────────────────────────────────
+
+    long countByStatus(AuditStatus status);
+
+    long countByModule(AuditModule module);
+
+    long countBySeverity(AuditSeverity severity);
+
+    @Query("SELECT AVG(m.durationMs) FROM McpAuditLog m WHERE m.durationMs IS NOT NULL")
+    Double findAverageDurationMs();
+
+    @Query("SELECT AVG(m.durationMs) FROM McpAuditLog m WHERE m.durationMs IS NOT NULL AND m.timestamp >= :since")
+    Double findAverageDurationMsSince(@Param("since") LocalDateTime since);
+
+    @Query(value = "SELECT date_trunc('hour', m.timestamp) AS bucket, COUNT(*) AS cnt " +
+            "FROM ws_agentic_security.mcp_audit_log m " +
+            "WHERE m.timestamp >= :since " +
+            "GROUP BY date_trunc('hour', m.timestamp) ORDER BY bucket",
+            nativeQuery = true)
+    List<Object[]> countByHourSince(@Param("since") LocalDateTime since);
+
+    @Query("SELECT DISTINCT m.serverName FROM McpAuditLog m WHERE m.serverName IS NOT NULL ORDER BY m.serverName")
+    List<String> findDistinctServerNames();
+
+    @Query("SELECT DISTINCT m.capabilityName FROM McpAuditLog m WHERE m.capabilityName IS NOT NULL ORDER BY m.capabilityName")
+    List<String> findDistinctCapabilityNames();
+
+    long countByTimestampAfter(LocalDateTime since);
+
+    long countByStatusAndTimestampAfter(AuditStatus status, LocalDateTime since);
 }

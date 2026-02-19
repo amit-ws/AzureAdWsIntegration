@@ -77,7 +77,7 @@ public class McpSession {
      * Check if session is active
      */
     public boolean isActive() {
-        return client != null && client.isInitialized() && transport.isConnected();
+        return client != null && client.isInitialized();
     }
 
     /**
