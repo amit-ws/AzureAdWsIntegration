@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * REST Controller for MCP client operations.
@@ -110,7 +111,8 @@ public class McpClientController {
         log.info("🔧 POST /api/mcp/servers/{}/tools/{} - Calling tool", serverName, toolName);
 
         try {
-            List<McpSchema.Content> result = service.callTool(serverName, toolName, input);
+            String correlationId = UUID.randomUUID().toString();
+            List<McpSchema.Content> result = service.callTool(correlationId, serverName, toolName, input);
             return ResponseEntity.ok(result);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();
@@ -134,7 +136,8 @@ public class McpClientController {
         log.info("📖 GET /api/mcp/servers/{}/resources/read?uri={}", serverName, uri);
 
         try {
-            List<McpSchema.ResourceContents> contents = service.readResource(serverName, uri);
+            String correlationId = UUID.randomUUID().toString();
+            List<McpSchema.ResourceContents> contents = service.readResource(correlationId, serverName, uri);
             return ResponseEntity.ok(contents);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();

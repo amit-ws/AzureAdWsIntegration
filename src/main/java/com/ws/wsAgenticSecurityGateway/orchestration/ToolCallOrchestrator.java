@@ -165,7 +165,17 @@ public class ToolCallOrchestrator {
                 correlationId, sessionId, publicName, serverName, lookupDuration, requestId);
 
         // ── Step 6: Register in-flight ──────────────────────────────────
-        inFlightRegistry.register(correlationId, publicName, serverName, originalName, sessionId, requestId);
+        String agentName = "unknown";
+        String agentVersion = "";
+        try {
+            if (exchange != null && exchange.getClientInfo() != null) {
+                McpSchema.Implementation ci = exchange.getClientInfo();
+                agentName = ci.name() != null ? ci.name() : "unknown";
+                agentVersion = ci.version() != null ? ci.version() : "";
+            }
+        } catch (Exception ignored) {}
+        inFlightRegistry.register(correlationId, publicName, serverName, originalName,
+                sessionId, requestId, agentName, agentVersion);
 
         // ── Step 7: Convert arguments to JsonNode ───────────────────────
         JsonNode argsAsJson;
@@ -186,6 +196,7 @@ public class ToolCallOrchestrator {
 
         // ── Step 7.5: Resolve agent token override ─────────────────────
         boolean usingAgentToken = resolveAndApplyAgentToken(correlationId, serverName);
+        inFlightRegistry.updateTokenMode(correlationId, usingAgentToken ? "AGENT-PROVIDED" : "CONFIG");
 
         // ── Step 8: Forward call via McpClientService ───────────────────
         long callStart = System.currentTimeMillis();
@@ -195,7 +206,7 @@ public class ToolCallOrchestrator {
                     usingAgentToken ? "AGENT-PROVIDED" : "CONFIG");
 
             List<McpSchema.Content> contentList =
-                    mcpClientService.callTool(serverName, originalName, argsAsJson);
+                    mcpClientService.callTool(correlationId, serverName, originalName, argsAsJson);
 
             long callDuration = System.currentTimeMillis() - callStart;
             long totalDuration = System.currentTimeMillis() - orchestrationStart;
@@ -513,10 +524,21 @@ public class ToolCallOrchestrator {
                 correlationId, sessionId, publicName, serverName, lookupDuration, requestId);
 
         // Register in-flight
-        inFlightRegistry.register(correlationId, publicName, serverName, originalName, sessionId, requestId);
+        String pAgentName = "unknown";
+        String pAgentVersion = "";
+        try {
+            if (exchange != null && exchange.getClientInfo() != null) {
+                McpSchema.Implementation ci = exchange.getClientInfo();
+                pAgentName = ci.name() != null ? ci.name() : "unknown";
+                pAgentVersion = ci.version() != null ? ci.version() : "";
+            }
+        } catch (Exception ignored) {}
+        inFlightRegistry.register(correlationId, publicName, serverName, originalName,
+                sessionId, requestId, pAgentName, pAgentVersion);
 
         // Resolve agent token override
         boolean usingAgentToken = resolveAndApplyAgentToken(correlationId, serverName);
+        inFlightRegistry.updateTokenMode(correlationId, usingAgentToken ? "AGENT-PROVIDED" : "CONFIG");
 
         // Forward to enterprise server
         long callStart = System.currentTimeMillis();
@@ -645,10 +667,21 @@ public class ToolCallOrchestrator {
                 correlationId, sessionId, publicName, serverName, lookupDuration, requestId);
 
         // Register in-flight
-        inFlightRegistry.register(correlationId, publicName, serverName, originalUri, sessionId, requestId);
+        String rAgentName = "unknown";
+        String rAgentVersion = "";
+        try {
+            if (exchange != null && exchange.getClientInfo() != null) {
+                McpSchema.Implementation ci = exchange.getClientInfo();
+                rAgentName = ci.name() != null ? ci.name() : "unknown";
+                rAgentVersion = ci.version() != null ? ci.version() : "";
+            }
+        } catch (Exception ignored) {}
+        inFlightRegistry.register(correlationId, publicName, serverName, originalUri,
+                sessionId, requestId, rAgentName, rAgentVersion);
 
         // Resolve agent token override
         boolean usingAgentToken = resolveAndApplyAgentToken(correlationId, serverName);
+        inFlightRegistry.updateTokenMode(correlationId, usingAgentToken ? "AGENT-PROVIDED" : "CONFIG");
 
         // Forward to enterprise server
         long callStart = System.currentTimeMillis();
@@ -658,7 +691,7 @@ public class ToolCallOrchestrator {
                     usingAgentToken ? "AGENT-PROVIDED" : "CONFIG");
 
             List<McpSchema.ResourceContents> contents =
-                    mcpClientService.readResource(serverName, originalUri);
+                    mcpClientService.readResource(correlationId, serverName, originalUri);
 
             long callDuration = System.currentTimeMillis() - callStart;
             long totalDuration = System.currentTimeMillis() - orchestrationStart;

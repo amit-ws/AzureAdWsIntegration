@@ -180,7 +180,7 @@ public class McpClientService {
     /**
      * Call a tool on a specific server
      */
-    public List<McpSchema.Content> callTool(String serverName, String toolName, JsonNode input) {
+    public List<McpSchema.Content> callTool(String correlationId, String serverName, String toolName, JsonNode input) {
         log.info("🔧 Calling tool '{}' on server '{}'", toolName, serverName);
         long start = System.currentTimeMillis();
 
@@ -216,13 +216,13 @@ public class McpClientService {
             });
 
             // Audit — tool invocation success
-            auditService.auditClientToolInvocation(session.getSessionId(), serverName, toolName, args, result, duration);
+            auditService.auditClientToolInvocation(session.getSessionId(), correlationId, serverName, toolName, args, result, duration);
 
             return result;
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - start;
             auditService.auditClientToolInvocationFailed(
-                    session.getSessionId(), serverName, toolName, args, e.getMessage(), McpErrorCode.INTERNAL_ERROR, duration);
+                    session.getSessionId(), correlationId, serverName, toolName, args, e.getMessage(), McpErrorCode.INTERNAL_ERROR, duration);
             throw e;
         }
     }
@@ -258,7 +258,7 @@ public class McpClientService {
     /**
      * Read a resource from a specific server
      */
-    public List<McpSchema.ResourceContents> readResource(String serverName, String uri) {
+    public List<McpSchema.ResourceContents> readResource(String correlationId, String serverName, String uri) {
         log.info("📖 Reading resource '{}' from server '{}'", uri, serverName);
         long start = System.currentTimeMillis();
 
@@ -274,12 +274,12 @@ public class McpClientService {
             log.info("✅ Resource read successfully, {} content item(s)", contents.size());
 
             // Audit — resource read success
-            auditService.auditClientResourceRead(session.getSessionId(), serverName, uri, contents, duration);
+            auditService.auditClientResourceRead(session.getSessionId(), correlationId, serverName, uri, contents, duration);
 
             return contents;
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - start;
-            auditService.auditClientResourceReadFailed(session.getSessionId(), serverName, uri, e.getMessage(), duration);
+            auditService.auditClientResourceReadFailed(session.getSessionId(), correlationId, serverName, uri, e.getMessage(), duration);
             throw e;
         }
     }

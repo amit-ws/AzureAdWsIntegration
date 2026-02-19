@@ -284,6 +284,7 @@ public class McpAuditService {
      */
     @Async("mcpAuditExecutor")
     public void auditClientToolInvocation(String sessionId,
+                                          String correlationId,
                                           String serverName,
                                           String toolName,
                                           Object requestArgs,
@@ -299,7 +300,7 @@ public class McpAuditService {
                 .capabilityName(toolName)
                 .capabilityType("TOOL")
                 .mcpMethod("tools/call")
-                .correlationId(generateCorrelationId())
+                .correlationId(correlationId)
                 .requestPayload(toJson(Map.of(
                         "toolName", toolName,
                         "arguments", requestArgs != null ? requestArgs : Map.of()
@@ -316,6 +317,7 @@ public class McpAuditService {
      */
     @Async("mcpAuditExecutor")
     public void auditClientToolInvocationFailed(String sessionId,
+                                                String correlationId,
                                                 String serverName,
                                                 String toolName,
                                                 Object requestArgs,
@@ -332,7 +334,7 @@ public class McpAuditService {
                 .capabilityName(toolName)
                 .capabilityType("TOOL")
                 .mcpMethod("tools/call")
-                .correlationId(generateCorrelationId())
+                .correlationId(correlationId)
                 .requestPayload(toJson(Map.of(
                         "toolName", toolName,
                         "arguments", requestArgs != null ? requestArgs : Map.of()
@@ -348,6 +350,7 @@ public class McpAuditService {
      */
     @Async("mcpAuditExecutor")
     public void auditClientResourceRead(String sessionId,
+                                        String correlationId,
                                         String serverName,
                                         String resourceUri,
                                         Object responseContent,
@@ -362,7 +365,7 @@ public class McpAuditService {
                 .capabilityName(resourceUri)
                 .capabilityType("RESOURCE")
                 .mcpMethod("resources/read")
-                .correlationId(generateCorrelationId())
+                .correlationId(correlationId)
                 .requestPayload(toJson(Map.of("uri", resourceUri)))
                 .responsePayload(toJson(Map.of(
                         "content", responseContent != null ? responseContent : "[]"
@@ -376,6 +379,7 @@ public class McpAuditService {
      */
     @Async("mcpAuditExecutor")
     public void auditClientResourceReadFailed(String sessionId,
+                                              String correlationId,
                                               String serverName,
                                               String resourceUri,
                                               String errorMessage,
@@ -390,7 +394,7 @@ public class McpAuditService {
                 .capabilityName(resourceUri)
                 .capabilityType("RESOURCE")
                 .mcpMethod("resources/read")
-                .correlationId(generateCorrelationId())
+                .correlationId(correlationId)
                 .requestPayload(toJson(Map.of("uri", resourceUri)))
                 .errorCode(McpErrorCode.INTERNAL_ERROR.getCode())
                 .errorMessage(errorMessage)

@@ -78,4 +78,22 @@ public interface McpAuditLogRepository
     long countByTimestampAfter(LocalDateTime since);
 
     long countByStatusAndTimestampAfter(AuditStatus status, LocalDateTime since);
+
+    // ── Health dashboard queries ────────────────────────────────────────
+
+    @Query(value = "SELECT " +
+            "percentile_cont(0.5) WITHIN GROUP (ORDER BY duration_ms) AS p50, " +
+            "percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95, " +
+            "percentile_cont(0.99) WITHIN GROUP (ORDER BY duration_ms) AS p99 " +
+            "FROM ws_agentic_security.mcp_audit_log " +
+            "WHERE duration_ms IS NOT NULL AND timestamp >= :since",
+            nativeQuery = true)
+    List<Object[]> findLatencyPercentilesSince(@Param("since") LocalDateTime since);
+
+    @Query(value = "SELECT server_name, MAX(timestamp) AS last_activity " +
+            "FROM ws_agentic_security.mcp_audit_log " +
+            "WHERE server_name IS NOT NULL " +
+            "GROUP BY server_name",
+            nativeQuery = true)
+    List<Object[]> findLastActivityPerServer();
 }
