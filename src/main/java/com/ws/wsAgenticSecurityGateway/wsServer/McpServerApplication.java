@@ -1,5 +1,6 @@
 package com.ws.wsAgenticSecurityGateway.wsServer;
 
+import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import com.ws.wsAgenticSecurityGateway.orchestration.ToolCallOrchestrator;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor;
@@ -54,6 +55,7 @@ public class McpServerApplication implements ApplicationRunner {
     private final CapabilityRegistryService registryService;
     private final McpAuditService auditService;
     private final ToolCallOrchestrator orchestrator;
+    private final AgentRegistryService agentRegistryService;
     private final ObjectMapper objectMapper;
 
     private McpSyncServer server;
@@ -62,10 +64,12 @@ public class McpServerApplication implements ApplicationRunner {
     public McpServerApplication(CapabilityRegistryService registryService,
                                 McpAuditService auditService,
                                 ToolCallOrchestrator orchestrator,
+                                AgentRegistryService agentRegistryService,
                                 ObjectMapper objectMapper) {
         this.registryService = registryService;
         this.auditService = auditService;
         this.orchestrator = orchestrator;
+        this.agentRegistryService = agentRegistryService;
         this.objectMapper = objectMapper;
     }
 
@@ -78,6 +82,7 @@ public class McpServerApplication implements ApplicationRunner {
 
             // Session manager for tracking AI client sessions (passes audit service to sessions)
             sessionManager = new SessionManager(auditService);
+            sessionManager.setAgentRegistryService(agentRegistryService);
 
             // Wire session manager into orchestrator (setter injection — SessionManager is a POJO, not a Spring bean)
             orchestrator.setSessionManager(sessionManager);

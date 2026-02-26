@@ -1,5 +1,6 @@
 package com.ws.wsAgenticSecurityGateway.wsClient.controller;
 
+import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditStatus;
 import com.ws.wsAgenticSecurityGateway.audit.repository.McpAuditLogRepository;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
@@ -32,15 +33,18 @@ public class DashboardController {
     private final CapabilityRegistryService registryService;
     private final McpAuditLogRepository auditRepo;
     private final InFlightRequestRegistry inFlightRegistry;
+    private final AgentRegistryService agentRegistryService;
 
     public DashboardController(McpSessionManager sessionManager,
                                CapabilityRegistryService registryService,
                                McpAuditLogRepository auditRepo,
-                               InFlightRequestRegistry inFlightRegistry) {
+                               InFlightRequestRegistry inFlightRegistry,
+                               AgentRegistryService agentRegistryService) {
         this.sessionManager = sessionManager;
         this.registryService = registryService;
         this.auditRepo = auditRepo;
         this.inFlightRegistry = inFlightRegistry;
+        this.agentRegistryService = agentRegistryService;
     }
 
     /**
@@ -79,6 +83,10 @@ public class DashboardController {
         // In-flight count for sidebar badge
         summary.put("inFlightCount", inFlightRegistry.getActiveCount());
 
+        // Agent registry stats
+        summary.put("totalAgents", agentRegistryService.getAllAgents().size());
+        summary.put("connectedAgentSessions", agentRegistryService.getConnectedSessions().size());
+
         return ResponseEntity.ok(summary);
     }
 
@@ -98,13 +106,20 @@ public class DashboardController {
             map.put("publicName", entry.getPublicName());
             map.put("serverName", entry.getServerName());
             map.put("originalToolName", entry.getOriginalToolName());
-            map.put("sessionId", entry.getSessionId());
+            map.put("agentSessionId", entry.getAgentSessionId());
+            map.put("clientSessionId", entry.getClientSessionId());
             map.put("requestId", entry.getRequestId());
             map.put("startedAt", entry.getStartedAt().toString());
             map.put("elapsedMs", now.toEpochMilli() - entry.getStartedAt().toEpochMilli());
             map.put("agentName", entry.getAgentName());
             map.put("agentVersion", entry.getAgentVersion());
             map.put("tokenMode", entry.getTokenMode());
+            map.put("requestArgs", entry.getRequestArgs());
+            map.put("responseSummary", entry.getResponseSummary());
+            map.put("responseContentCount", entry.getResponseContentCount());
+            map.put("responseContentTypes", entry.getResponseContentTypes());
+            map.put("registryLookupMs", entry.getRegistryLookupMs());
+            map.put("forwardCallMs", entry.getForwardCallMs());
             entryList.add(map);
         }
 
@@ -117,7 +132,8 @@ public class DashboardController {
             map.put("publicName", h.getPublicName());
             map.put("serverName", h.getServerName());
             map.put("originalToolName", h.getOriginalToolName());
-            map.put("sessionId", h.getSessionId());
+            map.put("agentSessionId", h.getAgentSessionId());
+            map.put("clientSessionId", h.getClientSessionId());
             map.put("requestId", h.getRequestId());
             map.put("startedAt", h.getStartedAt().toString());
             map.put("completedAt", h.getCompletedAt().toString());
@@ -127,6 +143,12 @@ public class DashboardController {
             map.put("agentName", h.getAgentName());
             map.put("agentVersion", h.getAgentVersion());
             map.put("tokenMode", h.getTokenMode());
+            map.put("requestArgs", h.getRequestArgs());
+            map.put("responseSummary", h.getResponseSummary());
+            map.put("responseContentCount", h.getResponseContentCount());
+            map.put("responseContentTypes", h.getResponseContentTypes());
+            map.put("registryLookupMs", h.getRegistryLookupMs());
+            map.put("forwardCallMs", h.getForwardCallMs());
             historyList.add(map);
         }
 

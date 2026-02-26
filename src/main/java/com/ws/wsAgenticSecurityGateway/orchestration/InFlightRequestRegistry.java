@@ -17,9 +17,11 @@ import java.util.concurrent.ConcurrentLinkedDeque;
  * <p>Every tool call is registered when it enters the orchestrator and deregistered when
  * it completes (success or failure). This provides:
  * <ul>
- *   <li>Observability — see what's currently active</li>
+ *   <li>Observability — see what's currently active with full flow context</li>
  *   <li>Recent history — last {@value MAX_HISTORY} completed requests preserved in memory</li>
- *   <li>Cleanup hooks — detect stale requests on shutdown</li>
+ *   <li>Dual session tracking — both Agent↔Gateway and Gateway↔MCP Server sessions</li>
+ *   <li>Request/Response capture — truncated payloads for admin visibility</li>
+ *   <li>Timing breakdown — registry lookup, forward call, and total durations</li>
  *   <li>Concurrency safety — ConcurrentHashMap for lock-free reads</li>
  * </ul>
  *
@@ -41,19 +43,21 @@ public class InFlightRequestRegistry {
                                    String publicName,
                                    String serverName,
                                    String originalToolName,
-                                   String sessionId,
+                                   String agentSessionId,
                                    String requestId,
                                    String agentName,
                                    String agentVersion) {
         InFlightEntry entry = new InFlightEntry(
                 correlationId, publicName, serverName,
-                originalToolName, sessionId, requestId, Instant.now(),
+                originalToolName, agentSessionId, requestId, Instant.now(),
                 agentName, agentVersion);
         registry.put(correlationId, entry);
-        log.debug("In-flight registered: {} → {}.{} (session={}, agent={} v{}, requestId={})",
-                correlationId, serverName, originalToolName, sessionId, agentName, agentVersion, requestId);
+        log.debug("In-flight registered: {} → {}.{} (agentSession={}, agent={} v{}, requestId={})",
+                correlationId, serverName, originalToolName, agentSessionId, agentName, agentVersion, requestId);
         return entry;
     }
+
+    // ── Mid-flight update methods ────────────────────────────────────────
 
     /**
      * Update the token mode after agent token resolution (step 7.5 in orchestration).
@@ -66,6 +70,62 @@ public class InFlightRequestRegistry {
     }
 
     /**
+     * Update the client (southbound) session ID — Gateway ↔ MCP Server.
+     * Set after registry lookup when serverName is resolved (step 5).
+     */
+    public void updateClientSession(String correlationId, String clientSessionId) {
+        InFlightEntry entry = registry.get(correlationId);
+        if (entry != null) {
+            entry.setClientSessionId(clientSessionId);
+        }
+    }
+
+    /**
+     * Update the captured request arguments (truncated JSON string).
+     * Set after argument conversion (step 7).
+     */
+    public void updateRequest(String correlationId, String requestArgs) {
+        InFlightEntry entry = registry.get(correlationId);
+        if (entry != null) {
+            entry.setRequestArgs(requestArgs);
+        }
+    }
+
+    /**
+     * Update the captured response summary after the MCP server call returns (step 8).
+     *
+     * @param correlationId  the request's correlation ID
+     * @param summary        first N chars of text content (truncated)
+     * @param contentCount   number of Content items returned
+     * @param contentTypes   comma-separated content type labels (e.g. "TEXT,IMAGE")
+     */
+    public void updateResponse(String correlationId, String summary, int contentCount, String contentTypes) {
+        InFlightEntry entry = registry.get(correlationId);
+        if (entry != null) {
+            entry.setResponseSummary(summary);
+            entry.setResponseContentCount(contentCount);
+            entry.setResponseContentTypes(contentTypes);
+        }
+    }
+
+    /**
+     * Update timing breakdown for the request.
+     *
+     * @param correlationId    the request's correlation ID
+     * @param registryLookupMs time spent on capability registry lookup (step 4-5)
+     * @param forwardCallMs    time spent forwarding the call to the MCP server (step 8)
+     */
+    public void updateTimings(String correlationId, long registryLookupMs, long forwardCallMs) {
+        InFlightEntry entry = registry.get(correlationId);
+        if (entry != null) {
+            entry.setRegistryLookupMs(registryLookupMs);
+            entry.setForwardCallMs(forwardCallMs);
+        }
+    }
+
+    // ── Completion methods ───────────────────────────────────────────────
+
+    /**
      * Mark a request as completed successfully and remove from registry.
      * Archives the entry into recent history before removal.
      */
@@ -75,7 +135,7 @@ public class InFlightRequestRegistry {
             Instant now = Instant.now();
             long durationMs = now.toEpochMilli() - removed.getStartedAt().toEpochMilli();
             archiveToHistory(removed, now, durationMs, "SUCCESS", null);
-            log.debug("In-flight completed: {} ({}ms)", correlationId, durationMs);
+            log.info("In-flight completed: {} ({}ms)", correlationId, durationMs);
         }
     }
 
@@ -97,14 +157,22 @@ public class InFlightRequestRegistry {
                                    String status, String errorMessage) {
         CompletedEntry completed = new CompletedEntry(
                 entry.getCorrelationId(), entry.getPublicName(), entry.getServerName(),
-                entry.getOriginalToolName(), entry.getSessionId(), entry.getRequestId(),
+                entry.getOriginalToolName(), entry.getAgentSessionId(), entry.getRequestId(),
                 entry.getStartedAt(), entry.getAgentName(), entry.getAgentVersion(),
-                entry.getTokenMode(), completedAt, durationMs, status, errorMessage);
+                entry.getTokenMode(), entry.getClientSessionId(),
+                entry.getRequestArgs(), entry.getResponseSummary(),
+                entry.getResponseContentCount(), entry.getResponseContentTypes(),
+                entry.getRegistryLookupMs(), entry.getForwardCallMs(),
+                completedAt, durationMs, status, errorMessage);
         recentHistory.addFirst(completed);
+        log.info("📊 Archived to history: {} status={} durationMs={} (history size: {})",
+                entry.getCorrelationId(), status, durationMs, recentHistory.size());
         while (recentHistory.size() > MAX_HISTORY) {
             recentHistory.removeLast();
         }
     }
+
+    // ── Query methods ────────────────────────────────────────────────────
 
     /**
      * Get count of currently in-flight requests. For observability.
@@ -135,10 +203,26 @@ public class InFlightRequestRegistry {
         return registry.containsKey(correlationId);
     }
 
+    // ═════════════════════════════════════════════════════════════════════
+    //  Inner classes
+    // ═════════════════════════════════════════════════════════════════════
+
     /**
      * Record representing an in-flight tool call request.
-     * Tracks the full ID mapping: agent session → public tool → enterprise server + original tool.
-     * {@code tokenMode} is mutable — set after agent token resolution.
+     *
+     * <p>Tracks the full end-to-end flow: Agent → Gateway → MCP Server.
+     * Fields marked with {@code @Setter volatile} are updated mid-flight as
+     * the orchestration progresses through its steps.
+     *
+     * <p><strong>Mutable fields (set progressively):</strong>
+     * <ul>
+     *   <li>{@code tokenMode} — set after agent token resolution (step 7.5)</li>
+     *   <li>{@code clientSessionId} — set after registry lookup resolves server (step 5)</li>
+     *   <li>{@code requestArgs} — set after argument conversion (step 7)</li>
+     *   <li>{@code responseSummary}, {@code responseContentCount}, {@code responseContentTypes}
+     *       — set after MCP server responds (step 8)</li>
+     *   <li>{@code registryLookupMs}, {@code forwardCallMs} — set at completion</li>
+     * </ul>
      */
     @Getter
     public static class InFlightEntry {
@@ -146,19 +230,27 @@ public class InFlightRequestRegistry {
         private final String publicName;
         private final String serverName;
         private final String originalToolName;
-        private final String sessionId;
+        private final String agentSessionId;
         private final String requestId;
         private final Instant startedAt;
         private final String agentName;
         private final String agentVersion;
-        @lombok.Setter
-        private volatile String tokenMode;
+
+        // Mutable fields — updated mid-flight
+        @lombok.Setter private volatile String tokenMode;
+        @lombok.Setter private volatile String clientSessionId;
+        @lombok.Setter private volatile String requestArgs;
+        @lombok.Setter private volatile String responseSummary;
+        @lombok.Setter private volatile int responseContentCount;
+        @lombok.Setter private volatile String responseContentTypes;
+        @lombok.Setter private volatile long registryLookupMs;
+        @lombok.Setter private volatile long forwardCallMs;
 
         public InFlightEntry(String correlationId,
                              String publicName,
                              String serverName,
                              String originalToolName,
-                             String sessionId,
+                             String agentSessionId,
                              String requestId,
                              Instant startedAt,
                              String agentName,
@@ -167,7 +259,7 @@ public class InFlightRequestRegistry {
             this.publicName = publicName;
             this.serverName = serverName;
             this.originalToolName = originalToolName;
-            this.sessionId = sessionId;
+            this.agentSessionId = agentSessionId;
             this.requestId = requestId;
             this.startedAt = startedAt;
             this.agentName = agentName;
@@ -177,15 +269,16 @@ public class InFlightRequestRegistry {
 
         @Override
         public String toString() {
-            return String.format("InFlight[%s: %s → %s.%s (agent=%s v%s, token=%s, session=%s, requestId=%s, started=%s)]",
+            return String.format("InFlight[%s: %s → %s.%s (agent=%s v%s, token=%s, agentSession=%s, clientSession=%s, requestId=%s)]",
                     correlationId, publicName, serverName, originalToolName,
-                    agentName, agentVersion, tokenMode, sessionId, requestId, startedAt);
+                    agentName, agentVersion, tokenMode, agentSessionId, clientSessionId, requestId);
         }
     }
 
     /**
      * Immutable record representing a completed/failed tool call request.
      * Archived from {@link InFlightEntry} when {@link #complete} or {@link #fail} is called.
+     * Captures all mutable fields at the moment of completion for full flow visibility.
      */
     @Getter
     public static class CompletedEntry {
@@ -193,32 +286,50 @@ public class InFlightRequestRegistry {
         private final String publicName;
         private final String serverName;
         private final String originalToolName;
-        private final String sessionId;
+        private final String agentSessionId;
         private final String requestId;
         private final Instant startedAt;
         private final String agentName;
         private final String agentVersion;
         private final String tokenMode;
+        private final String clientSessionId;
+        private final String requestArgs;
+        private final String responseSummary;
+        private final int responseContentCount;
+        private final String responseContentTypes;
+        private final long registryLookupMs;
+        private final long forwardCallMs;
         private final Instant completedAt;
         private final long durationMs;
         private final String status;
         private final String errorMessage;
 
         public CompletedEntry(String correlationId, String publicName, String serverName,
-                              String originalToolName, String sessionId, String requestId,
+                              String originalToolName, String agentSessionId, String requestId,
                               Instant startedAt, String agentName, String agentVersion,
-                              String tokenMode, Instant completedAt, long durationMs,
+                              String tokenMode, String clientSessionId,
+                              String requestArgs, String responseSummary,
+                              int responseContentCount, String responseContentTypes,
+                              long registryLookupMs, long forwardCallMs,
+                              Instant completedAt, long durationMs,
                               String status, String errorMessage) {
             this.correlationId = correlationId;
             this.publicName = publicName;
             this.serverName = serverName;
             this.originalToolName = originalToolName;
-            this.sessionId = sessionId;
+            this.agentSessionId = agentSessionId;
             this.requestId = requestId;
             this.startedAt = startedAt;
             this.agentName = agentName;
             this.agentVersion = agentVersion;
             this.tokenMode = tokenMode;
+            this.clientSessionId = clientSessionId;
+            this.requestArgs = requestArgs;
+            this.responseSummary = responseSummary;
+            this.responseContentCount = responseContentCount;
+            this.responseContentTypes = responseContentTypes;
+            this.registryLookupMs = registryLookupMs;
+            this.forwardCallMs = forwardCallMs;
             this.completedAt = completedAt;
             this.durationMs = durationMs;
             this.status = status;

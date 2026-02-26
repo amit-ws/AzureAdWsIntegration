@@ -1,5 +1,9 @@
 package com.ws.wsAgenticSecurityGateway.wsServer.session;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import io.modelcontextprotocol.spec.McpSchema;
 import lombok.Data;
@@ -18,6 +22,7 @@ public class ClientSession {
     private final String sessionId;
     private final Instant createdAt;
     private final McpAuditService auditService;
+    private final AgentRegistryService agentRegistryService;
 
     private String protocolVersion;
     private McpSchema.ClientCapabilities capabilities;
@@ -27,10 +32,11 @@ public class ClientSession {
     private boolean initialized;
     private Instant initializedAt;
 
-    public ClientSession(McpAuditService auditService) {
+    public ClientSession(McpAuditService auditService, AgentRegistryService agentRegistryService) {
         this.sessionId = UUID.randomUUID().toString();
         this.createdAt = Instant.now();
         this.auditService = auditService;
+        this.agentRegistryService = agentRegistryService;
         this.metadata = new HashMap<>();
         this.tokens = new ConcurrentHashMap<>();
         this.initialized = false;
@@ -66,6 +72,24 @@ public class ClientSession {
             );
         } catch (Exception e) {
             log.error("Failed to audit session initialization: {}", e.getMessage());
+        }
+
+        // Agent Registry — discover and register this agent
+        if (agentRegistryService != null) {
+            try {
+                JsonNode capsJson = null;
+                if (allData != null && !allData.isEmpty()) {
+                    capsJson = new ObjectMapper().valueToTree(allData);
+                }
+                GatewayAgentEntity agent = agentRegistryService.discoverAgent(
+                        clientInfo != null ? clientInfo.name() : "unknown",
+                        clientInfo != null ? clientInfo.version() : null,
+                        protocolVersion,
+                        capsJson);
+                agentRegistryService.registerSession(agent.getId(), sessionId, null, null);
+            } catch (Exception e) {
+                log.error("Failed to register agent in registry: {}", e.getMessage());
+            }
         }
     }
 

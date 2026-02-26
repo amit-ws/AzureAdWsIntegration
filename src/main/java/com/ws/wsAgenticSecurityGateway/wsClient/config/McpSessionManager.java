@@ -112,7 +112,7 @@ public class McpSessionManager {
             log.info("🔄 Building MCP client for '{}'...", serverName);
             McpSyncClient client = McpClient.sync(mcpTransport)
                     .clientInfo(new McpSchema.Implementation(
-                            "java-mcp-http-client", "1.0.0"))
+                            "ws-agentic-gateway", "1.0.0"))
                     .capabilities(capabilities)
                     .build();
 

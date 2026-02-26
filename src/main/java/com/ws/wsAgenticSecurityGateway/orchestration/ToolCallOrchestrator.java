@@ -5,7 +5,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ws.wsAgenticSecurityGateway.audit.error.McpErrorCode;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import com.ws.wsAgenticSecurityGateway.wsClient.McpClientService;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.wsClient.config.HttpMcpTransport;
+import com.ws.wsAgenticSecurityGateway.wsClient.config.McpSession;
+import com.ws.wsAgenticSecurityGateway.wsClient.config.McpSessionManager;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
 import com.ws.wsAgenticSecurityGateway.wsServer.session.ClientSession;
@@ -49,6 +52,8 @@ public class ToolCallOrchestrator {
     private final McpAuditService auditService;
     private final InFlightRequestRegistry inFlightRegistry;
     private final ObjectMapper objectMapper;
+    private final McpSessionManager mcpSessionManager;
+    private final AgentRegistryService agentRegistryService;
 
     /**
      * Set via setter from McpServerApplication.run() because SessionManager is a
@@ -61,12 +66,16 @@ public class ToolCallOrchestrator {
                                  McpClientService mcpClientService,
                                  McpAuditService auditService,
                                  InFlightRequestRegistry inFlightRegistry,
-                                 ObjectMapper objectMapper) {
+                                 ObjectMapper objectMapper,
+                                 McpSessionManager mcpSessionManager,
+                                 AgentRegistryService agentRegistryService) {
         this.registryService = registryService;
         this.mcpClientService = mcpClientService;
         this.auditService = auditService;
         this.inFlightRegistry = inFlightRegistry;
         this.objectMapper = objectMapper;
+        this.mcpSessionManager = mcpSessionManager;
+        this.agentRegistryService = agentRegistryService;
     }
 
     /**
@@ -124,6 +133,9 @@ public class ToolCallOrchestrator {
         String sessionId = resolveSessionId(exchange);
         String clientName = resolveClientName(exchange);
 
+        // ── Step 2b: Track agent request (async, non-blocking) ───────
+        agentRegistryService.recordRequest(sessionId);
+
         log.info("═══════════════════════════════════════════════════════════");
         log.info("🎯 Tool ORCHESTRATION START [{}]", correlationId);
         log.info("   Tool: {}", publicName);
@@ -164,6 +176,13 @@ public class ToolCallOrchestrator {
         auditService.auditOrchestrationRegistryLookup(
                 correlationId, sessionId, publicName, serverName, lookupDuration, requestId);
 
+        // ── Step 5b: Resolve client (southbound) session ID ─────────────
+        String clientSessionId = null;
+        try {
+            McpSession clientSession = mcpSessionManager.getSession(serverName);
+            clientSessionId = clientSession.getSessionId();
+        } catch (Exception ignored) {} // server may not be connected yet
+
         // ── Step 6: Register in-flight ──────────────────────────────────
         String agentName = "unknown";
         String agentVersion = "";
@@ -176,6 +195,9 @@ public class ToolCallOrchestrator {
         } catch (Exception ignored) {}
         inFlightRegistry.register(correlationId, publicName, serverName, originalName,
                 sessionId, requestId, agentName, agentVersion);
+        if (clientSessionId != null) {
+            inFlightRegistry.updateClientSession(correlationId, clientSessionId);
+        }
 
         // ── Step 7: Convert arguments to JsonNode ───────────────────────
         JsonNode argsAsJson;
@@ -194,6 +216,11 @@ public class ToolCallOrchestrator {
                     publicName, serverName, "Argument conversion failed: " + e.getMessage());
         }
 
+        // ── Step 7b: Capture request args for in-flight visibility ────────
+        String argsStr = argsAsJson.toString();
+        inFlightRegistry.updateRequest(correlationId,
+                argsStr.length() > 2000 ? argsStr.substring(0, 2000) + "..." : argsStr);
+
         // ── Step 7.5: Resolve agent token override ─────────────────────
         boolean usingAgentToken = resolveAndApplyAgentToken(correlationId, serverName);
         inFlightRegistry.updateTokenMode(correlationId, usingAgentToken ? "AGENT-PROVIDED" : "CONFIG");
@@ -210,6 +237,10 @@ public class ToolCallOrchestrator {
 
             long callDuration = System.currentTimeMillis() - callStart;
             long totalDuration = System.currentTimeMillis() - orchestrationStart;
+
+            // ── Step 8b: Capture response summary for in-flight visibility ──
+            enrichResponseData(correlationId, contentList);
+            inFlightRegistry.updateTimings(correlationId, lookupDuration, callDuration);
 
             // ── Step 9: Audit — call forwarded successfully ─────────────
             auditService.auditOrchestrationCallForwarded(
@@ -317,6 +348,78 @@ public class ToolCallOrchestrator {
             log.debug("Could not resolve client info from exchange: {}", e.getMessage());
         }
         return "unknown";
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  IN-FLIGHT ENRICHMENT HELPERS
+    // ════════════════════════════════════════════════════════════════════
+
+    /**
+     * Extract response summary from a tool call result content list.
+     * Captures content types and first text content (truncated to 2000 chars).
+     */
+    private void enrichResponseData(String correlationId, List<McpSchema.Content> contentList) {
+        try {
+            String summary = "";
+            StringBuilder types = new StringBuilder();
+            for (McpSchema.Content c : contentList) {
+                if (c instanceof McpSchema.TextContent t) {
+                    if (summary.isEmpty()) {
+                        summary = t.text().length() > 2000 ? t.text().substring(0, 2000) + "..." : t.text();
+                    }
+                    types.append(types.length() > 0 ? "," : "").append("TEXT");
+                } else if (c instanceof McpSchema.ImageContent) {
+                    types.append(types.length() > 0 ? "," : "").append("IMAGE");
+                } else if (c instanceof McpSchema.AudioContent) {
+                    types.append(types.length() > 0 ? "," : "").append("AUDIO");
+                } else if (c instanceof McpSchema.EmbeddedResource) {
+                    types.append(types.length() > 0 ? "," : "").append("RESOURCE");
+                }
+            }
+            inFlightRegistry.updateResponse(correlationId, summary, contentList.size(), types.toString());
+        } catch (Exception e) {
+            log.debug("Could not enrich response data for {}: {}", correlationId, e.getMessage());
+        }
+    }
+
+    /**
+     * Extract response summary from a prompt result's messages.
+     */
+    private void enrichPromptResponseData(String correlationId, McpSchema.GetPromptResult result) {
+        try {
+            int messageCount = result.messages() != null ? result.messages().size() : 0;
+            String summary = "";
+            if (result.description() != null && !result.description().isBlank()) {
+                summary = result.description().length() > 2000
+                        ? result.description().substring(0, 2000) + "..." : result.description();
+            }
+            inFlightRegistry.updateResponse(correlationId, summary, messageCount, "PROMPT");
+        } catch (Exception e) {
+            log.debug("Could not enrich prompt response data for {}: {}", correlationId, e.getMessage());
+        }
+    }
+
+    /**
+     * Extract response summary from a resource read result.
+     */
+    private void enrichResourceResponseData(String correlationId, List<McpSchema.ResourceContents> contents) {
+        try {
+            String summary = "";
+            StringBuilder types = new StringBuilder();
+            for (McpSchema.ResourceContents rc : contents) {
+                if (rc instanceof McpSchema.TextResourceContents t) {
+                    if (summary.isEmpty()) {
+                        summary = t.text().length() > 2000 ? t.text().substring(0, 2000) + "..." : t.text();
+                    }
+                    types.append(types.length() > 0 ? "," : "").append("TEXT");
+                } else if (rc instanceof McpSchema.BlobResourceContents) {
+                    types.append(types.length() > 0 ? "," : "").append("BLOB");
+                }
+            }
+            inFlightRegistry.updateResponse(correlationId, summary, contents.size(), types.toString());
+        } catch (Exception e) {
+            log.debug("Could not enrich resource response data for {}: {}", correlationId, e.getMessage());
+        }
     }
 
     // ════════════════════════════════════════════════════════════════════
@@ -481,6 +584,7 @@ public class ToolCallOrchestrator {
         String requestId = rawJsonRpcId != null ? String.valueOf(rawJsonRpcId) : null;
         String sessionId = resolveSessionId(exchange);
         String clientName = resolveClientName(exchange);
+        agentRegistryService.recordRequest(sessionId);
 
         log.info("═══════════════════════════════════════════════════════════");
         log.info("📝 PROMPT ORCHESTRATION START [{}]", correlationId);
@@ -523,6 +627,13 @@ public class ToolCallOrchestrator {
         auditService.auditOrchestrationRegistryLookup(
                 correlationId, sessionId, publicName, serverName, lookupDuration, requestId);
 
+        // Resolve client (southbound) session ID
+        String pClientSessionId = null;
+        try {
+            McpSession pClientSession = mcpSessionManager.getSession(serverName);
+            pClientSessionId = pClientSession.getSessionId();
+        } catch (Exception ignored) {}
+
         // Register in-flight
         String pAgentName = "unknown";
         String pAgentVersion = "";
@@ -535,6 +646,16 @@ public class ToolCallOrchestrator {
         } catch (Exception ignored) {}
         inFlightRegistry.register(correlationId, publicName, serverName, originalName,
                 sessionId, requestId, pAgentName, pAgentVersion);
+        if (pClientSessionId != null) {
+            inFlightRegistry.updateClientSession(correlationId, pClientSessionId);
+        }
+
+        // Capture request args
+        try {
+            String pArgsStr = objectMapper.writeValueAsString(arguments != null ? arguments : Map.of());
+            inFlightRegistry.updateRequest(correlationId,
+                    pArgsStr.length() > 2000 ? pArgsStr.substring(0, 2000) + "..." : pArgsStr);
+        } catch (Exception ignored) {}
 
         // Resolve agent token override
         boolean usingAgentToken = resolveAndApplyAgentToken(correlationId, serverName);
@@ -552,6 +673,9 @@ public class ToolCallOrchestrator {
 
             long callDuration = System.currentTimeMillis() - callStart;
             long totalDuration = System.currentTimeMillis() - orchestrationStart;
+
+            enrichPromptResponseData(correlationId, result);
+            inFlightRegistry.updateTimings(correlationId, lookupDuration, callDuration);
 
             auditService.auditOrchestrationCallForwarded(
                     correlationId, sessionId, serverName, originalName, callDuration, requestId);
@@ -624,6 +748,7 @@ public class ToolCallOrchestrator {
         String requestId = rawJsonRpcId != null ? String.valueOf(rawJsonRpcId) : null;
         String sessionId = resolveSessionId(exchange);
         String clientName = resolveClientName(exchange);
+        agentRegistryService.recordRequest(sessionId);
 
         log.info("═══════════════════════════════════════════════════════════");
         log.info("📖 RESOURCE ORCHESTRATION START [{}]", correlationId);
@@ -666,6 +791,13 @@ public class ToolCallOrchestrator {
         auditService.auditOrchestrationRegistryLookup(
                 correlationId, sessionId, publicName, serverName, lookupDuration, requestId);
 
+        // Resolve client (southbound) session ID
+        String rClientSessionId = null;
+        try {
+            McpSession rClientSession = mcpSessionManager.getSession(serverName);
+            rClientSessionId = rClientSession.getSessionId();
+        } catch (Exception ignored) {}
+
         // Register in-flight
         String rAgentName = "unknown";
         String rAgentVersion = "";
@@ -678,6 +810,12 @@ public class ToolCallOrchestrator {
         } catch (Exception ignored) {}
         inFlightRegistry.register(correlationId, publicName, serverName, originalUri,
                 sessionId, requestId, rAgentName, rAgentVersion);
+        if (rClientSessionId != null) {
+            inFlightRegistry.updateClientSession(correlationId, rClientSessionId);
+        }
+
+        // Capture request args (resource URI as the "request")
+        inFlightRegistry.updateRequest(correlationId, resourceUri != null ? resourceUri : "");
 
         // Resolve agent token override
         boolean usingAgentToken = resolveAndApplyAgentToken(correlationId, serverName);
@@ -695,6 +833,9 @@ public class ToolCallOrchestrator {
 
             long callDuration = System.currentTimeMillis() - callStart;
             long totalDuration = System.currentTimeMillis() - orchestrationStart;
+
+            enrichResourceResponseData(correlationId, contents);
+            inFlightRegistry.updateTimings(correlationId, lookupDuration, callDuration);
 
             auditService.auditOrchestrationCallForwarded(
                     correlationId, sessionId, serverName, publicName, callDuration, requestId);
