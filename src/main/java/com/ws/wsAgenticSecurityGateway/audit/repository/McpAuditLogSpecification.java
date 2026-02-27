@@ -35,6 +35,7 @@ public class McpAuditLogSpecification {
             String capabilityName,
             String correlationId,
             String sessionId,
+            String agentName,
             String searchText,
             LocalDateTime fromDate,
             LocalDateTime toDate) {
@@ -67,6 +68,9 @@ public class McpAuditLogSpecification {
         if (sessionId != null && !sessionId.isBlank()) {
             spec = spec.and((root, query, cb) -> cb.equal(root.get("sessionId"), sessionId));
         }
+        if (agentName != null && !agentName.isBlank()) {
+            spec = spec.and((root, query, cb) -> cb.equal(root.get("agentName"), agentName));
+        }
         if (fromDate != null) {
             spec = spec.and((root, query, cb) ->
                     cb.greaterThanOrEqualTo(root.get("timestamp"), fromDate));
@@ -82,7 +86,8 @@ public class McpAuditLogSpecification {
                     cb.like(cb.lower(root.get("sessionId")), lower),
                     cb.like(cb.lower(root.get("capabilityName")), lower),
                     cb.like(cb.lower(root.get("errorMessage")), lower),
-                    cb.like(cb.lower(root.get("serverName")), lower)
+                    cb.like(cb.lower(root.get("serverName")), lower),
+                    cb.like(cb.lower(root.get("agentName")), lower)
             ));
         }
 

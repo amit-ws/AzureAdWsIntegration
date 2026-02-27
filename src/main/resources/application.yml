@@ -77,7 +77,7 @@ spring:
 
 
 server:
-  port: 9499
+  port: 9493
 
 
 clientId: 12345

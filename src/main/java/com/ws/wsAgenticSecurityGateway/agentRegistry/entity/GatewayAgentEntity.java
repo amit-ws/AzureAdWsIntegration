@@ -28,7 +28,8 @@ import java.util.UUID;
         },
         indexes = {
                 @Index(name = "idx_gateway_agent_name", columnList = "agent_name"),
-                @Index(name = "idx_gateway_agent_status", columnList = "status")
+                @Index(name = "idx_gateway_agent_status", columnList = "status"),
+                @Index(name = "idx_gateway_agent_approval", columnList = "approval_status")
         })
 @Data
 @NoArgsConstructor
@@ -61,6 +62,11 @@ public class GatewayAgentEntity {
     @Column(name = "status", nullable = false, length = 20)
     @Builder.Default
     private String status = "ACTIVE";
+
+    /** Approval status — PENDING for new agents, APPROVED or BLOCKED by admin. */
+    @Column(name = "approval_status", columnDefinition = "varchar(20) not null default 'APPROVED'")
+    @Builder.Default
+    private String approvalStatus = "APPROVED";
 
     /** First time this agent was discovered. */
     @CreationTimestamp

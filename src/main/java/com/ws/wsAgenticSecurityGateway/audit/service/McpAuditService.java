@@ -411,13 +411,15 @@ public class McpAuditService {
                                               String protocolVersion,
                                               Object clientInfo,
                                               Object clientCapabilities,
-                                              String requestId) {
+                                              String requestId,
+                                              String agentName) {
         persist(McpAuditLog.builder()
                 .eventType(AuditEventType.SERVER_SESSION_INITIALIZED)
                 .module(AuditModule.WS_SERVER)
                 .status(AuditStatus.SUCCESS)
                 .severity(AuditSeverity.INFO)
                 .sessionId(sessionId)
+                .agentName(agentName)
                 .mcpMethod("initialize")
                 .protocolVersion(protocolVersion)
                 .requestId(requestId)
@@ -433,13 +435,15 @@ public class McpAuditService {
     public void auditServerToolsListRequested(String sessionId,
                                                int toolCount,
                                                long durationMs,
-                                               String requestId) {
+                                               String requestId,
+                                               String agentName) {
         persist(McpAuditLog.builder()
                 .eventType(AuditEventType.SERVER_TOOLS_LIST_REQUESTED)
                 .module(AuditModule.WS_SERVER)
                 .status(AuditStatus.SUCCESS)
                 .severity(AuditSeverity.INFO)
                 .sessionId(sessionId)
+                .agentName(agentName)
                 .requestId(requestId)
                 .mcpMethod("tools/list")
                 .correlationId(generateCorrelationId())
@@ -453,13 +457,15 @@ public class McpAuditService {
                                           String toolName,
                                           Object requestArgs,
                                           Object responseContent,
-                                          long durationMs) {
+                                          long durationMs,
+                                          String agentName) {
         persist(McpAuditLog.builder()
                 .eventType(AuditEventType.SERVER_TOOL_INVOCATION)
                 .module(AuditModule.WS_SERVER)
                 .status(AuditStatus.SUCCESS)
                 .severity(AuditSeverity.INFO)
                 .sessionId(sessionId)
+                .agentName(agentName)
                 .capabilityName(toolName)
                 .capabilityType("TOOL")
                 .mcpMethod("tools/call")
@@ -482,13 +488,15 @@ public class McpAuditService {
     public void auditServerResourcesListRequested(String sessionId,
                                                    int resourceCount,
                                                    long durationMs,
-                                                   String requestId) {
+                                                   String requestId,
+                                                   String agentName) {
         persist(McpAuditLog.builder()
                 .eventType(AuditEventType.SERVER_RESOURCES_LIST_REQUESTED)
                 .module(AuditModule.WS_SERVER)
                 .status(AuditStatus.SUCCESS)
                 .severity(AuditSeverity.INFO)
                 .sessionId(sessionId)
+                .agentName(agentName)
                 .requestId(requestId)
                 .mcpMethod("resources/list")
                 .correlationId(generateCorrelationId())
@@ -504,13 +512,15 @@ public class McpAuditService {
     public void auditServerPromptsListRequested(String sessionId,
                                                  int promptCount,
                                                  long durationMs,
-                                                 String requestId) {
+                                                 String requestId,
+                                                 String agentName) {
         persist(McpAuditLog.builder()
                 .eventType(AuditEventType.SERVER_PROMPTS_LIST_REQUESTED)
                 .module(AuditModule.WS_SERVER)
                 .status(AuditStatus.SUCCESS)
                 .severity(AuditSeverity.INFO)
                 .sessionId(sessionId)
+                .agentName(agentName)
                 .requestId(requestId)
                 .mcpMethod("prompts/list")
                 .correlationId(generateCorrelationId())
@@ -525,13 +535,15 @@ public class McpAuditService {
     @Async("mcpAuditExecutor")
     public void auditServerNotificationReceived(String sessionId,
                                                  String method,
-                                                 Object params) {
+                                                 Object params,
+                                                 String agentName) {
         persist(McpAuditLog.builder()
                 .eventType(AuditEventType.SERVER_NOTIFICATION_RECEIVED)
                 .module(AuditModule.WS_SERVER)
                 .status(AuditStatus.SUCCESS)
                 .severity(AuditSeverity.DEBUG)
                 .sessionId(sessionId)
+                .agentName(agentName)
                 .mcpMethod(method)
                 .correlationId(generateCorrelationId())
                 .requestPayload(toJson(Map.of(
@@ -545,13 +557,14 @@ public class McpAuditService {
      * Audit: AI agent session disconnected from WS server.
      */
     @Async("mcpAuditExecutor")
-    public void auditServerSessionDisconnected(String sessionId) {
+    public void auditServerSessionDisconnected(String sessionId, String agentName) {
         persist(McpAuditLog.builder()
                 .eventType(AuditEventType.SERVER_SESSION_DISCONNECTED)
                 .module(AuditModule.WS_SERVER)
                 .status(AuditStatus.SUCCESS)
                 .severity(AuditSeverity.INFO)
                 .sessionId(sessionId)
+                .agentName(agentName)
                 .correlationId(generateCorrelationId())
                 .build());
     }
@@ -670,7 +683,8 @@ public class McpAuditService {
     public void auditOrchestrationToolExtracted(String correlationId,
                                                 String toolName,
                                                 String sessionId,
-                                                String requestId) {
+                                                String requestId,
+                                                String agentName) {
         persist(McpAuditLog.builder()
                 .eventType(AuditEventType.ORCHESTRATION_TOOL_EXTRACTED)
                 .module(AuditModule.ORCHESTRATION_LAYER)
@@ -678,6 +692,7 @@ public class McpAuditService {
                 .severity(AuditSeverity.DEBUG)
                 .correlationId(correlationId)
                 .sessionId(sessionId)
+                .agentName(agentName)
                 .requestId(requestId)
                 .capabilityName(toolName)
                 .capabilityType("TOOL")
@@ -690,7 +705,8 @@ public class McpAuditService {
                                                  String publicCapabilityName,
                                                  String resolvedServerName,
                                                  long durationMs,
-                                                 String requestId) {
+                                                 String requestId,
+                                                 String agentName) {
         persist(McpAuditLog.builder()
                 .eventType(AuditEventType.ORCHESTRATION_REGISTRY_LOOKUP)
                 .module(AuditModule.ORCHESTRATION_LAYER)
@@ -698,6 +714,7 @@ public class McpAuditService {
                 .severity(AuditSeverity.DEBUG)
                 .correlationId(correlationId)
                 .sessionId(sessionId)
+                .agentName(agentName)
                 .requestId(requestId)
                 .capabilityName(publicCapabilityName)
                 .serverName(resolvedServerName)
@@ -711,7 +728,8 @@ public class McpAuditService {
                                                 String serverName,
                                                 String toolName,
                                                 long durationMs,
-                                                String requestId) {
+                                                String requestId,
+                                                String agentName) {
         persist(McpAuditLog.builder()
                 .eventType(AuditEventType.ORCHESTRATION_CALL_FORWARDED)
                 .module(AuditModule.ORCHESTRATION_LAYER)
@@ -719,6 +737,7 @@ public class McpAuditService {
                 .severity(AuditSeverity.INFO)
                 .correlationId(correlationId)
                 .sessionId(sessionId)
+                .agentName(agentName)
                 .requestId(requestId)
                 .serverName(serverName)
                 .capabilityName(toolName)
@@ -735,7 +754,8 @@ public class McpAuditService {
                                         String capabilityName,
                                         McpErrorCode errorCode,
                                         String errorMessage,
-                                        String requestId) {
+                                        String requestId,
+                                        String agentName) {
         persist(McpAuditLog.builder()
                 .eventType(AuditEventType.ORCHESTRATION_ERROR)
                 .module(AuditModule.ORCHESTRATION_LAYER)
@@ -743,6 +763,7 @@ public class McpAuditService {
                 .severity(AuditSeverity.ERROR)
                 .correlationId(correlationId)
                 .sessionId(sessionId)
+                .agentName(agentName)
                 .requestId(requestId)
                 .serverName(serverName)
                 .capabilityName(capabilityName)

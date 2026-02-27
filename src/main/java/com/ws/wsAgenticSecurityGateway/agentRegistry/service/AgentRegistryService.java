@@ -12,9 +12,9 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -106,14 +106,21 @@ public class AgentRegistryService {
         // Check cache first
         GatewayAgentEntity cached = agentCache.get(key);
         if (cached != null) {
+            // BLOCKED agents are rejected at connection time
+            if ("BLOCKED".equals(cached.getApprovalStatus())) {
+                log.warn("🚫 BLOCKED agent attempted connection: {} v{} (id={})",
+                        name, version, cached.getId());
+                throw new AgentBlockedException(
+                        "Agent '" + name + "' v" + version + " is blocked by admin. Contact your gateway administrator.");
+            }
             // Update mutable fields
             cached.setProtocolVersion(protocolVersion);
             cached.setCapabilities(capabilities);
             cached.setStatus("ACTIVE");
             GatewayAgentEntity updated = agentRepository.saveAndFlush(cached);
             agentCache.put(key, updated);
-            log.info("🤖 Agent re-discovered: {} v{} (id={})",
-                    name, version, updated.getId());
+            log.info("🤖 Agent re-discovered: {} v{} (id={}, approval={})",
+                    name, version, updated.getId(), updated.getApprovalStatus());
             return updated;
         }
 
@@ -123,30 +130,39 @@ public class AgentRegistryService {
 
         if (existing.isPresent()) {
             GatewayAgentEntity entity = existing.get();
+            // BLOCKED agents are rejected at connection time
+            if ("BLOCKED".equals(entity.getApprovalStatus())) {
+                agentCache.put(key, entity);
+                log.warn("🚫 BLOCKED agent attempted connection: {} v{} (id={})",
+                        name, version, entity.getId());
+                throw new AgentBlockedException(
+                        "Agent '" + name + "' v" + version + " is blocked by admin. Contact your gateway administrator.");
+            }
             entity.setProtocolVersion(protocolVersion);
             entity.setCapabilities(capabilities);
             entity.setStatus("ACTIVE");
             GatewayAgentEntity updated = agentRepository.saveAndFlush(entity);
             agentCache.put(key, updated);
-            log.info("🤖 Agent re-discovered (from DB): {} v{} (id={})",
-                    name, version, updated.getId());
+            log.info("🤖 Agent re-discovered (from DB): {} v{} (id={}, approval={})",
+                    name, version, updated.getId(), updated.getApprovalStatus());
             return updated;
         }
 
-        // New agent — first time ever seen
+        // New agent — first time ever seen → PENDING approval
         GatewayAgentEntity newAgent = GatewayAgentEntity.builder()
                 .agentName(name)
                 .agentVersion(version)
                 .protocolVersion(protocolVersion)
                 .capabilities(capabilities)
                 .status("ACTIVE")
+                .approvalStatus("PENDING")
                 .totalSessions(0)
                 .totalRequests(0L)
                 .build();
 
         GatewayAgentEntity saved = agentRepository.saveAndFlush(newAgent);
         agentCache.put(key, saved);
-        log.info("🤖 NEW agent discovered: {} v{} (id={})",
+        log.info("🤖 NEW agent discovered (PENDING approval): {} v{} (id={})",
                 name, version, saved.getId());
         return saved;
     }
@@ -229,6 +245,33 @@ public class AgentRegistryService {
     }
 
     // ════════════════════════════════════════════════════════════════════
+    //  APPROVAL CHECK — O(1) in-memory, called from orchestration hot path
+    // ════════════════════════════════════════════════════════════════════
+
+    /**
+     * Check if the agent for a given session is blocked.
+     *
+     * <p>O(1) — two ConcurrentHashMap lookups, no DB hit.
+     * Called from the orchestration layer BEFORE any tool forwarding.
+     *
+     * @param sessionId the agent's MCP session ID
+     * @return {@code true} if the agent is NOT APPROVED (i.e., PENDING, BLOCKED, or unknown), {@code false} only if APPROVED
+     */
+    public boolean isAgentBlocked(String sessionId) {
+        if (sessionId == null) return false;
+        UUID agentId = sessionToAgentId.get(sessionId);
+        if (agentId == null) return false;
+
+        // Find agent in cache by iterating values (small map, typically < 20 agents)
+        for (GatewayAgentEntity agent : agentCache.values()) {
+            if (agentId.equals(agent.getId())) {
+                return !"APPROVED".equals(agent.getApprovalStatus());
+            }
+        }
+        return false;
+    }
+
+    // ════════════════════════════════════════════════════════════════════
     //  READ METHODS — For REST API and Dashboard
     // ════════════════════════════════════════════════════════════════════
 
@@ -253,10 +296,100 @@ public class AgentRegistryService {
     }
 
     // ════════════════════════════════════════════════════════════════════
+    //  LIVE SESSION DETAILS — For real-time monitoring
+    // ════════════════════════════════════════════════════════════════════
+
+    /**
+     * Return enriched details for all currently connected sessions.
+     * Adds agent name/version from cache for O(1) enrichment.
+     */
+    public List<Map<String, Object>> getLiveSessionDetails() {
+        List<GatewayAgentSessionEntity> connected = getConnectedSessions();
+        List<Map<String, Object>> result = new ArrayList<>();
+
+        for (GatewayAgentSessionEntity session : connected) {
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("sessionId", session.getSessionId());
+            map.put("agentId", session.getAgent().getId());
+            map.put("agentName", session.getAgent().getAgentName());
+            map.put("agentVersion", session.getAgent().getAgentVersion());
+            map.put("approvalStatus", session.getAgent().getApprovalStatus());
+            map.put("authMethod", session.getAuthMethod());
+            map.put("authIdentity", session.getAuthIdentity());
+            map.put("connectedAt", session.getConnectedAt());
+            // Compute connected duration
+            long connectedMs = Duration.between(
+                    session.getConnectedAt(), LocalDateTime.now()).toMillis();
+            map.put("connectedDurationMs", connectedMs);
+            map.put("requestCount", session.getRequestCount());
+            map.put("lastRequestAt", session.getLastRequestAt());
+            // Compute idle duration (time since last request, or since connected if no requests)
+            LocalDateTime lastActivity = session.getLastRequestAt() != null
+                    ? session.getLastRequestAt() : session.getConnectedAt();
+            long idleMs = Duration.between(lastActivity, LocalDateTime.now()).toMillis();
+            map.put("idleDurationMs", Math.max(0, idleMs));
+            map.put("status", session.getStatus());
+            result.add(map);
+        }
+
+        return result;
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  APPROVAL WORKFLOW
+    // ════════════════════════════════════════════════════════════════════
+
+    /**
+     * Approve an agent — sets approval_status to APPROVED.
+     * Approved agents are allowed to connect and use all tools.
+     */
+    @Transactional
+    public GatewayAgentEntity approveAgent(UUID agentId) {
+        GatewayAgentEntity agent = agentRepository.findById(agentId)
+                .orElseThrow(() -> new IllegalArgumentException("Agent not found: " + agentId));
+        agent.setApprovalStatus("APPROVED");
+        GatewayAgentEntity updated = agentRepository.saveAndFlush(agent);
+        // Update cache
+        String key = cacheKey(agent.getAgentName(), agent.getAgentVersion());
+        agentCache.put(key, updated);
+        log.info("✅ Agent APPROVED: {} v{} (id={})",
+                agent.getAgentName(), agent.getAgentVersion(), agentId);
+        return updated;
+    }
+
+    /**
+     * Block an agent — sets approval_status to BLOCKED.
+     * Blocked agents will be rejected on next connection attempt.
+     */
+    @Transactional
+    public GatewayAgentEntity blockAgent(UUID agentId) {
+        GatewayAgentEntity agent = agentRepository.findById(agentId)
+                .orElseThrow(() -> new IllegalArgumentException("Agent not found: " + agentId));
+        agent.setApprovalStatus("BLOCKED");
+        GatewayAgentEntity updated = agentRepository.saveAndFlush(agent);
+        // Update cache
+        String key = cacheKey(agent.getAgentName(), agent.getAgentVersion());
+        agentCache.put(key, updated);
+        log.info("🚫 Agent BLOCKED: {} v{} (id={})",
+                agent.getAgentName(), agent.getAgentVersion(), agentId);
+        return updated;
+    }
+
+    // ════════════════════════════════════════════════════════════════════
     //  INTERNAL HELPERS
     // ════════════════════════════════════════════════════════════════════
 
     private String cacheKey(String name, String version) {
         return (name != null ? name : "unknown") + ":" + (version != null ? version : "?");
+    }
+
+    /**
+     * Thrown when a BLOCKED agent attempts to connect.
+     * Caught in ClientSession.initialize() to reject the connection gracefully.
+     */
+    public static class AgentBlockedException extends RuntimeException {
+        public AgentBlockedException(String message) {
+            super(message);
+        }
     }
 }

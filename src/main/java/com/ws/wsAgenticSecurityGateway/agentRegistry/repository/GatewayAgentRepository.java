@@ -20,6 +20,8 @@ public interface GatewayAgentRepository extends JpaRepository<GatewayAgentEntity
 
     List<GatewayAgentEntity> findByAgentName(String agentName);
 
+    List<GatewayAgentEntity> findByApprovalStatus(String approvalStatus);
+
     /** Atomic increment — avoids read-modify-write race on concurrent connections. */
     @Modifying
     @Query("UPDATE GatewayAgentEntity a SET a.totalSessions = a.totalSessions + 1, " +

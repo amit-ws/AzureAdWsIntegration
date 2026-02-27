@@ -51,6 +51,7 @@ public class AuditController {
             @RequestParam(required = false) String capabilityName,
             @RequestParam(required = false) String correlationId,
             @RequestParam(required = false) String sessionId,
+            @RequestParam(required = false) String agentName,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fromDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime toDate,
@@ -78,7 +79,7 @@ public class AuditController {
         var spec = McpAuditLogSpecification.build(
                 moduleEnum, eventTypeEnum, statusEnum, severityEnum,
                 serverName, capabilityName, correlationId, sessionId,
-                search, fromDate, toDate);
+                agentName, search, fromDate, toDate);
 
         Page<McpAuditLog> results = auditRepo.findAll(spec, pageRequest);
         return ResponseEntity.ok(results);
@@ -207,6 +208,7 @@ public class AuditController {
                 .map(Enum::name).collect(Collectors.toList()));
         filters.put("serverNames", auditRepo.findDistinctServerNames());
         filters.put("capabilityNames", auditRepo.findDistinctCapabilityNames());
+        filters.put("agentNames", auditRepo.findDistinctAgentNames());
 
         return ResponseEntity.ok(filters);
     }

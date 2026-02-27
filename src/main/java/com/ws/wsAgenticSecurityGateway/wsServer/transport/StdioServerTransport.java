@@ -158,7 +158,8 @@ public class StdioServerTransport implements McpServerTransport {
                 // Audit session disconnect
                 try {
                     ClientSession session = sessionManager.getCurrentSession();
-                    auditService.auditServerSessionDisconnected(session.getSessionId());
+                    String agentName = session.getClientInfo() != null ? session.getClientInfo().name() : null;
+                    auditService.auditServerSessionDisconnected(session.getSessionId(), agentName);
                 } catch (Exception e) {
                     log.error("Failed to audit session disconnect: {}", e.getMessage());
                 }
@@ -368,23 +369,25 @@ public class StdioServerTransport implements McpServerTransport {
             }
 
             long durationMs = System.currentTimeMillis() - ctx.startTimeMs();
-            String sessionId = sessionManager.getCurrentSession().getSessionId();
+            ClientSession cs = sessionManager.getCurrentSession();
+            String sessionId = cs.getSessionId();
             String requestId = String.valueOf(responseId);
+            String agentName = cs.getClientInfo() != null ? cs.getClientInfo().name() : null;
 
             switch (ctx.method()) {
                 case "tools/list" -> {
                     int toolCount = extractListCount(json, "tools");
-                    auditService.auditServerToolsListRequested(sessionId, toolCount, durationMs, requestId);
+                    auditService.auditServerToolsListRequested(sessionId, toolCount, durationMs, requestId, agentName);
                     log.debug("Audited tools/list — {} tools, {}ms (requestId={})", toolCount, durationMs, requestId);
                 }
                 case "resources/list" -> {
                     int resourceCount = extractListCount(json, "resources");
-                    auditService.auditServerResourcesListRequested(sessionId, resourceCount, durationMs, requestId);
+                    auditService.auditServerResourcesListRequested(sessionId, resourceCount, durationMs, requestId, agentName);
                     log.debug("Audited resources/list — {} resources, {}ms (requestId={})", resourceCount, durationMs, requestId);
                 }
                 case "prompts/list" -> {
                     int promptCount = extractListCount(json, "prompts");
-                    auditService.auditServerPromptsListRequested(sessionId, promptCount, durationMs, requestId);
+                    auditService.auditServerPromptsListRequested(sessionId, promptCount, durationMs, requestId, agentName);
                     log.debug("Audited prompts/list — {} prompts, {}ms (requestId={})", promptCount, durationMs, requestId);
                 }
                 // tools/call is audited in McpServerApplication.handleToolCall() — no duplicate here
@@ -406,8 +409,10 @@ public class StdioServerTransport implements McpServerTransport {
                 return;
             }
 
-            String sessionId = sessionManager.getCurrentSession().getSessionId();
-            auditService.auditServerNotificationReceived(sessionId, method, params);
+            ClientSession cs = sessionManager.getCurrentSession();
+            String sessionId = cs.getSessionId();
+            String agentName = cs.getClientInfo() != null ? cs.getClientInfo().name() : null;
+            auditService.auditServerNotificationReceived(sessionId, method, params, agentName);
             log.debug("Audited notification: {}", method);
         } catch (Exception e) {
             log.error("Error auditing notification '{}': {}", method, e.getMessage());

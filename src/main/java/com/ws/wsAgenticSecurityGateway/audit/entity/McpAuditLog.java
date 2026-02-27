@@ -88,6 +88,10 @@ public class McpAuditLog {
     @Column(name = "request_id", length = 64)
     private String requestId;
 
+    /** AI agent name (e.g., "claude-desktop", "cursor") — set for northbound + orchestration events. */
+    @Column(name = "agent_name", length = 256)
+    private String agentName;
+
     // ── Server / Capability Context ───────────────────────────────────
 
     /** Config-level name of the enterprise MCP server (e.g. "github"). */

@@ -30,7 +30,8 @@ public enum McpErrorCode {
     PDP_DENIED(-33003, "Policy decision: access denied"),
     ORCHESTRATION_FAILURE(-33004, "Orchestration routing failure"),
     REGISTRY_ERROR(-33005, "Capability registry error"),
-    TRANSPORT_ERROR(-33006, "Transport layer error");
+    TRANSPORT_ERROR(-33006, "Transport layer error"),
+    AGENT_BLOCKED(-33007, "Agent is blocked by admin");
 
     private final int code;
     private final String message;

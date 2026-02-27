@@ -68,7 +68,8 @@ public class ClientSession {
                     protocolVersion,
                     clientInfo,
                     capabilities,
-                    requestId
+                    requestId,
+                    clientInfo != null ? clientInfo.name() : null
             );
         } catch (Exception e) {
             log.error("Failed to audit session initialization: {}", e.getMessage());
