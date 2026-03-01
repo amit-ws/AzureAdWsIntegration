@@ -5,6 +5,7 @@ import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentSessionEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayAgentRepository;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayAgentSessionRepository;
+import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import lombok.extern.slf4j.Slf4j;
@@ -35,6 +36,7 @@ public class AgentRegistryService {
 
     private final GatewayAgentRepository agentRepository;
     private final GatewayAgentSessionRepository sessionRepository;
+    private final McpAuditService auditService;
 
     /** In-memory cache: "agentName:agentVersion" → entity (for fast upsert checks). */
     private final ConcurrentHashMap<String, GatewayAgentEntity> agentCache = new ConcurrentHashMap<>();
@@ -43,9 +45,11 @@ public class AgentRegistryService {
     private final ConcurrentHashMap<String, UUID> sessionToAgentId = new ConcurrentHashMap<>();
 
     public AgentRegistryService(GatewayAgentRepository agentRepository,
-                                GatewayAgentSessionRepository sessionRepository) {
+                                GatewayAgentSessionRepository sessionRepository,
+                                McpAuditService auditService) {
         this.agentRepository = agentRepository;
         this.sessionRepository = sessionRepository;
+        this.auditService = auditService;
     }
 
     // ════════════════════════════════════════════════════════════════════
@@ -199,6 +203,13 @@ public class AgentRegistryService {
         // Atomic increment of agent's total session count
         agentRepository.incrementSessionCount(agentId);
 
+        // Refresh cache to prevent discoverAgent() from overwriting the DB increment
+        // (discoverAgent calls saveAndFlush on the cached entity — stale totalSessions)
+        GatewayAgentEntity refreshed = agentRepository.findById(agentId).orElse(null);
+        if (refreshed != null) {
+            agentCache.put(cacheKey(refreshed.getAgentName(), refreshed.getAgentVersion()), refreshed);
+        }
+
         // Map session → agent for fast request counting
         sessionToAgentId.put(sessionId, agentId);
 
@@ -215,6 +226,58 @@ public class AgentRegistryService {
         sessionRepository.markDisconnected(sessionId);
         sessionToAgentId.remove(sessionId);
         log.info("📡 Agent session disconnected: {}", sessionId);
+    }
+
+    /**
+     * Layer 1 — Active Session Replacement: disconnect all existing CONNECTED sessions
+     * for an agent except the newly created one.
+     *
+     * <p>Called during HTTP {@code initialize} to clean up zombie sessions caused by:
+     * <ul>
+     *   <li>Agent close/reopen (mcp-remote doesn't send DELETE)</li>
+     *   <li>Agent delete-config/reconfig before timeout</li>
+     *   <li>Network interruption followed by reconnect</li>
+     * </ul>
+     *
+     * @param agentId          the agent's UUID
+     * @param excludeSessionId the new session to keep (just registered)
+     * @return count of stale sessions that were disconnected
+     */
+    @Transactional
+    public int disconnectExistingSessionsForAgent(UUID agentId, String excludeSessionId) {
+        List<GatewayAgentSessionEntity> staleSessions =
+                sessionRepository.findActiveSessionsForAgentExcluding(agentId, excludeSessionId);
+        for (GatewayAgentSessionEntity stale : staleSessions) {
+            String staleSessionId = stale.getSessionId();
+            String agentName = stale.getAgent().getAgentName();
+            disconnectSession(staleSessionId);
+            // Audit: session replaced on reconnect
+            auditService.auditServerSessionDisconnectedSync(staleSessionId, agentName);
+        }
+        return staleSessions.size();
+    }
+
+    /**
+     * Layer 2 — Smart Idle Timeout: lightweight activity timestamp update.
+     *
+     * <p>Called at the END of each orchestration method (after the southbound call
+     * completes) to keep sessions alive during long-running tool calls.
+     * The existing {@link #recordRequest(String)} updates lastRequestAt at request START;
+     * this method updates it at response COMPLETION — so the reaper won't kill
+     * sessions with tools that take 8+ minutes.
+     *
+     * <p>Runs async on {@code mcpAuditExecutor} — never blocks the hot path.
+     *
+     * @param sessionId the agent's MCP session ID
+     */
+    @Async("mcpAuditExecutor")
+    @Transactional
+    public void updateLastActivity(String sessionId) {
+        try {
+            sessionRepository.updateLastRequestAt(sessionId);
+        } catch (Exception e) {
+            log.debug("Failed to update activity for session {}: {}", sessionId, e.getMessage());
+        }
     }
 
     // ════════════════════════════════════════════════════════════════════

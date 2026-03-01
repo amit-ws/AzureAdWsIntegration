@@ -15,10 +15,12 @@ import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.server.McpSyncServer;
 import io.modelcontextprotocol.server.McpSyncServerExchange;
 import io.modelcontextprotocol.spec.McpSchema;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
@@ -52,6 +54,7 @@ import java.util.List;
 @Component
 @Slf4j
 @Order(2)
+@ConditionalOnProperty(name = "ws.gateway.transport", havingValue = "stdio")
 public class McpServerApplication implements ApplicationRunner {
 
     private final CapabilityRegistryService registryService;
@@ -210,6 +213,24 @@ public class McpServerApplication implements ApplicationRunner {
             log.error("═══════════════════════════════════════════════════════════");
             log.error("Error: {}", e.getMessage(), e);
             // Don't exit — allow Spring Boot application to continue running
+        }
+    }
+
+    /**
+     * Graceful shutdown — triggers transport cleanup chain:
+     * server.closeGracefully() → ServerTransportProvider.closeGracefully()
+     * → StdioServerTransport.closeGracefully() → audit + sessionManager.removeSession()
+     */
+    @PreDestroy
+    public void shutdown() {
+        log.info("🛑 WS MCP Server (stdio) shutting down...");
+        if (server != null) {
+            try {
+                server.closeGracefully();
+                log.info("✅ Server shutdown complete");
+            } catch (Exception e) {
+                log.error("Error during server shutdown: {}", e.getMessage());
+            }
         }
     }
 

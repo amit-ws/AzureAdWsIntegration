@@ -127,6 +127,24 @@ public class McpAuditService {
     }
 
     /**
+     * Synchronous variant of {@link #auditClientSessionDisconnected} — used in
+     * shutdown/cleanup paths where @Async would race with DataSource destruction.
+     * <p>NOT annotated with @Async so the DB write completes before the caller returns.
+     */
+    public void auditClientSessionDisconnectedSync(String sessionId,
+                                                    String serverName) {
+        persist(McpAuditLog.builder()
+                .eventType(AuditEventType.CLIENT_SESSION_DISCONNECTED)
+                .module(AuditModule.WS_CLIENT)
+                .status(AuditStatus.SUCCESS)
+                .severity(AuditSeverity.INFO)
+                .sessionId(sessionId)
+                .serverName(serverName)
+                .correlationId(generateCorrelationId())
+                .build());
+    }
+
+    /**
      * Audit: southbound health check failed for an enterprise MCP server.
      */
     @Async("mcpAuditExecutor")
@@ -578,6 +596,23 @@ public class McpAuditService {
      */
     @Async("mcpAuditExecutor")
     public void auditServerSessionDisconnected(String sessionId, String agentName) {
+        persist(McpAuditLog.builder()
+                .eventType(AuditEventType.SERVER_SESSION_DISCONNECTED)
+                .module(AuditModule.WS_SERVER)
+                .status(AuditStatus.SUCCESS)
+                .severity(AuditSeverity.INFO)
+                .sessionId(sessionId)
+                .agentName(agentName)
+                .correlationId(generateCorrelationId())
+                .build());
+    }
+
+    /**
+     * Synchronous variant of {@link #auditServerSessionDisconnected} — used in
+     * shutdown/cleanup paths where @Async would race with JVM termination.
+     * <p>NOT annotated with @Async so the DB write completes before the caller returns.
+     */
+    public void auditServerSessionDisconnectedSync(String sessionId, String agentName) {
         persist(McpAuditLog.builder()
                 .eventType(AuditEventType.SERVER_SESSION_DISCONNECTED)
                 .module(AuditModule.WS_SERVER)

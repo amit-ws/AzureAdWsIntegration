@@ -125,7 +125,7 @@ public class StdioServerTransport implements McpServerTransport {
                             String agentName = session.getClientInfo() != null
                                     ? session.getClientInfo().name() : null;
 
-                            auditService.auditServerSessionDisconnected(sessionId, agentName);
+                            auditService.auditServerSessionDisconnectedSync(sessionId, agentName);
                             sessionManager.removeSession(sessionId);
                             log.info("✅ Session {} cleaned up after pipe close", sessionId);
                         } catch (Exception cleanupEx) {
@@ -181,7 +181,7 @@ public class StdioServerTransport implements McpServerTransport {
                     String agentName = session.getClientInfo() != null ? session.getClientInfo().name() : null;
 
                     // 1. Audit (async, non-blocking)
-                    auditService.auditServerSessionDisconnected(sessionId, agentName);
+                    auditService.auditServerSessionDisconnectedSync(sessionId, agentName);
 
                     // 2. Update DB status + clean in-memory maps
                     sessionManager.removeSession(sessionId);

@@ -50,6 +50,12 @@ public class AgentController {
                         s -> s.getAgent().getId(),
                         Collectors.counting()));
 
+        // True total session counts from the sessions table (not the denormalized counter)
+        Map<UUID, Long> totalSessionsByAgent = new HashMap<>();
+        for (Object[] row : sessionRepository.countSessionsByAgent()) {
+            totalSessionsByAgent.put((UUID) row[0], (Long) row[1]);
+        }
+
         List<Map<String, Object>> result = new ArrayList<>();
         for (GatewayAgentEntity agent : agents) {
             Map<String, Object> map = new LinkedHashMap<>();
@@ -61,7 +67,8 @@ public class AgentController {
             map.put("approvalStatus", agent.getApprovalStatus());
             map.put("firstSeenAt", agent.getFirstSeenAt());
             map.put("lastSeenAt", agent.getLastSeenAt());
-            map.put("totalSessions", agent.getTotalSessions());
+            map.put("totalSessions",
+                    totalSessionsByAgent.getOrDefault(agent.getId(), 0L));
             map.put("totalRequests", agent.getTotalRequests());
             map.put("connectedSessions",
                     connectedCountByAgent.getOrDefault(agent.getId(), 0L));
@@ -78,6 +85,9 @@ public class AgentController {
     public ResponseEntity<Map<String, Object>> getAgent(@PathVariable UUID id) {
         return agentRegistryService.getAgent(id)
                 .map(agent -> {
+                    // True total from sessions table (not the denormalized counter)
+                    long totalSessions = sessionRepository.countByAgentId(id);
+
                     Map<String, Object> map = new LinkedHashMap<>();
                     map.put("id", agent.getId());
                     map.put("agentName", agent.getAgentName());
@@ -88,7 +98,7 @@ public class AgentController {
                     map.put("approvalStatus", agent.getApprovalStatus());
                     map.put("firstSeenAt", agent.getFirstSeenAt());
                     map.put("lastSeenAt", agent.getLastSeenAt());
-                    map.put("totalSessions", agent.getTotalSessions());
+                    map.put("totalSessions", totalSessions);
                     map.put("totalRequests", agent.getTotalRequests());
                     return ResponseEntity.ok(map);
                 })

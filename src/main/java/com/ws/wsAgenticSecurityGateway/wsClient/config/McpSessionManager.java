@@ -10,9 +10,8 @@ import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.spec.McpClientTransport;
 import io.modelcontextprotocol.spec.McpSchema;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -358,7 +357,7 @@ public class McpSessionManager {
             try {
                 session.close();
                 log.info("✅ Server '{}' disconnected successfully", serverName);
-                auditService.auditClientSessionDisconnected(session.getSessionId(), serverName);
+                auditService.auditClientSessionDisconnectedSync(session.getSessionId(), serverName);
             } catch (Exception e) {
                 log.error("⚠️  Error during disconnect for '{}': {}", serverName, e.getMessage());
             }
@@ -400,6 +399,21 @@ public class McpSessionManager {
     }
 
     /**
+     * Graceful shutdown — disconnect all southbound MCP servers.
+     * Called by Spring before the application context is destroyed.
+     */
+    @PreDestroy
+    public void shutdown() {
+        log.info("🛑 Gateway shutting down — disconnecting all southbound MCP servers...");
+        try {
+            disconnectAll();
+            log.info("✅ All southbound sessions disconnected gracefully");
+        } catch (Exception e) {
+            log.error("Error during southbound shutdown: {}", e.getMessage());
+        }
+    }
+
+    /**
      * Get connection status summary
      */
     public Map<String, Object> getStatusSummary() {
@@ -414,14 +428,21 @@ public class McpSessionManager {
 
     /**
      * Startup cleanup — mark all orphaned CONNECTED southbound sessions as DISCONNECTED.
-     * Runs after the application context is fully ready (not in @PostConstruct, which ignores @Transactional).
+     * Called explicitly from {@code McpClientInitializer.run()} BEFORE creating new connections.
      */
-    @EventListener(ApplicationReadyEvent.class)
     @Transactional
     public void cleanupOrphanedSessions() {
         try {
-            serverSessionRepository.markAllDisconnected();
-            log.info("🧹 Startup cleanup: marked all orphaned southbound sessions as DISCONNECTED");
+            List<GatewayMcpServerSessionEntity> orphaned = serverSessionRepository.findByStatus("CONNECTED");
+            if (!orphaned.isEmpty()) {
+                for (GatewayMcpServerSessionEntity session : orphaned) {
+                    auditService.auditClientSessionDisconnectedSync(session.getSessionId(), session.getServerName());
+                }
+                serverSessionRepository.markAllDisconnected();
+                log.info("🧹 Startup cleanup: marked {} orphaned southbound session(s) as DISCONNECTED", orphaned.size());
+            } else {
+                log.info("🧹 Startup cleanup: no orphaned southbound sessions found");
+            }
         } catch (Exception e) {
             log.error("⚠️  Failed to cleanup orphaned southbound sessions: {}", e.getMessage());
         }

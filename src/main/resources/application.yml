@@ -71,6 +71,9 @@ spring:
           security: DEBUG
 
 
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
   main:
     allow-bean-definition-overriding: true
     banner-mode: off
@@ -78,6 +81,7 @@ spring:
 
 server:
   port: 9492
+  shutdown: graceful
 
 
 clientId: 12345
@@ -120,12 +124,16 @@ logging:
     console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
 
 
-# ─── Session Lifecycle Management ─────────────────────────────────────
+# ─── WS Gateway Configuration ─────────────────────────────────────────
 ws:
   gateway:
+    transport: http                    # "http" (default, production) or "stdio" (dev/Claude Desktop)
+    auth:
+      enabled: false                   # Set true to enable gateway API key auth on /mcp
+      api-key: ""                      # Only used when auth.enabled=true
     session:
-      idle-timeout-minutes: 30         # Mark session DISCONNECTED after this idle duration
-      reaper-interval-seconds: 60      # How often the reaper runs
+      idle-timeout-minutes: 10         # Mark session DISCONNECTED after this idle duration (safe with response-completion activity updates)
+      reaper-interval-seconds: 30      # How often the reaper runs (30s for faster zombie cleanup)
       reaper-enabled: true             # Master switch to disable reaper
     southbound:
       health-check-interval-seconds: 120  # How often to check southbound server health

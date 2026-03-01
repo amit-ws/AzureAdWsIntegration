@@ -48,4 +48,32 @@ public interface GatewayAgentSessionRepository extends JpaRepository<GatewayAgen
             "WHERE s.status = 'CONNECTED' " +
             "AND COALESCE(s.lastRequestAt, s.connectedAt) < :cutoff")
     List<GatewayAgentSessionEntity> findStaleConnectedSessions(@Param("cutoff") LocalDateTime cutoff);
+
+    /**
+     * Layer 1 — Active Session Replacement: find all CONNECTED sessions for an agent
+     * EXCEPT the newly created one. Used to disconnect stale/zombie sessions on reconnect.
+     */
+    @Query("SELECT s FROM GatewayAgentSessionEntity s " +
+            "WHERE s.agent.id = :agentId AND s.status = 'CONNECTED' " +
+            "AND s.sessionId != :excludeSessionId")
+    List<GatewayAgentSessionEntity> findActiveSessionsForAgentExcluding(
+            @Param("agentId") UUID agentId,
+            @Param("excludeSessionId") String excludeSessionId);
+
+    /** Batch count of all sessions grouped by agent — for accurate totalSessions display. */
+    @Query("SELECT s.agent.id, COUNT(s) FROM GatewayAgentSessionEntity s GROUP BY s.agent.id")
+    List<Object[]> countSessionsByAgent();
+
+    /** Count total sessions for a specific agent. */
+    long countByAgentId(UUID agentId);
+
+    /**
+     * Layer 2 — Smart Idle Timeout: lightweight activity timestamp update.
+     * Called at response completion to keep sessions alive during long-running tool calls.
+     * Does NOT increment requestCount (that's done separately at request start).
+     */
+    @Modifying
+    @Query("UPDATE GatewayAgentSessionEntity s SET s.lastRequestAt = CURRENT_TIMESTAMP " +
+            "WHERE s.sessionId = :sessionId AND s.status = 'CONNECTED'")
+    void updateLastRequestAt(@Param("sessionId") String sessionId);
 }

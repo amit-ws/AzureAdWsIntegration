@@ -236,7 +236,7 @@ public class ToolCallOrchestrator {
                 argsStr.length() > 2000 ? argsStr.substring(0, 2000) + "..." : argsStr);
 
         // ── Step 7.5: Resolve agent token override ─────────────────────
-        boolean usingAgentToken = resolveAndApplyAgentToken(correlationId, serverName);
+        boolean usingAgentToken = resolveAndApplyAgentToken(correlationId, serverName, exchange);
         inFlightRegistry.updateTokenMode(correlationId, usingAgentToken ? "AGENT-PROVIDED" : "CONFIG");
 
         // ── Step 8: Forward call via McpClientService ───────────────────
@@ -262,6 +262,11 @@ public class ToolCallOrchestrator {
 
             // ── Step 10: Deregister in-flight, return result ────────────
             inFlightRegistry.complete(correlationId);
+
+            // ── Keep session alive during long-running tools ─────────
+            // Update activity timestamp on response completion so the idle
+            // reaper doesn't kill sessions with long-running tool calls.
+            agentRegistryService.updateLastActivity(sessionId);
 
             log.info("═══════════════════════════════════════════════════════════");
             log.info("✅ ORCHESTRATION COMPLETE [{}]", correlationId);
@@ -481,32 +486,48 @@ public class ToolCallOrchestrator {
      *
      * @param correlationId for logging
      * @param serverName    the target enterprise server (for accessing config headers)
+     * @param exchange      the MCP exchange (carries HTTP transport context in HTTP mode)
      * @return true if agent token was applied, false if using config token
      */
-    private boolean resolveAndApplyAgentToken(String correlationId, String serverName) {
+    private boolean resolveAndApplyAgentToken(String correlationId, String serverName,
+                                               McpSyncServerExchange exchange) {
+        // ── (1) Stdio mode: tokens from ClientSession ─────────────────
         try {
-            if (sessionManager == null) {
-                return false;
+            if (sessionManager != null) {
+                ClientSession session = sessionManager.getCurrentSession();
+                if (session != null && session.hasTokens()) {
+                    Map<String, String> agentTokens = session.getTokens();
+                    Map<String, String> overrideHeaders = buildOverrideHeaders(agentTokens, serverName);
+
+                    if (overrideHeaders != null && !overrideHeaders.isEmpty()) {
+                        HttpMcpTransport.setRequestOverrideHeaders(overrideHeaders);
+                        log.info("🔑 [{}] Agent token override applied ({} headers, keys: {})",
+                                correlationId, overrideHeaders.size(), agentTokens.keySet());
+                        return true;
+                    }
+                }
             }
-
-            ClientSession session = sessionManager.getCurrentSession();
-            if (session == null || !session.hasTokens()) {
-                return false;
-            }
-
-            Map<String, String> agentTokens = session.getTokens();
-            Map<String, String> overrideHeaders = buildOverrideHeaders(agentTokens, serverName);
-
-            if (overrideHeaders != null && !overrideHeaders.isEmpty()) {
-                HttpMcpTransport.setRequestOverrideHeaders(overrideHeaders);
-                log.info("🔑 [{}] Agent token override applied ({} headers, keys: {})",
-                        correlationId, overrideHeaders.size(), agentTokens.keySet());
-                return true;
-            }
-
         } catch (Exception e) {
-            log.debug("Could not resolve agent token (using config token): {}", e.getMessage());
+            log.debug("Could not resolve agent token from session: {}", e.getMessage());
         }
+
+        // ── (2) HTTP mode fallback: token from transport context ──────
+        try {
+            if (exchange != null && exchange.transportContext() != null) {
+                Object authToken = exchange.transportContext().get("authorization");
+                if (authToken != null && !authToken.toString().isBlank()) {
+                    Map<String, String> overrideHeaders = new HashMap<>();
+                    overrideHeaders.put("Authorization", authToken.toString());
+                    HttpMcpTransport.setRequestOverrideHeaders(overrideHeaders);
+                    log.info("🔑 [{}] HTTP agent token forwarded from transport context",
+                            correlationId);
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Could not resolve agent token from HTTP context: {}", e.getMessage());
+        }
+
         return false;
     }
 
@@ -694,7 +715,7 @@ public class ToolCallOrchestrator {
         } catch (Exception ignored) {}
 
         // Resolve agent token override
-        boolean usingAgentToken = resolveAndApplyAgentToken(correlationId, serverName);
+        boolean usingAgentToken = resolveAndApplyAgentToken(correlationId, serverName, exchange);
         inFlightRegistry.updateTokenMode(correlationId, usingAgentToken ? "AGENT-PROVIDED" : "CONFIG");
 
         // Forward to enterprise server
@@ -717,6 +738,9 @@ public class ToolCallOrchestrator {
                     correlationId, sessionId, serverName, originalName, callDuration, requestId, clientName);
 
             inFlightRegistry.complete(correlationId);
+
+            // Keep session alive during long-running prompts
+            agentRegistryService.updateLastActivity(sessionId);
 
             int messageCount = result.messages() != null ? result.messages().size() : 0;
             log.info("═══════════════════════════════════════════════════════════");
@@ -868,7 +892,7 @@ public class ToolCallOrchestrator {
         inFlightRegistry.updateRequest(correlationId, resourceUri != null ? resourceUri : "");
 
         // Resolve agent token override
-        boolean usingAgentToken = resolveAndApplyAgentToken(correlationId, serverName);
+        boolean usingAgentToken = resolveAndApplyAgentToken(correlationId, serverName, exchange);
         inFlightRegistry.updateTokenMode(correlationId, usingAgentToken ? "AGENT-PROVIDED" : "CONFIG");
 
         // Forward to enterprise server
@@ -891,6 +915,9 @@ public class ToolCallOrchestrator {
                     correlationId, sessionId, serverName, publicName, callDuration, requestId, clientName);
 
             inFlightRegistry.complete(correlationId);
+
+            // Keep session alive during long-running resource reads
+            agentRegistryService.updateLastActivity(sessionId);
 
             log.info("═══════════════════════════════════════════════════════════");
             log.info("✅ RESOURCE ORCHESTRATION COMPLETE [{}]", correlationId);
