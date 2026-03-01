@@ -4,12 +4,17 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
+import com.ws.wsAgenticSecurityGateway.wsClient.entity.GatewayMcpServerSessionEntity;
+import com.ws.wsAgenticSecurityGateway.wsClient.repository.GatewayMcpServerSessionRepository;
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.spec.McpClientTransport;
 import io.modelcontextprotocol.spec.McpSchema;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashMap;
 import java.util.List;
@@ -38,10 +43,14 @@ public class McpSessionManager {
 
     private final ObjectMapper objectMapper;
 
+    private final GatewayMcpServerSessionRepository serverSessionRepository;
+
     public McpSessionManager(McpAuditService auditService,
-                             CapabilityRegistryService registryService) {
+                             CapabilityRegistryService registryService,
+                             GatewayMcpServerSessionRepository serverSessionRepository) {
         this.auditService = auditService;
         this.registryService = registryService;
+        this.serverSessionRepository = serverSessionRepository;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -174,6 +183,27 @@ public class McpSessionManager {
                 log.error("⚠️  Failed to register server '{}' in registry: {}",
                         serverName, regEx.getMessage(), regEx);
                 // Don't throw — connection is still valid even if registry fails
+            }
+
+            // ── Persist southbound session to DB ──────────────────────
+            try {
+                GatewayMcpServerSessionEntity entity = GatewayMcpServerSessionEntity.builder()
+                        .serverName(serverName)
+                        .sessionId(session.getSessionId())
+                        .serverDisplayName(client.getServerInfo() != null ? client.getServerInfo().name() : serverName)
+                        .serverVersion(client.getServerInfo() != null ? client.getServerInfo().version() : null)
+                        .serverUrl(config.getUrl())
+                        .toolCount(session.getTools() != null ? session.getTools().size() : 0)
+                        .resourceCount(session.getResources() != null ? session.getResources().size() : 0)
+                        .promptCount(session.getPrompts() != null ? session.getPrompts().size() : 0)
+                        .status("CONNECTED")
+                        .build();
+                serverSessionRepository.save(entity);
+                log.info("💾 Southbound session persisted for server '{}'", serverName);
+            } catch (Exception dbEx) {
+                log.error("⚠️  Failed to persist southbound session for '{}': {}",
+                        serverName, dbEx.getMessage());
+                // Don't throw — connection is still valid even if DB persistence fails
             }
 
             long duration = System.currentTimeMillis() - startTime;
@@ -333,6 +363,15 @@ public class McpSessionManager {
                 log.error("⚠️  Error during disconnect for '{}': {}", serverName, e.getMessage());
             }
 
+            // Mark southbound session as disconnected in DB
+            try {
+                serverSessionRepository.markDisconnected(serverName);
+                log.info("💾 Southbound session marked DISCONNECTED for '{}'", serverName);
+            } catch (Exception dbEx) {
+                log.error("⚠️  Failed to mark southbound session DISCONNECTED for '{}': {}",
+                        serverName, dbEx.getMessage());
+            }
+
             // Remove capabilities from registry
             try {
                 registryService.removeServer(session.getSessionId(), serverName);
@@ -371,5 +410,20 @@ public class McpSessionManager {
                         .count(),
                 "servers", sessions.keySet()
         );
+    }
+
+    /**
+     * Startup cleanup — mark all orphaned CONNECTED southbound sessions as DISCONNECTED.
+     * Runs after the application context is fully ready (not in @PostConstruct, which ignores @Transactional).
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    @Transactional
+    public void cleanupOrphanedSessions() {
+        try {
+            serverSessionRepository.markAllDisconnected();
+            log.info("🧹 Startup cleanup: marked all orphaned southbound sessions as DISCONNECTED");
+        } catch (Exception e) {
+            log.error("⚠️  Failed to cleanup orphaned southbound sessions: {}", e.getMessage());
+        }
     }
 }

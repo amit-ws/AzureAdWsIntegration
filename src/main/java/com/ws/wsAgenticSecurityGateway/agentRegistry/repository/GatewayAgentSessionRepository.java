@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -37,4 +38,14 @@ public interface GatewayAgentSessionRepository extends JpaRepository<GatewayAgen
     @Query("UPDATE GatewayAgentSessionEntity s SET s.status = 'DISCONNECTED', " +
             "s.disconnectedAt = CURRENT_TIMESTAMP WHERE s.status = 'CONNECTED'")
     void markAllDisconnected();
+
+    /**
+     * Find CONNECTED sessions that have been idle beyond the cutoff timestamp.
+     * Uses COALESCE: if lastRequestAt is null, falls back to connectedAt (no requests yet).
+     * JOIN FETCH prevents N+1 when iterating results and reading agent name.
+     */
+    @Query("SELECT s FROM GatewayAgentSessionEntity s JOIN FETCH s.agent " +
+            "WHERE s.status = 'CONNECTED' " +
+            "AND COALESCE(s.lastRequestAt, s.connectedAt) < :cutoff")
+    List<GatewayAgentSessionEntity> findStaleConnectedSessions(@Param("cutoff") LocalDateTime cutoff);
 }

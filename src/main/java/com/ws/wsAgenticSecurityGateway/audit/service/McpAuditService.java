@@ -127,6 +127,26 @@ public class McpAuditService {
     }
 
     /**
+     * Audit: southbound health check failed for an enterprise MCP server.
+     */
+    @Async("mcpAuditExecutor")
+    public void auditClientHealthCheckFailed(String sessionId,
+                                             String serverName,
+                                             int consecutiveFailures,
+                                             String reason) {
+        persist(McpAuditLog.builder()
+                .eventType(AuditEventType.CLIENT_HEALTH_CHECK_FAILED)
+                .module(AuditModule.WS_CLIENT)
+                .status(AuditStatus.FAILURE)
+                .severity(consecutiveFailures >= 3 ? AuditSeverity.ERROR : AuditSeverity.WARN)
+                .sessionId(sessionId)
+                .serverName(serverName)
+                .correlationId(generateCorrelationId())
+                .errorMessage("Health check failed (attempt " + consecutiveFailures + "): " + reason)
+                .build());
+    }
+
+    /**
      * Audit: tools list fetched from enterprise MCP server.
      */
     @Async("mcpAuditExecutor")
@@ -566,6 +586,25 @@ public class McpAuditService {
                 .sessionId(sessionId)
                 .agentName(agentName)
                 .correlationId(generateCorrelationId())
+                .build());
+    }
+
+    /**
+     * Audit: AI agent session reaped due to idle timeout.
+     */
+    @Async("mcpAuditExecutor")
+    public void auditServerSessionIdleReaped(String sessionId, String agentName,
+                                              long idleDurationMs) {
+        persist(McpAuditLog.builder()
+                .eventType(AuditEventType.SERVER_SESSION_IDLE_REAPED)
+                .module(AuditModule.WS_SERVER)
+                .status(AuditStatus.SUCCESS)
+                .severity(AuditSeverity.WARN)
+                .sessionId(sessionId)
+                .agentName(agentName)
+                .correlationId(generateCorrelationId())
+                .durationMs(idleDurationMs)
+                .errorMessage("Session reaped: idle timeout exceeded")
                 .build());
     }
 

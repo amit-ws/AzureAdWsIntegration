@@ -64,7 +64,11 @@ public class GatewayAgentEntity {
     private String status = "ACTIVE";
 
     /** Approval status — PENDING for new agents, APPROVED or BLOCKED by admin. */
-    @Column(name = "approval_status", columnDefinition = "varchar(20) not null default 'APPROVED'")
+//    @Column(name = "approval_status", columnDefinition = "varchar(20) not null default 'APPROVED'")
+//    @Builder.Default
+//    private String approvalStatus = "APPROVED";
+
+    @Column(name = "approval_status", nullable = false, length = 20)
     @Builder.Default
     private String approvalStatus = "APPROVED";
 

@@ -115,6 +115,25 @@ public class StdioServerTransport implements McpServerTransport {
                         }
                     }
 
+                    // ── Pipe closed (agent disconnected or process killed) ──
+                    if (!closed) {
+                        closed = true;
+                        log.info("📡 Stdio pipe closed — agent disconnected");
+                        try {
+                            ClientSession session = sessionManager.getCurrentSession();
+                            String sessionId = session.getSessionId();
+                            String agentName = session.getClientInfo() != null
+                                    ? session.getClientInfo().name() : null;
+
+                            auditService.auditServerSessionDisconnected(sessionId, agentName);
+                            sessionManager.removeSession(sessionId);
+                            log.info("✅ Session {} cleaned up after pipe close", sessionId);
+                        } catch (Exception cleanupEx) {
+                            log.error("Failed to cleanup session after pipe close: {}",
+                                    cleanupEx.getMessage());
+                        }
+                    }
+
                 } catch (Exception e) {
                     if (!closed) {
                         log.error("Reader exception", e);
@@ -155,13 +174,19 @@ public class StdioServerTransport implements McpServerTransport {
         return Mono.fromRunnable(() -> {
             closed = true;
             try {
-                // Audit session disconnect
+                // Audit session disconnect + clean up session state
                 try {
                     ClientSession session = sessionManager.getCurrentSession();
+                    String sessionId = session.getSessionId();
                     String agentName = session.getClientInfo() != null ? session.getClientInfo().name() : null;
-                    auditService.auditServerSessionDisconnected(session.getSessionId(), agentName);
+
+                    // 1. Audit (async, non-blocking)
+                    auditService.auditServerSessionDisconnected(sessionId, agentName);
+
+                    // 2. Update DB status + clean in-memory maps
+                    sessionManager.removeSession(sessionId);
                 } catch (Exception e) {
-                    log.error("Failed to audit session disconnect: {}", e.getMessage());
+                    log.error("Failed to clean up session on disconnect: {}", e.getMessage());
                 }
 
                 in.close();

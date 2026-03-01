@@ -77,7 +77,7 @@ spring:
 
 
 server:
-  port: 9493
+  port: 9492
 
 
 clientId: 12345
@@ -119,6 +119,19 @@ logging:
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
 
+
+# ─── Session Lifecycle Management ─────────────────────────────────────
+ws:
+  gateway:
+    session:
+      idle-timeout-minutes: 30         # Mark session DISCONNECTED after this idle duration
+      reaper-interval-seconds: 60      # How often the reaper runs
+      reaper-enabled: true             # Master switch to disable reaper
+    southbound:
+      health-check-interval-seconds: 120  # How often to check southbound server health
+      health-check-enabled: true
+      auto-reconnect: true
+      max-reconnect-attempts: 3
 
 # ─── NOTE ────────────────────────────────────────────────────────────
 # The audit table 'mcp_audit_log' lives in schema 'ws_agentic_security'.

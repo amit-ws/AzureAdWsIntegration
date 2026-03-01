@@ -6,6 +6,7 @@ import com.ws.wsAgenticSecurityGateway.orchestration.ToolCallOrchestrator;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
 import com.ws.wsAgenticSecurityGateway.wsServer.session.SessionManager;
+import com.ws.wsAgenticSecurityGateway.wsServer.session.SessionReaperService;
 import com.ws.wsAgenticSecurityGateway.wsServer.transport.ServerTransportProvider;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -15,6 +16,7 @@ import io.modelcontextprotocol.server.McpSyncServer;
 import io.modelcontextprotocol.server.McpSyncServerExchange;
 import io.modelcontextprotocol.spec.McpSchema;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.annotation.Order;
@@ -57,6 +59,7 @@ public class McpServerApplication implements ApplicationRunner {
     private final ToolCallOrchestrator orchestrator;
     private final AgentRegistryService agentRegistryService;
     private final ObjectMapper objectMapper;
+    private final SessionReaperService sessionReaperService; // nullable — disabled by config
 
     private McpSyncServer server;
     private SessionManager sessionManager;
@@ -65,12 +68,14 @@ public class McpServerApplication implements ApplicationRunner {
                                 McpAuditService auditService,
                                 ToolCallOrchestrator orchestrator,
                                 AgentRegistryService agentRegistryService,
-                                ObjectMapper objectMapper) {
+                                ObjectMapper objectMapper,
+                                @Autowired(required = false) SessionReaperService sessionReaperService) {
         this.registryService = registryService;
         this.auditService = auditService;
         this.orchestrator = orchestrator;
         this.agentRegistryService = agentRegistryService;
         this.objectMapper = objectMapper;
+        this.sessionReaperService = sessionReaperService;
     }
 
     @Override
@@ -86,6 +91,12 @@ public class McpServerApplication implements ApplicationRunner {
 
             // Wire session manager into orchestrator (setter injection — SessionManager is a POJO, not a Spring bean)
             orchestrator.setSessionManager(sessionManager);
+
+            // Wire session manager into reaper for idle session cleanup
+            if (sessionReaperService != null) {
+                sessionReaperService.setSessionManager(sessionManager);
+                log.info("Session reaper wired with SessionManager");
+            }
 
             // Create transport provider (stdio-based, passes audit service for request/response interception)
             ServerTransportProvider transportProvider = new ServerTransportProvider(sessionManager, auditService);

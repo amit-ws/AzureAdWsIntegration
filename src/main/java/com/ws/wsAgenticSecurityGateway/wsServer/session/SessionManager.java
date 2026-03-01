@@ -38,4 +38,42 @@ public class SessionManager {
         }
         return currentSession;
     }
+
+    /**
+     * Full cleanup: in-memory maps + DB status update.
+     * Called from {@link com.ws.wsAgenticSecurityGateway.wsServer.transport.StdioServerTransport#closeGracefully()}.
+     */
+    public void removeSession(String sessionId) {
+        sessions.remove(sessionId);
+        if (currentSession != null && sessionId.equals(currentSession.getSessionId())) {
+            currentSession = null;
+        }
+        if (agentRegistryService != null) {
+            try {
+                agentRegistryService.disconnectSession(sessionId);
+            } catch (Exception e) {
+                log.error("Failed to disconnect session in agent registry: {}", e.getMessage());
+            }
+        }
+        log.info("Session removed (full cleanup): {}", sessionId);
+    }
+
+    /**
+     * Memory-only cleanup — does NOT touch DB.
+     * Called by the session reaper (which handles DB updates separately).
+     */
+    public void removeSessionFromMemory(String sessionId) {
+        sessions.remove(sessionId);
+        if (currentSession != null && sessionId.equals(currentSession.getSessionId())) {
+            currentSession = null;
+        }
+        log.info("Session removed from memory: {}", sessionId);
+    }
+
+    /**
+     * Snapshot of all tracked sessions. Used by the session reaper.
+     */
+    public Map<String, ClientSession> getAllSessions() {
+        return Map.copyOf(sessions);
+    }
 }
