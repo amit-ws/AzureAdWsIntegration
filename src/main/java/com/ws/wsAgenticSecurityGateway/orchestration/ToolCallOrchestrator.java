@@ -190,12 +190,25 @@ public class ToolCallOrchestrator {
         auditService.auditOrchestrationRegistryLookup(
                 correlationId, sessionId, publicName, serverName, lookupDuration, requestId, clientName);
 
-        // ── Step 5b: Resolve client (southbound) session ID ─────────────
+        // ── Step 5b: Pre-check — is the server connected? ────────────────
+        // Fail fast if the southbound server is disconnected instead of
+        // waiting for an HTTP timeout (~75s) during callTool().
+        if (!mcpSessionManager.isConnected(serverName)) {
+            log.error("❌ [{}] Server '{}' is not connected — rejecting immediately", correlationId, serverName);
+            auditService.auditOrchestrationError(
+                    correlationId, sessionId, serverName, publicName,
+                    McpErrorCode.SERVER_UNAVAILABLE,
+                    "Server '" + serverName + "' is not connected",
+                    requestId, clientName);
+            return buildErrorResult(McpErrorCode.SERVER_UNAVAILABLE,
+                    publicName, serverName, "Server '" + serverName + "' is not connected");
+        }
+
         String clientSessionId = null;
         try {
             McpSession clientSession = mcpSessionManager.getSession(serverName);
             clientSessionId = clientSession.getSessionId();
-        } catch (Exception ignored) {} // server may not be connected yet
+        } catch (Exception ignored) {}
 
         // ── Step 6: Register in-flight ──────────────────────────────────
         String agentName = "unknown";
@@ -684,6 +697,19 @@ public class ToolCallOrchestrator {
         auditService.auditOrchestrationRegistryLookup(
                 correlationId, sessionId, publicName, serverName, lookupDuration, requestId, clientName);
 
+        // Pre-check — is the server connected?
+        if (!mcpSessionManager.isConnected(serverName)) {
+            log.error("❌ [{}] Server '{}' is not connected — rejecting prompt immediately", correlationId, serverName);
+            auditService.auditOrchestrationError(
+                    correlationId, sessionId, serverName, publicName,
+                    McpErrorCode.SERVER_UNAVAILABLE,
+                    "Server '" + serverName + "' is not connected",
+                    requestId, clientName);
+            throw new RuntimeException(String.format("[%d] %s: server '%s' is not connected",
+                    McpErrorCode.SERVER_UNAVAILABLE.getCode(),
+                    McpErrorCode.SERVER_UNAVAILABLE.getMessage(), serverName));
+        }
+
         // Resolve client (southbound) session ID
         String pClientSessionId = null;
         try {
@@ -864,6 +890,19 @@ public class ToolCallOrchestrator {
 
         auditService.auditOrchestrationRegistryLookup(
                 correlationId, sessionId, publicName, serverName, lookupDuration, requestId, clientName);
+
+        // Pre-check — is the server connected?
+        if (!mcpSessionManager.isConnected(serverName)) {
+            log.error("❌ [{}] Server '{}' is not connected — rejecting resource read immediately", correlationId, serverName);
+            auditService.auditOrchestrationError(
+                    correlationId, sessionId, serverName, publicName,
+                    McpErrorCode.SERVER_UNAVAILABLE,
+                    "Server '" + serverName + "' is not connected",
+                    requestId, clientName);
+            throw new RuntimeException(String.format("[%d] %s: server '%s' is not connected",
+                    McpErrorCode.SERVER_UNAVAILABLE.getCode(),
+                    McpErrorCode.SERVER_UNAVAILABLE.getMessage(), serverName));
+        }
 
         // Resolve client (southbound) session ID
         String rClientSessionId = null;

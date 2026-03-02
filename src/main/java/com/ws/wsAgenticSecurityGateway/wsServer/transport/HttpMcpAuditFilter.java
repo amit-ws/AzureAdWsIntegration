@@ -50,6 +50,9 @@ public class HttpMcpAuditFilter implements Filter {
     /** Tracks which sessions have been registered (prevents duplicate registration). */
     private final ConcurrentHashMap<String, Boolean> registeredSessions = new ConcurrentHashMap<>();
 
+    /** Tracks ALL session IDs created by the SDK (including probes) — used for stale session detection. */
+    private final Set<String> knownSessionIds = ConcurrentHashMap.newKeySet();
+
     /** Maps sessionId → agentName for use in list/disconnect audit calls. */
     private final ConcurrentHashMap<String, String> sessionAgentNames = new ConcurrentHashMap<>();
 
@@ -80,15 +83,23 @@ public class HttpMcpAuditFilter implements Filter {
             return;
         }
 
+        // ── Session validation: reject stale/unknown sessions ──────
+        // If Mcp-Session-Id header is present but not in our tracked sessions,
+        // the session is stale (e.g., from before a gateway restart).
+        // Return HTTP 200 + JSON-RPC error so the agent receives a proper
+        // error response instead of hanging until timeout.
+        String existingSessionId = httpRequest.getHeader("Mcp-Session-Id");
+        if (existingSessionId != null && !knownSessionIds.contains(existingSessionId)) {
+            log.warn("Rejecting request with stale session ID: {} — gateway was restarted, agent must reconnect", existingSessionId);
+            rejectStaleSession(httpRequest, httpResponse);
+            return;
+        }
+
         // ── Only process POST requests (JSON-RPC messages) ─────────
         if (!"POST".equalsIgnoreCase(httpMethod)) {
             chain.doFilter(request, response);
             return;
         }
-
-        // ── Fast path: known session with no audit needed ──────────
-        String existingSessionId = httpRequest.getHeader("Mcp-Session-Id");
-        // Note: We still need to wrap and parse for list operations on known sessions
 
         // ── Wrap request for body re-reading after SDK processing ───
         ContentCachingRequestWrapper wrappedRequest =
@@ -154,6 +165,9 @@ public class HttpMcpAuditFilter implements Filter {
     // ════════════════════════════════════════════════════════════════════
 
     private void handleInitialize(JsonNode json, String sessionId, String requestId) {
+        // Track ALL sessions (including probes) for stale session detection
+        knownSessionIds.add(sessionId);
+
         if (registeredSessions.containsKey(sessionId)) return;
         if (registeredSessions.putIfAbsent(sessionId, Boolean.TRUE) != null) return;
 
@@ -193,6 +207,9 @@ public class HttpMcpAuditFilter implements Filter {
                 registeredSessions.entrySet().removeIf(entry ->
                         !entry.getKey().equals(sessionId) &&
                         agentName.equals(sessionAgentNames.get(entry.getKey())));
+                knownSessionIds.removeIf(id ->
+                        !id.equals(sessionId) &&
+                        agentName.equals(sessionAgentNames.get(id)));
                 sessionAgentNames.entrySet().removeIf(entry ->
                         !entry.getKey().equals(sessionId) &&
                         agentName.equals(entry.getValue()));
@@ -270,6 +287,38 @@ public class HttpMcpAuditFilter implements Filter {
     }
 
     // ════════════════════════════════════════════════════════════════════
+    //  STALE SESSION — return JSON-RPC error on HTTP 200
+    // ════════════════════════════════════════════════════════════════════
+
+    /**
+     * Rejects a request with a stale/unknown session ID by returning a proper
+     * JSON-RPC error on HTTP 200. This ensures the MCP client receives the error
+     * as a response to its pending request instead of hanging until timeout.
+     */
+    private void rejectStaleSession(HttpServletRequest request, HttpServletResponse response)
+            throws IOException {
+        // Parse request body to extract the JSON-RPC "id" for a proper error response
+        String requestId = null;
+        try {
+            byte[] body = request.getInputStream().readAllBytes();
+            if (body.length > 0) {
+                JsonNode json = objectMapper.readTree(body);
+                if (json.has("id")) {
+                    requestId = json.get("id").toString(); // raw value (could be number or string)
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Could not parse request body for stale session rejection: {}", e.getMessage());
+        }
+
+        response.setStatus(HttpServletResponse.SC_OK);
+        response.setContentType("application/json");
+        response.getWriter().write(
+                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"Session expired. Gateway was restarted. Please reconnect.\"},\"id\":"
+                        + (requestId != null ? requestId : "null") + "}");
+    }
+
+    // ════════════════════════════════════════════════════════════════════
     //  DELETE — session disconnect
     // ════════════════════════════════════════════════════════════════════
 
@@ -294,6 +343,7 @@ public class HttpMcpAuditFilter implements Filter {
 
                 // Clean up tracking maps
                 registeredSessions.remove(sessionId);
+                knownSessionIds.remove(sessionId);
                 sessionAgentNames.remove(sessionId);
 
                 log.info("HTTP session disconnected: {} (agent={})", sessionId, agentName);

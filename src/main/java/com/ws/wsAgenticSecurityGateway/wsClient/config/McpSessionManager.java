@@ -326,16 +326,26 @@ public class McpSessionManager {
     }
 
     /**
-     * Check if server is connected
+     * Check if server is connected — checks BOTH in-memory session AND DB status.
+     * The DB is the source of truth (admin can mark DISCONNECTED via UI/API),
+     * while in-memory confirms the transport is alive.
      */
     public boolean isConnected(String serverName) {
         McpSession session = sessions.get(serverName);
-        return session != null && session.isActive();
+        if (session == null || !session.isActive()) {
+            return false;
+        }
+        // DB is source of truth — admin disconnect or shutdown marks DB DISCONNECTED
+        // even if in-memory session still exists
+        return serverSessionRepository
+                .findByServerNameAndStatus(serverName, "CONNECTED")
+                .isPresent();
     }
 
     /**
      * Disconnect a specific server (normal runtime disconnect)
      */
+    @Transactional
     public synchronized void disconnect(String serverName) {
         McpSession session = sessions.remove(serverName);
         if (session != null) {
@@ -357,11 +367,17 @@ public class McpSessionManager {
 
                 // Mark southbound session as disconnected in DB
                 try {
-                    serverSessionRepository.markDisconnected(serverName);
-                    log.info("💾 Southbound session marked DISCONNECTED for '{}'", serverName);
+                    int updated = serverSessionRepository.markDisconnected(serverName);
+                    if (updated > 0) {
+                        log.info("💾 Southbound session marked DISCONNECTED for '{}' (rows={})",
+                                serverName, updated);
+                    } else {
+                        log.warn("⚠️  No CONNECTED southbound DB session row found to disconnect for '{}'",
+                                serverName);
+                    }
                 } catch (Exception dbEx) {
                     log.error("⚠️  Failed to mark southbound session DISCONNECTED for '{}': {}",
-                            serverName, dbEx.getMessage());
+                            serverName, dbEx.getMessage(), dbEx);
                 }
 
                 // Remove capabilities from registry
