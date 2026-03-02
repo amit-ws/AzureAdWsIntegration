@@ -111,9 +111,9 @@ github:
 
 
 
-mcp:
-  config:
-    file: mcp_config.json
+#mcp:
+#  config:
+#    file: mcp_config.json
 
 logging:
   level:
