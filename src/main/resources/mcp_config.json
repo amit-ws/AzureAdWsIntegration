@@ -24,7 +24,6 @@
     }
   },
   "inputs": {
-    "github_token": "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",
     "atlassian_token": "ATATT3xFfGF0XpUdUzkBj_NLQEJloEZhYuvBXoTdfIPH8rYQN0KE26OVjTFR0XILXtv20NwiJoSGL3pRX-jzlf23KlR_fUoI5ms-1rdEYrrsJBM57ryIvp1bV1vA2xFULQ4jeIkSUCz6TW2BfxbopiV49SSLMCWjBA12cHDXfza2xlPKa-qn1iw=A63533F2",
     "jira_url": "http://whiteswansecurity.atlassian.net",
     "confluence_url": "https://whiteswansecurity.atlassian.net/wiki"
