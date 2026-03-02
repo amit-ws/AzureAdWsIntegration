@@ -53,6 +53,11 @@ public enum AuditEventType {
     PDP_EVALUATION_REQUESTED,
     PDP_DECISION_RENDERED,
 
+    // ── Area 6 — Server Configuration Management ─────────────────────
+    SERVER_CONFIG_CREATED,
+    SERVER_CONFIG_UPDATED,
+    SERVER_CONFIG_DELETED,
+
     // ── System-level ──────────────────────────────────────────────────
     SYSTEM_STARTUP,
     SYSTEM_SHUTDOWN,

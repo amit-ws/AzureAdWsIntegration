@@ -298,8 +298,9 @@ public class McpClientService {
      */
     public void disconnectAll() {
         log.info("🔌 Disconnecting all servers...");
-        sessionManager.disconnectAll();
-        // Audit is handled inside McpSessionManager.disconnect() per server
+        for (String serverName : sessionManager.getServerNames()) {
+            sessionManager.disconnect(serverName);
+        }
     }
 
     /**

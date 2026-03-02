@@ -13,6 +13,7 @@ import java.util.Optional;
 public interface AzureVMRepository extends JpaRepository<AzureVM, Integer> {
     @Query("SELECT av FROM AzureVM av WHERE upper(av.instanceId) = upper(:instanceId) AND av.wsTenantName = :wsTenantName")
     Optional<AzureVM> findAzureVMUsingInstanceId(String instanceId, String wsTenantName);
+
     List<AzureVM> findAllByWsTenantName(String wsTenantName);
 
     @Query("SELECT DISTINCT av FROM AzureVM av INNER JOIN AzureRoleAssignment ara ON UPPER(av.instanceId) = UPPER(ara.scope) " +
@@ -36,7 +37,7 @@ public interface AzureVMRepository extends JpaRepository<AzureVM, Integer> {
 //    Date updatedAt;
 //    String subscriptionId;
 //    boolean isPublished;
-    @Query("SELECT new com.ws.azureResourcesIntegration.dto.AzureVmDTO(av.id, av.azureVmId, av.instanceId, av.name, av.computerName, av.powerState, " +
+    @Query(value = "SELECT new com.ws.azureResourcesIntegration.dto.AzureVmDTO(av.id, av.azureVmId, av.instanceId, av.name, av.computerName, av.powerState, " +
             "av.size, av.osType, av.publicIpInstanceId, av.resourceGroupName, av.osDiskSize, av.region, av.securityType, av.resourceType, av.zones, av. resourceIdentityType, " +
             "av.ipAddress, av.wsTenantName, av.syncedAt, av.updatedAt, av.subscriptionId, CASE WHEN pr.resourceId IS NULL THEN FALSE ELSE TRUE END) " +
             "FROM AzureVM av " +

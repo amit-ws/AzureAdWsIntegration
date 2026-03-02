@@ -19,6 +19,9 @@ public enum AuditModule {
     /** Policy Decision Point (ABAC evaluation). */
     PDP,
 
+    /** MCP Server Configuration management (CRUD via admin API). */
+    SERVER_CONFIG,
+
     /** Cross-cutting system events (startup, shutdown, etc.). */
     SYSTEM
 }

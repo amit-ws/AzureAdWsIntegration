@@ -893,6 +893,54 @@ public class McpAuditService {
     }
 
     // ════════════════════════════════════════════════════════════════════
+    //  AREA 6 — Server Configuration Management
+    // ════════════════════════════════════════════════════════════════════
+
+    @Async("mcpAuditExecutor")
+    public void auditServerConfigCreated(String serverName, String url) {
+        persist(McpAuditLog.builder()
+                .eventType(AuditEventType.SERVER_CONFIG_CREATED)
+                .module(AuditModule.SERVER_CONFIG)
+                .status(AuditStatus.SUCCESS)
+                .severity(AuditSeverity.INFO)
+                .serverName(serverName)
+                .correlationId(generateCorrelationId())
+                .requestPayload(toJson(Map.of(
+                        "serverName", serverName,
+                        "url", url != null ? url : ""
+                )))
+                .build());
+    }
+
+    @Async("mcpAuditExecutor")
+    public void auditServerConfigUpdated(String serverName, String url) {
+        persist(McpAuditLog.builder()
+                .eventType(AuditEventType.SERVER_CONFIG_UPDATED)
+                .module(AuditModule.SERVER_CONFIG)
+                .status(AuditStatus.SUCCESS)
+                .severity(AuditSeverity.INFO)
+                .serverName(serverName)
+                .correlationId(generateCorrelationId())
+                .requestPayload(toJson(Map.of(
+                        "serverName", serverName,
+                        "url", url != null ? url : ""
+                )))
+                .build());
+    }
+
+    @Async("mcpAuditExecutor")
+    public void auditServerConfigDeleted(String serverName) {
+        persist(McpAuditLog.builder()
+                .eventType(AuditEventType.SERVER_CONFIG_DELETED)
+                .module(AuditModule.SERVER_CONFIG)
+                .status(AuditStatus.SUCCESS)
+                .severity(AuditSeverity.WARN)
+                .serverName(serverName)
+                .correlationId(generateCorrelationId())
+                .build());
+    }
+
+    // ════════════════════════════════════════════════════════════════════
     //  GENERAL — System events
     // ════════════════════════════════════════════════════════════════════
 

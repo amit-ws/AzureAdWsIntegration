@@ -10,7 +10,6 @@ import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.spec.McpClientTransport;
 import io.modelcontextprotocol.spec.McpSchema;
-import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,8 +30,8 @@ public class McpSessionManager {
     // Thread-safe map to store all active sessions
     private final Map<String, McpSession> sessions = new ConcurrentHashMap<>();
 
-    // Store variable resolver for reuse
-    private ConfigVariableResolver variableResolver;
+    // Flag to skip audit/registry during shutdown (beans may be destroyed)
+    private volatile boolean shuttingDown = false;
 
     // Audit service — all audit calls are @Async, never blocks
     private final McpAuditService auditService;
@@ -51,13 +50,6 @@ public class McpSessionManager {
         this.registryService = registryService;
         this.serverSessionRepository = serverSessionRepository;
         this.objectMapper = new ObjectMapper();
-    }
-
-    /**
-     * Set variable resolver (called by initializer)
-     */
-    public void setVariableResolver(ConfigVariableResolver resolver) {
-        this.variableResolver = resolver;
     }
 
     /**
@@ -88,20 +80,14 @@ public class McpSessionManager {
         }
 
         try {
-            // Resolve variables in headers
-            Map<String, String> resolvedHeaders = null;
-            if (config.getHeaders() != null && variableResolver != null) {
-                resolvedHeaders = variableResolver.resolveMap(
-                        new java.util.HashMap<>(config.getHeaders())
-                );
-                log.debug("📝 Resolved {} headers for server '{}'", resolvedHeaders.size(), serverName);
-            }
+            // Headers arrive pre-resolved from ServerConfigService
+            Map<String, String> headers = config.getHeaders();
 
             // Create HTTP transport
             log.info("🌐 Creating HTTP transport for: {}", config.getUrl());
             HttpMcpTransport httpTransport = new HttpMcpTransport(
                     config.getUrl(),
-                    resolvedHeaders,
+                    headers,
                     config.getTimeout()
             );
 
@@ -348,7 +334,7 @@ public class McpSessionManager {
     }
 
     /**
-     * Disconnect a specific server
+     * Disconnect a specific server (normal runtime disconnect)
      */
     public synchronized void disconnect(String serverName) {
         McpSession session = sessions.remove(serverName);
@@ -357,26 +343,34 @@ public class McpSessionManager {
             try {
                 session.close();
                 log.info("✅ Server '{}' disconnected successfully", serverName);
-                auditService.auditClientSessionDisconnectedSync(session.getSessionId(), serverName);
             } catch (Exception e) {
                 log.error("⚠️  Error during disconnect for '{}': {}", serverName, e.getMessage());
             }
 
-            // Mark southbound session as disconnected in DB
-            try {
-                serverSessionRepository.markDisconnected(serverName);
-                log.info("💾 Southbound session marked DISCONNECTED for '{}'", serverName);
-            } catch (Exception dbEx) {
-                log.error("⚠️  Failed to mark southbound session DISCONNECTED for '{}': {}",
-                        serverName, dbEx.getMessage());
-            }
+            // During shutdown, skip audit + registry — beans may already be destroyed
+            if (!shuttingDown) {
+                try {
+                    auditService.auditClientSessionDisconnectedSync(session.getSessionId(), serverName);
+                } catch (Exception e) {
+                    log.error("⚠️  Failed audit for '{}': {}", serverName, e.getMessage());
+                }
 
-            // Remove capabilities from registry
-            try {
-                registryService.removeServer(session.getSessionId(), serverName);
-            } catch (Exception e) {
-                log.error("⚠️  Failed to remove server '{}' from registry: {}",
-                        serverName, e.getMessage());
+                // Mark southbound session as disconnected in DB
+                try {
+                    serverSessionRepository.markDisconnected(serverName);
+                    log.info("💾 Southbound session marked DISCONNECTED for '{}'", serverName);
+                } catch (Exception dbEx) {
+                    log.error("⚠️  Failed to mark southbound session DISCONNECTED for '{}': {}",
+                            serverName, dbEx.getMessage());
+                }
+
+                // Remove capabilities from registry
+                try {
+                    registryService.removeServer(session.getSessionId(), serverName);
+                } catch (Exception e) {
+                    log.error("⚠️  Failed to remove server '{}' from registry: {}",
+                            serverName, e.getMessage());
+                }
             }
         } else {
             log.warn("⚠️  Server '{}' was not connected", serverName);
@@ -384,33 +378,42 @@ public class McpSessionManager {
     }
 
     /**
-     * Disconnect all servers
+     * Graceful shutdown — called by {@link GatewayShutdownHook} which runs
+     * BEFORE Spring destroys beans, so EntityManager and transactions still work.
      */
-    public synchronized void disconnectAll() {
-        log.info("🔌 Disconnecting all MCP servers...");
-
-        List<String> serverNames = getServerNames();
-        for (String serverName : serverNames) {
-            disconnect(serverName);
-        }
-
-        sessions.clear();
-        log.info("✅ All servers disconnected");
-    }
-
-    /**
-     * Graceful shutdown — disconnect all southbound MCP servers.
-     * Called by Spring before the application context is destroyed.
-     */
-    @PreDestroy
-    public void shutdown() {
+    @Transactional
+    public synchronized void shutdown() {
         log.info("🛑 Gateway shutting down — disconnecting all southbound MCP servers...");
+        shuttingDown = true;
+
+        // 1. Bulk-update DB: mark ALL connected sessions as DISCONNECTED in one query
         try {
-            disconnectAll();
-            log.info("✅ All southbound sessions disconnected gracefully");
+            serverSessionRepository.markAllDisconnected();
+            log.info("💾 All southbound sessions marked DISCONNECTED in DB");
         } catch (Exception e) {
-            log.error("Error during southbound shutdown: {}", e.getMessage());
+            log.error("⚠️  Failed to mark sessions DISCONNECTED in DB: {}", e.getMessage());
         }
+
+        // 2. Audit + close each MCP client connection
+        for (String serverName : List.copyOf(sessions.keySet())) {
+            McpSession session = sessions.remove(serverName);
+            if (session != null) {
+                // Audit log — sync call, beans are still alive at ContextClosedEvent
+                try {
+                    auditService.auditClientSessionDisconnectedSync(session.getSessionId(), serverName);
+                } catch (Exception e) {
+                    log.error("⚠️  Failed shutdown audit for '{}': {}", serverName, e.getMessage());
+                }
+                try {
+                    session.close();
+                    log.info("✅ Server '{}' disconnected", serverName);
+                } catch (Exception e) {
+                    log.error("⚠️  Error closing '{}': {}", serverName, e.getMessage());
+                }
+            }
+        }
+        sessions.clear();
+        log.info("✅ All southbound sessions disconnected gracefully");
     }
 
     /**

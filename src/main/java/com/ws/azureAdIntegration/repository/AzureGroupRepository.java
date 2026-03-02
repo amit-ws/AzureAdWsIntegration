@@ -15,13 +15,11 @@ public interface AzureGroupRepository extends JpaRepository<AzureGroup, Integer>
 
     List<AzureGroup> findAllByAzureTenant(AzureTenant azureTenant);
 
-    void deleteAllByAzureTenant(AzureTenant azureTenant);
-
-    @Query("SELECT new com.ws.azureResourcesIntegration.dto.AzureRolePrincipleAssociationResponse(ag.id, ag.displayName) " +
+    @Query(value = "SELECT new com.ws.azureResourcesIntegration.dto.AzureRolePrincipleAssociationResponse(ag.id, ag.displayName) " +
             "FROM AzureRoleAssignment ara " +
             "INNER JOIN AzureGroup ag ON ara.assignee = ag.azureId " +
             "WHERE ara.wsTenantName= :wsTenantName and ara.principalType = 'Group' and ara.azureRoleDefinitionPathId ILIKE :wsRoleId " +
-            "ORDER BY ag.displayName")
+            "ORDER BY ag.displayName", nativeQuery = false)
     List<AzureRolePrincipleAssociationResponse> getAzureUserNameAndIdAssociatedWithRoleId(String wsRoleId, String wsTenantName);
 
     @Query(value =

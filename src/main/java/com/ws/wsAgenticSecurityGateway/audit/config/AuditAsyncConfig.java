@@ -24,7 +24,7 @@ public class AuditAsyncConfig {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         executor.setCorePoolSize(4);
         executor.setMaxPoolSize(16);
-        executor.setQueueCapacity(500);
+        executor.setQueueCapacity(2000);
         executor.setThreadNamePrefix("mcp-audit-");
         executor.setKeepAliveSeconds(60);
         executor.setWaitForTasksToCompleteOnShutdown(true);
