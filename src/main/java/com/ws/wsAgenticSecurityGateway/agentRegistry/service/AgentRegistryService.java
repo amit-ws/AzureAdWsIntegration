@@ -347,6 +347,31 @@ public class AgentRegistryService {
         return false;
     }
 
+    /**
+     * Identity-level block check used during HTTP initialize pre-gating.
+     *
+     * <p>Checks the persisted/cached agent profile by (name, version) without
+     * creating/updating sessions. Returns true only when the profile exists and
+     * is explicitly BLOCKED.
+     */
+    public boolean isAgentBlocked(String agentName, String agentVersion) {
+        String key = cacheKey(agentName, agentVersion);
+
+        GatewayAgentEntity cached = agentCache.get(key);
+        if (cached != null) {
+            return "BLOCKED".equals(cached.getApprovalStatus());
+        }
+
+        Optional<GatewayAgentEntity> existing =
+                agentRepository.findByAgentNameAndAgentVersion(agentName, agentVersion);
+        if (existing.isPresent()) {
+            GatewayAgentEntity entity = existing.get();
+            agentCache.put(key, entity);
+            return "BLOCKED".equals(entity.getApprovalStatus());
+        }
+        return false;
+    }
+
     // ════════════════════════════════════════════════════════════════════
     //  READ METHODS — For REST API and Dashboard
     // ════════════════════════════════════════════════════════════════════

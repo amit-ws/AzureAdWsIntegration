@@ -4,15 +4,21 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService.AgentBlockedException;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
 import jakarta.servlet.*;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequestWrapper;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.util.ContentCachingRequestWrapper;
 
+import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -55,6 +61,9 @@ public class HttpMcpAuditFilter implements Filter {
 
     /** Maps sessionId → agentName for use in list/disconnect audit calls. */
     private final ConcurrentHashMap<String, String> sessionAgentNames = new ConcurrentHashMap<>();
+
+    /** Sessions explicitly rejected due to blocked agent policy. */
+    private final Set<String> blockedSessionIds = ConcurrentHashMap.newKeySet();
 
     /** Agent names from mcp-remote that are probes/tests, not real agents. */
     private static final Set<String> PROBE_NAMES = Set.of("mcp-remote-fallback-test");
@@ -101,11 +110,35 @@ public class HttpMcpAuditFilter implements Filter {
             return;
         }
 
-        // ── Wrap request for body re-reading after SDK processing ───
-        ContentCachingRequestWrapper wrappedRequest =
-                (httpRequest instanceof ContentCachingRequestWrapper)
-                        ? (ContentCachingRequestWrapper) httpRequest
-                        : new ContentCachingRequestWrapper(httpRequest);
+        // ── Wrap request with cached body so we can inspect before AND after SDK ───
+        CachedBodyHttpServletRequest wrappedRequest = new CachedBodyHttpServletRequest(httpRequest);
+
+        JsonNode requestJson = parseRequestJson(wrappedRequest.getCachedBody());
+        String requestIdRaw = extractRequestIdRaw(requestJson);
+        String mcpMethod = requestJson != null ? requestJson.path("method").asText("") : "";
+
+        // ── Block requests from sessions flagged as blocked ──────────
+        String sessionId = wrappedRequest.getHeader("Mcp-Session-Id");
+        if (sessionId != null && blockedSessionIds.contains(sessionId)) {
+            rejectBlockedRequest(httpResponse, requestIdRaw);
+            return;
+        }
+
+        // ── Pre-initialize approval gate (must run BEFORE SDK creates session) ───
+        if ("initialize".equals(mcpMethod) && requestJson != null) {
+            JsonNode clientInfoNode = requestJson.path("params").path("clientInfo");
+            String agentName = clientInfoNode.path("name").asText("unknown");
+            String agentVersion = clientInfoNode.path("version").asText(null);
+
+            // Probes are allowed through (handled separately in registration logic).
+            if (!isProbeAgent(agentName)
+                    && agentRegistryService.isAgentBlocked(agentName, agentVersion)) {
+                log.warn("🚫 Pre-initialize rejection for BLOCKED agent: {} v{}",
+                        agentName, agentVersion);
+                rejectBlockedInitialize(httpResponse, requestIdRaw);
+                return;
+            }
+        }
 
         long startTime = System.currentTimeMillis();
 
@@ -122,11 +155,11 @@ public class HttpMcpAuditFilter implements Filter {
     //  POST-PROCESSING — parse cached request body and dispatch audit
     // ════════════════════════════════════════════════════════════════════
 
-    private void afterSdkProcessing(ContentCachingRequestWrapper wrappedRequest,
+    private void afterSdkProcessing(CachedBodyHttpServletRequest wrappedRequest,
                                      HttpServletResponse httpResponse,
                                      long durationMs) {
         try {
-            byte[] body = wrappedRequest.getContentAsByteArray();
+            byte[] body = wrappedRequest.getCachedBody();
             if (body.length == 0) return;
 
             JsonNode json = objectMapper.readTree(body);
@@ -232,6 +265,11 @@ public class HttpMcpAuditFilter implements Filter {
             }
             log.info("════════════════════════════════════════════════");
 
+        } catch (AgentBlockedException blocked) {
+            blockedSessionIds.add(sessionId);
+            sessionAgentNames.remove(sessionId);
+            registeredSessions.remove(sessionId);
+            log.warn("🚫 Session {} flagged as blocked after initialize: {}", sessionId, blocked.getMessage());
         } catch (Exception e) {
             log.error("Failed to register HTTP agent session {}: {}", sessionId, e.getMessage(), e);
             registeredSessions.remove(sessionId);
@@ -318,6 +356,90 @@ public class HttpMcpAuditFilter implements Filter {
                         + (requestId != null ? requestId : "null") + "}");
     }
 
+    private void rejectBlockedInitialize(HttpServletResponse response, String requestIdRaw)
+            throws IOException {
+        response.setStatus(HttpServletResponse.SC_OK);
+        response.setContentType("application/json");
+        response.getWriter().write(
+                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-33007,\"message\":\"Agent is blocked by admin. Contact your gateway administrator.\"},\"id\":"
+                        + requestIdRaw + "}");
+    }
+
+    private void rejectBlockedRequest(HttpServletResponse response, String requestIdRaw)
+            throws IOException {
+        response.setStatus(HttpServletResponse.SC_OK);
+        response.setContentType("application/json");
+        response.getWriter().write(
+                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-33007,\"message\":\"Agent is blocked by admin. Reconnect after approval.\"},\"id\":"
+                        + requestIdRaw + "}");
+    }
+
+    private JsonNode parseRequestJson(byte[] body) {
+        if (body == null || body.length == 0) {
+            return null;
+        }
+        try {
+            return objectMapper.readTree(body);
+        } catch (Exception e) {
+            log.debug("Could not parse request JSON in HTTP audit filter: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private String extractRequestIdRaw(JsonNode requestJson) {
+        if (requestJson != null && requestJson.has("id")) {
+            return requestJson.get("id").toString();
+        }
+        return "null";
+    }
+
+    /**
+     * HTTP request wrapper with re-readable cached body.
+     */
+    private static class CachedBodyHttpServletRequest extends HttpServletRequestWrapper {
+        private final byte[] cachedBody;
+
+        CachedBodyHttpServletRequest(HttpServletRequest request) throws IOException {
+            super(request);
+            this.cachedBody = request.getInputStream().readAllBytes();
+        }
+
+        byte[] getCachedBody() {
+            return cachedBody;
+        }
+
+        @Override
+        public ServletInputStream getInputStream() {
+            ByteArrayInputStream bais = new ByteArrayInputStream(cachedBody);
+            return new ServletInputStream() {
+                @Override
+                public int read() {
+                    return bais.read();
+                }
+
+                @Override
+                public boolean isFinished() {
+                    return bais.available() == 0;
+                }
+
+                @Override
+                public boolean isReady() {
+                    return true;
+                }
+
+                @Override
+                public void setReadListener(ReadListener readListener) {
+                    // No async read support needed for this wrapper.
+                }
+            };
+        }
+
+        @Override
+        public BufferedReader getReader() {
+            return new BufferedReader(new InputStreamReader(getInputStream(), StandardCharsets.UTF_8));
+        }
+    }
+
     // ════════════════════════════════════════════════════════════════════
     //  DELETE — session disconnect
     // ════════════════════════════════════════════════════════════════════
@@ -344,6 +466,7 @@ public class HttpMcpAuditFilter implements Filter {
                 // Clean up tracking maps
                 registeredSessions.remove(sessionId);
                 knownSessionIds.remove(sessionId);
+                blockedSessionIds.remove(sessionId);
                 sessionAgentNames.remove(sessionId);
 
                 log.info("HTTP session disconnected: {} (agent={})", sessionId, agentName);
