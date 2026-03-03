@@ -1,6 +1,7 @@
 package com.ws.wsAgenticSecurityGateway.wsServer.transport;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
@@ -56,9 +57,14 @@ public class HttpTransportConfig {
             ObjectMapper objectMapper,
             McpGatewayContextExtractor contextExtractor) {
 
+        // Use a tolerant mapper for MCP wire payloads so newer/agent-specific
+        // capability fields do not break initialize deserialization.
+        ObjectMapper mcpObjectMapper = objectMapper.copy()
+                .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
         HttpServletStreamableServerTransportProvider transport =
                 HttpServletStreamableServerTransportProvider.builder()
-                        .objectMapper(objectMapper)
+                        .objectMapper(mcpObjectMapper)
                         .mcpEndpoint("/mcp")
                         .contextExtractor(contextExtractor)
                         .build();
