@@ -3,14 +3,16 @@ package com.ws.wsAgenticSecurityGateway.audit.constants;
 /**
  * Every auditable event type across the WS MCP Gateway.
  *
- * <p>Grouped by the five activity areas:
+ * <p>
+ * Grouped by the five activity areas:
  * <ul>
- *   <li>{@code SERVER_*}         — AI Client &lt;-&gt; WS Server (Northbound)</li>
- *   <li>{@code CLIENT_*}         — WS Client &lt;-&gt; Enterprise MCP Server (Southbound)</li>
- *   <li>{@code REGISTRY_*}       — Capability Registry CRUD</li>
- *   <li>{@code ORCHESTRATION_*}  — Orchestration Layer</li>
- *   <li>{@code PDP_*}            — Policy Decision Point</li>
- *   <li>{@code SYSTEM_*}         — System-level events</li>
+ * <li>{@code SERVER_*} — AI Client &lt;-&gt; WS Server (Northbound)</li>
+ * <li>{@code CLIENT_*} — WS Client &lt;-&gt; Enterprise MCP Server
+ * (Southbound)</li>
+ * <li>{@code REGISTRY_*} — Capability Registry CRUD</li>
+ * <li>{@code ORCHESTRATION_*} — Orchestration Layer</li>
+ * <li>{@code PDP_*} — Policy Decision Point</li>
+ * <li>{@code SYSTEM_*} — System-level events</li>
  * </ul>
  */
 public enum AuditEventType {
@@ -57,6 +59,11 @@ public enum AuditEventType {
     SERVER_CONFIG_CREATED,
     SERVER_CONFIG_UPDATED,
     SERVER_CONFIG_DELETED,
+
+    // ── Area 7 — Agent Registry & Approval Workflow ──────────────────
+    AGENT_APPROVED,
+    AGENT_BLOCKED,
+    AGENT_CONNECTION_REJECTED,
 
     // ── System-level ──────────────────────────────────────────────────
     SYSTEM_STARTUP,

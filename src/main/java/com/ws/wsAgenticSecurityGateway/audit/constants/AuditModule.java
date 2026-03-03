@@ -22,6 +22,9 @@ public enum AuditModule {
     /** MCP Server Configuration management (CRUD via admin API). */
     SERVER_CONFIG,
 
+    /** Agent discovery/approval/blocking workflow (admin + policy gates). */
+    AGENT_REGISTRY,
+
     /** Cross-cutting system events (startup, shutdown, etc.). */
     SYSTEM
 }

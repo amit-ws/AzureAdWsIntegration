@@ -7,9 +7,13 @@ import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryServic
 import com.ws.wsAgenticSecurityGateway.audit.entity.McpAuditLog;
 import com.ws.wsAgenticSecurityGateway.audit.repository.McpAuditLogRepository;
 import lombok.extern.slf4j.Slf4j;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
@@ -256,9 +260,11 @@ public class AgentController {
      * Approve an agent — allows it to connect and use tools freely.
      */
     @PostMapping("/{id}/approve")
-    public ResponseEntity<Map<String, Object>> approveAgent(@PathVariable UUID id) {
+    public ResponseEntity<Map<String, Object>> approveAgent(@PathVariable UUID id,
+                                                            HttpServletRequest request) {
         try {
-            GatewayAgentEntity agent = agentRegistryService.approveAgent(id);
+            GatewayAgentEntity agent = agentRegistryService.approveAgent(
+                    id, resolveAdminActor(request), resolveAdminIp(request));
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("status", "ok");
             result.put("message", "Agent '" + agent.getAgentName() + "' approved");
@@ -273,9 +279,11 @@ public class AgentController {
      * Block an agent — rejected on next connection attempt.
      */
     @PostMapping("/{id}/block")
-    public ResponseEntity<Map<String, Object>> blockAgent(@PathVariable UUID id) {
+    public ResponseEntity<Map<String, Object>> blockAgent(@PathVariable UUID id,
+                                                          HttpServletRequest request) {
         try {
-            GatewayAgentEntity agent = agentRegistryService.blockAgent(id);
+            GatewayAgentEntity agent = agentRegistryService.blockAgent(
+                    id, resolveAdminActor(request), resolveAdminIp(request));
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("status", "ok");
             result.put("message", "Agent '" + agent.getAgentName() + "' blocked");
@@ -284,5 +292,30 @@ public class AgentController {
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();
         }
+    }
+
+    private String resolveAdminActor(HttpServletRequest request) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated() && !(auth instanceof AnonymousAuthenticationToken)) {
+            return auth.getName();
+        }
+
+        String headerUser = request.getHeader("X-Admin-User");
+        if (headerUser != null && !headerUser.isBlank()) {
+            return headerUser;
+        }
+
+        return "anonymous";
+    }
+
+    private String resolveAdminIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            String[] ips = forwarded.split(",");
+            if (ips.length > 0 && !ips[0].trim().isBlank()) {
+                return ips[0].trim();
+            }
+        }
+        return request.getRemoteAddr();
     }
 }

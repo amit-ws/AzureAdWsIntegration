@@ -445,14 +445,22 @@ public class AgentRegistryService {
      * Approved agents are allowed to connect and use all tools.
      */
     @Transactional
-    public GatewayAgentEntity approveAgent(UUID agentId) {
+    public GatewayAgentEntity approveAgent(UUID agentId, String adminActor, String adminIp) {
         GatewayAgentEntity agent = agentRepository.findById(agentId)
                 .orElseThrow(() -> new IllegalArgumentException("Agent not found: " + agentId));
+        String previousApprovalStatus = agent.getApprovalStatus();
         agent.setApprovalStatus("APPROVED");
         GatewayAgentEntity updated = agentRepository.saveAndFlush(agent);
         // Update cache
         String key = cacheKey(agent.getAgentName(), agent.getAgentVersion());
         agentCache.put(key, updated);
+        auditService.auditAgentApproved(
+                updated.getId(),
+                updated.getAgentName(),
+                updated.getAgentVersion(),
+                previousApprovalStatus,
+                adminActor,
+                adminIp);
         log.info("✅ Agent APPROVED: {} v{} (id={})",
                 agent.getAgentName(), agent.getAgentVersion(), agentId);
         return updated;
@@ -463,14 +471,22 @@ public class AgentRegistryService {
      * Blocked agents will be rejected on next connection attempt.
      */
     @Transactional
-    public GatewayAgentEntity blockAgent(UUID agentId) {
+    public GatewayAgentEntity blockAgent(UUID agentId, String adminActor, String adminIp) {
         GatewayAgentEntity agent = agentRepository.findById(agentId)
                 .orElseThrow(() -> new IllegalArgumentException("Agent not found: " + agentId));
+        String previousApprovalStatus = agent.getApprovalStatus();
         agent.setApprovalStatus("BLOCKED");
         GatewayAgentEntity updated = agentRepository.saveAndFlush(agent);
         // Update cache
         String key = cacheKey(agent.getAgentName(), agent.getAgentVersion());
         agentCache.put(key, updated);
+        auditService.auditAgentBlocked(
+                updated.getId(),
+                updated.getAgentName(),
+                updated.getAgentVersion(),
+                previousApprovalStatus,
+                adminActor,
+                adminIp);
         log.info("🚫 Agent BLOCKED: {} v{} (id={})",
                 agent.getAgentName(), agent.getAgentVersion(), agentId);
         return updated;

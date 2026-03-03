@@ -115,11 +115,21 @@ public class HttpMcpAuditFilter implements Filter {
 
         JsonNode requestJson = parseRequestJson(wrappedRequest.getCachedBody());
         String requestIdRaw = extractRequestIdRaw(requestJson);
+        String requestId = extractRequestId(requestJson);
         String mcpMethod = requestJson != null ? requestJson.path("method").asText("") : "";
 
         // ── Block requests from sessions flagged as blocked ──────────
         String sessionId = wrappedRequest.getHeader("Mcp-Session-Id");
         if (sessionId != null && blockedSessionIds.contains(sessionId)) {
+            String blockedAgentName = sessionAgentNames.getOrDefault(sessionId, "unknown");
+            auditService.auditAgentConnectionRejected(
+                    sessionId,
+                    requestId,
+                    blockedAgentName,
+                    null,
+                    mcpMethod,
+                    "HTTP",
+                    "Blocked session attempted request; reconnect after admin approval.");
             rejectBlockedRequest(httpResponse, requestIdRaw);
             return;
         }
@@ -135,6 +145,14 @@ public class HttpMcpAuditFilter implements Filter {
                     && agentRegistryService.isAgentBlocked(agentName, agentVersion)) {
                 log.warn("🚫 Pre-initialize rejection for BLOCKED agent: {} v{}",
                         agentName, agentVersion);
+                auditService.auditAgentConnectionRejected(
+                        null,
+                        requestId,
+                        agentName,
+                        agentVersion,
+                        "initialize",
+                        "HTTP",
+                        "Agent rejected during initialize because profile is BLOCKED.");
                 rejectBlockedInitialize(httpResponse, requestIdRaw);
                 return;
             }
@@ -204,12 +222,16 @@ public class HttpMcpAuditFilter implements Filter {
         if (registeredSessions.containsKey(sessionId)) return;
         if (registeredSessions.putIfAbsent(sessionId, Boolean.TRUE) != null) return;
 
+        String agentName = "unknown";
+        String agentVersion = null;
+        String protocolVersion = null;
+
         try {
             JsonNode params = json.path("params");
             JsonNode clientInfoNode = params.path("clientInfo");
-            String agentName = clientInfoNode.path("name").asText("unknown");
-            String agentVersion = clientInfoNode.path("version").asText(null);
-            String protocolVersion = params.path("protocolVersion").asText(null);
+            agentName = clientInfoNode.path("name").asText("unknown");
+            agentVersion = clientInfoNode.path("version").asText(null);
+            protocolVersion = params.path("protocolVersion").asText(null);
             JsonNode capabilities = params.path("capabilities");
 
             // ── Probe filtering ──────────────────────────────────────
@@ -236,16 +258,17 @@ public class HttpMcpAuditFilter implements Filter {
             if (replaced > 0) {
                 log.info("♻️ Replaced {} stale session(s) for agent {} on reconnect",
                         replaced, agentName);
+                final String currentAgentName = agentName;
                 // Clean up in-memory tracking maps for replaced sessions
                 registeredSessions.entrySet().removeIf(entry ->
                         !entry.getKey().equals(sessionId) &&
-                        agentName.equals(sessionAgentNames.get(entry.getKey())));
+                        currentAgentName.equals(sessionAgentNames.get(entry.getKey())));
                 knownSessionIds.removeIf(id ->
                         !id.equals(sessionId) &&
-                        agentName.equals(sessionAgentNames.get(id)));
+                        currentAgentName.equals(sessionAgentNames.get(id)));
                 sessionAgentNames.entrySet().removeIf(entry ->
                         !entry.getKey().equals(sessionId) &&
-                        agentName.equals(entry.getValue()));
+                        currentAgentName.equals(entry.getValue()));
             }
 
             // Audit — session initialization
@@ -269,6 +292,14 @@ public class HttpMcpAuditFilter implements Filter {
             blockedSessionIds.add(sessionId);
             sessionAgentNames.remove(sessionId);
             registeredSessions.remove(sessionId);
+            auditService.auditAgentConnectionRejected(
+                    sessionId,
+                    requestId,
+                    agentName,
+                    agentVersion,
+                    "initialize",
+                    "HTTP",
+                    blocked.getMessage());
             log.warn("🚫 Session {} flagged as blocked after initialize: {}", sessionId, blocked.getMessage());
         } catch (Exception e) {
             log.error("Failed to register HTTP agent session {}: {}", sessionId, e.getMessage(), e);
@@ -352,7 +383,7 @@ public class HttpMcpAuditFilter implements Filter {
         response.setStatus(HttpServletResponse.SC_OK);
         response.setContentType("application/json");
         response.getWriter().write(
-                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"Session expired. Gateway was restarted. Please reconnect.\"},\"id\":"
+                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"Session expired. Gateway was restarted. Please reconnect the AI agent.\"},\"id\":"
                         + (requestId != null ? requestId : "null") + "}");
     }
 
@@ -391,6 +422,13 @@ public class HttpMcpAuditFilter implements Filter {
             return requestJson.get("id").toString();
         }
         return "null";
+    }
+
+    private String extractRequestId(JsonNode requestJson) {
+        if (requestJson != null && requestJson.has("id")) {
+            return requestJson.get("id").asText();
+        }
+        return null;
     }
 
     /**
