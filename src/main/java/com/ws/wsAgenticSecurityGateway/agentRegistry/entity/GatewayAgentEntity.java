@@ -70,7 +70,7 @@ public class GatewayAgentEntity {
 
     @Column(name = "approval_status", nullable = false, length = 20)
     @Builder.Default
-    private String approvalStatus = "APPROVED";
+    private String approvalStatus = "PENDING";
 
     /** First time this agent was discovered. */
     @CreationTimestamp

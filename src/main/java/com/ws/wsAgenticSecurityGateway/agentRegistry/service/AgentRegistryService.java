@@ -117,6 +117,13 @@ public class AgentRegistryService {
                 throw new AgentBlockedException(
                         "Agent '" + name + "' v" + version + " is blocked by admin. Contact your gateway administrator.");
             }
+            // Re-approval policy: every new initialize cycle requires explicit approval.
+            // Keep BLOCKED untouched (handled above), reset APPROVED back to PENDING.
+            if ("APPROVED".equals(cached.getApprovalStatus())) {
+                cached.setApprovalStatus("PENDING");
+                log.info("🔄 Agent approval reset to PENDING on reconnect: {} v{} (id={})",
+                        name, version, cached.getId());
+            }
             // Update mutable fields
             cached.setProtocolVersion(protocolVersion);
             cached.setCapabilities(capabilities);
@@ -141,6 +148,12 @@ public class AgentRegistryService {
                         name, version, entity.getId());
                 throw new AgentBlockedException(
                         "Agent '" + name + "' v" + version + " is blocked by admin. Contact your gateway administrator.");
+            }
+            // Re-approval policy: every new initialize cycle requires explicit approval.
+            if ("APPROVED".equals(entity.getApprovalStatus())) {
+                entity.setApprovalStatus("PENDING");
+                log.info("🔄 Agent approval reset to PENDING on reconnect: {} v{} (id={})",
+                        name, version, entity.getId());
             }
             entity.setProtocolVersion(protocolVersion);
             entity.setCapabilities(capabilities);
