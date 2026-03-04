@@ -3,6 +3,7 @@ package com.ws.wsAgenticSecurityGateway.wsClient.config;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
+import com.ws.wsAgenticSecurityGateway.capabilityRegistry.event.CapabilityRegistryChangedEvent;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
 import com.ws.wsAgenticSecurityGateway.wsClient.entity.GatewayMcpServerSessionEntity;
 import com.ws.wsAgenticSecurityGateway.wsClient.repository.GatewayMcpServerSessionRepository;
@@ -11,6 +12,7 @@ import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.spec.McpClientTransport;
 import io.modelcontextprotocol.spec.McpSchema;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,13 +44,16 @@ public class McpSessionManager {
     private final ObjectMapper objectMapper;
 
     private final GatewayMcpServerSessionRepository serverSessionRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public McpSessionManager(McpAuditService auditService,
                              CapabilityRegistryService registryService,
-                             GatewayMcpServerSessionRepository serverSessionRepository) {
+                             GatewayMcpServerSessionRepository serverSessionRepository,
+                             ApplicationEventPublisher eventPublisher) {
         this.auditService = auditService;
         this.registryService = registryService;
         this.serverSessionRepository = serverSessionRepository;
+        this.eventPublisher = eventPublisher;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -164,6 +169,7 @@ public class McpSessionManager {
                         session.getPrompts()
                 );
                 log.info("🗂️  Server '{}' capabilities registered in registry", serverName);
+                eventPublisher.publishEvent(new CapabilityRegistryChangedEvent("SERVER_CONNECTED", serverName));
             } catch (Exception regEx) {
                 log.error("⚠️  Failed to register server '{}' in registry: {}",
                         serverName, regEx.getMessage(), regEx);
@@ -383,6 +389,7 @@ public class McpSessionManager {
                 // Remove capabilities from registry
                 try {
                     registryService.removeServer(session.getSessionId(), serverName);
+                    eventPublisher.publishEvent(new CapabilityRegistryChangedEvent("SERVER_DISCONNECTED", serverName));
                 } catch (Exception e) {
                     log.error("⚠️  Failed to remove server '{}' from registry: {}",
                             serverName, e.getMessage());

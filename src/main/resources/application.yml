@@ -140,6 +140,8 @@ ws:
       health-check-enabled: true
       auto-reconnect: true
       max-reconnect-attempts: 3
+    server-config-encryption:
+      key: ${WS_GATEWAY_SERVER_CONFIG_ENCRYPTION_KEY:}
 
 # ─── NOTE ────────────────────────────────────────────────────────────
 # The audit table 'mcp_audit_log' lives in schema 'ws_agentic_security'.

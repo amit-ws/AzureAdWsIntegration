@@ -2,7 +2,6 @@ package com.ws.wsAgenticSecurityGateway.wsClient.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import com.ws.wsAgenticSecurityGateway.wsClient.config.McpServerConfig;
 import com.ws.wsAgenticSecurityGateway.wsClient.config.McpSession;
@@ -35,21 +34,26 @@ public class ServerConfigService {
 
     private static final Pattern ENV_VAR_PATTERN = Pattern.compile("\\$\\{env:([^}]+)}");
     private static final Set<String> SECRET_HEADER_KEYWORDS = Set.of(
-            "auth", "token", "secret", "key", "password", "bearer", "credential", "api-key", "apikey"
+            "auth", "authorization", "token", "secret", "key", "password",
+            "bearer", "credential", "api-key", "apikey", "cookie", "session"
     );
+    private static final String REDACTED_MARKER = "***REDACTED***";
 
     private final GatewayServerConfigRepository configRepository;
     private final McpSessionManager sessionManager;
     private final McpAuditService auditService;
+    private final ServerConfigCryptoService cryptoService;
     private final ObjectMapper objectMapper;
 
     public ServerConfigService(GatewayServerConfigRepository configRepository,
                                McpSessionManager sessionManager,
                                McpAuditService auditService,
+                               ServerConfigCryptoService cryptoService,
                                ObjectMapper objectMapper) {
         this.configRepository = configRepository;
         this.sessionManager = sessionManager;
         this.auditService = auditService;
+        this.cryptoService = cryptoService;
         this.objectMapper = objectMapper;
     }
 
@@ -73,7 +77,7 @@ public class ServerConfigService {
                 .serverName(request.getServerName())
                 .type(request.getType() != null ? request.getType() : "http")
                 .url(request.getUrl())
-                .headers(toJsonNode(request.getHeaders()))
+                .headers(toJsonNode(prepareHeadersForStorage(request.getHeaders(), null)))
                 .serverConfig(toJsonNode(request.getServerConfig()))
                 .timeoutSeconds(request.getTimeoutSeconds() != null ? request.getTimeoutSeconds() : 30)
                 .enabled(request.getEnabled() != null ? request.getEnabled() : true)
@@ -150,7 +154,12 @@ public class ServerConfigService {
         // Update entity fields
         if (request.getUrl() != null) entity.setUrl(request.getUrl());
         if (request.getType() != null) entity.setType(request.getType());
-        if (request.getHeaders() != null) entity.setHeaders(toJsonNode(request.getHeaders()));
+        if (request.getHeaders() != null) {
+            Map<String, String> existingStoredHeaders = jsonNodeToStringMap(entity.getHeaders());
+            Map<String, String> headersToStore =
+                    prepareHeadersForStorage(request.getHeaders(), existingStoredHeaders);
+            entity.setHeaders(toJsonNode(headersToStore));
+        }
         if (request.getServerConfig() != null) entity.setServerConfig(toJsonNode(request.getServerConfig()));
         if (request.getTimeoutSeconds() != null) entity.setTimeoutSeconds(request.getTimeoutSeconds());
         if (request.getEnabled() != null) entity.setEnabled(request.getEnabled());
@@ -276,9 +285,9 @@ public class ServerConfigService {
      * Convert entity to McpServerConfig (resolving env vars) and connect.
      */
     public void connectFromConfig(GatewayServerConfigEntity entity) {
-        // Convert JSONB headers to Map<String,String> and resolve env vars
-        Map<String, String> headers = jsonNodeToStringMap(entity.getHeaders());
-        Map<String, String> resolvedHeaders = resolveEnvVars(headers);
+        // Convert JSONB headers to runtime-ready headers (decrypt + resolve env vars)
+        Map<String, String> storedHeaders = jsonNodeToStringMap(entity.getHeaders());
+        Map<String, String> resolvedHeaders = buildRuntimeHeaders(storedHeaders);
 
         // Convert JSONB serverConfig to Map<String,Object>
         Map<String, Object> config = jsonNodeToObjectMap(entity.getServerConfig());
@@ -338,13 +347,35 @@ public class ServerConfigService {
         return resolved;
     }
 
+    /**
+     * Build runtime headers from stored headers by decrypting encrypted values first,
+     * then resolving ${env:VAR} placeholders.
+     */
+    private Map<String, String> buildRuntimeHeaders(Map<String, String> storedHeaders) {
+        if (storedHeaders == null || storedHeaders.isEmpty()) {
+            return storedHeaders;
+        }
+
+        Map<String, String> decrypted = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : storedHeaders.entrySet()) {
+            try {
+                decrypted.put(entry.getKey(), cryptoService.decryptIfEncrypted(entry.getValue()));
+            } catch (Exception e) {
+                throw new IllegalStateException(
+                        "Failed to decrypt header '" + entry.getKey() + "' for server config runtime use", e);
+            }
+        }
+        return resolveEnvVars(decrypted);
+    }
+
     // ════════════════════════════════════════════════════════════════════
     //  RESPONSE BUILDING + SECRET MASKING
     // ════════════════════════════════════════════════════════════════════
 
     private ServerConfigResponse toResponse(GatewayServerConfigEntity entity) {
-        // Mask secrets in headers
-        Map<String, String> maskedHeaders = maskSecretHeaders(jsonNodeToStringMap(entity.getHeaders()));
+        // Decrypt (if needed) + mask secrets in response headers
+        Map<String, String> storedHeaders = jsonNodeToStringMap(entity.getHeaders());
+        Map<String, String> maskedHeaders = maskHeadersForResponse(storedHeaders);
         Map<String, Object> serverConfigMap = jsonNodeToObjectMap(entity.getServerConfig());
 
         // Enrich with live connection status
@@ -390,24 +421,88 @@ public class ServerConfigService {
     }
 
     /**
-     * Mask header values that likely contain secrets.
-     * Keys containing auth/token/secret/key/password/bearer get masked.
+     * For storage:
+     * - Keep existing encrypted secret if UI sends masked placeholder on update.
+     * - Encrypt secret header values at rest.
+     * - Keep env placeholders (${env:...}) as-is.
      */
-    private Map<String, String> maskSecretHeaders(Map<String, String> headers) {
-        if (headers == null) return null;
+    private Map<String, String> prepareHeadersForStorage(Map<String, String> incomingHeaders,
+                                                         Map<String, String> existingStoredHeaders) {
+        if (incomingHeaders == null) return null;
+
+        Map<String, String> headersToStore = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : incomingHeaders.entrySet()) {
+            String key = entry.getKey();
+            String incomingValue = entry.getValue();
+
+            if (incomingValue == null) {
+                headersToStore.put(key, null);
+                continue;
+            }
+
+            String existingStoredValue = existingStoredHeaders != null
+                    ? existingStoredHeaders.get(key)
+                    : null;
+
+            // UI sends masked placeholders for unchanged secrets; preserve stored value.
+            if (isMaskedPlaceholder(incomingValue) && existingStoredValue != null) {
+                if (cryptoService.isEncryptedValue(existingStoredValue) || isSecretHeaderKey(key)) {
+                    headersToStore.put(key, existingStoredValue);
+                    continue;
+                }
+            }
+
+            if (isSecretHeaderKey(key) && !containsEnvPlaceholder(incomingValue)) {
+                headersToStore.put(key, cryptoService.encrypt(incomingValue.trim()));
+            } else {
+                headersToStore.put(key, incomingValue.trim());
+            }
+        }
+        return headersToStore;
+    }
+
+    /**
+     * For API responses:
+     * - Decrypt encrypted values.
+     * - Mask secret values except ${env:...} placeholders.
+     */
+    private Map<String, String> maskHeadersForResponse(Map<String, String> storedHeaders) {
+        if (storedHeaders == null) return null;
 
         Map<String, String> masked = new LinkedHashMap<>();
-        for (Map.Entry<String, String> entry : headers.entrySet()) {
-            String keyLower = entry.getKey().toLowerCase();
-            boolean isSecret = SECRET_HEADER_KEYWORDS.stream().anyMatch(keyLower::contains);
+        for (Map.Entry<String, String> entry : storedHeaders.entrySet()) {
+            String key = entry.getKey();
+            String value = entry.getValue();
 
-            if (isSecret && entry.getValue() != null) {
-                masked.put(entry.getKey(), maskValue(entry.getValue()));
+            String plainValue;
+            try {
+                plainValue = cryptoService.decryptIfEncrypted(value);
+            } catch (Exception e) {
+                log.warn("Failed to decrypt header '{}' for response masking: {}", key, e.getMessage());
+                plainValue = null;
+            }
+
+            if (isSecretHeaderKey(key) && plainValue != null && !containsEnvPlaceholder(plainValue)) {
+                masked.put(key, maskValue(plainValue));
             } else {
-                masked.put(entry.getKey(), entry.getValue());
+                masked.put(key, plainValue);
             }
         }
         return masked;
+    }
+
+    private boolean isSecretHeaderKey(String headerKey) {
+        if (headerKey == null) return false;
+        String keyLower = headerKey.toLowerCase(Locale.ROOT);
+        return SECRET_HEADER_KEYWORDS.stream().anyMatch(keyLower::contains);
+    }
+
+    private boolean isMaskedPlaceholder(String value) {
+        return value != null && value.contains(REDACTED_MARKER);
+    }
+
+    private boolean containsEnvPlaceholder(String value) {
+        return value != null && value.contains("${env:");
     }
 
     private String maskValue(String value) {
