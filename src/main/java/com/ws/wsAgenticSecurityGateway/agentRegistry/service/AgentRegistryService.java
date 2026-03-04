@@ -19,15 +19,17 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Agent Discovery & Registry Service — auto-discovers AI agents when they connect
+ * Agent Discovery & Registry Service — auto-discovers AI agents when they
+ * connect
  * and persists their identity, session history, and request counts.
  *
- * <p>Mirrors the {@code CapabilityRegistryService} pattern:
+ * <p>
+ * Mirrors the {@code CapabilityRegistryService} pattern:
  * <ul>
- *   <li>In-memory {@link ConcurrentHashMap} caches for O(1) lookups</li>
- *   <li>{@code @PostConstruct} to warm cache from database</li>
- *   <li>{@code @Async} for non-blocking request counting on the hot path</li>
- *   <li>Atomic SQL increments to avoid read-modify-write races</li>
+ * <li>In-memory {@link ConcurrentHashMap} caches for O(1) lookups</li>
+ * <li>{@code @PostConstruct} to warm cache from database</li>
+ * <li>{@code @Async} for non-blocking request counting on the hot path</li>
+ * <li>Atomic SQL increments to avoid read-modify-write races</li>
  * </ul>
  */
 @Service
@@ -38,22 +40,26 @@ public class AgentRegistryService {
     private final GatewayAgentSessionRepository sessionRepository;
     private final McpAuditService auditService;
 
-    /** In-memory cache: "agentName:agentVersion" → entity (for fast upsert checks). */
+    /**
+     * In-memory cache: "agentName:agentVersion" → entity (for fast upsert checks).
+     */
     private final ConcurrentHashMap<String, GatewayAgentEntity> agentCache = new ConcurrentHashMap<>();
 
-    /** In-memory: sessionId → agentId (for O(1) request counting without DB lookup). */
+    /**
+     * In-memory: sessionId → agentId (for O(1) request counting without DB lookup).
+     */
     private final ConcurrentHashMap<String, UUID> sessionToAgentId = new ConcurrentHashMap<>();
 
     public AgentRegistryService(GatewayAgentRepository agentRepository,
-                                GatewayAgentSessionRepository sessionRepository,
-                                McpAuditService auditService) {
+            GatewayAgentSessionRepository sessionRepository,
+            McpAuditService auditService) {
         this.agentRepository = agentRepository;
         this.sessionRepository = sessionRepository;
         this.auditService = auditService;
     }
 
     // ════════════════════════════════════════════════════════════════════
-    //  STARTUP
+    // STARTUP
     // ════════════════════════════════════════════════════════════════════
 
     @EventListener(ApplicationReadyEvent.class)
@@ -63,7 +69,8 @@ public class AgentRegistryService {
         log.info("🤖 AGENT REGISTRY — Loading from database");
         log.info("═══════════════════════════════════════════════════════════");
 
-        // Mark any orphaned CONNECTED sessions as DISCONNECTED (handles ungraceful shutdowns)
+        // Mark any orphaned CONNECTED sessions as DISCONNECTED (handles ungraceful
+        // shutdowns)
         sessionRepository.markAllDisconnected();
         log.info("   Cleaned up orphaned sessions from previous run");
 
@@ -88,14 +95,15 @@ public class AgentRegistryService {
     }
 
     // ════════════════════════════════════════════════════════════════════
-    //  AGENT DISCOVERY — Called on MCP initialize
+    // AGENT DISCOVERY — Called on MCP initialize
     // ════════════════════════════════════════════════════════════════════
 
     /**
      * Discover (or update) an agent profile. Called when an agent sends
      * the MCP {@code initialize} request.
      *
-     * <p>Upsert logic: if an agent with the same (name, version) exists,
+     * <p>
+     * Upsert logic: if an agent with the same (name, version) exists,
      * update its protocol version, capabilities, and last_seen_at.
      * Otherwise, create a new agent record.
      *
@@ -103,8 +111,8 @@ public class AgentRegistryService {
      */
     @Transactional
     public GatewayAgentEntity discoverAgent(String name, String version,
-                                             String protocolVersion,
-                                             JsonNode capabilities) {
+            String protocolVersion,
+            JsonNode capabilities) {
         String key = cacheKey(name, version);
 
         // Check cache first
@@ -115,7 +123,8 @@ public class AgentRegistryService {
                 log.warn("🚫 BLOCKED agent attempted connection: {} v{} (id={})",
                         name, version, cached.getId());
                 throw new AgentBlockedException(
-                        "Agent '" + name + "' v" + version + " is blocked by admin. Contact your gateway administrator.");
+                        "Agent '" + name + "' v" + version
+                                + " is blocked by admin. Contact your gateway administrator.");
             }
             // Re-approval policy: every new initialize cycle requires explicit approval.
             // Keep BLOCKED untouched (handled above), reset APPROVED back to PENDING.
@@ -136,8 +145,7 @@ public class AgentRegistryService {
         }
 
         // Check database (cache miss — maybe another instance created it)
-        Optional<GatewayAgentEntity> existing =
-                agentRepository.findByAgentNameAndAgentVersion(name, version);
+        Optional<GatewayAgentEntity> existing = agentRepository.findByAgentNameAndAgentVersion(name, version);
 
         if (existing.isPresent()) {
             GatewayAgentEntity entity = existing.get();
@@ -147,7 +155,8 @@ public class AgentRegistryService {
                 log.warn("🚫 BLOCKED agent attempted connection: {} v{} (id={})",
                         name, version, entity.getId());
                 throw new AgentBlockedException(
-                        "Agent '" + name + "' v" + version + " is blocked by admin. Contact your gateway administrator.");
+                        "Agent '" + name + "' v" + version
+                                + " is blocked by admin. Contact your gateway administrator.");
             }
             // Re-approval policy: every new initialize cycle requires explicit approval.
             if ("APPROVED".equals(entity.getApprovalStatus())) {
@@ -185,7 +194,7 @@ public class AgentRegistryService {
     }
 
     // ════════════════════════════════════════════════════════════════════
-    //  SESSION MANAGEMENT
+    // SESSION MANAGEMENT
     // ════════════════════════════════════════════════════════════════════
 
     /**
@@ -194,8 +203,8 @@ public class AgentRegistryService {
      */
     @Transactional
     public GatewayAgentSessionEntity registerSession(UUID agentId, String sessionId,
-                                                      String authMethod,
-                                                      String authIdentity) {
+            String authMethod,
+            String authIdentity) {
         GatewayAgentEntity agent = agentRepository.findById(agentId).orElse(null);
         if (agent == null) {
             log.warn("Cannot register session — agent not found: {}", agentId);
@@ -242,14 +251,16 @@ public class AgentRegistryService {
     }
 
     /**
-     * Layer 1 — Active Session Replacement: disconnect all existing CONNECTED sessions
+     * Layer 1 — Active Session Replacement: disconnect all existing CONNECTED
+     * sessions
      * for an agent except the newly created one.
      *
-     * <p>Called during HTTP {@code initialize} to clean up zombie sessions caused by:
+     * <p>
+     * Called during HTTP {@code initialize} to clean up zombie sessions caused by:
      * <ul>
-     *   <li>Agent close/reopen (mcp-remote doesn't send DELETE)</li>
-     *   <li>Agent delete-config/reconfig before timeout</li>
-     *   <li>Network interruption followed by reconnect</li>
+     * <li>Agent close/reopen (mcp-remote doesn't send DELETE)</li>
+     * <li>Agent delete-config/reconfig before timeout</li>
+     * <li>Network interruption followed by reconnect</li>
      * </ul>
      *
      * @param agentId          the agent's UUID
@@ -258,8 +269,8 @@ public class AgentRegistryService {
      */
     @Transactional
     public int disconnectExistingSessionsForAgent(UUID agentId, String excludeSessionId) {
-        List<GatewayAgentSessionEntity> staleSessions =
-                sessionRepository.findActiveSessionsForAgentExcluding(agentId, excludeSessionId);
+        List<GatewayAgentSessionEntity> staleSessions = sessionRepository.findActiveSessionsForAgentExcluding(agentId,
+                excludeSessionId);
         for (GatewayAgentSessionEntity stale : staleSessions) {
             String staleSessionId = stale.getSessionId();
             String agentName = stale.getAgent().getAgentName();
@@ -273,13 +284,16 @@ public class AgentRegistryService {
     /**
      * Layer 2 — Smart Idle Timeout: lightweight activity timestamp update.
      *
-     * <p>Called at the END of each orchestration method (after the southbound call
+     * <p>
+     * Called at the END of each orchestration method (after the southbound call
      * completes) to keep sessions alive during long-running tool calls.
-     * The existing {@link #recordRequest(String)} updates lastRequestAt at request START;
+     * The existing {@link #recordRequest(String)} updates lastRequestAt at request
+     * START;
      * this method updates it at response COMPLETION — so the reaper won't kill
      * sessions with tools that take 8+ minutes.
      *
-     * <p>Runs async on {@code mcpAuditExecutor} — never blocks the hot path.
+     * <p>
+     * Runs async on {@code mcpAuditExecutor} — never blocks the hot path.
      *
      * @param sessionId the agent's MCP session ID
      */
@@ -294,14 +308,15 @@ public class AgentRegistryService {
     }
 
     // ════════════════════════════════════════════════════════════════════
-    //  REQUEST COUNTING — Async, non-blocking
+    // REQUEST COUNTING — Async, non-blocking
     // ════════════════════════════════════════════════════════════════════
 
     /**
      * Record a request from an agent session. Called from the orchestration
      * layer on every tool/prompt/resource call.
      *
-     * <p>Runs on {@code mcpAuditExecutor} to avoid blocking the hot path.
+     * <p>
+     * Runs on {@code mcpAuditExecutor} to avoid blocking the hot path.
      * Uses atomic SQL increments to avoid read-modify-write races.
      */
     @Async("mcpAuditExecutor")
@@ -321,22 +336,26 @@ public class AgentRegistryService {
     }
 
     // ════════════════════════════════════════════════════════════════════
-    //  APPROVAL CHECK — O(1) in-memory, called from orchestration hot path
+    // APPROVAL CHECK — O(1) in-memory, called from orchestration hot path
     // ════════════════════════════════════════════════════════════════════
 
     /**
      * Check if the agent for a given session is blocked.
      *
-     * <p>O(1) — two ConcurrentHashMap lookups, no DB hit.
+     * <p>
+     * O(1) — two ConcurrentHashMap lookups, no DB hit.
      * Called from the orchestration layer BEFORE any tool forwarding.
      *
      * @param sessionId the agent's MCP session ID
-     * @return {@code true} if the agent is NOT APPROVED (i.e., PENDING, BLOCKED, or unknown), {@code false} only if APPROVED
+     * @return {@code true} if the agent is NOT APPROVED (i.e., PENDING, BLOCKED, or
+     *         unknown), {@code false} only if APPROVED
      */
     public boolean isAgentBlocked(String sessionId) {
-        if (sessionId == null) return false;
+        if (sessionId == null)
+            return false;
         UUID agentId = sessionToAgentId.get(sessionId);
-        if (agentId == null) return false;
+        if (agentId == null)
+            return false;
 
         // Find agent in cache by iterating values (small map, typically < 20 agents)
         for (GatewayAgentEntity agent : agentCache.values()) {
@@ -348,9 +367,35 @@ public class AgentRegistryService {
     }
 
     /**
+     * Retrieve the agent name associated with a session ID, even if disconnected.
+     * Uses DB lookup for stale sessions not in memory.
+     */
+    @Transactional(readOnly = true)
+    public String getAgentNameBySessionId(String sessionId) {
+        if (sessionId == null)
+            return "unknown";
+
+        // 1. Try memory map (for fast lookup of active sessions)
+        UUID agentId = sessionToAgentId.get(sessionId);
+        if (agentId != null) {
+            for (GatewayAgentEntity agent : agentCache.values()) {
+                if (agentId.equals(agent.getId())) {
+                    return agent.getAgentName();
+                }
+            }
+        }
+
+        // 2. Try DB (for stale/disconnected sessions)
+        return sessionRepository.findBySessionId(sessionId)
+                .map(s -> s.getAgent().getAgentName())
+                .orElse("unknown");
+    }
+
+    /**
      * Identity-level block check used during HTTP initialize pre-gating.
      *
-     * <p>Checks the persisted/cached agent profile by (name, version) without
+     * <p>
+     * Checks the persisted/cached agent profile by (name, version) without
      * creating/updating sessions. Returns true only when the profile exists and
      * is explicitly BLOCKED.
      */
@@ -362,8 +407,7 @@ public class AgentRegistryService {
             return "BLOCKED".equals(cached.getApprovalStatus());
         }
 
-        Optional<GatewayAgentEntity> existing =
-                agentRepository.findByAgentNameAndAgentVersion(agentName, agentVersion);
+        Optional<GatewayAgentEntity> existing = agentRepository.findByAgentNameAndAgentVersion(agentName, agentVersion);
         if (existing.isPresent()) {
             GatewayAgentEntity entity = existing.get();
             agentCache.put(key, entity);
@@ -373,7 +417,7 @@ public class AgentRegistryService {
     }
 
     // ════════════════════════════════════════════════════════════════════
-    //  READ METHODS — For REST API and Dashboard
+    // READ METHODS — For REST API and Dashboard
     // ════════════════════════════════════════════════════════════════════
 
     /** Return all discovered agents (all statuses). */
@@ -397,7 +441,7 @@ public class AgentRegistryService {
     }
 
     // ════════════════════════════════════════════════════════════════════
-    //  LIVE SESSION DETAILS — For real-time monitoring
+    // LIVE SESSION DETAILS — For real-time monitoring
     // ════════════════════════════════════════════════════════════════════
 
     /**
@@ -424,9 +468,11 @@ public class AgentRegistryService {
             map.put("connectedDurationMs", connectedMs);
             map.put("requestCount", session.getRequestCount());
             map.put("lastRequestAt", session.getLastRequestAt());
-            // Compute idle duration (time since last request, or since connected if no requests)
+            // Compute idle duration (time since last request, or since connected if no
+            // requests)
             LocalDateTime lastActivity = session.getLastRequestAt() != null
-                    ? session.getLastRequestAt() : session.getConnectedAt();
+                    ? session.getLastRequestAt()
+                    : session.getConnectedAt();
             long idleMs = Duration.between(lastActivity, LocalDateTime.now()).toMillis();
             map.put("idleDurationMs", Math.max(0, idleMs));
             map.put("status", session.getStatus());
@@ -437,7 +483,7 @@ public class AgentRegistryService {
     }
 
     // ════════════════════════════════════════════════════════════════════
-    //  APPROVAL WORKFLOW
+    // APPROVAL WORKFLOW
     // ════════════════════════════════════════════════════════════════════
 
     /**
@@ -493,7 +539,7 @@ public class AgentRegistryService {
     }
 
     // ════════════════════════════════════════════════════════════════════
-    //  INTERNAL HELPERS
+    // INTERNAL HELPERS
     // ════════════════════════════════════════════════════════════════════
 
     private String cacheKey(String name, String version) {

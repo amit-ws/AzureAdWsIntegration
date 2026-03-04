@@ -25,24 +25,32 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Full MCP audit filter for HTTP Streamable transport mode.
  *
- * <p>The MCP SDK ({@code HttpServletStreamableServerTransportProvider}) handles
- * {@code initialize}, {@code tools/list}, {@code prompts/list}, {@code resources/list},
+ * <p>
+ * The MCP SDK ({@code HttpServletStreamableServerTransportProvider}) handles
+ * {@code initialize}, {@code tools/list}, {@code prompts/list},
+ * {@code resources/list},
  * and session DELETE internally with <em>no lifecycle hooks or callbacks</em>.
  * This filter intercepts ALL MCP requests at the HTTP layer to provide full
  * audit parity with stdio mode.
  *
- * <p><strong>How it works:</strong>
+ * <p>
+ * <strong>How it works:</strong>
  * <ol>
- *   <li>Wraps POST requests in {@link ContentCachingRequestWrapper} to re-read the body
- *       after the SDK processes it</li>
- *   <li>Lets the SDK handle the request normally via {@code chain.doFilter()}</li>
- *   <li>After SDK processing, parses the cached request body to determine the JSON-RPC
- *       method and dispatches to the appropriate audit handler</li>
- *   <li>Intercepts DELETE requests for session disconnect audit</li>
+ * <li>Wraps POST requests in {@link ContentCachingRequestWrapper} to re-read
+ * the body
+ * after the SDK processes it</li>
+ * <li>Lets the SDK handle the request normally via
+ * {@code chain.doFilter()}</li>
+ * <li>After SDK processing, parses the cached request body to determine the
+ * JSON-RPC
+ * method and dispatches to the appropriate audit handler</li>
+ * <li>Intercepts DELETE requests for session disconnect audit</li>
  * </ol>
  *
- * <p><strong>Probe filtering:</strong> The {@code mcp-remote} npm bridge creates
- * test/internal sessions ({@code mcp-remote-fallback-test}, {@code local-agent-mode-*})
+ * <p>
+ * <strong>Probe filtering:</strong> The {@code mcp-remote} npm bridge creates
+ * test/internal sessions ({@code mcp-remote-fallback-test},
+ * {@code local-agent-mode-*})
  * that are NOT real agents. These are filtered from agent registration.
  */
 @Slf4j
@@ -53,10 +61,15 @@ public class HttpMcpAuditFilter implements Filter {
     private final CapabilityRegistryService registryService;
     private final ObjectMapper objectMapper;
 
-    /** Tracks which sessions have been registered (prevents duplicate registration). */
+    /**
+     * Tracks which sessions have been registered (prevents duplicate registration).
+     */
     private final ConcurrentHashMap<String, Boolean> registeredSessions = new ConcurrentHashMap<>();
 
-    /** Tracks ALL session IDs created by the SDK (including probes) — used for stale session detection. */
+    /**
+     * Tracks ALL session IDs created by the SDK (including probes) — used for stale
+     * session detection.
+     */
     private final Set<String> knownSessionIds = ConcurrentHashMap.newKeySet();
 
     /** Maps sessionId → agentName for use in list/disconnect audit calls. */
@@ -69,9 +82,9 @@ public class HttpMcpAuditFilter implements Filter {
     private static final Set<String> PROBE_NAMES = Set.of("mcp-remote-fallback-test");
 
     public HttpMcpAuditFilter(AgentRegistryService agentRegistryService,
-                               McpAuditService auditService,
-                               CapabilityRegistryService registryService,
-                               ObjectMapper objectMapper) {
+            McpAuditService auditService,
+            CapabilityRegistryService registryService,
+            ObjectMapper objectMapper) {
         this.agentRegistryService = agentRegistryService;
         this.auditService = auditService;
         this.registryService = registryService;
@@ -99,8 +112,9 @@ public class HttpMcpAuditFilter implements Filter {
         // error response instead of hanging until timeout.
         String existingSessionId = httpRequest.getHeader("Mcp-Session-Id");
         if (existingSessionId != null && !knownSessionIds.contains(existingSessionId)) {
-            log.warn("Rejecting request with stale session ID: {} — gateway was restarted, agent must reconnect", existingSessionId);
-            rejectStaleSession(httpRequest, httpResponse);
+            log.warn("Rejecting request with stale session ID: {} — gateway was restarted, agent must reconnect",
+                    existingSessionId);
+            rejectStaleSession(httpRequest, httpResponse, existingSessionId);
             return;
         }
 
@@ -170,15 +184,16 @@ public class HttpMcpAuditFilter implements Filter {
     }
 
     // ════════════════════════════════════════════════════════════════════
-    //  POST-PROCESSING — parse cached request body and dispatch audit
+    // POST-PROCESSING — parse cached request body and dispatch audit
     // ════════════════════════════════════════════════════════════════════
 
     private void afterSdkProcessing(CachedBodyHttpServletRequest wrappedRequest,
-                                     HttpServletResponse httpResponse,
-                                     long durationMs) {
+            HttpServletResponse httpResponse,
+            long durationMs) {
         try {
             byte[] body = wrappedRequest.getCachedBody();
-            if (body.length == 0) return;
+            if (body.length == 0)
+                return;
 
             JsonNode json = objectMapper.readTree(body);
             String mcpMethod = json.path("method").asText("");
@@ -189,7 +204,8 @@ public class HttpMcpAuditFilter implements Filter {
             if (sessionId == null) {
                 sessionId = wrappedRequest.getHeader("Mcp-Session-Id");
             }
-            if (sessionId == null) return;
+            if (sessionId == null)
+                return;
 
             switch (mcpMethod) {
                 case "initialize" -> handleInitialize(json, sessionId, requestId);
@@ -212,15 +228,17 @@ public class HttpMcpAuditFilter implements Filter {
     }
 
     // ════════════════════════════════════════════════════════════════════
-    //  INITIALIZE — agent registration + audit
+    // INITIALIZE — agent registration + audit
     // ════════════════════════════════════════════════════════════════════
 
     private void handleInitialize(JsonNode json, String sessionId, String requestId) {
         // Track ALL sessions (including probes) for stale session detection
         knownSessionIds.add(sessionId);
 
-        if (registeredSessions.containsKey(sessionId)) return;
-        if (registeredSessions.putIfAbsent(sessionId, Boolean.TRUE) != null) return;
+        if (registeredSessions.containsKey(sessionId))
+            return;
+        if (registeredSessions.putIfAbsent(sessionId, Boolean.TRUE) != null)
+            return;
 
         String agentName = "unknown";
         String agentVersion = null;
@@ -252,7 +270,8 @@ public class HttpMcpAuditFilter implements Filter {
 
             // ── Layer 1: Active Session Replacement ──────────────────
             // Disconnect stale sessions for this agent (zombie cleanup on reconnect).
-            // This handles: close/reopen, delete/reconfig, network interruption + reconnect.
+            // This handles: close/reopen, delete/reconfig, network interruption +
+            // reconnect.
             int replaced = agentRegistryService.disconnectExistingSessionsForAgent(
                     agent.getId(), sessionId);
             if (replaced > 0) {
@@ -260,14 +279,11 @@ public class HttpMcpAuditFilter implements Filter {
                         replaced, agentName);
                 final String currentAgentName = agentName;
                 // Clean up in-memory tracking maps for replaced sessions
-                registeredSessions.entrySet().removeIf(entry ->
-                        !entry.getKey().equals(sessionId) &&
+                registeredSessions.entrySet().removeIf(entry -> !entry.getKey().equals(sessionId) &&
                         currentAgentName.equals(sessionAgentNames.get(entry.getKey())));
-                knownSessionIds.removeIf(id ->
-                        !id.equals(sessionId) &&
+                knownSessionIds.removeIf(id -> !id.equals(sessionId) &&
                         currentAgentName.equals(sessionAgentNames.get(id)));
-                sessionAgentNames.entrySet().removeIf(entry ->
-                        !entry.getKey().equals(sessionId) &&
+                sessionAgentNames.entrySet().removeIf(entry -> !entry.getKey().equals(sessionId) &&
                         currentAgentName.equals(entry.getValue()));
             }
 
@@ -313,15 +329,19 @@ public class HttpMcpAuditFilter implements Filter {
      * created by the mcp-remote npm bridge, not a real AI agent.
      */
     private boolean isProbeAgent(String agentName) {
-        if (agentName == null) return false;
-        if (PROBE_NAMES.contains(agentName)) return true;
-        if (agentName.startsWith("local-agent-mode")) return true;
-        if (agentName.contains("fallback-test")) return true;
+        if (agentName == null)
+            return false;
+        if (PROBE_NAMES.contains(agentName))
+            return true;
+        if (agentName.startsWith("local-agent-mode"))
+            return true;
+        if (agentName.contains("fallback-test"))
+            return true;
         return false;
     }
 
     // ════════════════════════════════════════════════════════════════════
-    //  LIST OPERATIONS — audit using CapabilityRegistryService for counts
+    // LIST OPERATIONS — audit using CapabilityRegistryService for counts
     // ════════════════════════════════════════════════════════════════════
 
     private void handleToolsList(String sessionId, String requestId, long durationMs) {
@@ -342,11 +362,12 @@ public class HttpMcpAuditFilter implements Filter {
         String agentName = sessionAgentNames.getOrDefault(sessionId, "unknown");
         int resourceCount = registryService.getResourceDescriptors().size();
         auditService.auditServerResourcesListRequested(sessionId, resourceCount, durationMs, requestId, agentName);
-        log.debug("Audited HTTP resources/list: session={}, count={}, duration={}ms", sessionId, resourceCount, durationMs);
+        log.debug("Audited HTTP resources/list: session={}, count={}, duration={}ms", sessionId, resourceCount,
+                durationMs);
     }
 
     // ════════════════════════════════════════════════════════════════════
-    //  NOTIFICATIONS
+    // NOTIFICATIONS
     // ════════════════════════════════════════════════════════════════════
 
     private void handleNotification(String sessionId, String method, JsonNode params) {
@@ -356,7 +377,7 @@ public class HttpMcpAuditFilter implements Filter {
     }
 
     // ════════════════════════════════════════════════════════════════════
-    //  STALE SESSION — return JSON-RPC error on HTTP 200
+    // STALE SESSION — return JSON-RPC error on HTTP 200
     // ════════════════════════════════════════════════════════════════════
 
     /**
@@ -364,26 +385,33 @@ public class HttpMcpAuditFilter implements Filter {
      * JSON-RPC error on HTTP 200. This ensures the MCP client receives the error
      * as a response to its pending request instead of hanging until timeout.
      */
-    private void rejectStaleSession(HttpServletRequest request, HttpServletResponse response)
+    private void rejectStaleSession(HttpServletRequest request, HttpServletResponse response, String existingSessionId)
             throws IOException {
-        // Parse request body to extract the JSON-RPC "id" for a proper error response
+        // Parse request body to extract the full JSON for auditing and the JSON-RPC
+        // "id" for a proper error response
+        String errorMessage = "Session expired. Gateway was restarted. Please reconnect the AI agent.";
         String requestId = null;
+        JsonNode requestJson = null;
         try {
             byte[] body = request.getInputStream().readAllBytes();
             if (body.length > 0) {
-                JsonNode json = objectMapper.readTree(body);
-                if (json.has("id")) {
-                    requestId = json.get("id").toString(); // raw value (could be number or string)
+                requestJson = objectMapper.readTree(body);
+                if (requestJson.has("id")) {
+                    requestId = requestJson.get("id").toString(); // raw value (could be number or string)
                 }
             }
         } catch (Exception e) {
             log.debug("Could not parse request body for stale session rejection: {}", e.getMessage());
         }
 
+        // Perform the audit log
+        String agentName = agentRegistryService.getAgentNameBySessionId(existingSessionId);
+        auditService.auditServerRequestRejected(existingSessionId, agentName, requestJson, errorMessage);
+
         response.setStatus(HttpServletResponse.SC_OK);
         response.setContentType("application/json");
         response.getWriter().write(
-                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"Session expired. Gateway was restarted. Please reconnect the AI agent.\"},\"id\":"
+                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"" + errorMessage + "\"},\"id\":"
                         + (requestId != null ? requestId : "null") + "}");
     }
 
@@ -479,12 +507,12 @@ public class HttpMcpAuditFilter implements Filter {
     }
 
     // ════════════════════════════════════════════════════════════════════
-    //  DELETE — session disconnect
+    // DELETE — session disconnect
     // ════════════════════════════════════════════════════════════════════
 
     private void handleDelete(HttpServletRequest request,
-                               HttpServletResponse response,
-                               FilterChain chain) throws IOException, ServletException {
+            HttpServletResponse response,
+            FilterChain chain) throws IOException, ServletException {
         String sessionId = request.getHeader("Mcp-Session-Id");
 
         // Let SDK process the DELETE first

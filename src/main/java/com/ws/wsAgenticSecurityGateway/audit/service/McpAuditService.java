@@ -641,6 +641,42 @@ public class McpAuditService {
                                 .build());
         }
 
+        /**
+         * Audit: AI agent request was rejected (e.g. stale session).
+         */
+        @Async("mcpAuditExecutor")
+        public void auditServerRequestRejected(String sessionId,
+                        String agentName,
+                        JsonNode requestJson,
+                        String errorMessage) {
+
+                String requestId = "null";
+                String method = "unknown";
+                if (requestJson != null) {
+                        if (requestJson.has("id")) {
+                                requestId = requestJson.get("id").asText();
+                        }
+                        if (requestJson.has("method")) {
+                                method = requestJson.get("method").asText();
+                        }
+                }
+
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.SERVER_REQUEST_REJECTED)
+                                .module(AuditModule.WS_SERVER)
+                                .status(AuditStatus.DENIED)
+                                .severity(AuditSeverity.WARN)
+                                .sessionId(sessionId)
+                                .agentName(agentName)
+                                .requestId(requestId)
+                                .mcpMethod(method)
+                                .correlationId(generateCorrelationId())
+                                .errorCode(McpErrorCode.REQUEST_TIMEOUT.getCode())
+                                .errorMessage(errorMessage)
+                                .requestPayload(toJson(requestJson))
+                                .build());
+        }
+
         // ════════════════════════════════════════════════════════════════════
         // AREA 3 — Capability Registry CRUD
         // ════════════════════════════════════════════════════════════════════
