@@ -332,20 +332,51 @@ public class McpSessionManager {
     }
 
     /**
-     * Check if server is connected — checks BOTH in-memory session AND DB status.
-     * The DB is the source of truth (admin can mark DISCONNECTED via UI/API),
-     * while in-memory confirms the transport is alive.
+     * Check if server is connected for orchestration fast-fail decisions.
+     *
+     * <p>Connected means:
+     * <ol>
+     *   <li>In-memory southbound session exists</li>
+     *   <li>DB has CONNECTED status for the same server (admin source of truth)</li>
+     *   <li>HTTP transport SSE channel is currently connected</li>
+     * </ol>
+     *
+     * <p>This avoids two bad outcomes:
+     * <ul>
+     *   <li>False rejects (session exists but DB was stale)</li>
+     *   <li>Long hangs (DB says CONNECTED but transport is actually down)</li>
+     * </ul>
      */
     public boolean isConnected(String serverName) {
         McpSession session = sessions.get(serverName);
-        if (session == null || !session.isActive()) {
+        if (session == null) {
+            log.debug("Connectivity check failed for '{}': no in-memory session", serverName);
             return false;
         }
-        // DB is source of truth — admin disconnect or shutdown marks DB DISCONNECTED
-        // even if in-memory session still exists
-        return serverSessionRepository
+
+        // DB is source of truth for admin-driven connect/disconnect state.
+        boolean dbConnected = serverSessionRepository
                 .findByServerNameAndStatus(serverName, "CONNECTED")
                 .isPresent();
+        if (!dbConnected) {
+            log.debug("Connectivity check failed for '{}': DB status is not CONNECTED", serverName);
+            return false;
+        }
+
+        boolean transportConnected = session.getTransport() != null && session.getTransport().isConnected();
+        if (!transportConnected) {
+            log.warn("Connectivity check failed for '{}': session='{}', dbStatus='CONNECTED', transportConnected=false",
+                    serverName, session.getSessionId());
+            return false;
+        }
+
+        // Informational only; transport + DB gate above is authoritative for routing.
+        if (!session.isActive()) {
+            log.warn("Connectivity check note for '{}': session='{}' transportConnected=true but clientInitialized=false",
+                    serverName, session.getSessionId());
+        }
+
+        return true;
     }
 
     /**
