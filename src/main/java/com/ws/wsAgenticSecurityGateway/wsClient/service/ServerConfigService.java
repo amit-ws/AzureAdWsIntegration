@@ -443,13 +443,21 @@ public class ServerConfigService {
             String existingStoredValue = existingStoredHeaders != null
                     ? existingStoredHeaders.get(key)
                     : null;
+            if (existingStoredValue == null && existingStoredHeaders != null) {
+                existingStoredValue = findHeaderValueIgnoreCase(existingStoredHeaders, key);
+            }
 
             // UI sends masked placeholders for unchanged secrets; preserve stored value.
-            if (isMaskedPlaceholder(incomingValue) && existingStoredValue != null) {
-                if (cryptoService.isEncryptedValue(existingStoredValue) || isSecretHeaderKey(key)) {
+            if (isMaskedPlaceholder(incomingValue)) {
+                if (existingStoredValue != null &&
+                        (cryptoService.isEncryptedValue(existingStoredValue) || isSecretHeaderKey(key))) {
                     headersToStore.put(key, existingStoredValue);
                     continue;
                 }
+                // Never persist masked placeholders as real secret values.
+                throw new IllegalArgumentException(
+                        "Masked value received for header '" + key + "' but no existing secret is available. "
+                                + "Resubmit the real value.");
             }
 
             if (isSecretHeaderKey(key) && !containsEnvPlaceholder(incomingValue)) {
@@ -509,6 +517,16 @@ public class ServerConfigService {
         if (value == null) return null;
         if (value.length() <= 8) return "***REDACTED***";
         return value.substring(0, 4) + "***REDACTED***" + value.substring(value.length() - 4);
+    }
+
+    private String findHeaderValueIgnoreCase(Map<String, String> headers, String requestedKey) {
+        if (headers == null || requestedKey == null) return null;
+        for (Map.Entry<String, String> entry : headers.entrySet()) {
+            if (requestedKey.equalsIgnoreCase(entry.getKey())) {
+                return entry.getValue();
+            }
+        }
+        return null;
     }
 
     // ════════════════════════════════════════════════════════════════════

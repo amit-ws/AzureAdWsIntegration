@@ -118,10 +118,13 @@ public class HttpMcpTransport implements McpClientTransport {
                 String ct = conn.getHeaderField("Content-Type");
                 if (ct != null && ct.contains("text/event-stream")) {
                     log.info("✅ Got SSE stream");
-                    if (!connected.getAndSet(true)) {
-                        sseConnection = conn;
-                        startSseReader(conn);
-                    }
+                    connected.set(true);
+                    // Important: every SSE HTTP response stream can carry the response for
+                    // the current request. Always attach a reader, even when already connected.
+                    // If we skip this when `connected=true`, request responses can be missed
+                    // and the MCP SDK call times out waiting for the JSON-RPC result.
+                    sseConnection = conn;
+                    startSseReader(conn);
                 } else {
                     // Regular JSON
                     try (var is = conn.getInputStream()) {
@@ -131,12 +134,20 @@ public class HttpMcpTransport implements McpClientTransport {
                             processMessage(resp);
                         }
                     }
+                    // Non-SSE MCP servers/flows still indicate healthy connectivity
+                    // when request/response succeeds over HTTP.
+                    connected.set(true);
                     conn.disconnect();
                 }
 
             } catch (Exception e) {
+                connected.set(false);
                 log.error("❌ Send failed: {}", e.getMessage());
                 throw new RuntimeException(e);
+            } finally {
+                // Safety net: ensure per-request auth override never leaks across
+                // unrelated operations (e.g., admin reconnect on a reused thread).
+                requestOverrideHeaders.remove();
             }
         });
     }
@@ -163,12 +174,19 @@ public class HttpMcpTransport implements McpClientTransport {
                     }
                 }
 
-                log.info("📡 SSE ended");
-                connected.set(false);
+                // Some MCP servers legitimately close SSE after a response or short idle period.
+                // Do not flip connectivity to false on normal stream end unless we're explicitly
+                // shutting down this transport.
+                log.info("📡 SSE ended (closed={})", closed);
+                if (closed) {
+                    connected.set(false);
+                }
 
             } catch (Exception e) {
-                if (!closed) log.error("❌ SSE error: {}", e.getMessage());
-                connected.set(false);
+                if (!closed) {
+                    log.error("❌ SSE error: {}", e.getMessage());
+                    connected.set(false);
+                }
             }
         });
 

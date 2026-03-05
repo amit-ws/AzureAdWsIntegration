@@ -65,6 +65,8 @@ public class McpSessionManager {
      * @throws Exception if connection fails
      */
     public synchronized void connect(String serverName, McpServerConfig config) throws Exception {
+        // Ensure no agent token override header leaks into admin/startup connect flow.
+        HttpMcpTransport.clearRequestOverrideHeaders();
 
         if (sessions.containsKey(serverName)) {
             log.warn("⚠️  Server '{}' is already connected. Disconnecting first...", serverName);
@@ -227,6 +229,9 @@ public class McpSessionManager {
             auditService.auditClientSessionInitFailed(null, serverName, e.getMessage(), duration);
             log.error("❌ Failed to connect to server '{}': {}", serverName, e.getMessage(), e);
             throw new RuntimeException("Failed to connect to MCP server '" + serverName + "': " + e.getMessage(), e);
+        } finally {
+            // Double-safety cleanup for the current connect execution thread.
+            HttpMcpTransport.clearRequestOverrideHeaders();
         }
     }
 
