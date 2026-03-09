@@ -151,42 +151,75 @@ public class PolicyController {
     // ════════════════════════════════════════════════════════════════════
 
     /**
-     * Generate a Cedar policy from natural language via LLM.
-     * Falls back to template matching if no API key is configured.
+     * Generate a Cedar policy from natural language via LLM (multi-turn supported).
+     *
+     * <p>Supports two modes:
+     * <ul>
+     *   <li><b>Single-shot</b>: Send {@code {"prompt": "..."}} — generates in one call</li>
+     *   <li><b>Multi-turn</b>: Send {@code {"messages": [...]}} — iterative refinement</li>
+     * </ul>
+     *
+     * <p>When the LLM needs more information, the response will have
+     * {@code conversationComplete=false} and a {@code followUpQuestion}.
+     * The UI should then re-send the full conversation history with the user's answer appended.
      */
     @PostMapping("/chat")
     public ResponseEntity<PolicyChatResponse> chatGeneratePolicy(@RequestBody PolicyChatRequest request) {
-        PolicyChatResponse response = llmService.generatePolicy(request.getPrompt());
+        PolicyChatResponse response = llmService.generatePolicy(request);
         return ResponseEntity.ok(response);
     }
 
     /**
      * Generate AND save a Cedar policy from natural language.
-     * Calls LLM, validates the generated policy, and persists it.
+     * Only saves when the conversation is complete (policy generated).
+     *
+     * <p>If the LLM returns a follow-up question, this endpoint returns it
+     * without saving — the UI should continue the conversation via {@code /chat}
+     * and only call {@code /chat/save} once the policy is finalized.
      */
     @PostMapping("/chat/save")
     public ResponseEntity<Map<String, Object>> chatAndSavePolicy(@RequestBody PolicyChatRequest request) {
-        // Step 1: Generate via LLM
-        PolicyChatResponse chatResponse = llmService.generatePolicy(request.getPrompt());
+        // Step 1: Generate via LLM (multi-turn aware)
+        PolicyChatResponse chatResponse = llmService.generatePolicy(request);
+
+        // If conversation is not complete, return follow-up — don't save
+        if (!chatResponse.isConversationComplete()) {
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("saved", false);
+            response.put("conversationComplete", false);
+            response.put("followUpQuestion", chatResponse.getFollowUpQuestion());
+            return ResponseEntity.ok(response);
+        }
+
         if (!chatResponse.isSuccess()) {
             return ResponseEntity.badRequest().body(Map.of("error", chatResponse.getError()));
         }
 
-        // Step 2: Create policy from LLM output
+        // Step 2: Check validation errors
+        if (chatResponse.getValidationError() != null) {
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("saved", false);
+            response.put("validationError", chatResponse.getValidationError());
+            response.put("generatedPolicy", chatResponse.getPolicyText());
+            response.put("explanation", chatResponse.getExplanation());
+            return ResponseEntity.ok(response);
+        }
+
+        // Step 3: Create policy from LLM output
         PolicyDto dto = PolicyDto.builder()
                 .policyName(chatResponse.getSuggestedName())
                 .description(chatResponse.getDescription())
                 .policyText(chatResponse.getPolicyText())
                 .effect(chatResponse.getEffect())
                 .source(chatResponse.getSource())
-                .originalPrompt(request.getPrompt())
+                .originalPrompt(request.getEffectivePrompt())
                 .enabled(true)
                 .build();
 
         PolicyCreationResult result = policyService.createPolicy(dto);
         if (result.success()) {
             Map<String, Object> response = new LinkedHashMap<>();
-            response.put("created", true);
+            response.put("saved", true);
             response.put("policy", toMap(result.policy()));
             response.put("explanation", chatResponse.getExplanation());
             return ResponseEntity.ok(response);

@@ -10,9 +10,8 @@ import io.modelcontextprotocol.spec.McpSchema;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Context Fetcher — builds the structured {@link PolicyEvaluationRequest}
@@ -35,8 +34,40 @@ public class PolicyContextBuilder {
     /** Set at runtime from McpServerApplication — same pattern as ToolCallOrchestrator. */
     private volatile SessionManager sessionManager;
 
-    public PolicyContextBuilder(AgentRegistryService agentRegistryService) {
+    /**
+     * Pluggable custom attribute providers.
+     * Any Spring bean implementing this interface is auto-registered.
+     * Providers contribute attributes to the policy evaluation context,
+     * enabling ABAC policies like {@code context.riskScore > 50} without engine changes.
+     */
+    @FunctionalInterface
+    public interface CustomAttributeProvider {
+        /**
+         * Contribute custom attributes for policy evaluation.
+         *
+         * @param agentName    the requesting agent's name
+         * @param action       the action (toolCall, promptGet, resourceRead)
+         * @param resourceName the public resource name
+         * @param serverName   the MCP server name
+         * @param arguments    tool call arguments (null for prompts/resources)
+         * @return additional attributes to merge into context (never null)
+         */
+        Map<String, Object> getAttributes(String agentName, String action,
+                                           String resourceName, String serverName,
+                                           Map<String, Object> arguments);
+    }
+
+    private final List<CustomAttributeProvider> attributeProviders;
+
+    public PolicyContextBuilder(AgentRegistryService agentRegistryService,
+                                 List<CustomAttributeProvider> attributeProviders) {
         this.agentRegistryService = agentRegistryService;
+        this.attributeProviders = attributeProviders != null
+                ? attributeProviders : Collections.emptyList();
+        if (!this.attributeProviders.isEmpty()) {
+            log.info("Registered {} custom attribute provider(s) for policy evaluation",
+                    this.attributeProviders.size());
+        }
     }
 
     public void setSessionManager(SessionManager sessionManager) {
@@ -150,6 +181,10 @@ public class PolicyContextBuilder {
             log.debug("Could not extract source IP from transport context: {}", e.getMessage());
         }
 
+        // ── Custom attributes from providers ──────────────────────────
+        Map<String, Object> customAttrs = collectCustomAttributes(
+                agentName, action, publicName, serverName, arguments);
+
         // ── Build request ─────────────────────────────────────────────
         return PolicyEvaluationRequest.builder()
                 .agentName(agentName)
@@ -164,7 +199,34 @@ public class PolicyContextBuilder {
                 .arguments(arguments != null ? sanitizeArguments(arguments) : null)
                 .correlationId(correlationId)
                 .sourceIp(sourceIp)
+                .customAttributes(customAttrs.isEmpty() ? null : customAttrs)
                 .build();
+    }
+
+    /**
+     * Collect attributes from all registered providers.
+     * Each provider runs in isolation — failures are logged and skipped.
+     */
+    private Map<String, Object> collectCustomAttributes(
+            String agentName, String action, String resourceName,
+            String serverName, Map<String, Object> arguments) {
+        if (attributeProviders.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        Map<String, Object> merged = new HashMap<>();
+        for (CustomAttributeProvider provider : attributeProviders) {
+            try {
+                Map<String, Object> attrs = provider.getAttributes(
+                        agentName, action, resourceName, serverName, arguments);
+                if (attrs != null && !attrs.isEmpty()) {
+                    merged.putAll(attrs);
+                }
+            } catch (Exception e) {
+                log.warn("Custom attribute provider {} failed: {}",
+                        provider.getClass().getSimpleName(), e.getMessage());
+            }
+        }
+        return merged;
     }
 
     /**

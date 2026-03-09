@@ -51,4 +51,15 @@ public class PolicyEvaluationRequest {
     private String correlationId;
     /** Source IP of the agent's HTTP connection. */
     private String sourceIp;
+
+    // ── Custom attributes (ABAC extensibility) ──────────────────────
+    /**
+     * Additional custom attributes to include in policy evaluation context.
+     * These are merged into the context attribute map, enabling policies
+     * like {@code context.riskScore > 50} or {@code context.timezone == "UTC"}
+     * without any engine code changes.
+     *
+     * <p>Populate via {@link PolicyContextBuilder} or external attribute providers.
+     */
+    private Map<String, Object> customAttributes;
 }

@@ -22,6 +22,12 @@ import java.util.stream.Collectors;
  * <p>Evaluates Cedar policies written in standard Cedar syntax using a lightweight
  * Java parser. No native libraries (JNI/Rust) required — runs on any platform.
  *
+ * <h3>Fully Dynamic ABAC Engine</h3>
+ * <p>All attributes are stored in dynamic maps — no hardcoded fields.
+ * Any attribute name works with any operator, for any entity source.
+ * Add custom attributes via {@link PolicyEvaluationRequest#getCustomAttributes()}
+ * without code changes.
+ *
  * <h3>Supported Cedar Syntax</h3>
  * <ul>
  *   <li>{@code permit(...)} and {@code forbid(...)} effects</li>
@@ -41,50 +47,32 @@ import java.util.stream.Collectors;
  *   <li><b>Hierarchy membership:</b>
  *       {@code principal in AgentGroup::"status"},
  *       {@code resource in Server::"name"}</li>
- *   <li><b>Entity equality (in conditions):</b>
- *       {@code principal == Agent::"name"},
- *       {@code resource == Tool::"name"}</li>
- *   <li><b>Principal attributes:</b>
- *       {@code principal.version == "1.0"},
- *       {@code principal.approvalStatus == "APPROVED"}</li>
- *   <li><b>Resource attributes:</b>
- *       {@code resource.originalName == "create_issue"},
- *       {@code resource.serverName == "github"}</li>
- *   <li><b>Context equality:</b>
- *       {@code context.field == value} (bool, string, long)</li>
- *   <li><b>Context inequality:</b>
- *       {@code context.field != value} (bool, string)</li>
- *   <li><b>Numeric comparisons:</b>
- *       {@code context.hour > 18}, {@code context.hour >= 8},
- *       {@code context.hour < 6}, {@code context.hour <= 22}</li>
- *   <li><b>Pattern matching:</b>
- *       {@code context.argumentsFlat like "*production*"}</li>
- *   <li><b>String containment:</b>
- *       {@code context.argumentsFlat.contains("secret")}</li>
+ *   <li><b>Attribute operators (work with context.X, principal.X, resource.X):</b>
+ *       {@code ==} equality, {@code !=} inequality,
+ *       {@code >}, {@code <}, {@code >=}, {@code <=} numeric comparison,
+ *       {@code like} wildcard matching ({@code *} = any),
+ *       {@code .contains()} substring check</li>
  *   <li><b>Combined conditions:</b>
  *       {@code &&} (AND) within when/unless blocks</li>
+ *   <li><b>Extensible attributes:</b> Any attribute name works — add custom
+ *       attributes via {@link PolicyEvaluationRequest#getCustomAttributes()}</li>
  * </ul>
  *
- * <h3>Entity Model (Cedar types)</h3>
- * <ul>
- *   <li>{@code Agent::"<name>"} — the AI agent (principal)</li>
- *   <li>{@code AgentGroup::"<approval_status>"} — approval group hierarchy</li>
- *   <li>{@code Action::"<action>"} — toolCall, promptGet, resourceRead, etc.</li>
- *   <li>{@code Tool::"<name>"}, {@code Prompt::"<name>"}, {@code Resource::"<name>"}</li>
- *   <li>{@code Server::"<name>"} — enterprise MCP server (resource parent)</li>
- * </ul>
+ * <h3>Built-in Attributes</h3>
+ * <table>
+ *   <tr><th>Source</th><th>Attribute</th><th>Type</th></tr>
+ *   <tr><td>principal</td><td>name, version, approvalStatus, sessionId</td><td>String</td></tr>
+ *   <tr><td>resource</td><td>name, serverName, originalName, type</td><td>String</td></tr>
+ *   <tr><td>context</td><td>hour (long), dayOfWeek, businessHours (bool),
+ *       sourceIp, serverName, resourceName, correlationId, argumentsFlat</td><td>mixed</td></tr>
+ * </table>
  *
  * <h3>Evaluation Semantics (Cedar-compliant)</h3>
  * <ol>
- *   <li>If ANY {@code forbid} policy matches → DENY (forbid overrides permit)</li>
+ *   <li>If ANY {@code forbid} policy matches → DENY (short-circuit, forbid overrides permit)</li>
  *   <li>If at least one {@code permit} policy matches → ALLOW</li>
  *   <li>If no policy matches → DENY (default-deny)</li>
  * </ol>
- *
- * <h3>Forbid Short-Circuit Optimization</h3>
- * <p>Once any {@code forbid} policy matches, evaluation stops immediately
- * because the result is guaranteed DENY regardless of remaining policies.
- * {@code permit} policies continue evaluation to collect all matching IDs for audit.
  *
  * <h3>Thread Safety</h3>
  * The engine is thread-safe. Parsed policies are replaced atomically behind a ReadWriteLock.
@@ -124,48 +112,37 @@ public class CedarPolicyEngine {
 
     /**
      * A single condition within a when/unless block.
+     * Uses Source + Operator for fully generic attribute evaluation.
      * Combined conditions (&&) produce multiple Condition objects — all must be satisfied (AND semantics).
      */
     private static class Condition {
-        enum Type {
-            // ── Hierarchy membership ────────────────────────────────
-            PRINCIPAL_IN_GROUP,         // principal in AgentGroup::"X"
-            RESOURCE_IN_SERVER,         // resource in Server::"X"
-
-            // ── Entity equality ─────────────────────────────────────
-            PRINCIPAL_EQ_ENTITY,        // principal == Agent::"X"
-            RESOURCE_EQ_ENTITY,         // resource == Tool::"X" / Prompt::"X" / Resource::"X"
-
-            // ── Principal attributes ────────────────────────────────
-            PRINCIPAL_ATTR_EQ_STRING,   // principal.version == "1.0"
-
-            // ── Resource attributes ─────────────────────────────────
-            RESOURCE_ATTR_EQ_STRING,    // resource.originalName == "create_issue"
-
-            // ── Context equality ────────────────────────────────────
-            CONTEXT_EQ_BOOL,            // context.field == true/false
-            CONTEXT_EQ_STRING,          // context.field == "value"
-            CONTEXT_EQ_LONG,            // context.field == 123
-
-            // ── Context inequality ──────────────────────────────────
-            CONTEXT_NEQ_BOOL,           // context.field != true/false
-            CONTEXT_NEQ_STRING,         // context.field != "value"
-
-            // ── Numeric comparisons ─────────────────────────────────
-            CONTEXT_GT_LONG,            // context.field > 123
-            CONTEXT_LT_LONG,            // context.field < 123
-            CONTEXT_GTE_LONG,           // context.field >= 123
-            CONTEXT_LTE_LONG,           // context.field <= 123
-
-            // ── Pattern matching ────────────────────────────────────
-            CONTEXT_LIKE,               // context.field like "*pattern*"
-            CONTEXT_CONTAINS,           // context.field.contains("pattern")
+        /** Which entity's attribute map to look up. */
+        enum Source {
+            CONTEXT,        // context.X → contextAttrs
+            PRINCIPAL,      // principal.X → principalAttrs
+            RESOURCE        // resource.X → resourceAttrs
         }
 
-        Type type;
-        String field;       // group name, server name, entity id, context field, or attribute name
-        String value;       // comparison value (may be null for PRINCIPAL_IN_GROUP)
-        String entityType;  // for RESOURCE_EQ_ENTITY: "Tool", "Prompt", "Resource"
+        /** The comparison operation to perform. */
+        enum Operator {
+            EQ,             // == (type-agnostic via String.valueOf)
+            NEQ,            // != (type-agnostic via String.valueOf)
+            GT,             // > (numeric)
+            LT,             // < (numeric)
+            GTE,            // >= (numeric)
+            LTE,            // <= (numeric)
+            LIKE,           // like "*pattern*" (wildcard)
+            CONTAINS,       // .contains("value") (substring)
+            IN_GROUP,       // principal in AgentGroup::"X" (hierarchy — structural)
+            IN_SERVER,      // resource in Server::"X" (hierarchy — structural)
+            EQ_ENTITY       // principal == Agent::"X" or resource == Tool::"X" (structural)
+        }
+
+        Source source;          // which attribute map
+        Operator operator;      // comparison type
+        String field;           // attribute name (or entity id for structural ops)
+        String value;           // comparison value (null for IN_GROUP/IN_SERVER)
+        String entityType;      // for EQ_ENTITY on resource: "Tool", "Prompt", "Resource"
     }
 
     // ════════════════════════════════════════════════════════════════════
@@ -208,7 +185,7 @@ public class CedarPolicyEngine {
     /** resource == Tool::"name" / Prompt::"name" / Resource::"name" */
     private static final Pattern RESOURCE_EQ = Pattern.compile("resource\\s*==\\s*(Tool|Prompt|Resource)::\"([^\"]+)\"");
 
-    // ── Condition patterns (used in when/unless blocks) ────────────────
+    // ── Condition: structural (Cedar-specific hierarchy/entity checks) ──
 
     /** principal in AgentGroup::"X" */
     private static final Pattern PRINCIPAL_IN_GROUP = Pattern.compile("principal\\s+in\\s+AgentGroup::\"([^\"]+)\"");
@@ -222,44 +199,45 @@ public class CedarPolicyEngine {
     /** resource == Tool/Prompt/Resource::"X" (in condition blocks) */
     private static final Pattern COND_RESOURCE_EQ = Pattern.compile("resource\\s*==\\s*(Tool|Prompt|Resource)::\"([^\"]+)\"");
 
-    /** principal.attribute == "value" */
-    private static final Pattern PRINCIPAL_ATTR_EQ = Pattern.compile("principal\\.(\\w+)\\s*==\\s*\"([^\"]+)\"");
+    // ── Condition: generic attribute patterns (context|principal|resource) ──
+    //    These work with ANY attribute name from ANY entity source.
+    //    Order matters: check more specific operators first.
 
-    /** resource.attribute == "value" */
-    private static final Pattern RESOURCE_ATTR_EQ = Pattern.compile("resource\\.(\\w+)\\s*==\\s*\"([^\"]+)\"");
+    /** source.field >= N */
+    private static final Pattern ATTR_GTE = Pattern.compile("(context|principal|resource)\\.(\\w+)\\s*>=\\s*(-?\\d+)");
 
-    /** context.field like "*pattern*" */
-    private static final Pattern CONTEXT_LIKE = Pattern.compile("context\\.(\\w+)\\s+like\\s+\"([^\"]+)\"");
+    /** source.field <= N */
+    private static final Pattern ATTR_LTE = Pattern.compile("(context|principal|resource)\\.(\\w+)\\s*<=\\s*(-?\\d+)");
 
-    /** context.field.contains("value") */
-    private static final Pattern CONTEXT_CONTAINS = Pattern.compile("context\\.(\\w+)\\.contains\\(\"([^\"]+)\"\\)");
+    /** source.field > N (negative lookahead excludes >=) */
+    private static final Pattern ATTR_GT = Pattern.compile("(context|principal|resource)\\.(\\w+)\\s*>(?!=)\\s*(-?\\d+)");
 
-    /** context.field >= N (must match before > to avoid false match) */
-    private static final Pattern CONTEXT_GTE_LONG = Pattern.compile("context\\.(\\w+)\\s*>=\\s*(\\d+)");
+    /** source.field < N (negative lookahead excludes <=) */
+    private static final Pattern ATTR_LT = Pattern.compile("(context|principal|resource)\\.(\\w+)\\s*<(?!=)\\s*(-?\\d+)");
 
-    /** context.field <= N (must match before < to avoid false match) */
-    private static final Pattern CONTEXT_LTE_LONG = Pattern.compile("context\\.(\\w+)\\s*<=\\s*(\\d+)");
+    /** source.field like "*pattern*" */
+    private static final Pattern ATTR_LIKE = Pattern.compile("(context|principal|resource)\\.(\\w+)\\s+like\\s+\"([^\"]+)\"");
 
-    /** context.field > N (negative lookahead excludes >=) */
-    private static final Pattern CONTEXT_GT_LONG = Pattern.compile("context\\.(\\w+)\\s*>(?!=)\\s*(\\d+)");
+    /** source.field.contains("value") */
+    private static final Pattern ATTR_CONTAINS = Pattern.compile("(context|principal|resource)\\.(\\w+)\\.contains\\(\"([^\"]+)\"\\)");
 
-    /** context.field < N (negative lookahead excludes <=) */
-    private static final Pattern CONTEXT_LT_LONG = Pattern.compile("context\\.(\\w+)\\s*<(?!=)\\s*(\\d+)");
+    /** source.field != true/false */
+    private static final Pattern ATTR_NEQ_BOOL = Pattern.compile("(context|principal|resource)\\.(\\w+)\\s*!=\\s*(true|false)");
 
-    /** context.field != true/false */
-    private static final Pattern CONTEXT_NEQ_BOOL = Pattern.compile("context\\.(\\w+)\\s*!=\\s*(true|false)");
+    /** source.field != "string" */
+    private static final Pattern ATTR_NEQ_STRING = Pattern.compile("(context|principal|resource)\\.(\\w+)\\s*!=\\s*\"([^\"]+)\"");
 
-    /** context.field != "string" */
-    private static final Pattern CONTEXT_NEQ_STRING = Pattern.compile("context\\.(\\w+)\\s*!=\\s*\"([^\"]+)\"");
+    /** source.field != 123 */
+    private static final Pattern ATTR_NEQ_LONG = Pattern.compile("(context|principal|resource)\\.(\\w+)\\s*!=\\s*(-?\\d+)");
 
-    /** context.field == true/false */
-    private static final Pattern CONTEXT_EQ_BOOL = Pattern.compile("context\\.(\\w+)\\s*==\\s*(true|false)");
+    /** source.field == true/false */
+    private static final Pattern ATTR_EQ_BOOL = Pattern.compile("(context|principal|resource)\\.(\\w+)\\s*==\\s*(true|false)");
 
-    /** context.field == "string" */
-    private static final Pattern CONTEXT_EQ_STRING = Pattern.compile("context\\.(\\w+)\\s*==\\s*\"([^\"]+)\"");
+    /** source.field == "string" */
+    private static final Pattern ATTR_EQ_STRING = Pattern.compile("(context|principal|resource)\\.(\\w+)\\s*==\\s*\"([^\"]+)\"");
 
-    /** context.field == 123 */
-    private static final Pattern CONTEXT_EQ_LONG = Pattern.compile("context\\.(\\w+)\\s*==\\s*(\\d+)");
+    /** source.field == 123 */
+    private static final Pattern ATTR_EQ_LONG = Pattern.compile("(context|principal|resource)\\.(\\w+)\\s*==\\s*(-?\\d+)");
 
     // ════════════════════════════════════════════════════════════════════
     //  STATE
@@ -275,7 +253,7 @@ public class CedarPolicyEngine {
     private volatile boolean policiesLoaded = false;
 
     public CedarPolicyEngine() {
-        log.info("🏛️  Cedar Policy Engine initialized (pure-Java evaluator — granular AuthZ)");
+        log.info("🏛️  Cedar Policy Engine initialized (pure-Java evaluator — dynamic ABAC)");
     }
 
     // ════════════════════════════════════════════════════════════════════
@@ -366,18 +344,14 @@ public class CedarPolicyEngine {
     /**
      * Evaluate a policy evaluation request against all loaded Cedar policies.
      *
-     * <p>Cedar evaluation semantics:
+     * <p>Cedar evaluation semantics with forbid short-circuit:
      * <ol>
-     *   <li>If ANY forbid policy matches → DENY (forbid overrides permit)</li>
+     *   <li>If ANY forbid policy matches → DENY immediately (short-circuit)</li>
      *   <li>If at least one permit policy matches → ALLOW</li>
      *   <li>If no policy matches → DENY (default-deny)</li>
      * </ol>
      *
-     * <p><b>Forbid short-circuit:</b> once a forbid matches, we stop evaluating
-     * remaining policies because the result is guaranteed DENY.
-     *
      * <p>If no policies are loaded, returns ALLOW (no-policy mode).
-     * The gateway should not block by default until the admin explicitly creates policies.
      *
      * @param request the structured evaluation request
      * @return evaluation result with decision, matched policies, and timing
@@ -407,7 +381,6 @@ public class CedarPolicyEngine {
                     if ("forbid".equals(policy.effect)) {
                         matchedForbidPolicies.add(policyRef);
                         // ── Forbid short-circuit: result is guaranteed DENY ──
-                        // No need to evaluate remaining policies
                         long duration = System.currentTimeMillis() - startTime;
                         log.info("🏛️  Cedar: agent={}, action={}, resource={} → DENY ({}ms, forbid={}, short-circuit)",
                                 request.getAgentName(), request.getAction(),
@@ -420,9 +393,6 @@ public class CedarPolicyEngine {
             }
 
             long duration = System.currentTimeMillis() - startTime;
-
-            // ── Cedar evaluation semantics ────────────────────────────
-            // (Forbid already handled above via short-circuit)
 
             // 2. If any permit matches → ALLOW
             if (!matchedPermitPolicies.isEmpty()) {
@@ -485,7 +455,7 @@ public class CedarPolicyEngine {
         int permitIdx = lowerClean.indexOf("permit");
         int forbidIdx = lowerClean.indexOf("forbid");
 
-        if (permitIdx < 0 && forbidIdx < 0) return null; // not a valid policy
+        if (permitIdx < 0 && forbidIdx < 0) return null;
 
         if (forbidIdx >= 0 && (permitIdx < 0 || forbidIdx < permitIdx)) {
             pp.effect = "forbid";
@@ -504,13 +474,11 @@ public class CedarPolicyEngine {
         String headClause = clean.substring(parenStart + 1, parenEnd);
 
         // ── Parse head clause: principal ──────────────────────────────
-        // Check for exact entity equality first: principal == Agent::"X"
         Matcher principalEqMatch = PRINCIPAL_EQ.matcher(headClause);
         if (principalEqMatch.find()) {
-            pp.principalType = "Agent";          // implicit type constraint
+            pp.principalType = "Agent";
             pp.principalEntityId = principalEqMatch.group(1);
         } else {
-            // Fall back to type constraint: principal is Agent
             Matcher principalIsMatch = PRINCIPAL_IS.matcher(headClause);
             if (principalIsMatch.find()) {
                 pp.principalType = principalIsMatch.group(1);
@@ -533,13 +501,11 @@ public class CedarPolicyEngine {
         }
 
         // ── Parse head clause: resource ──────────────────────────────
-        // Check for exact entity equality first: resource == Tool::"X"
         Matcher resourceEqMatch = RESOURCE_EQ.matcher(headClause);
         if (resourceEqMatch.find()) {
-            pp.resourceType = resourceEqMatch.group(1);     // "Tool", "Prompt", "Resource"
+            pp.resourceType = resourceEqMatch.group(1);
             pp.resourceEntityId = resourceEqMatch.group(2);
         } else {
-            // Fall back to type constraint: resource is Tool
             Matcher resourceIsMatch = RESOURCE_IS.matcher(headClause);
             if (resourceIsMatch.find()) {
                 pp.resourceType = resourceIsMatch.group(1);
@@ -564,24 +530,10 @@ public class CedarPolicyEngine {
 
     /**
      * Parse conditions from a when/unless block body.
-     *
-     * <p>Supports combined conditions via {@code &&} operator.
-     * Each fragment separated by {@code &&} is parsed independently.
-     * All conditions must be satisfied (AND semantics).
-     *
-     * <p>Example:
-     * <pre>{@code
-     * principal in AgentGroup::"APPROVED" &&
-     * resource in Server::"github" &&
-     * context.businessHours == true &&
-     * context.argumentsFlat like "*production*"
-     * }</pre>
-     * Produces 4 conditions, all evaluated with AND semantics.
+     * Splits on {@code &&} and parses each fragment independently (AND semantics).
      */
     private List<Condition> parseConditions(String body) {
         List<Condition> conditions = new ArrayList<>();
-
-        // Split on && to handle combined conditions
         String[] fragments = body.split("&&");
 
         for (String fragment : fragments) {
@@ -601,16 +553,22 @@ public class CedarPolicyEngine {
 
     /**
      * Parse a single condition fragment into a Condition object.
-     * Patterns are checked in order of specificity to avoid false matches.
+     *
+     * <p>Checks structural patterns first (hierarchy, entity equality),
+     * then generic attribute patterns (any source + any operator).
      */
     private Condition parseSingleCondition(String fragment) {
         Matcher m;
 
-        // ── 1. Hierarchy membership ─────────────────────────────────
+        // ════════════════════════════════════════════════════════════
+        // 1. STRUCTURAL PATTERNS (Cedar-specific, not attribute-based)
+        // ════════════════════════════════════════════════════════════
+
         m = PRINCIPAL_IN_GROUP.matcher(fragment);
         if (m.find()) {
             Condition c = new Condition();
-            c.type = Condition.Type.PRINCIPAL_IN_GROUP;
+            c.source = Condition.Source.PRINCIPAL;
+            c.operator = Condition.Operator.IN_GROUP;
             c.field = m.group(1);
             return c;
         }
@@ -618,153 +576,126 @@ public class CedarPolicyEngine {
         m = RESOURCE_IN_SERVER.matcher(fragment);
         if (m.find()) {
             Condition c = new Condition();
-            c.type = Condition.Type.RESOURCE_IN_SERVER;
+            c.source = Condition.Source.RESOURCE;
+            c.operator = Condition.Operator.IN_SERVER;
             c.field = m.group(1);
             return c;
         }
 
-        // ── 2. Entity equality ──────────────────────────────────────
         m = COND_PRINCIPAL_EQ.matcher(fragment);
         if (m.find()) {
             Condition c = new Condition();
-            c.type = Condition.Type.PRINCIPAL_EQ_ENTITY;
-            c.field = m.group(1); // agent name
+            c.source = Condition.Source.PRINCIPAL;
+            c.operator = Condition.Operator.EQ_ENTITY;
+            c.field = m.group(1);
             return c;
         }
 
         m = COND_RESOURCE_EQ.matcher(fragment);
         if (m.find()) {
             Condition c = new Condition();
-            c.type = Condition.Type.RESOURCE_EQ_ENTITY;
-            c.entityType = m.group(1); // "Tool", "Prompt", "Resource"
-            c.field = m.group(2);      // entity name
+            c.source = Condition.Source.RESOURCE;
+            c.operator = Condition.Operator.EQ_ENTITY;
+            c.entityType = m.group(1);
+            c.field = m.group(2);
             return c;
         }
 
-        // ── 3. Principal attributes ─────────────────────────────────
-        m = PRINCIPAL_ATTR_EQ.matcher(fragment);
+        // ════════════════════════════════════════════════════════════
+        // 2. GENERIC ATTRIBUTE PATTERNS (any source, any operator)
+        //    Order: most specific operators first to avoid false matches
+        // ════════════════════════════════════════════════════════════
+
+        // ── like (before other operators) ────────────────────────────
+        m = ATTR_LIKE.matcher(fragment);
         if (m.find()) {
-            Condition c = new Condition();
-            c.type = Condition.Type.PRINCIPAL_ATTR_EQ_STRING;
-            c.field = m.group(1); // attribute name (version, approvalStatus)
-            c.value = m.group(2);
-            return c;
+            return buildAttrCondition(m.group(1), m.group(2), m.group(3), Condition.Operator.LIKE);
         }
 
-        // ── 4. Resource attributes ──────────────────────────────────
-        m = RESOURCE_ATTR_EQ.matcher(fragment);
+        // ── .contains() ─────────────────────────────────────────────
+        m = ATTR_CONTAINS.matcher(fragment);
         if (m.find()) {
-            Condition c = new Condition();
-            c.type = Condition.Type.RESOURCE_ATTR_EQ_STRING;
-            c.field = m.group(1); // attribute name (originalName, serverName)
-            c.value = m.group(2);
-            return c;
+            return buildAttrCondition(m.group(1), m.group(2), m.group(3), Condition.Operator.CONTAINS);
         }
 
-        // ── 5. Pattern matching (like / contains) ───────────────────
-        m = CONTEXT_LIKE.matcher(fragment);
+        // ── >= and <= (before > and <) ──────────────────────────────
+        m = ATTR_GTE.matcher(fragment);
         if (m.find()) {
-            Condition c = new Condition();
-            c.type = Condition.Type.CONTEXT_LIKE;
-            c.field = m.group(1);
-            c.value = m.group(2); // pattern with * wildcards
-            return c;
+            return buildAttrCondition(m.group(1), m.group(2), m.group(3), Condition.Operator.GTE);
         }
 
-        m = CONTEXT_CONTAINS.matcher(fragment);
+        m = ATTR_LTE.matcher(fragment);
         if (m.find()) {
-            Condition c = new Condition();
-            c.type = Condition.Type.CONTEXT_CONTAINS;
-            c.field = m.group(1);
-            c.value = m.group(2);
-            return c;
+            return buildAttrCondition(m.group(1), m.group(2), m.group(3), Condition.Operator.LTE);
         }
 
-        // ── 6. Numeric comparisons (check >= and <= BEFORE > and <) ─
-        m = CONTEXT_GTE_LONG.matcher(fragment);
+        // ── > and < ─────────────────────────────────────────────────
+        m = ATTR_GT.matcher(fragment);
         if (m.find()) {
-            Condition c = new Condition();
-            c.type = Condition.Type.CONTEXT_GTE_LONG;
-            c.field = m.group(1);
-            c.value = m.group(2);
-            return c;
+            return buildAttrCondition(m.group(1), m.group(2), m.group(3), Condition.Operator.GT);
         }
 
-        m = CONTEXT_LTE_LONG.matcher(fragment);
+        m = ATTR_LT.matcher(fragment);
         if (m.find()) {
-            Condition c = new Condition();
-            c.type = Condition.Type.CONTEXT_LTE_LONG;
-            c.field = m.group(1);
-            c.value = m.group(2);
-            return c;
+            return buildAttrCondition(m.group(1), m.group(2), m.group(3), Condition.Operator.LT);
         }
 
-        m = CONTEXT_GT_LONG.matcher(fragment);
+        // ── != (before ==) ──────────────────────────────────────────
+        m = ATTR_NEQ_BOOL.matcher(fragment);
         if (m.find()) {
-            Condition c = new Condition();
-            c.type = Condition.Type.CONTEXT_GT_LONG;
-            c.field = m.group(1);
-            c.value = m.group(2);
-            return c;
+            return buildAttrCondition(m.group(1), m.group(2), m.group(3), Condition.Operator.NEQ);
         }
 
-        m = CONTEXT_LT_LONG.matcher(fragment);
+        m = ATTR_NEQ_STRING.matcher(fragment);
         if (m.find()) {
-            Condition c = new Condition();
-            c.type = Condition.Type.CONTEXT_LT_LONG;
-            c.field = m.group(1);
-            c.value = m.group(2);
-            return c;
+            return buildAttrCondition(m.group(1), m.group(2), m.group(3), Condition.Operator.NEQ);
         }
 
-        // ── 7. Inequality (check != BEFORE ==) ─────────────────────
-        m = CONTEXT_NEQ_BOOL.matcher(fragment);
+        m = ATTR_NEQ_LONG.matcher(fragment);
         if (m.find()) {
-            Condition c = new Condition();
-            c.type = Condition.Type.CONTEXT_NEQ_BOOL;
-            c.field = m.group(1);
-            c.value = m.group(2);
-            return c;
+            return buildAttrCondition(m.group(1), m.group(2), m.group(3), Condition.Operator.NEQ);
         }
 
-        m = CONTEXT_NEQ_STRING.matcher(fragment);
+        // ── == ──────────────────────────────────────────────────────
+        m = ATTR_EQ_BOOL.matcher(fragment);
         if (m.find()) {
-            Condition c = new Condition();
-            c.type = Condition.Type.CONTEXT_NEQ_STRING;
-            c.field = m.group(1);
-            c.value = m.group(2);
-            return c;
+            return buildAttrCondition(m.group(1), m.group(2), m.group(3), Condition.Operator.EQ);
         }
 
-        // ── 8. Equality ────────────────────────────────────────────
-        m = CONTEXT_EQ_BOOL.matcher(fragment);
+        m = ATTR_EQ_STRING.matcher(fragment);
         if (m.find()) {
-            Condition c = new Condition();
-            c.type = Condition.Type.CONTEXT_EQ_BOOL;
-            c.field = m.group(1);
-            c.value = m.group(2);
-            return c;
+            return buildAttrCondition(m.group(1), m.group(2), m.group(3), Condition.Operator.EQ);
         }
 
-        m = CONTEXT_EQ_STRING.matcher(fragment);
+        m = ATTR_EQ_LONG.matcher(fragment);
         if (m.find()) {
-            Condition c = new Condition();
-            c.type = Condition.Type.CONTEXT_EQ_STRING;
-            c.field = m.group(1);
-            c.value = m.group(2);
-            return c;
-        }
-
-        m = CONTEXT_EQ_LONG.matcher(fragment);
-        if (m.find()) {
-            Condition c = new Condition();
-            c.type = Condition.Type.CONTEXT_EQ_LONG;
-            c.field = m.group(1);
-            c.value = m.group(2);
-            return c;
+            return buildAttrCondition(m.group(1), m.group(2), m.group(3), Condition.Operator.EQ);
         }
 
         return null; // unrecognized condition
+    }
+
+    /**
+     * Build an attribute Condition from a generic pattern match.
+     */
+    private Condition buildAttrCondition(String sourceStr, String field, String value, Condition.Operator operator) {
+        Condition c = new Condition();
+        c.source = parseSource(sourceStr);
+        c.operator = operator;
+        c.field = field;
+        c.value = value;
+        return c;
+    }
+
+    /**
+     * Parse source string ("context", "principal", "resource") to enum.
+     */
+    private Condition.Source parseSource(String source) {
+        return switch (source.toLowerCase()) {
+            case "principal" -> Condition.Source.PRINCIPAL;
+            case "resource" -> Condition.Source.RESOURCE;
+            default -> Condition.Source.CONTEXT;
+        };
     }
 
     /**
@@ -784,70 +715,78 @@ public class CedarPolicyEngine {
     }
 
     // ════════════════════════════════════════════════════════════════════
-    //  POLICY EVALUATION (matching)
+    //  EVALUATION CONTEXT (dynamic attribute maps)
     // ════════════════════════════════════════════════════════════════════
 
     /**
-     * Evaluation context — flattened request data for matching against policies.
+     * Evaluation context — all request data stored in dynamic attribute maps.
+     *
+     * <p>Structural fields ({@code principalType}, {@code principalId}, etc.) are
+     * kept for head clause matching. All condition evaluation uses the maps.
      */
     private static class EvalContext {
-        // ── Principal ──────────────────────────────────────────────
+        // ── Structural (for head clause matching only) ──────────────
         String principalType;       // "Agent"
-        String principalId;         // agent name (e.g., "claude-desktop")
-        String approvalStatus;      // agent approval status ("APPROVED", "PENDING", "BLOCKED")
-        String principalVersion;    // agent version (e.g., "1.0.2")
-
-        // ── Action ─────────────────────────────────────────────────
+        String principalId;         // agent name
         String action;              // "toolCall", "promptGet", "resourceRead"
-
-        // ── Resource ───────────────────────────────────────────────
         String resourceType;        // "Tool", "Prompt", "Resource"
-        String resourceId;          // public namespaced name (e.g., "github_create_issue")
-        String serverName;          // parent server name (e.g., "github")
-        String originalName;        // original name on server (e.g., "create_issue")
+        String resourceId;          // public namespaced name
 
-        // ── Context: environment ───────────────────────────────────
-        boolean businessHours;
-        int hour;
-        String dayOfWeek;
-        String sourceIp;
-        String correlationId;
-
-        // ── Context: request data ──────────────────────────────────
-        String argumentsFlat;       // flattened tool arguments for pattern matching
+        // ── Dynamic attribute maps (for condition evaluation) ───────
+        Map<String, Object> principalAttrs = new HashMap<>();
+        Map<String, Object> resourceAttrs = new HashMap<>();
+        Map<String, Object> contextAttrs = new HashMap<>();
     }
 
     /**
      * Build evaluation context from a PolicyEvaluationRequest.
+     *
+     * <p>Populates dynamic attribute maps with all known attributes.
+     * Custom attributes from the request are merged into contextAttrs.
+     * Future attributes can be added without engine code changes.
      */
     private EvalContext buildEvalContext(PolicyEvaluationRequest request) {
         EvalContext ctx = new EvalContext();
 
-        // Principal
+        // ── Structural fields (head clause matching) ─────────────────
         ctx.principalType = "Agent";
         ctx.principalId = request.getAgentName();
-        ctx.approvalStatus = request.getAgentApprovalStatus();
-        ctx.principalVersion = request.getAgentVersion();
-
-        // Action
         ctx.action = request.getAction();
-
-        // Resource
         ctx.resourceType = request.getResourceType() != null ? request.getResourceType() : "Tool";
         ctx.resourceId = request.getResourceName();
-        ctx.serverName = request.getServerName();
-        ctx.originalName = request.getOriginalName();
 
-        // Environment context
+        // ── Principal attributes ─────────────────────────────────────
+        putIfNotNull(ctx.principalAttrs, "name", request.getAgentName());
+        putIfNotNull(ctx.principalAttrs, "version", request.getAgentVersion());
+        putIfNotNull(ctx.principalAttrs, "approvalStatus", request.getAgentApprovalStatus());
+        putIfNotNull(ctx.principalAttrs, "sessionId", request.getAgentSessionId());
+
+        // ── Resource attributes ──────────────────────────────────────
+        putIfNotNull(ctx.resourceAttrs, "name", request.getResourceName());
+        putIfNotNull(ctx.resourceAttrs, "serverName", request.getServerName());
+        putIfNotNull(ctx.resourceAttrs, "originalName", request.getOriginalName());
+        putIfNotNull(ctx.resourceAttrs, "type", request.getResourceType());
+
+        // ── Context attributes: environment ──────────────────────────
         LocalDateTime now = LocalDateTime.now();
-        ctx.businessHours = isBusinessHours(now);
-        ctx.hour = now.getHour();
-        ctx.dayOfWeek = now.getDayOfWeek().name();
-        ctx.sourceIp = request.getSourceIp();
-        ctx.correlationId = request.getCorrelationId();
+        ctx.contextAttrs.put("businessHours", isBusinessHours(now));
+        ctx.contextAttrs.put("hour", (long) now.getHour());
+        ctx.contextAttrs.put("minute", (long) now.getMinute());
+        ctx.contextAttrs.put("dayOfWeek", now.getDayOfWeek().name());
+        ctx.contextAttrs.put("month", now.getMonth().name());
+        ctx.contextAttrs.put("year", (long) now.getYear());
 
-        // Flatten arguments for pattern matching
-        ctx.argumentsFlat = flattenArguments(request.getArguments());
+        // ── Context attributes: request data ─────────────────────────
+        putIfNotNull(ctx.contextAttrs, "sourceIp", request.getSourceIp());
+        putIfNotNull(ctx.contextAttrs, "serverName", request.getServerName());
+        putIfNotNull(ctx.contextAttrs, "resourceName", request.getResourceName());
+        putIfNotNull(ctx.contextAttrs, "correlationId", request.getCorrelationId());
+        ctx.contextAttrs.put("argumentsFlat", flattenArguments(request.getArguments()));
+
+        // ── Custom attributes (extensibility point) ──────────────────
+        if (request.getCustomAttributes() != null) {
+            ctx.contextAttrs.putAll(request.getCustomAttributes());
+        }
 
         return ctx;
     }
@@ -855,10 +794,6 @@ public class CedarPolicyEngine {
     /**
      * Flatten tool arguments map into a single searchable string.
      * Format: "key1=value1 key2=value2 ..."
-     *
-     * <p>This enables patterns like:
-     * <pre>{@code context.argumentsFlat like "*production*"}</pre>
-     * to match any argument containing "production".
      */
     private String flattenArguments(Map<String, Object> arguments) {
         if (arguments == null || arguments.isEmpty()) {
@@ -869,6 +804,16 @@ public class CedarPolicyEngine {
                 .collect(Collectors.joining(" "));
     }
 
+    private void putIfNotNull(Map<String, Object> map, String key, Object value) {
+        if (value != null) {
+            map.put(key, value);
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  POLICY MATCHING
+    // ════════════════════════════════════════════════════════════════════
+
     /**
      * Check if a parsed policy matches the given evaluation context.
      *
@@ -876,8 +821,7 @@ public class CedarPolicyEngine {
      * <ol>
      *   <li>Head clause matches (principal type/entity, action, resource type/entity)</li>
      *   <li>All {@code when} conditions evaluate to TRUE</li>
-     *   <li>All {@code unless} conditions evaluate to FALSE
-     *       (unless = "except when" → policy fires unless the condition is true)</li>
+     *   <li>All {@code unless} conditions evaluate to FALSE</li>
      * </ol>
      */
     private boolean matches(ParsedPolicy policy, EvalContext ctx) {
@@ -885,7 +829,6 @@ public class CedarPolicyEngine {
         if (policy.principalType != null && !policy.principalType.equals(ctx.principalType)) {
             return false;
         }
-        // Exact entity equality: principal == Agent::"claude-desktop"
         if (policy.principalEntityId != null && !policy.principalEntityId.equals(ctx.principalId)) {
             return false;
         }
@@ -902,25 +845,21 @@ public class CedarPolicyEngine {
         if (policy.resourceType != null && !policy.resourceType.equals(ctx.resourceType)) {
             return false;
         }
-        // Exact entity equality: resource == Tool::"github_create_issue"
         if (policy.resourceEntityId != null && !policy.resourceEntityId.equals(ctx.resourceId)) {
             return false;
         }
 
-        // ── When conditions: ALL must be TRUE for policy to apply ────
+        // ── When: ALL must be TRUE ──────────────────────────────────
         for (Condition cond : policy.whenConditions) {
             if (!evaluateCondition(cond, ctx)) {
                 return false;
             }
         }
 
-        // ── Unless conditions: if ANY is TRUE, policy does NOT apply ─
-        // "forbid(...) unless { businessHours }" means:
-        //   forbid fires when businessHours is FALSE (not in business hours)
-        //   forbid does NOT fire when businessHours is TRUE
+        // ── Unless: if ANY is TRUE, policy does NOT apply ───────────
         for (Condition cond : policy.unlessConditions) {
             if (evaluateCondition(cond, ctx)) {
-                return false; // unless-condition is true → policy does NOT match
+                return false;
             }
         }
 
@@ -929,142 +868,78 @@ public class CedarPolicyEngine {
 
     /**
      * Evaluate a single condition against the evaluation context.
+     *
+     * <p>Structural operators (IN_GROUP, IN_SERVER, EQ_ENTITY) use specific
+     * attribute lookups. All other operators use the generic attribute map
+     * resolved by {@link Condition.Source}.
      */
     private boolean evaluateCondition(Condition cond, EvalContext ctx) {
-        return switch (cond.type) {
 
-            // ── Hierarchy membership ────────────────────────────────
-            case PRINCIPAL_IN_GROUP -> {
-                // principal in AgentGroup::"APPROVED" → check approvalStatus
-                yield cond.field.equals(ctx.approvalStatus);
-            }
-            case RESOURCE_IN_SERVER -> {
-                // resource in Server::"github" → check serverName
-                yield cond.field.equals(ctx.serverName);
-            }
+        // ── Structural operators (Cedar-specific) ───────────────────
+        if (cond.operator == Condition.Operator.IN_GROUP) {
+            // principal in AgentGroup::"APPROVED" → check approvalStatus
+            Object status = ctx.principalAttrs.get("approvalStatus");
+            return status != null && cond.field.equals(String.valueOf(status));
+        }
 
-            // ── Entity equality ─────────────────────────────────────
-            case PRINCIPAL_EQ_ENTITY -> {
+        if (cond.operator == Condition.Operator.IN_SERVER) {
+            // resource in Server::"github" → check serverName
+            Object server = ctx.resourceAttrs.get("serverName");
+            return server != null && cond.field.equals(String.valueOf(server));
+        }
+
+        if (cond.operator == Condition.Operator.EQ_ENTITY) {
+            if (cond.source == Condition.Source.PRINCIPAL) {
                 // principal == Agent::"claude-desktop"
-                yield cond.field.equals(ctx.principalId);
+                return cond.field.equals(ctx.principalId);
             }
-            case RESOURCE_EQ_ENTITY -> {
+            if (cond.source == Condition.Source.RESOURCE) {
                 // resource == Tool::"github_create_issue"
-                // Also check entity type matches resource type
-                boolean typeMatches = cond.entityType == null || cond.entityType.equals(ctx.resourceType);
-                yield typeMatches && cond.field.equals(ctx.resourceId);
+                boolean typeMatch = cond.entityType == null || cond.entityType.equals(ctx.resourceType);
+                return typeMatch && cond.field.equals(ctx.resourceId);
             }
+            return false;
+        }
 
-            // ── Principal attributes ────────────────────────────────
-            case PRINCIPAL_ATTR_EQ_STRING -> {
-                yield switch (cond.field) {
-                    case "version" -> cond.value.equals(ctx.principalVersion);
-                    case "approvalStatus" -> cond.value.equals(ctx.approvalStatus);
-                    default -> false;
-                };
-            }
+        // ── Generic attribute operators (dynamic map lookup) ────────
+        Map<String, Object> attrs = resolveAttrMap(cond.source, ctx);
+        Object val = attrs.get(cond.field);
+        if (val == null) return false;
 
-            // ── Resource attributes ─────────────────────────────────
-            case RESOURCE_ATTR_EQ_STRING -> {
-                yield switch (cond.field) {
-                    case "originalName" -> cond.value.equals(ctx.originalName);
-                    case "serverName" -> cond.value.equals(ctx.serverName);
-                    default -> false;
-                };
+        return switch (cond.operator) {
+            case EQ -> String.valueOf(val).equals(cond.value);
+            case NEQ -> !String.valueOf(val).equals(cond.value);
+            case GT -> {
+                Long num = toLong(val);
+                yield num != null && num > Long.parseLong(cond.value);
             }
-
-            // ── Context equality ────────────────────────────────────
-            case CONTEXT_EQ_BOOL -> {
-                yield resolveContextBool(cond.field, ctx) != null
-                        && String.valueOf(resolveContextBool(cond.field, ctx)).equals(cond.value);
+            case LT -> {
+                Long num = toLong(val);
+                yield num != null && num < Long.parseLong(cond.value);
             }
-            case CONTEXT_EQ_STRING -> {
-                String resolved = resolveContextString(cond.field, ctx);
-                yield resolved != null && cond.value.equals(resolved);
+            case GTE -> {
+                Long num = toLong(val);
+                yield num != null && num >= Long.parseLong(cond.value);
             }
-            case CONTEXT_EQ_LONG -> {
-                Long resolved = resolveContextLong(cond.field, ctx);
-                yield resolved != null && String.valueOf(resolved).equals(cond.value);
+            case LTE -> {
+                Long num = toLong(val);
+                yield num != null && num <= Long.parseLong(cond.value);
             }
-
-            // ── Context inequality ──────────────────────────────────
-            case CONTEXT_NEQ_BOOL -> {
-                Boolean resolved = resolveContextBool(cond.field, ctx);
-                yield resolved != null && !String.valueOf(resolved).equals(cond.value);
-            }
-            case CONTEXT_NEQ_STRING -> {
-                String resolved = resolveContextString(cond.field, ctx);
-                yield resolved != null && !cond.value.equals(resolved);
-            }
-
-            // ── Numeric comparisons ─────────────────────────────────
-            case CONTEXT_GT_LONG -> {
-                Long resolved = resolveContextLong(cond.field, ctx);
-                yield resolved != null && resolved > Long.parseLong(cond.value);
-            }
-            case CONTEXT_LT_LONG -> {
-                Long resolved = resolveContextLong(cond.field, ctx);
-                yield resolved != null && resolved < Long.parseLong(cond.value);
-            }
-            case CONTEXT_GTE_LONG -> {
-                Long resolved = resolveContextLong(cond.field, ctx);
-                yield resolved != null && resolved >= Long.parseLong(cond.value);
-            }
-            case CONTEXT_LTE_LONG -> {
-                Long resolved = resolveContextLong(cond.field, ctx);
-                yield resolved != null && resolved <= Long.parseLong(cond.value);
-            }
-
-            // ── Pattern matching ────────────────────────────────────
-            case CONTEXT_LIKE -> {
-                // Cedar `like` uses * as wildcard (matches any sequence of characters)
-                String resolved = resolveContextString(cond.field, ctx);
-                yield resolved != null && matchesWildcard(resolved, cond.value);
-            }
-            case CONTEXT_CONTAINS -> {
-                // context.field.contains("value") → substring check
-                String resolved = resolveContextString(cond.field, ctx);
-                yield resolved != null && resolved.contains(cond.value);
-            }
-        };
-    }
-
-    // ════════════════════════════════════════════════════════════════════
-    //  CONTEXT FIELD RESOLUTION
-    // ════════════════════════════════════════════════════════════════════
-
-    /**
-     * Resolve a context field name to its boolean value.
-     */
-    private Boolean resolveContextBool(String field, EvalContext ctx) {
-        return switch (field) {
-            case "businessHours" -> ctx.businessHours;
-            default -> null;
+            case LIKE -> matchesWildcard(String.valueOf(val), cond.value);
+            case CONTAINS -> String.valueOf(val).contains(cond.value);
+            // Structural operators already handled above
+            default -> false;
         };
     }
 
     /**
-     * Resolve a context field name to its string value.
+     * Resolve the attribute map for a given source.
      */
-    private String resolveContextString(String field, EvalContext ctx) {
-        return switch (field) {
-            case "dayOfWeek" -> ctx.dayOfWeek;
-            case "sourceIp" -> ctx.sourceIp;
-            case "serverName" -> ctx.serverName;
-            case "resourceName" -> ctx.resourceId;
-            case "correlationId" -> ctx.correlationId;
-            case "argumentsFlat" -> ctx.argumentsFlat;
-            default -> null;
-        };
-    }
-
-    /**
-     * Resolve a context field name to its long value.
-     */
-    private Long resolveContextLong(String field, EvalContext ctx) {
-        return switch (field) {
-            case "hour" -> (long) ctx.hour;
-            default -> null;
+    private Map<String, Object> resolveAttrMap(Condition.Source source, EvalContext ctx) {
+        return switch (source) {
+            case PRINCIPAL -> ctx.principalAttrs;
+            case RESOURCE -> ctx.resourceAttrs;
+            case CONTEXT -> ctx.contextAttrs;
         };
     }
 
@@ -1073,25 +948,29 @@ public class CedarPolicyEngine {
     // ════════════════════════════════════════════════════════════════════
 
     /**
+     * Convert any numeric Object to Long.
+     */
+    private Long toLong(Object val) {
+        if (val == null) return null;
+        if (val instanceof Long l) return l;
+        if (val instanceof Integer i) return (long) i;
+        if (val instanceof Number n) return n.longValue();
+        try {
+            return Long.parseLong(String.valueOf(val));
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /**
      * Cedar-style wildcard matching.
      * {@code *} matches any sequence of characters (including empty).
-     *
-     * <p>Examples:
-     * <ul>
-     *   <li>{@code "*production*"} matches "env=production server=db"</li>
-     *   <li>{@code "github_*"} matches "github_create_issue"</li>
-     *   <li>{@code "*.json"} matches "config.json"</li>
-     * </ul>
      *
      * @param text the text to match against
      * @param pattern the Cedar-style wildcard pattern
      * @return true if the text matches the pattern
      */
     private boolean matchesWildcard(String text, String pattern) {
-        // Convert Cedar wildcard pattern to Java regex:
-        // 1. Escape all regex special characters except *
-        // 2. Replace * with .*
-        // 3. Wrap in ^...$ for full match
         StringBuilder regex = new StringBuilder("^");
         for (char c : pattern.toCharArray()) {
             if (c == '*') {
