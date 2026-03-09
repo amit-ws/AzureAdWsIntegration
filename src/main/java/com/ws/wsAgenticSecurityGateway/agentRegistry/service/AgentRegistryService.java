@@ -430,6 +430,11 @@ public class AgentRegistryService {
         return agentRepository.findById(id);
     }
 
+    /** Return agents matching the given name (may have multiple versions). */
+    public List<GatewayAgentEntity> findAgentsByName(String agentName) {
+        return agentRepository.findByAgentName(agentName);
+    }
+
     /** Return session history for a specific agent, newest first. */
     public List<GatewayAgentSessionEntity> getAgentSessions(UUID agentId) {
         return sessionRepository.findByAgentIdOrderByConnectedAtDesc(agentId);

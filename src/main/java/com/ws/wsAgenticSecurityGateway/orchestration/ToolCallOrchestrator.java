@@ -6,6 +6,10 @@ import com.ws.wsAgenticSecurityGateway.audit.error.McpErrorCode;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import com.ws.wsAgenticSecurityGateway.wsClient.McpClientService;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
+import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyEvaluationRequest;
+import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyEvaluationResult;
+import com.ws.wsAgenticSecurityGateway.pdp.service.CedarPolicyEngine;
+import com.ws.wsAgenticSecurityGateway.pdp.service.PolicyContextBuilder;
 import com.ws.wsAgenticSecurityGateway.wsClient.config.HttpMcpTransport;
 import com.ws.wsAgenticSecurityGateway.wsClient.config.McpSession;
 import com.ws.wsAgenticSecurityGateway.wsClient.config.McpSessionManager;
@@ -54,6 +58,8 @@ public class ToolCallOrchestrator {
     private final ObjectMapper objectMapper;
     private final McpSessionManager mcpSessionManager;
     private final AgentRegistryService agentRegistryService;
+    private final CedarPolicyEngine cedarPolicyEngine;
+    private final PolicyContextBuilder policyContextBuilder;
 
     /**
      * Set via setter from McpServerApplication.run() because SessionManager is a
@@ -68,7 +74,9 @@ public class ToolCallOrchestrator {
                                  InFlightRequestRegistry inFlightRegistry,
                                  ObjectMapper objectMapper,
                                  McpSessionManager mcpSessionManager,
-                                 AgentRegistryService agentRegistryService) {
+                                 AgentRegistryService agentRegistryService,
+                                 CedarPolicyEngine cedarPolicyEngine,
+                                 PolicyContextBuilder policyContextBuilder) {
         this.registryService = registryService;
         this.mcpClientService = mcpClientService;
         this.auditService = auditService;
@@ -76,6 +84,8 @@ public class ToolCallOrchestrator {
         this.objectMapper = objectMapper;
         this.mcpSessionManager = mcpSessionManager;
         this.agentRegistryService = agentRegistryService;
+        this.cedarPolicyEngine = cedarPolicyEngine;
+        this.policyContextBuilder = policyContextBuilder;
     }
 
     /**
@@ -189,6 +199,44 @@ public class ToolCallOrchestrator {
         // ── Step 5: Audit — registry lookup success ─────────────────────
         auditService.auditOrchestrationRegistryLookup(
                 correlationId, sessionId, publicName, serverName, lookupDuration, requestId, clientName);
+
+        // ── Step 5c: PDP — Cedar policy evaluation ─────────────────────
+        // Evaluate the request against all active Cedar policies.
+        // This is the Policy Decision Point (PDP) — the core security gate.
+        try {
+            PolicyEvaluationRequest pdpRequest = policyContextBuilder.buildForToolCall(
+                    exchange, publicName, serverName, originalName,
+                    arguments, correlationId, sessionId);
+
+            // Audit: PDP evaluation requested
+            auditService.auditPdpEvaluationRequested(
+                    correlationId, pdpRequest.getAgentName(),
+                    publicName, "toolCall", pdpRequest);
+
+            PolicyEvaluationResult pdpResult = cedarPolicyEngine.evaluate(pdpRequest);
+
+            // Audit: PDP decision rendered
+            auditService.auditPdpDecisionRendered(
+                    correlationId, pdpRequest.getAgentName(),
+                    publicName, "toolCall", pdpResult.getDecision(),
+                    pdpResult, pdpResult.getEvaluationDurationMs());
+
+            if (pdpResult.isDenied()) {
+                log.warn("🏛️ [{}] PDP DENIED: agent='{}', tool='{}', reason='{}'",
+                        correlationId, pdpRequest.getAgentName(), publicName, pdpResult.getReason());
+                return buildErrorResult(McpErrorCode.PDP_DENIED,
+                        publicName, serverName,
+                        "Policy violation: " + pdpResult.getReason());
+            }
+
+            log.info("🏛️ [{}] PDP ALLOWED: agent='{}', tool='{}' ({}ms)",
+                    correlationId, pdpRequest.getAgentName(), publicName,
+                    pdpResult.getEvaluationDurationMs());
+
+        } catch (Exception e) {
+            // PDP evaluation failure — fail-open (don't block gateway on engine errors)
+            log.error("🏛️ [{}] PDP evaluation error (fail-open): {}", correlationId, e.getMessage());
+        }
 
         // ── Step 5b: Pre-check — is the server connected? ────────────────
         // Fail fast if the southbound server is disconnected instead of
@@ -697,6 +745,40 @@ public class ToolCallOrchestrator {
         auditService.auditOrchestrationRegistryLookup(
                 correlationId, sessionId, publicName, serverName, lookupDuration, requestId, clientName);
 
+        // ── PDP — Cedar policy evaluation for prompt ────────────────────
+        try {
+            PolicyEvaluationRequest pdpRequest = policyContextBuilder.buildForPromptGet(
+                    exchange, publicName, serverName, originalName,
+                    correlationId, sessionId);
+
+            auditService.auditPdpEvaluationRequested(
+                    correlationId, pdpRequest.getAgentName(),
+                    publicName, "promptGet", pdpRequest);
+
+            PolicyEvaluationResult pdpResult = cedarPolicyEngine.evaluate(pdpRequest);
+
+            auditService.auditPdpDecisionRendered(
+                    correlationId, pdpRequest.getAgentName(),
+                    publicName, "promptGet", pdpResult.getDecision(),
+                    pdpResult, pdpResult.getEvaluationDurationMs());
+
+            if (pdpResult.isDenied()) {
+                log.warn("🏛️ [{}] PDP DENIED: agent='{}', prompt='{}', reason='{}'",
+                        correlationId, pdpRequest.getAgentName(), publicName, pdpResult.getReason());
+                throw new RuntimeException(String.format("[%d] Policy violation: %s",
+                        McpErrorCode.PDP_DENIED.getCode(), pdpResult.getReason()));
+            }
+
+            log.info("🏛️ [{}] PDP ALLOWED: agent='{}', prompt='{}' ({}ms)",
+                    correlationId, pdpRequest.getAgentName(), publicName,
+                    pdpResult.getEvaluationDurationMs());
+
+        } catch (RuntimeException e) {
+            throw e; // re-throw PDP denial
+        } catch (Exception e) {
+            log.error("🏛️ [{}] PDP evaluation error (fail-open): {}", correlationId, e.getMessage());
+        }
+
         // Pre-check — is the server connected?
         if (!mcpSessionManager.isConnected(serverName)) {
             log.error("❌ [{}] Server '{}' is not connected — rejecting prompt immediately", correlationId, serverName);
@@ -890,6 +972,40 @@ public class ToolCallOrchestrator {
 
         auditService.auditOrchestrationRegistryLookup(
                 correlationId, sessionId, publicName, serverName, lookupDuration, requestId, clientName);
+
+        // ── PDP — Cedar policy evaluation for resource read ─────────────
+        try {
+            PolicyEvaluationRequest pdpRequest = policyContextBuilder.buildForResourceRead(
+                    exchange, publicName, serverName, descriptor.getOriginalName(),
+                    correlationId, sessionId);
+
+            auditService.auditPdpEvaluationRequested(
+                    correlationId, pdpRequest.getAgentName(),
+                    publicName, "resourceRead", pdpRequest);
+
+            PolicyEvaluationResult pdpResult = cedarPolicyEngine.evaluate(pdpRequest);
+
+            auditService.auditPdpDecisionRendered(
+                    correlationId, pdpRequest.getAgentName(),
+                    publicName, "resourceRead", pdpResult.getDecision(),
+                    pdpResult, pdpResult.getEvaluationDurationMs());
+
+            if (pdpResult.isDenied()) {
+                log.warn("🏛️ [{}] PDP DENIED: agent='{}', resource='{}', reason='{}'",
+                        correlationId, pdpRequest.getAgentName(), publicName, pdpResult.getReason());
+                throw new RuntimeException(String.format("[%d] Policy violation: %s",
+                        McpErrorCode.PDP_DENIED.getCode(), pdpResult.getReason()));
+            }
+
+            log.info("🏛️ [{}] PDP ALLOWED: agent='{}', resource='{}' ({}ms)",
+                    correlationId, pdpRequest.getAgentName(), publicName,
+                    pdpResult.getEvaluationDurationMs());
+
+        } catch (RuntimeException e) {
+            throw e; // re-throw PDP denial
+        } catch (Exception e) {
+            log.error("🏛️ [{}] PDP evaluation error (fail-open): {}", correlationId, e.getMessage());
+        }
 
         // Pre-check — is the server connected?
         if (!mcpSessionManager.isConnected(serverName)) {
