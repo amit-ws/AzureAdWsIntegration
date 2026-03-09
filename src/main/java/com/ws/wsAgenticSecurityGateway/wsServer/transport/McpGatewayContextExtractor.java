@@ -6,8 +6,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 /**
  * Extracts authentication and agent identity context from HTTP request headers
@@ -24,10 +23,22 @@ import java.util.Map;
  * <p>This extractor is used by {@code HttpServletStreamableServerTransportProvider}
  * in HTTP mode. In stdio mode, context is injected differently (via JSON-RPC id
  * in {@link ServerTransportProvider}).
+ *
+ * <h3>HTTP Headers Capture (for custom attribute resolution)</h3>
+ * <p>All HTTP headers are captured in a nested map under the key {@code _httpHeaders}.
+ * This enables the Custom Attribute system to resolve HEADER-sourced attributes
+ * from any header the agent sends — without requiring code changes here.
+ * Sensitive headers (Authorization, Cookie) are excluded from the headers map.
  */
 @Component
 @Slf4j
 public class McpGatewayContextExtractor implements McpTransportContextExtractor<HttpServletRequest> {
+
+    /** Headers excluded from the _httpHeaders capture (sensitive data). */
+    private static final Set<String> EXCLUDED_HEADERS = Set.of(
+            "authorization", "cookie", "set-cookie",
+            "proxy-authorization", "www-authenticate"
+    );
 
     @Override
     public McpTransportContext extract(HttpServletRequest request) {
@@ -57,10 +68,41 @@ public class McpGatewayContextExtractor implements McpTransportContextExtractor<
             ctx.put("clientIp", clientIp);
         }
 
+        // ── Capture ALL HTTP headers for custom attribute resolution ────────
+        // Stored as a sub-map so CustomAttributeService can resolve HEADER-sourced
+        // attributes from ANY header the agent sends (scalable for cloud deployment).
+        Map<String, String> httpHeaders = captureHttpHeaders(request);
+        if (!httpHeaders.isEmpty()) {
+            ctx.put("_httpHeaders", Collections.unmodifiableMap(httpHeaders));
+        }
+
         if (!ctx.isEmpty()) {
-            log.debug("Extracted MCP transport context: keys={}", ctx.keySet());
+            log.debug("Extracted MCP transport context: keys={}, headerCount={}",
+                    ctx.keySet(), httpHeaders.size());
         }
 
         return ctx.isEmpty() ? McpTransportContext.EMPTY : McpTransportContext.create(ctx);
+    }
+
+    /**
+     * Capture all HTTP headers from the request, excluding sensitive ones.
+     * Headers are stored with their original casing for case-insensitive lookup
+     * in the Custom Attribute resolution layer.
+     */
+    private Map<String, String> captureHttpHeaders(HttpServletRequest request) {
+        Map<String, String> headers = new LinkedHashMap<>();
+        Enumeration<String> headerNames = request.getHeaderNames();
+        if (headerNames == null) return headers;
+
+        while (headerNames.hasMoreElements()) {
+            String name = headerNames.nextElement();
+            if (name != null && !EXCLUDED_HEADERS.contains(name.toLowerCase())) {
+                String value = request.getHeader(name);
+                if (value != null && !value.isBlank()) {
+                    headers.put(name, value);
+                }
+            }
+        }
+        return headers;
     }
 }

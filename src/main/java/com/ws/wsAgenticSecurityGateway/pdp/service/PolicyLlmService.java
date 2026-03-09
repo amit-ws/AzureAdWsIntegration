@@ -8,6 +8,7 @@ import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescri
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
 import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyChatRequest;
 import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyChatResponse;
+import com.ws.wsAgenticSecurityGateway.pdp.entity.GatewayCustomAttributeEntity;
 import com.ws.wsAgenticSecurityGateway.pdp.entity.GatewayPolicyEntity;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -52,6 +53,7 @@ public class PolicyLlmService {
     private final CapabilityRegistryService capabilityRegistryService;
     private final PolicyService policyService;
     private final CedarPolicyEngine cedarEngine;
+    private final CustomAttributeService customAttributeService;
 
     @Value("${ws.gateway.pdp.anthropic-api-key:}")
     private String anthropicApiKey;
@@ -69,12 +71,14 @@ public class PolicyLlmService {
                              AgentRegistryService agentRegistryService,
                              CapabilityRegistryService capabilityRegistryService,
                              PolicyService policyService,
-                             CedarPolicyEngine cedarEngine) {
+                             CedarPolicyEngine cedarEngine,
+                             CustomAttributeService customAttributeService) {
         this.objectMapper = objectMapper;
         this.agentRegistryService = agentRegistryService;
         this.capabilityRegistryService = capabilityRegistryService;
         this.policyService = policyService;
         this.cedarEngine = cedarEngine;
+        this.customAttributeService = customAttributeService;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
@@ -459,6 +463,27 @@ public class PolicyLlmService {
         } catch (Exception e) {
             sb.append("### Existing Policies\nUnable to fetch policy data.\n\n");
             log.debug("🤖 Could not fetch policies for LLM metadata: {}", e.getMessage());
+        }
+
+        // ── Custom Attributes (admin-registered for ABAC) ──
+        try {
+            List<GatewayCustomAttributeEntity> customAttrs = customAttributeService.getEnabledAttributes();
+            if (customAttrs != null && !customAttrs.isEmpty()) {
+                sb.append("### Custom Attributes (admin-registered, available as context.<name>)\n");
+                sb.append("| Attribute Name | Data Type | Value Source | Source Key | Default |\n");
+                sb.append("|----------------|-----------|-------------|------------|--------|\n");
+                for (GatewayCustomAttributeEntity attr : customAttrs) {
+                    sb.append("| `").append(attr.getAttributeName()).append("` | ")
+                            .append(attr.getDataType()).append(" | ")
+                            .append(attr.getValueSource()).append(" | ")
+                            .append(attr.getSourceKey() != null ? attr.getSourceKey() : "-").append(" | ")
+                            .append(attr.getDefaultValue() != null ? attr.getDefaultValue() : "-").append(" |\n");
+                }
+                sb.append("\nUse these in policies as `context.").append(customAttrs.get(0).getAttributeName())
+                        .append("` with the appropriate operator for their data type.\n\n");
+            }
+        } catch (Exception e) {
+            log.debug("🤖 Could not fetch custom attributes for LLM metadata: {}", e.getMessage());
         }
 
         String metadata = sb.toString();

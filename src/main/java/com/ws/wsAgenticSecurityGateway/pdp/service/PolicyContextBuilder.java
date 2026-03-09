@@ -11,7 +11,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
-import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Context Fetcher — builds the structured {@link PolicyEvaluationRequest}
@@ -21,8 +20,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * <ul>
  *   <li>MCP SDK exchange (agent identity, session, transport context)</li>
  *   <li>Agent Registry DB (approval status, total requests, etc.)</li>
- *   <li>Capability Registry (tool/resource/prompt metadata)</li>
- *   <li>System environment (time, day of week, business hours)</li>
+ *   <li>Custom Attribute Registry (admin-registered DB-driven attributes)</li>
+ *   <li>HTTP headers (auto-captured for HEADER-sourced attributes)</li>
+ *   <li>Developer-provided {@link CustomAttributeProvider} beans</li>
  * </ul>
  */
 @Component
@@ -57,11 +57,14 @@ public class PolicyContextBuilder {
                                            Map<String, Object> arguments);
     }
 
+    private final CustomAttributeService customAttributeService;
     private final List<CustomAttributeProvider> attributeProviders;
 
     public PolicyContextBuilder(AgentRegistryService agentRegistryService,
+                                 CustomAttributeService customAttributeService,
                                  List<CustomAttributeProvider> attributeProviders) {
         this.agentRegistryService = agentRegistryService;
+        this.customAttributeService = customAttributeService;
         this.attributeProviders = attributeProviders != null
                 ? attributeProviders : Collections.emptyList();
         if (!this.attributeProviders.isEmpty()) {
@@ -168,22 +171,40 @@ public class PolicyContextBuilder {
             log.debug("Could not fetch agent approval status: {}", e.getMessage());
         }
 
-        // ── Source IP from transport context ──────────────────────────
+        // ── Transport context extraction ─────────────────────────────
+        // Extract known keys + full HTTP headers for attribute resolution
+        Map<String, Object> transportContext = new HashMap<>();
+        Map<String, String> httpHeaders = Collections.emptyMap();
         String sourceIp = null;
         try {
             if (exchange != null) {
                 Object ip = exchange.transportContext().get("clientIp");
                 if (ip != null) {
                     sourceIp = String.valueOf(ip);
+                    transportContext.put("clientIp", sourceIp);
+                }
+                // Extract other known transport context keys
+                Object tcAgentName = exchange.transportContext().get("agentName");
+                if (tcAgentName != null) transportContext.put("agentName", tcAgentName);
+                Object tcCorrelation = exchange.transportContext().get("correlationId");
+                if (tcCorrelation != null) transportContext.put("correlationId", tcCorrelation);
+
+                // Extract full HTTP headers map (captured by McpGatewayContextExtractor)
+                Object headersObj = exchange.transportContext().get("_httpHeaders");
+                if (headersObj instanceof Map<?, ?> rawMap) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, String> castHeaders = (Map<String, String>) rawMap;
+                    httpHeaders = castHeaders;
                 }
             }
         } catch (Exception e) {
-            log.debug("Could not extract source IP from transport context: {}", e.getMessage());
+            log.debug("Could not extract transport context: {}", e.getMessage());
         }
 
-        // ── Custom attributes from providers ──────────────────────────
-        Map<String, Object> customAttrs = collectCustomAttributes(
-                agentName, action, publicName, serverName, arguments);
+        // ── Resolve custom attributes (3-layer merge) ────────────────
+        Map<String, Object> customAttrs = resolveAllCustomAttributes(
+                httpHeaders, transportContext, agentName, action,
+                publicName, serverName, arguments);
 
         // ── Build request ─────────────────────────────────────────────
         return PolicyEvaluationRequest.builder()
@@ -201,6 +222,45 @@ public class PolicyContextBuilder {
                 .sourceIp(sourceIp)
                 .customAttributes(customAttrs.isEmpty() ? null : customAttrs)
                 .build();
+    }
+
+    /**
+     * Resolve all custom attributes from 3 layers (in priority order):
+     * <ol>
+     *   <li><b>DB-registered attributes</b> (Approach A) — admin-defined, resolved from
+     *       STATIC/HEADER/AGENT_FIELD sources via {@link CustomAttributeService}</li>
+     *   <li><b>Developer providers</b> — Spring beans implementing {@link CustomAttributeProvider}</li>
+     * </ol>
+     * Higher priority layers override lower ones for the same attribute name.
+     */
+    private Map<String, Object> resolveAllCustomAttributes(
+            Map<String, String> httpHeaders,
+            Map<String, Object> transportContext,
+            String agentName, String action,
+            String resourceName, String serverName,
+            Map<String, Object> arguments) {
+
+        Map<String, Object> merged = new HashMap<>();
+
+        // Layer 1: DB-registered custom attributes (Approach A)
+        try {
+            Map<String, Object> registeredAttrs = customAttributeService.resolveAttributes(
+                    httpHeaders, transportContext, agentName);
+            if (!registeredAttrs.isEmpty()) {
+                merged.putAll(registeredAttrs);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to resolve DB-registered custom attributes: {}", e.getMessage());
+        }
+
+        // Layer 2: Developer CustomAttributeProvider beans (overrides layer 1)
+        Map<String, Object> providerAttrs = collectCustomAttributes(
+                agentName, action, resourceName, serverName, arguments);
+        if (!providerAttrs.isEmpty()) {
+            merged.putAll(providerAttrs);
+        }
+
+        return merged;
     }
 
     /**
