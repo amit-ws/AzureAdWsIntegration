@@ -70,12 +70,12 @@ public class PolicyEvaluationResult {
         return deny(matchedPolicies, reason, durationMs);
     }
 
-    /** Convenience factory for when no policies are loaded (allow by default). */
+    /** Convenience factory for when no policies are loaded — default deny. */
     public static PolicyEvaluationResult noPolicies(long durationMs) {
         return PolicyEvaluationResult.builder()
-                .decision("ALLOW")
+                .decision("DENY")
                 .matchedPolicies(Set.of())
-                .reason("No policies configured — default allow")
+                .reason("No policies configured — default deny (add a permit policy to allow access)")
                 .evaluationDurationMs(durationMs)
                 .build();
     }

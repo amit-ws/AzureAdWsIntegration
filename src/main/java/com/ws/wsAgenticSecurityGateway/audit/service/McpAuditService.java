@@ -926,6 +926,197 @@ public class McpAuditService {
         }
 
         // ════════════════════════════════════════════════════════════════════
+        // AREA 5b — PDP Policy Management (admin CRUD → mcp_audit_log)
+        // ════════════════════════════════════════════════════════════════════
+
+        @Async("mcpAuditExecutor")
+        public void auditPdpPolicyCreated(String policyName, String effect, String source) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.PDP_POLICY_CREATED)
+                                .module(AuditModule.PDP)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .capabilityName(policyName)
+                                .capabilityType(effect)
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(Map.of(
+                                                "policyName", policyName != null ? policyName : "",
+                                                "effect", effect != null ? effect : "",
+                                                "source", source != null ? source : "MANUAL")))
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditPdpPolicyUpdated(String policyName, String changedFields) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.PDP_POLICY_UPDATED)
+                                .module(AuditModule.PDP)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .capabilityName(policyName)
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(Map.of(
+                                                "policyName", policyName != null ? policyName : "",
+                                                "changedFields", changedFields != null ? changedFields : "")))
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditPdpPolicyDeleted(String policyName) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.PDP_POLICY_DELETED)
+                                .module(AuditModule.PDP)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.WARN)
+                                .capabilityName(policyName)
+                                .correlationId(generateCorrelationId())
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditPdpPolicyToggled(String policyName, boolean enabled) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.PDP_POLICY_TOGGLED)
+                                .module(AuditModule.PDP)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .capabilityName(policyName)
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(Map.of(
+                                                "policyName", policyName != null ? policyName : "",
+                                                "enabled", enabled)))
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditPdpPolicyValidated(String cedarText, boolean valid, String error) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.PDP_POLICY_VALIDATED)
+                                .module(AuditModule.PDP)
+                                .status(valid ? AuditStatus.SUCCESS : AuditStatus.FAILURE)
+                                .severity(AuditSeverity.INFO)
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(Map.of("policyText",
+                                                cedarText != null && cedarText.length() > 500
+                                                                ? cedarText.substring(0, 500) + "...[truncated]"
+                                                                : (cedarText != null ? cedarText : ""))))
+                                .errorMessage(error)
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditPdpEngineReloaded(int policyCount) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.PDP_ENGINE_RELOADED)
+                                .module(AuditModule.PDP)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(Map.of("policyCount", policyCount)))
+                                .build());
+        }
+
+        // ════════════════════════════════════════════════════════════════════
+        // AREA 5c — PDP LLM Chat (admin policy generation → mcp_audit_log)
+        // ════════════════════════════════════════════════════════════════════
+
+        @Async("mcpAuditExecutor")
+        public void auditPdpLlmChatRequested(String prompt, int messageCount) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.PDP_LLM_CHAT_REQUESTED)
+                                .module(AuditModule.PDP)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(Map.of(
+                                                "prompt", prompt != null && prompt.length() > 500
+                                                                ? prompt.substring(0, 500) + "...[truncated]"
+                                                                : (prompt != null ? prompt : ""),
+                                                "messageCount", messageCount)))
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditPdpLlmChatCompleted(String prompt, String responseText,
+                        long durationMs, boolean success) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.PDP_LLM_CHAT_COMPLETED)
+                                .module(AuditModule.PDP)
+                                .status(success ? AuditStatus.SUCCESS : AuditStatus.FAILURE)
+                                .severity(success ? AuditSeverity.INFO : AuditSeverity.WARN)
+                                .correlationId(generateCorrelationId())
+                                .durationMs(durationMs)
+                                .requestPayload(toJson(Map.of("prompt",
+                                                prompt != null && prompt.length() > 500
+                                                                ? prompt.substring(0, 500) + "...[truncated]"
+                                                                : (prompt != null ? prompt : ""))))
+                                .responsePayload(toJson(Map.of("response",
+                                                responseText != null && responseText.length() > 500
+                                                                ? responseText.substring(0, 500) + "...[truncated]"
+                                                                : (responseText != null ? responseText : ""))))
+                                .build());
+        }
+
+        // ════════════════════════════════════════════════════════════════════
+        // AREA 5d — PDP Custom Attributes (admin CRUD → mcp_audit_log)
+        // ════════════════════════════════════════════════════════════════════
+
+        @Async("mcpAuditExecutor")
+        public void auditPdpCustomAttrCreated(String attrName, String valueSource, String dataType) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.PDP_CUSTOM_ATTR_CREATED)
+                                .module(AuditModule.PDP)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .capabilityName(attrName)
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(Map.of(
+                                                "attributeName", attrName != null ? attrName : "",
+                                                "valueSource", valueSource != null ? valueSource : "",
+                                                "dataType", dataType != null ? dataType : "")))
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditPdpCustomAttrUpdated(String attrName) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.PDP_CUSTOM_ATTR_UPDATED)
+                                .module(AuditModule.PDP)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .capabilityName(attrName)
+                                .correlationId(generateCorrelationId())
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditPdpCustomAttrDeleted(String attrName) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.PDP_CUSTOM_ATTR_DELETED)
+                                .module(AuditModule.PDP)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.WARN)
+                                .capabilityName(attrName)
+                                .correlationId(generateCorrelationId())
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditPdpCustomAttrToggled(String attrName, boolean enabled) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.PDP_CUSTOM_ATTR_TOGGLED)
+                                .module(AuditModule.PDP)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .capabilityName(attrName)
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(Map.of(
+                                                "attributeName", attrName != null ? attrName : "",
+                                                "enabled", enabled)))
+                                .build());
+        }
+
+        // ════════════════════════════════════════════════════════════════════
         // AREA 6 — Server Configuration Management
         // ════════════════════════════════════════════════════════════════════
 

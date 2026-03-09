@@ -80,6 +80,8 @@ public interface McpAuditLogRepository
 
     long countByTimestampAfter(LocalDateTime since);
 
+    long countByModuleAndTimestampAfter(AuditModule module, LocalDateTime since);
+
     long countByStatusAndTimestampAfter(AuditStatus status, LocalDateTime since);
 
     // ── Health dashboard queries ────────────────────────────────────────

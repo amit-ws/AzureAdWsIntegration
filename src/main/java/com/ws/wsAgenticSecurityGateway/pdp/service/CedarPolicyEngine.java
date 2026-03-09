@@ -273,7 +273,7 @@ public class CedarPolicyEngine {
             try {
                 currentPolicies = Collections.emptyList();
                 policiesLoaded = false;
-                log.info("🏛️  Cedar: No policies to load — all requests will be ALLOWED (no-policy mode)");
+                log.info("🏛️  Cedar: No policies to load — all requests will be DENIED (default-deny, no permits)");
                 return 0;
             } finally {
                 policyLock.writeLock().unlock();
@@ -286,8 +286,13 @@ public class CedarPolicyEngine {
                 ParsedPolicy pp = parsePolicy(entity.getPolicyText(), entity.getPolicyName());
                 if (pp != null) {
                     parsed.add(pp);
+                    log.info("🏛️  Cedar PARSED: name='{}', id='{}', effect={}, principalType={}, principalId='{}', actionId='{}', resourceType={}, resourceId='{}', whenConds={}, unlessConds={}",
+                            pp.name, pp.id, pp.effect, pp.principalType, pp.principalEntityId,
+                            pp.actionId, pp.resourceType, pp.resourceEntityId,
+                            pp.whenConditions.size(), pp.unlessConditions.size());
                 } else {
-                    log.warn("🏛️  Cedar: Skipped unparseable policy: {}", entity.getPolicyName());
+                    log.warn("🏛️  Cedar: Skipped unparseable policy: {} | text='{}'",
+                            entity.getPolicyName(), entity.getPolicyText());
                 }
             }
 
@@ -359,8 +364,10 @@ public class CedarPolicyEngine {
     public PolicyEvaluationResult evaluate(PolicyEvaluationRequest request) {
         long startTime = System.currentTimeMillis();
 
-        // ── No-policy mode: allow everything ──────────────────────────
+        // ── No-policy mode: deny everything (no permits exist) ─────────
         if (!policiesLoaded || currentPolicies.isEmpty()) {
+            log.info("🏛️  Cedar: agent={}, action={}, resource={} → DENY (no policies configured)",
+                    request.getAgentName(), request.getAction(), request.getResourceName());
             long duration = System.currentTimeMillis() - startTime;
             return PolicyEvaluationResult.noPolicies(duration);
         }
@@ -370,11 +377,23 @@ public class CedarPolicyEngine {
             // Build evaluation context from request
             EvalContext ctx = buildEvalContext(request);
 
+            log.info("🏛️  Cedar EVAL: principalType='{}', principalId='{}', action='{}', resourceType='{}', resourceId='{}', policiesCount={}",
+                    ctx.principalType, ctx.principalId, ctx.action, ctx.resourceType, ctx.resourceId, currentPolicies.size());
+
             // Track matching policies
             Set<String> matchedPermitPolicies = new LinkedHashSet<>();
             Set<String> matchedForbidPolicies = new LinkedHashSet<>();
 
             for (ParsedPolicy policy : currentPolicies) {
+                log.info("🏛️  Cedar MATCH CHECK: policy='{}' effect={} | principal: policy='{}' vs ctx='{}' ({}), action: policy='{}' vs ctx='{}' ({}), resource: policy='{}'/'{}'  vs ctx='{}'/'{}'  ({})",
+                        policy.id != null ? policy.id : policy.name, policy.effect,
+                        policy.principalEntityId, ctx.principalId,
+                        java.util.Objects.equals(policy.principalEntityId, ctx.principalId) || policy.principalEntityId == null,
+                        policy.actionId, ctx.action,
+                        java.util.Objects.equals(policy.actionId, ctx.action) || policy.actionId == null,
+                        policy.resourceType, policy.resourceEntityId, ctx.resourceType, ctx.resourceId,
+                        (java.util.Objects.equals(policy.resourceType, ctx.resourceType) || policy.resourceType == null)
+                                && (java.util.Objects.equals(policy.resourceEntityId, ctx.resourceId) || policy.resourceEntityId == null));
                 if (matches(policy, ctx)) {
                     String policyRef = policy.id != null ? policy.id : policy.name;
 
@@ -403,9 +422,37 @@ public class CedarPolicyEngine {
             }
 
             // 3. No matches → default DENY
+            // ── Diagnostic: detect forbid-unless anti-pattern ──────────
+            String diagnostic = null;
+            for (ParsedPolicy policy : currentPolicies) {
+                if ("forbid".equals(policy.effect)
+                        && !policy.unlessConditions.isEmpty()
+                        && matchesIgnoringUnless(policy, ctx)) {
+                    String policyRef = policy.id != null ? policy.id : policy.name;
+                    diagnostic = String.format(
+                            "Policy '%s' is a forbid-with-unless that exempted this request, "
+                                    + "but no permit policy exists to actually allow it. The unless clause "
+                                    + "only removes a forbid — it does not grant access. Consider adding a "
+                                    + "permit for the allowed resource instead.",
+                            policyRef);
+                    log.warn("🏛️  Cedar DIAGNOSTIC: {}", diagnostic);
+                    break;
+                }
+            }
+
             log.info("🏛️  Cedar: agent={}, action={}, resource={} → DENY ({}ms, no matching policy)",
                     request.getAgentName(), request.getAction(),
                     request.getResourceName(), duration);
+
+            if (diagnostic != null) {
+                return PolicyEvaluationResult.builder()
+                        .decision("DENY")
+                        .matchedPolicies(Set.of())
+                        .reason("No matching permit policy (default deny)")
+                        .evaluationDurationMs(duration)
+                        .diagnostics(diagnostic)
+                        .build();
+            }
             return PolicyEvaluationResult.deny(Set.of(), duration);
 
         } catch (Exception e) {
@@ -703,8 +750,14 @@ public class CedarPolicyEngine {
      */
     private int findMatchingParen(String s, int pos) {
         int depth = 0;
+        boolean inQuote = false;
         for (int i = pos; i < s.length(); i++) {
             char c = s.charAt(i);
+            if (c == '"' && (i == 0 || s.charAt(i - 1) != '\\')) {
+                inQuote = !inQuote;
+                continue;
+            }
+            if (inQuote) continue;
             if (c == '(') depth++;
             if (c == ')') {
                 depth--;
@@ -826,7 +879,7 @@ public class CedarPolicyEngine {
      */
     private boolean matches(ParsedPolicy policy, EvalContext ctx) {
         // ── Head clause: principal ───────────────────────────────────
-        if (policy.principalType != null && !policy.principalType.equals(ctx.principalType)) {
+        if (policy.principalType != null && !policy.principalType.equalsIgnoreCase(ctx.principalType)) {
             return false;
         }
         if (policy.principalEntityId != null && !policy.principalEntityId.equals(ctx.principalId)) {
@@ -834,15 +887,16 @@ public class CedarPolicyEngine {
         }
 
         // ── Head clause: action ─────────────────────────────────────
-        if (policy.actionId != null && !policy.actionId.equals(ctx.action)) {
+        if (policy.actionId != null && !policy.actionId.equalsIgnoreCase(ctx.action)) {
             return false;
         }
-        if (policy.actionIds != null && !policy.actionIds.isEmpty() && !policy.actionIds.contains(ctx.action)) {
+        if (policy.actionIds != null && !policy.actionIds.isEmpty()
+                && policy.actionIds.stream().noneMatch(a -> a.equalsIgnoreCase(ctx.action))) {
             return false;
         }
 
         // ── Head clause: resource ───────────────────────────────────
-        if (policy.resourceType != null && !policy.resourceType.equals(ctx.resourceType)) {
+        if (policy.resourceType != null && !policy.resourceType.equalsIgnoreCase(ctx.resourceType)) {
             return false;
         }
         if (policy.resourceEntityId != null && !policy.resourceEntityId.equals(ctx.resourceId)) {
@@ -864,6 +918,46 @@ public class CedarPolicyEngine {
         }
 
         return true;
+    }
+
+    /**
+     * Check if a policy's head clause and when-conditions match, ignoring unless conditions.
+     * Used for diagnostics to detect the "forbid-unless without permit" anti-pattern.
+     */
+    private boolean matchesIgnoringUnless(ParsedPolicy policy, EvalContext ctx) {
+        if (policy.principalType != null && !policy.principalType.equalsIgnoreCase(ctx.principalType)) return false;
+        if (policy.principalEntityId != null && !policy.principalEntityId.equals(ctx.principalId)) return false;
+        if (policy.actionId != null && !policy.actionId.equalsIgnoreCase(ctx.action)) return false;
+        if (policy.actionIds != null && !policy.actionIds.isEmpty()
+                && policy.actionIds.stream().noneMatch(a -> a.equalsIgnoreCase(ctx.action))) return false;
+        if (policy.resourceType != null && !policy.resourceType.equalsIgnoreCase(ctx.resourceType)) return false;
+        if (policy.resourceEntityId != null && !policy.resourceEntityId.equals(ctx.resourceId)) return false;
+        for (Condition cond : policy.whenConditions) {
+            if (!evaluateCondition(cond, ctx)) return false;
+        }
+        // Deliberately skip unless conditions
+        return true;
+    }
+
+    /**
+     * Check for semantic warnings in a policy (valid syntax but likely incorrect intent).
+     * Returns null if no warnings, or a warning message.
+     */
+    public String getSemanticWarnings(String policyText) {
+        if (policyText == null || policyText.isBlank()) return null;
+
+        ParsedPolicy pp = parsePolicy(policyText, "semantic-check");
+        if (pp == null) return null;
+
+        if ("forbid".equals(pp.effect) && !pp.unlessConditions.isEmpty()) {
+            return "This is a forbid-with-unless policy. The 'unless' clause only exempts "
+                    + "requests from being forbidden — it does NOT grant access. In the gateway's "
+                    + "default-deny system, exempted requests with no matching permit policy will "
+                    + "still be DENIED. If your intent is to allow only specific resources, use a "
+                    + "'permit' policy instead.";
+        }
+
+        return null;
     }
 
     /**

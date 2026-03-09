@@ -56,6 +56,24 @@ public enum AuditEventType {
     PDP_EVALUATION_REQUESTED,
     PDP_DECISION_RENDERED,
 
+    // ── Area 5b — PDP Policy Management ─────────────────────────────
+    PDP_POLICY_CREATED,
+    PDP_POLICY_UPDATED,
+    PDP_POLICY_DELETED,
+    PDP_POLICY_TOGGLED,
+    PDP_POLICY_VALIDATED,
+    PDP_ENGINE_RELOADED,
+
+    // ── Area 5c — PDP LLM Chat ──────────────────────────────────────
+    PDP_LLM_CHAT_REQUESTED,
+    PDP_LLM_CHAT_COMPLETED,
+
+    // ── Area 5d — PDP Custom Attributes ─────────────────────────────
+    PDP_CUSTOM_ATTR_CREATED,
+    PDP_CUSTOM_ATTR_UPDATED,
+    PDP_CUSTOM_ATTR_DELETED,
+    PDP_CUSTOM_ATTR_TOGGLED,
+
     // ── Area 6 — Server Configuration Management ─────────────────────
     SERVER_CONFIG_CREATED,
     SERVER_CONFIG_UPDATED,

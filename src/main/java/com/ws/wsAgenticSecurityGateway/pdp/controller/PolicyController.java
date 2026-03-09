@@ -1,5 +1,6 @@
 package com.ws.wsAgenticSecurityGateway.pdp.controller;
 
+import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyChatRequest;
 import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyChatResponse;
 import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyDto;
@@ -40,13 +41,16 @@ public class PolicyController {
     private final PolicyService policyService;
     private final PolicyLlmService llmService;
     private final CedarPolicyEngine cedarEngine;
+    private final McpAuditService auditService;
 
     public PolicyController(PolicyService policyService,
                             PolicyLlmService llmService,
-                            CedarPolicyEngine cedarEngine) {
+                            CedarPolicyEngine cedarEngine,
+                            McpAuditService auditService) {
         this.policyService = policyService;
         this.llmService = llmService;
         this.cedarEngine = cedarEngine;
+        this.auditService = auditService;
     }
 
     // ════════════════════════════════════════════════════════════════════
@@ -140,7 +144,9 @@ public class PolicyController {
             return ResponseEntity.badRequest().body(Map.of("valid", false, "error", "policyText is required"));
         }
         String error = cedarEngine.validatePolicy(policyText);
-        if (error == null) {
+        boolean valid = (error == null);
+        auditService.auditPdpPolicyValidated(policyText, valid, error);
+        if (valid) {
             return ResponseEntity.ok(Map.of("valid", true));
         }
         return ResponseEntity.ok(Map.of("valid", false, "error", error));

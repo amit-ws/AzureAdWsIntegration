@@ -6,6 +6,7 @@ import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
+import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyChatRequest;
 import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyChatResponse;
 import com.ws.wsAgenticSecurityGateway.pdp.entity.GatewayCustomAttributeEntity;
@@ -35,7 +36,7 @@ import java.util.stream.Collectors;
  *   <li><b>Structured schema</b> — operators, sources, grammar shared with LLM</li>
  *   <li><b>Multi-turn conversation</b> — iterative refinement via conversation history</li>
  *   <li><b>Auto-validation</b> — validates generated Cedar before returning</li>
- *   <li><b>Template fallback</b> — works without API key (demo mode)</li>
+ *   <li><b>Audit logging</b> — every chat request/response tracked via McpAuditService</li>
  * </ul>
  */
 @Service
@@ -54,6 +55,7 @@ public class PolicyLlmService {
     private final PolicyService policyService;
     private final CedarPolicyEngine cedarEngine;
     private final CustomAttributeService customAttributeService;
+    private final McpAuditService auditService;
 
     @Value("${ws.gateway.pdp.anthropic-api-key:}")
     private String anthropicApiKey;
@@ -72,13 +74,15 @@ public class PolicyLlmService {
                              CapabilityRegistryService capabilityRegistryService,
                              PolicyService policyService,
                              CedarPolicyEngine cedarEngine,
-                             CustomAttributeService customAttributeService) {
+                             CustomAttributeService customAttributeService,
+                             McpAuditService auditService) {
         this.objectMapper = objectMapper;
         this.agentRegistryService = agentRegistryService;
         this.capabilityRegistryService = capabilityRegistryService;
         this.policyService = policyService;
         this.cedarEngine = cedarEngine;
         this.customAttributeService = customAttributeService;
+        this.auditService = auditService;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
@@ -108,17 +112,39 @@ public class PolicyLlmService {
             return PolicyChatResponse.error("Prompt cannot be empty");
         }
 
+        int messageCount = request.isMultiTurn() ? request.getMessages().size() : 1;
+        auditService.auditPdpLlmChatRequested(effectivePrompt, messageCount);
+
         if (!isLlmAvailable()) {
-            log.info("🤖 LLM not configured — using template fallback for: {}", effectivePrompt);
-            return generateFromTemplate(effectivePrompt);
+            log.warn("🤖 LLM not configured — cannot generate policy");
+            PolicyChatResponse errorResponse = PolicyChatResponse.error(
+                    "LLM policy generation is not configured. Set the Anthropic API key "
+                    + "in application.yml (ws.gateway.pdp.anthropic-api-key) to enable "
+                    + "AI-powered policy creation.");
+            auditService.auditPdpLlmChatCompleted(effectivePrompt, errorResponse.getError(), 0, false);
+            return errorResponse;
         }
 
+        long start = System.currentTimeMillis();
         try {
             log.info("🤖 Calling Anthropic API for policy generation: {}", effectivePrompt);
-            return callAnthropicApi(request);
+            PolicyChatResponse response = callAnthropicApi(request);
+            long durationMs = System.currentTimeMillis() - start;
+            String responseText = response.getPolicyText() != null
+                    ? response.getPolicyText()
+                    : response.getFollowUpQuestion();
+            log.info("🤖 Anthropic API completed in {}ms — conversationComplete={}, hasPolicy={}, hasFollowUp={}",
+                    durationMs, response.isConversationComplete(),
+                    response.getPolicyText() != null, response.getFollowUpQuestion() != null);
+            auditService.auditPdpLlmChatCompleted(effectivePrompt, responseText, durationMs, response.isSuccess());
+            return response;
         } catch (Exception e) {
-            log.error("🤖 Anthropic API call failed: {} — falling back to template", e.getMessage());
-            return generateFromTemplate(effectivePrompt);
+            long durationMs = System.currentTimeMillis() - start;
+            log.error("🤖 Anthropic API call failed: {}", e.getMessage(), e);
+            auditService.auditPdpLlmChatCompleted(effectivePrompt, e.getMessage(), durationMs, false);
+            return PolicyChatResponse.error(
+                    "LLM API call failed: " + e.getMessage()
+                    + ". Please try again or check the API key configuration.");
         }
     }
 
@@ -206,6 +232,12 @@ public class PolicyLlmService {
                     log.warn("🤖 LLM generated invalid Cedar: {}", validationError);
                 }
 
+                // Check for semantic warnings (valid syntax but likely incorrect intent)
+                String semanticWarning = cedarEngine.getSemanticWarnings(policyText);
+                if (semanticWarning != null) {
+                    log.warn("🤖 LLM generated Cedar with semantic warning: {}", semanticWarning);
+                }
+
                 return PolicyChatResponse.builder()
                         .success(true)
                         .policyText(policyText)
@@ -216,6 +248,7 @@ public class PolicyLlmService {
                         .source("LLM_GENERATED")
                         .conversationComplete(true)
                         .validationError(validationError)
+                        .semanticWarning(semanticWarning)
                         .build();
             }
 
@@ -266,8 +299,8 @@ public class PolicyLlmService {
                 ```
 
                 ### Effects
-                - `permit` — allow access
-                - `forbid` — deny access (overrides permit)
+                - `permit` — allow access (REQUIRED to grant access — without a matching permit, default-deny blocks the request)
+                - `forbid` — deny access (overrides permit — use to carve out exceptions from a broader permit)
 
                 ### Principal Constraints (pick one)
                 - `principal` — any principal (no constraint)
@@ -351,13 +384,71 @@ public class PolicyLlmService {
                 ## Rules
                 1. Every policy MUST have an @id annotation matching the POLICY_NAME
                 2. ONLY use syntax listed in the Engine Schema above — do NOT invent new operators or constructs
-                3. Cedar is default-deny — if no permit matches, the request is denied
-                4. `forbid` always overrides `permit`
-                5. Use `when` for positive conditions and `unless` for exceptions
+                3. **DEFAULT-DENY**: If no `permit` policy matches a request, it is DENIED. To ALLOW something, you MUST write a `permit` policy. A `forbid-unless` does NOT grant access — it only exempts from denial.
+                4. `forbid` always overrides `permit` (explicit deny wins)
+                5. Use `when` for positive conditions and `unless` for exceptions within a single policy
                 6. Keep policies focused — one concern per policy
                 7. Use exact entity names from the Live System Metadata section below when available
                 8. If the admin's request is ambiguous, ask a follow-up question instead of guessing
                 9. Always validate that referenced agents, servers, and tools exist in the live metadata
+                10. **CRITICAL — NEVER use `forbid-unless` as the sole policy to grant access.** The `unless` clause only exempts a request from being forbidden — it does NOT create a permit. In a default-deny system, an exempted request with no matching permit is still DENIED.
+                11. When the admin says "only allow X" or "restrict to X", always use a `permit` for X. Do NOT write `forbid everything unless X`. Default-deny already blocks everything else.
+
+                ## Pattern Catalog (use these — do NOT invent alternatives)
+
+                ### "Only allow specific tools for an agent"
+                Admin: "Restrict claude-ai to only use Github_get_me"
+                CORRECT — use permit:
+                ```cedar
+                @id("claude-get-me-only")
+                permit(
+                    principal == Agent::"claude-ai",
+                    action == Action::"toolCall",
+                    resource == Tool::"Github_get_me"
+                );
+                ```
+                Why: `permit` grants access. Default-deny blocks all other tools automatically.
+
+                WRONG — do NOT use forbid-unless:
+                ```cedar
+                forbid(principal == Agent::"claude-ai", action == Action::"toolCall", resource is Tool)
+                unless { resource == Tool::"Github_get_me" };
+                ```
+                Why wrong: The `unless` exempts Github_get_me from the forbid, but no `permit` exists, so default-deny still blocks it.
+
+                ### "Allow everything except specific tools"
+                Admin: "Allow agent data-bot all tools except Github_delete_file"
+                CORRECT — permit broad + forbid specific:
+                ```cedar
+                @id("data-bot-allow-tools")
+                permit(
+                    principal == Agent::"data-bot",
+                    action == Action::"toolCall",
+                    resource is Tool
+                );
+
+                @id("data-bot-block-delete")
+                forbid(
+                    principal == Agent::"data-bot",
+                    action == Action::"toolCall",
+                    resource == Tool::"Github_delete_file"
+                );
+                ```
+
+                ### "Business hours only"
+                Admin: "Only allow tool calls during business hours"
+                CORRECT — permit with when:
+                ```cedar
+                @id("business-hours-only")
+                permit(
+                    principal is Agent,
+                    action == Action::"toolCall",
+                    resource is Tool
+                )
+                when {
+                    context.businessHours == true
+                };
+                ```
                 """;
     }
 
@@ -492,278 +583,6 @@ public class PolicyLlmService {
     }
 
     // ════════════════════════════════════════════════════════════════════
-    //  TEMPLATE FALLBACK (when no API key)
-    // ════════════════════════════════════════════════════════════════════
-
-    /**
-     * Generate a Cedar policy from pattern matching on the prompt.
-     * This is the demo/fallback mode when no Anthropic API key is configured.
-     * Auto-validates generated Cedar before returning.
-     */
-    private PolicyChatResponse generateFromTemplate(String prompt) {
-        String lower = prompt.toLowerCase();
-
-        PolicyChatResponse response = matchTemplate(lower, prompt);
-
-        // Auto-validate template output
-        if (response.isSuccess() && response.getPolicyText() != null) {
-            String validationError = cedarEngine.validatePolicy(response.getPolicyText());
-            if (validationError != null) {
-                response.setValidationError(validationError);
-                log.warn("🤖 Template generated invalid Cedar: {}", validationError);
-            }
-            response.setConversationComplete(true);
-        }
-
-        return response;
-    }
-
-    private PolicyChatResponse matchTemplate(String lower, String prompt) {
-        // ── Pattern: "block/deny/forbid" + target ────────────────────
-        if (containsAny(lower, "block", "deny", "forbid", "prevent", "restrict")) {
-
-            if (containsAny(lower, "server", "production", "prod")) {
-                String serverName = extractQuotedOrLastWord(prompt, "server");
-                return buildTemplateResponse(
-                        "block-server-" + slugify(serverName),
-                        "Block all tool calls to server '" + serverName + "'",
-                        "FORBID",
-                        String.format("""
-                                @id("block-server-%s")
-                                forbid(
-                                    principal is Agent,
-                                    action == Action::"toolCall",
-                                    resource is Tool
-                                )
-                                when {
-                                    resource in Server::"%s"
-                                };""", slugify(serverName), serverName),
-                        "This policy blocks all agents from calling any tool on the '" + serverName + "' server.",
-                        prompt
-                );
-            }
-
-            if (containsAny(lower, "agent")) {
-                String agentName = extractQuotedOrLastWord(prompt, "agent");
-                return buildTemplateResponse(
-                        "block-agent-" + slugify(agentName),
-                        "Block agent '" + agentName + "' from all operations",
-                        "FORBID",
-                        String.format("""
-                                @id("block-agent-%s")
-                                forbid(
-                                    principal == Agent::"%s",
-                                    action,
-                                    resource
-                                );""", slugify(agentName), agentName),
-                        "This policy blocks agent '" + agentName + "' from performing any action.",
-                        prompt
-                );
-            }
-
-            if (containsAny(lower, "business hour", "after hour", "outside hour", "night", "weekend")) {
-                return buildTemplateResponse(
-                        "business-hours-only",
-                        "Deny tool calls outside business hours",
-                        "FORBID",
-                        """
-                                @id("business-hours-only")
-                                forbid(
-                                    principal is Agent,
-                                    action == Action::"toolCall",
-                                    resource is Tool
-                                )
-                                unless {
-                                    context.businessHours == true
-                                };""",
-                        "This policy blocks all tool calls outside Mon-Fri 8am-6pm.",
-                        prompt
-                );
-            }
-
-            if (containsAny(lower, "tool")) {
-                String toolName = extractQuotedOrLastWord(prompt, "tool");
-                return buildTemplateResponse(
-                        "block-tool-" + slugify(toolName),
-                        "Block specific tool '" + toolName + "'",
-                        "FORBID",
-                        String.format("""
-                                @id("block-tool-%s")
-                                forbid(
-                                    principal is Agent,
-                                    action == Action::"toolCall",
-                                    resource == Tool::"%s"
-                                );""", slugify(toolName), toolName),
-                        "This policy blocks all agents from calling the '" + toolName + "' tool.",
-                        prompt
-                );
-            }
-
-            if (containsAny(lower, "argument", "args", "parameter", "delete", "drop")) {
-                String pattern = extractQuotedOrLastWord(prompt, "containing");
-                return buildTemplateResponse(
-                        "block-args-" + slugify(pattern),
-                        "Block tool calls with arguments containing '" + pattern + "'",
-                        "FORBID",
-                        String.format("""
-                                @id("block-args-%s")
-                                forbid(
-                                    principal is Agent,
-                                    action == Action::"toolCall",
-                                    resource is Tool
-                                )
-                                when {
-                                    context.argumentsFlat like "*%s*"
-                                };""", slugify(pattern), pattern),
-                        "This policy blocks any tool call whose arguments contain '" + pattern + "'.",
-                        prompt
-                );
-            }
-        }
-
-        // ── Pattern: "allow/permit" + condition ──────────────────────
-        if (containsAny(lower, "allow", "permit", "enable", "grant")) {
-
-            if (containsAny(lower, "approved")) {
-                if (containsAny(lower, "server") || containsAny(lower, "github", "slack", "jira")) {
-                    String serverName = extractQuotedOrLastWord(prompt, "server");
-                    return buildTemplateResponse(
-                            "approved-agents-" + slugify(serverName) + "-access",
-                            "Allow approved agents to call tools on '" + serverName + "' server",
-                            "PERMIT",
-                            String.format("""
-                                    @id("approved-agents-%s-access")
-                                    permit(
-                                        principal is Agent,
-                                        action == Action::"toolCall",
-                                        resource is Tool
-                                    )
-                                    when {
-                                        principal in AgentGroup::"APPROVED" &&
-                                        resource in Server::"%s"
-                                    };""", slugify(serverName), serverName),
-                            "This policy allows APPROVED agents to call tools on '" + serverName + "' server only.",
-                            prompt
-                    );
-                }
-
-                return buildTemplateResponse(
-                        "approved-agents-tool-access",
-                        "Allow approved agents to call tools",
-                        "PERMIT",
-                        """
-                                @id("approved-agents-tool-access")
-                                permit(
-                                    principal is Agent,
-                                    action == Action::"toolCall",
-                                    resource is Tool
-                                )
-                                when {
-                                    principal in AgentGroup::"APPROVED"
-                                };""",
-                        "This policy allows only APPROVED agents to invoke tools.",
-                        prompt
-                );
-            }
-
-            if (containsAny(lower, "agent") && containsAny(lower, "tool")) {
-                String agentName = extractQuotedOrLastWord(prompt, "agent");
-                String toolName = extractQuotedOrLastWord(prompt, "tool");
-                return buildTemplateResponse(
-                        "allow-" + slugify(agentName) + "-" + slugify(toolName),
-                        "Allow '" + agentName + "' to call '" + toolName + "'",
-                        "PERMIT",
-                        String.format("""
-                                @id("allow-%s-%s")
-                                permit(
-                                    principal == Agent::"%s",
-                                    action == Action::"toolCall",
-                                    resource == Tool::"%s"
-                                );""", slugify(agentName), slugify(toolName), agentName, toolName),
-                        "This policy allows only agent '" + agentName + "' to call tool '" + toolName + "'.",
-                        prompt
-                );
-            }
-
-            if (containsAny(lower, "read", "discovery", "prompt", "resource")) {
-                return buildTemplateResponse(
-                        "allow-discovery-ops",
-                        "Allow all agents to get prompts and read resources",
-                        "PERMIT",
-                        """
-                                @id("allow-discovery-ops")
-                                permit(
-                                    principal is Agent,
-                                    action in [Action::"promptGet", Action::"resourceRead"],
-                                    resource
-                                );""",
-                        "This policy allows all agents to perform read-only discovery operations.",
-                        prompt
-                );
-            }
-
-            if (containsAny(lower, "hour", "time", "morning", "evening")) {
-                return buildTemplateResponse(
-                        "allow-business-hours",
-                        "Allow tool calls only during business hours (8am-6pm weekdays)",
-                        "PERMIT",
-                        """
-                                @id("allow-business-hours")
-                                permit(
-                                    principal is Agent,
-                                    action == Action::"toolCall",
-                                    resource is Tool
-                                )
-                                when {
-                                    principal in AgentGroup::"APPROVED" &&
-                                    context.hour >= 8 &&
-                                    context.hour < 18 &&
-                                    context.dayOfWeek != "SATURDAY" &&
-                                    context.dayOfWeek != "SUNDAY"
-                                };""",
-                        "This policy allows APPROVED agents to call tools only Mon-Fri between 8am and 6pm.",
-                        prompt
-                );
-            }
-        }
-
-        // ── Default: generic template ───────────────────────────────
-        return buildTemplateResponse(
-                "custom-policy",
-                prompt,
-                "PERMIT",
-                """
-                        @id("custom-policy")
-                        permit(
-                            principal is Agent,
-                            action == Action::"toolCall",
-                            resource is Tool
-                        )
-                        when {
-                            principal in AgentGroup::"APPROVED"
-                        };""",
-                "Generic policy template — please customize the Cedar code for your specific needs. " +
-                        "Configure an Anthropic API key for AI-powered policy generation from natural language.",
-                prompt
-        );
-    }
-
-    private PolicyChatResponse buildTemplateResponse(String name, String description,
-                                                      String effect, String policyText,
-                                                      String explanation, String originalPrompt) {
-        return PolicyChatResponse.builder()
-                .success(true)
-                .policyText(policyText)
-                .suggestedName(name)
-                .description(description)
-                .effect(effect)
-                .explanation(explanation)
-                .source("TEMPLATE")
-                .conversationComplete(true)
-                .build();
-    }
-
-    // ════════════════════════════════════════════════════════════════════
     //  PARSING HELPERS
     // ════════════════════════════════════════════════════════════════════
 
@@ -793,39 +612,10 @@ public class PolicyLlmService {
     }
 
     private String generatePolicyName(String prompt) {
-        return slugify(prompt.length() > 50 ? prompt.substring(0, 50) : prompt);
-    }
-
-    private String slugify(String input) {
-        if (input == null) return "unnamed";
-        return input.toLowerCase()
+        String base = prompt.length() > 50 ? prompt.substring(0, 50) : prompt;
+        if (base == null) return "unnamed";
+        return base.toLowerCase()
                 .replaceAll("[^a-z0-9]+", "-")
                 .replaceAll("^-|-$", "");
-    }
-
-    private boolean containsAny(String text, String... keywords) {
-        for (String keyword : keywords) {
-            if (text.contains(keyword)) return true;
-        }
-        return false;
-    }
-
-    private String extractQuotedOrLastWord(String prompt, String beforeKeyword) {
-        int quoteStart = prompt.indexOf("'");
-        if (quoteStart >= 0) {
-            int quoteEnd = prompt.indexOf("'", quoteStart + 1);
-            if (quoteEnd > quoteStart) {
-                return prompt.substring(quoteStart + 1, quoteEnd);
-            }
-        }
-        quoteStart = prompt.indexOf("\"");
-        if (quoteStart >= 0) {
-            int quoteEnd = prompt.indexOf("\"", quoteStart + 1);
-            if (quoteEnd > quoteStart) {
-                return prompt.substring(quoteStart + 1, quoteEnd);
-            }
-        }
-        String[] words = prompt.split("\\s+");
-        return words.length > 0 ? words[words.length - 1] : "unknown";
     }
 }

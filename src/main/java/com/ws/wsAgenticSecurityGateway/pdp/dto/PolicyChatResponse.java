@@ -59,6 +59,12 @@ public class PolicyChatResponse {
      */
     private String validationError;
 
+    /**
+     * Semantic warning — valid syntax but potentially incorrect intent.
+     * e.g., a forbid-unless pattern that won't grant access in default-deny.
+     */
+    private String semanticWarning;
+
     public static PolicyChatResponse error(String message) {
         return PolicyChatResponse.builder()
                 .success(false)

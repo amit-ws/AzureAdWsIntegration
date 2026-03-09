@@ -2,6 +2,7 @@ package com.ws.wsAgenticSecurityGateway.pdp.service;
 
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
+import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import com.ws.wsAgenticSecurityGateway.pdp.entity.GatewayCustomAttributeEntity;
 import com.ws.wsAgenticSecurityGateway.pdp.repository.GatewayCustomAttributeRepository;
 import lombok.extern.slf4j.Slf4j;
@@ -41,15 +42,18 @@ public class CustomAttributeService {
 
     private final GatewayCustomAttributeRepository repository;
     private final AgentRegistryService agentRegistryService;
+    private final McpAuditService auditService;
 
     // ── Cache ──────────────────────────────────────────────────────────────
     private volatile List<GatewayCustomAttributeEntity> cachedAttributes;
     private volatile long cacheTimestamp = 0;
 
     public CustomAttributeService(GatewayCustomAttributeRepository repository,
-                                   AgentRegistryService agentRegistryService) {
+                                   AgentRegistryService agentRegistryService,
+                                   McpAuditService auditService) {
         this.repository = repository;
         this.agentRegistryService = agentRegistryService;
+        this.auditService = auditService;
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -99,6 +103,8 @@ public class CustomAttributeService {
         invalidateCache();
         log.info("Created custom attribute: {} (source={}, type={})",
                 saved.getAttributeName(), saved.getValueSource(), saved.getDataType());
+        auditService.auditPdpCustomAttrCreated(saved.getAttributeName(),
+                saved.getValueSource(), saved.getDataType());
         return AttributeResult.success(saved);
     }
 
@@ -148,6 +154,7 @@ public class CustomAttributeService {
         GatewayCustomAttributeEntity saved = repository.save(attr);
         invalidateCache();
         log.info("Updated custom attribute: {}", saved.getAttributeName());
+        auditService.auditPdpCustomAttrUpdated(saved.getAttributeName());
         return AttributeResult.success(saved);
     }
 
@@ -156,12 +163,15 @@ public class CustomAttributeService {
      */
     @Transactional
     public boolean delete(UUID id) {
-        if (!repository.existsById(id)) {
+        Optional<GatewayCustomAttributeEntity> existing = repository.findById(id);
+        if (existing.isEmpty()) {
             return false;
         }
+        String attrName = existing.get().getAttributeName();
         repository.deleteById(id);
         invalidateCache();
-        log.info("Deleted custom attribute: {}", id);
+        log.info("Deleted custom attribute: {} ({})", attrName, id);
+        auditService.auditPdpCustomAttrDeleted(attrName);
         return true;
     }
 
@@ -176,6 +186,7 @@ public class CustomAttributeService {
             invalidateCache();
             log.info("Toggled custom attribute '{}' to enabled={}",
                     saved.getAttributeName(), saved.getEnabled());
+            auditService.auditPdpCustomAttrToggled(saved.getAttributeName(), saved.getEnabled());
             return saved;
         });
     }

@@ -1,10 +1,14 @@
 package com.ws.wsAgenticSecurityGateway.wsClient.controller;
 
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
+import com.ws.wsAgenticSecurityGateway.audit.constants.AuditModule;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditStatus;
 import com.ws.wsAgenticSecurityGateway.audit.repository.McpAuditLogRepository;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
 import com.ws.wsAgenticSecurityGateway.orchestration.InFlightRequestRegistry;
+import com.ws.wsAgenticSecurityGateway.pdp.service.CustomAttributeService;
+import com.ws.wsAgenticSecurityGateway.pdp.service.PolicyLlmService;
+import com.ws.wsAgenticSecurityGateway.pdp.service.PolicyService;
 import com.ws.wsAgenticSecurityGateway.wsClient.config.McpSession;
 import com.ws.wsAgenticSecurityGateway.wsClient.config.McpSessionManager;
 import lombok.extern.slf4j.Slf4j;
@@ -34,17 +38,26 @@ public class DashboardController {
     private final McpAuditLogRepository auditRepo;
     private final InFlightRequestRegistry inFlightRegistry;
     private final AgentRegistryService agentRegistryService;
+    private final PolicyService policyService;
+    private final CustomAttributeService customAttributeService;
+    private final PolicyLlmService policyLlmService;
 
     public DashboardController(McpSessionManager sessionManager,
                                CapabilityRegistryService registryService,
                                McpAuditLogRepository auditRepo,
                                InFlightRequestRegistry inFlightRegistry,
-                               AgentRegistryService agentRegistryService) {
+                               AgentRegistryService agentRegistryService,
+                               PolicyService policyService,
+                               CustomAttributeService customAttributeService,
+                               PolicyLlmService policyLlmService) {
         this.sessionManager = sessionManager;
         this.registryService = registryService;
         this.auditRepo = auditRepo;
         this.inFlightRegistry = inFlightRegistry;
         this.agentRegistryService = agentRegistryService;
+        this.policyService = policyService;
+        this.customAttributeService = customAttributeService;
+        this.policyLlmService = policyLlmService;
     }
 
     /**
@@ -254,5 +267,35 @@ public class DashboardController {
         health.put("inFlightCount", inFlightRegistry.getActiveCount());
 
         return ResponseEntity.ok(health);
+    }
+
+    /**
+     * GET /api/admin/dashboard/pdp
+     * PDP (Policy Decision Point) analytics for the admin dashboard.
+     *
+     * <p>Returns policy stats, custom attribute stats, LLM availability,
+     * and PDP-related audit event count for the last 24 hours.
+     */
+    @GetMapping("/pdp")
+    public ResponseEntity<Map<String, Object>> getPdpDashboard() {
+        log.info("📊 GET /api/admin/dashboard/pdp");
+
+        Map<String, Object> pdp = new LinkedHashMap<>();
+
+        // ── Policy stats ─────────────────────────────────────────────
+        pdp.put("policies", policyService.getStats());
+
+        // ── Custom attribute stats ───────────────────────────────────
+        pdp.put("customAttributes", customAttributeService.getStats());
+
+        // ── Activity & LLM availability ──────────────────────────────
+        Map<String, Object> activity = new LinkedHashMap<>();
+        LocalDateTime last24h = LocalDateTime.now().minusHours(24);
+        activity.put("pdpEventsLast24h",
+                auditRepo.countByModuleAndTimestampAfter(AuditModule.PDP, last24h));
+        activity.put("llmAvailable", policyLlmService.isLlmAvailable());
+        pdp.put("activity", activity);
+
+        return ResponseEntity.ok(pdp);
     }
 }
