@@ -961,6 +961,58 @@ public class CedarPolicyEngine {
     }
 
     /**
+     * Extract entity references from Cedar policy text for audit enrichment.
+     *
+     * <p>Parses the head clause and condition blocks to identify the agent,
+     * capability, action, and server referenced in the policy.
+     *
+     * @return map with keys: agentName, capabilityName, capabilityType, actionName, serverName
+     *         (values are null when not referenced)
+     */
+    public Map<String, String> extractPolicyReferences(String policyText) {
+        Map<String, String> refs = new LinkedHashMap<>();
+        if (policyText == null || policyText.isBlank()) return refs;
+
+        String clean = policyText.replaceAll("//[^\n]*", "").trim();
+
+        // Agent name from principal == Agent::"name"
+        Matcher m = PRINCIPAL_EQ.matcher(clean);
+        if (m.find()) {
+            refs.put("agentName", m.group(1));
+        }
+
+        // Capability from resource == Tool/Prompt/Resource::"name"
+        m = RESOURCE_EQ.matcher(clean);
+        if (m.find()) {
+            refs.put("capabilityType", m.group(1));
+            refs.put("capabilityName", m.group(2));
+        }
+
+        // Action from action == Action::"name"
+        m = ACTION_EQ.matcher(clean);
+        if (m.find()) {
+            refs.put("actionName", m.group(1));
+        }
+
+        // Server from resource in Server::"name"
+        m = RESOURCE_IN_SERVER.matcher(clean);
+        if (m.find()) {
+            refs.put("serverName", m.group(1));
+        }
+
+        // Fallback: infer server from capability namespace prefix (e.g. Github_get_me → Github)
+        if (!refs.containsKey("serverName") && refs.containsKey("capabilityName")) {
+            String cap = refs.get("capabilityName");
+            int sep = cap.indexOf('_');
+            if (sep > 0) {
+                refs.put("serverName", cap.substring(0, sep));
+            }
+        }
+
+        return refs;
+    }
+
+    /**
      * Evaluate a single condition against the evaluation context.
      *
      * <p>Structural operators (IN_GROUP, IN_SERVER, EQ_ENTITY) use specific

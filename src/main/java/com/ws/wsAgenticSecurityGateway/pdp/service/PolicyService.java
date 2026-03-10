@@ -115,8 +115,11 @@ public class PolicyService {
         reloadEngine();
 
         log.info("🏛️  Policy created: {} ({})", saved.getPolicyName(), saved.getEffect());
+        Map<String, String> refs = cedarEngine.extractPolicyReferences(saved.getPolicyText());
         auditService.auditPdpPolicyCreated(saved.getPolicyName(), saved.getEffect(),
-                saved.getSource() != null ? saved.getSource() : "MANUAL");
+                saved.getSource() != null ? saved.getSource() : "MANUAL",
+                saved.getDescription(), saved.getPolicyText(), saved.getCreatedBy(),
+                saved.getTags(), saved.getOriginalPrompt(), refs);
         return PolicyCreationResult.success(saved);
     }
 
@@ -153,7 +156,10 @@ public class PolicyService {
         reloadEngine();
 
         log.info("🏛️  Policy updated: {}", saved.getPolicyName());
-        auditService.auditPdpPolicyUpdated(saved.getPolicyName(), "updated via REST API");
+        Map<String, String> refs = cedarEngine.extractPolicyReferences(saved.getPolicyText());
+        auditService.auditPdpPolicyUpdated(saved.getPolicyName(), "updated via REST API",
+                saved.getDescription(), saved.getPolicyText(), saved.getEffect(),
+                saved.getTags(), refs);
         return PolicyCreationResult.success(saved);
     }
 

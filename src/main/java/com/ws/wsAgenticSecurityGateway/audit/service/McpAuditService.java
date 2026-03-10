@@ -16,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -881,8 +882,8 @@ public class McpAuditService {
 
         // ════════════════════════════════════════════════════════════════════
         // AREA 5 — PDP (Policy Decision Point)
-        // Persists to dedicated `pdp_audit_log` table.
-        // Linked to mcp_audit_log via correlation_id (logical join, not FK).
+        // Dual-write: pdp_audit_log (compliance retention) + mcp_audit_log (UI visibility).
+        // Both linked by correlation_id.
         // ════════════════════════════════════════════════════════════════════
 
         @Async("mcpAuditExecutor")
@@ -901,6 +902,18 @@ public class McpAuditService {
                                 .pdpAction(action)
                                 .pdpContext(toJson(context))
                                 .build());
+
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.PDP_EVALUATION_REQUESTED)
+                                .module(AuditModule.PDP)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .correlationId(correlationId)
+                                .agentName(subject)
+                                .capabilityName(resource)
+                                .mcpMethod(action)
+                                .requestPayload(toJson(context))
+                                .build());
         }
 
         @Async("mcpAuditExecutor")
@@ -911,10 +924,15 @@ public class McpAuditService {
                         String decision,
                         Object context,
                         long durationMs) {
+                AuditStatus decisionStatus = "ALLOW".equalsIgnoreCase(decision)
+                                ? AuditStatus.SUCCESS : AuditStatus.DENIED;
+                AuditSeverity decisionSeverity = "ALLOW".equalsIgnoreCase(decision)
+                                ? AuditSeverity.INFO : AuditSeverity.WARN;
+
                 persistPdp(PdpAuditLog.builder()
                                 .eventType(AuditEventType.PDP_DECISION_RENDERED)
-                                .status("ALLOW".equalsIgnoreCase(decision) ? AuditStatus.SUCCESS : AuditStatus.DENIED)
-                                .severity("ALLOW".equalsIgnoreCase(decision) ? AuditSeverity.INFO : AuditSeverity.WARN)
+                                .status(decisionStatus)
+                                .severity(decisionSeverity)
                                 .correlationId(correlationId)
                                 .pdpSubject(subject)
                                 .pdpResource(resource)
@@ -923,6 +941,20 @@ public class McpAuditService {
                                 .pdpContext(toJson(context))
                                 .durationMs(durationMs)
                                 .build());
+
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.PDP_DECISION_RENDERED)
+                                .module(AuditModule.PDP)
+                                .status(decisionStatus)
+                                .severity(decisionSeverity)
+                                .correlationId(correlationId)
+                                .agentName(subject)
+                                .capabilityName(resource)
+                                .mcpMethod(action)
+                                .capabilityType(decision)
+                                .durationMs(durationMs)
+                                .responsePayload(toJson(context))
+                                .build());
         }
 
         // ════════════════════════════════════════════════════════════════════
@@ -930,34 +962,71 @@ public class McpAuditService {
         // ════════════════════════════════════════════════════════════════════
 
         @Async("mcpAuditExecutor")
-        public void auditPdpPolicyCreated(String policyName, String effect, String source) {
+        public void auditPdpPolicyCreated(String policyName, String effect, String source,
+                        String description, String policyText, String createdBy,
+                        String tags, String originalPrompt,
+                        Map<String, String> refs) {
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("policyName", policyName != null ? policyName : "");
+                payload.put("effect", effect != null ? effect : "");
+                payload.put("source", source != null ? source : "MANUAL");
+                payload.put("description", description != null ? description : "");
+                payload.put("policyText", policyText != null ? policyText : "");
+                payload.put("createdBy", createdBy != null ? createdBy : "");
+                payload.put("tags", tags != null ? tags : "");
+                payload.put("originalPrompt", originalPrompt != null ? originalPrompt : "");
+                if (refs != null) {
+                        payload.put("referencedAgent", refs.getOrDefault("agentName", ""));
+                        payload.put("referencedCapability", refs.getOrDefault("capabilityName", ""));
+                        payload.put("referencedCapabilityType", refs.getOrDefault("capabilityType", ""));
+                        payload.put("referencedServer", refs.getOrDefault("serverName", ""));
+                        payload.put("referencedAction", refs.getOrDefault("actionName", ""));
+                }
+
                 persist(McpAuditLog.builder()
                                 .eventType(AuditEventType.PDP_POLICY_CREATED)
                                 .module(AuditModule.PDP)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.INFO)
+                                .agentName(refs != null ? refs.get("agentName") : null)
+                                .serverName(refs != null ? refs.get("serverName") : null)
                                 .capabilityName(policyName)
                                 .capabilityType(effect)
                                 .correlationId(generateCorrelationId())
-                                .requestPayload(toJson(Map.of(
-                                                "policyName", policyName != null ? policyName : "",
-                                                "effect", effect != null ? effect : "",
-                                                "source", source != null ? source : "MANUAL")))
+                                .requestPayload(toJson(payload))
                                 .build());
         }
 
         @Async("mcpAuditExecutor")
-        public void auditPdpPolicyUpdated(String policyName, String changedFields) {
+        public void auditPdpPolicyUpdated(String policyName, String changedFields,
+                        String description, String policyText, String effect,
+                        String tags, Map<String, String> refs) {
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("policyName", policyName != null ? policyName : "");
+                payload.put("changedFields", changedFields != null ? changedFields : "");
+                payload.put("description", description != null ? description : "");
+                payload.put("policyText", policyText != null ? policyText : "");
+                payload.put("effect", effect != null ? effect : "");
+                payload.put("tags", tags != null ? tags : "");
+                if (refs != null) {
+                        payload.put("referencedAgent", refs.getOrDefault("agentName", ""));
+                        payload.put("referencedCapability", refs.getOrDefault("capabilityName", ""));
+                        payload.put("referencedCapabilityType", refs.getOrDefault("capabilityType", ""));
+                        payload.put("referencedServer", refs.getOrDefault("serverName", ""));
+                        payload.put("referencedAction", refs.getOrDefault("actionName", ""));
+                }
+
                 persist(McpAuditLog.builder()
                                 .eventType(AuditEventType.PDP_POLICY_UPDATED)
                                 .module(AuditModule.PDP)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.INFO)
+                                .agentName(refs != null ? refs.get("agentName") : null)
+                                .serverName(refs != null ? refs.get("serverName") : null)
                                 .capabilityName(policyName)
+                                .capabilityType(effect)
                                 .correlationId(generateCorrelationId())
-                                .requestPayload(toJson(Map.of(
-                                                "policyName", policyName != null ? policyName : "",
-                                                "changedFields", changedFields != null ? changedFields : "")))
+                                .requestPayload(toJson(payload))
                                 .build());
         }
 
