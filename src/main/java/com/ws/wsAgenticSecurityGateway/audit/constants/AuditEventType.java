@@ -84,6 +84,14 @@ public enum AuditEventType {
     AGENT_BLOCKED,
     AGENT_CONNECTION_REJECTED,
 
+    // ── Area 8 — Capability Access Profiles ─────────────────────────
+    CAPABILITY_ACCESS_DENIED,
+    CAPABILITY_PROFILE_CREATED,
+    CAPABILITY_PROFILE_UPDATED,
+    CAPABILITY_PROFILE_DELETED,
+    CAPABILITY_PROFILE_ASSIGNED,
+    CAPABILITY_PROFILE_UNASSIGNED,
+
     // ── System-level ──────────────────────────────────────────────────
     SYSTEM_STARTUP,
     SYSTEM_SHUTDOWN,

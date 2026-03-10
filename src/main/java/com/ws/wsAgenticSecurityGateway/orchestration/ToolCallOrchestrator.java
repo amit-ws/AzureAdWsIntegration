@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ws.wsAgenticSecurityGateway.audit.error.McpErrorCode;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import com.ws.wsAgenticSecurityGateway.wsClient.McpClientService;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentCapabilityFilterService;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyEvaluationRequest;
 import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyEvaluationResult;
@@ -58,6 +59,7 @@ public class ToolCallOrchestrator {
     private final ObjectMapper objectMapper;
     private final McpSessionManager mcpSessionManager;
     private final AgentRegistryService agentRegistryService;
+    private final AgentCapabilityFilterService capabilityFilterService;
     private final CedarPolicyEngine cedarPolicyEngine;
     private final PolicyContextBuilder policyContextBuilder;
 
@@ -75,6 +77,7 @@ public class ToolCallOrchestrator {
                                  ObjectMapper objectMapper,
                                  McpSessionManager mcpSessionManager,
                                  AgentRegistryService agentRegistryService,
+                                 AgentCapabilityFilterService capabilityFilterService,
                                  CedarPolicyEngine cedarPolicyEngine,
                                  PolicyContextBuilder policyContextBuilder) {
         this.registryService = registryService;
@@ -84,6 +87,7 @@ public class ToolCallOrchestrator {
         this.objectMapper = objectMapper;
         this.mcpSessionManager = mcpSessionManager;
         this.agentRegistryService = agentRegistryService;
+        this.capabilityFilterService = capabilityFilterService;
         this.cedarPolicyEngine = cedarPolicyEngine;
         this.policyContextBuilder = policyContextBuilder;
     }
@@ -158,6 +162,24 @@ public class ToolCallOrchestrator {
                     "Agent is blocked by admin. Contact your gateway administrator.",
                     requestId, clientName);
             return buildErrorResult(McpErrorCode.AGENT_BLOCKED, publicName);
+        }
+
+        // ── Step 2d: Capability access check (default deny) ──────────
+        // If agent has no capability profiles → no access (default deny).
+        // If agent has profiles → check if this tool is in their allowed set.
+        UUID agentIdForAccess = agentRegistryService.getAgentIdForSession(sessionId);
+        if (agentIdForAccess != null
+                && !capabilityFilterService.isCapabilityAllowed(agentIdForAccess, publicName, "TOOL")) {
+            log.warn("🚫 [{}] CAPABILITY ACCESS DENIED: session={}, tool={}, agent={}",
+                    correlationId, sessionId, publicName, clientName);
+            auditService.auditOrchestrationError(
+                    correlationId, sessionId, null, publicName,
+                    McpErrorCode.CAPABILITY_NOT_ALLOWED,
+                    "Tool '" + publicName + "' is not permitted for this agent. "
+                            + "Contact your gateway administrator to assign a capability profile.",
+                    requestId, clientName);
+            auditService.auditCapabilityAccessDenied(sessionId, correlationId, clientName, publicName, "TOOL");
+            return buildErrorResult(McpErrorCode.CAPABILITY_NOT_ALLOWED, publicName);
         }
 
         log.info("═══════════════════════════════════════════════════════════");
@@ -705,6 +727,23 @@ public class ToolCallOrchestrator {
                     McpErrorCode.AGENT_BLOCKED.getMessage()));
         }
 
+        // Capability access check (default deny)
+        UUID promptAgentId = agentRegistryService.getAgentIdForSession(sessionId);
+        if (promptAgentId != null
+                && !capabilityFilterService.isCapabilityAllowed(promptAgentId, publicName, "PROMPT")) {
+            log.warn("🚫 [{}] CAPABILITY ACCESS DENIED: session={}, prompt={}, agent={}",
+                    correlationId, sessionId, publicName, clientName);
+            auditService.auditOrchestrationError(
+                    correlationId, sessionId, null, publicName,
+                    McpErrorCode.CAPABILITY_NOT_ALLOWED,
+                    "Prompt '" + publicName + "' is not permitted for this agent.",
+                    requestId, clientName);
+            auditService.auditCapabilityAccessDenied(sessionId, correlationId, clientName, publicName, "PROMPT");
+            throw new RuntimeException(String.format("[%d] %s: prompt '%s'",
+                    McpErrorCode.CAPABILITY_NOT_ALLOWED.getCode(),
+                    McpErrorCode.CAPABILITY_NOT_ALLOWED.getMessage(), publicName));
+        }
+
         log.info("═══════════════════════════════════════════════════════════");
         log.info("📝 PROMPT ORCHESTRATION START [{}]", correlationId);
         log.info("   Prompt: {}", publicName);
@@ -932,6 +971,23 @@ public class ToolCallOrchestrator {
             throw new RuntimeException(String.format("[%d] %s",
                     McpErrorCode.AGENT_BLOCKED.getCode(),
                     McpErrorCode.AGENT_BLOCKED.getMessage()));
+        }
+
+        // Capability access check (default deny)
+        UUID resourceAgentId = agentRegistryService.getAgentIdForSession(sessionId);
+        if (resourceAgentId != null
+                && !capabilityFilterService.isCapabilityAllowed(resourceAgentId, publicName, "RESOURCE")) {
+            log.warn("🚫 [{}] CAPABILITY ACCESS DENIED: session={}, resource={}, agent={}",
+                    correlationId, sessionId, publicName, clientName);
+            auditService.auditOrchestrationError(
+                    correlationId, sessionId, null, publicName,
+                    McpErrorCode.CAPABILITY_NOT_ALLOWED,
+                    "Resource '" + publicName + "' is not permitted for this agent.",
+                    requestId, clientName);
+            auditService.auditCapabilityAccessDenied(sessionId, correlationId, clientName, publicName, "RESOURCE");
+            throw new RuntimeException(String.format("[%d] %s: resource '%s'",
+                    McpErrorCode.CAPABILITY_NOT_ALLOWED.getCode(),
+                    McpErrorCode.CAPABILITY_NOT_ALLOWED.getMessage(), publicName));
         }
 
         log.info("═══════════════════════════════════════════════════════════");

@@ -1328,6 +1328,115 @@ public class McpAuditService {
         }
 
         // ════════════════════════════════════════════════════════════════════
+        // AREA 8 — Capability Access Profiles
+        // ════════════════════════════════════════════════════════════════════
+
+        @Async("mcpAuditExecutor")
+        public void auditCapabilityProfileCreated(String profileName, UUID profileId,
+                        String description, int ruleCount) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.CAPABILITY_PROFILE_CREATED)
+                                .module(AuditModule.CAPABILITY_PROFILES)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .correlationId(generateCorrelationId())
+                                .capabilityName(profileName)
+                                .requestPayload(toJson(Map.of(
+                                                "profileName", profileName != null ? profileName : "",
+                                                "profileId", profileId != null ? profileId.toString() : "",
+                                                "description", description != null ? description : "",
+                                                "ruleCount", ruleCount)))
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditCapabilityProfileUpdated(String profileName, UUID profileId,
+                        String changedFields) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.CAPABILITY_PROFILE_UPDATED)
+                                .module(AuditModule.CAPABILITY_PROFILES)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .correlationId(generateCorrelationId())
+                                .capabilityName(profileName)
+                                .requestPayload(toJson(Map.of(
+                                                "profileName", profileName != null ? profileName : "",
+                                                "profileId", profileId != null ? profileId.toString() : "",
+                                                "changedFields", changedFields != null ? changedFields : "")))
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditCapabilityProfileDeleted(String profileName, UUID profileId) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.CAPABILITY_PROFILE_DELETED)
+                                .module(AuditModule.CAPABILITY_PROFILES)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.WARN)
+                                .correlationId(generateCorrelationId())
+                                .capabilityName(profileName)
+                                .requestPayload(toJson(Map.of(
+                                                "profileName", profileName != null ? profileName : "",
+                                                "profileId", profileId != null ? profileId.toString() : "")))
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditCapabilityProfileAssigned(String profileName, UUID profileId,
+                        String agentName, UUID agentId) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.CAPABILITY_PROFILE_ASSIGNED)
+                                .module(AuditModule.CAPABILITY_PROFILES)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .correlationId(generateCorrelationId())
+                                .capabilityName(profileName)
+                                .agentName(agentName)
+                                .requestPayload(toJson(Map.of(
+                                                "profileName", profileName != null ? profileName : "",
+                                                "profileId", profileId != null ? profileId.toString() : "",
+                                                "agentName", agentName != null ? agentName : "",
+                                                "agentId", agentId != null ? agentId.toString() : "")))
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditCapabilityProfileUnassigned(String profileName, UUID profileId,
+                        String agentName, UUID agentId) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.CAPABILITY_PROFILE_UNASSIGNED)
+                                .module(AuditModule.CAPABILITY_PROFILES)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .correlationId(generateCorrelationId())
+                                .capabilityName(profileName)
+                                .agentName(agentName)
+                                .requestPayload(toJson(Map.of(
+                                                "profileName", profileName != null ? profileName : "",
+                                                "profileId", profileId != null ? profileId.toString() : "",
+                                                "agentName", agentName != null ? agentName : "",
+                                                "agentId", agentId != null ? agentId.toString() : "")))
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditCapabilityAccessDenied(String sessionId, String correlationId,
+                        String agentName, String capabilityName, String capabilityType) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.CAPABILITY_ACCESS_DENIED)
+                                .module(AuditModule.CAPABILITY_PROFILES)
+                                .status(AuditStatus.FAILURE)
+                                .severity(AuditSeverity.WARN)
+                                .sessionId(sessionId)
+                                .correlationId(correlationId != null ? correlationId : generateCorrelationId())
+                                .agentName(agentName)
+                                .capabilityName(capabilityName)
+                                .capabilityType(capabilityType)
+                                .errorMessage("Capability access denied — no profile grants access")
+                                .build());
+        }
+
+        // ════════════════════════════════════════════════════════════════════
         // GENERAL — System events
         // ════════════════════════════════════════════════════════════════════
 
