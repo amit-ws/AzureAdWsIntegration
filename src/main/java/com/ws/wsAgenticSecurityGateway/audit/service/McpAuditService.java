@@ -888,10 +888,14 @@ public class McpAuditService {
 
         @Async("mcpAuditExecutor")
         public void auditPdpEvaluationRequested(String correlationId,
+                        String sessionId,
                         String subject,
                         String resource,
                         String action,
-                        Object context) {
+                        String serverName,
+                        Object context,
+                        String requestId,
+                        String agentName) {
                 persistPdp(PdpAuditLog.builder()
                                 .eventType(AuditEventType.PDP_EVALUATION_REQUESTED)
                                 .status(AuditStatus.SUCCESS)
@@ -909,21 +913,28 @@ public class McpAuditService {
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.INFO)
                                 .correlationId(correlationId)
-                                .agentName(subject)
+                                .sessionId(sessionId)
+                                .agentName(agentName)
                                 .capabilityName(resource)
+                                .serverName(serverName)
                                 .mcpMethod(action)
+                                .requestId(requestId)
                                 .requestPayload(toJson(context))
                                 .build());
         }
 
         @Async("mcpAuditExecutor")
         public void auditPdpDecisionRendered(String correlationId,
+                        String sessionId,
                         String subject,
                         String resource,
                         String action,
                         String decision,
+                        String serverName,
                         Object context,
-                        long durationMs) {
+                        long durationMs,
+                        String requestId,
+                        String agentName) {
                 AuditStatus decisionStatus = "ALLOW".equalsIgnoreCase(decision)
                                 ? AuditStatus.SUCCESS : AuditStatus.DENIED;
                 AuditSeverity decisionSeverity = "ALLOW".equalsIgnoreCase(decision)
@@ -948,11 +959,14 @@ public class McpAuditService {
                                 .status(decisionStatus)
                                 .severity(decisionSeverity)
                                 .correlationId(correlationId)
-                                .agentName(subject)
+                                .sessionId(sessionId)
+                                .agentName(agentName)
                                 .capabilityName(resource)
+                                .serverName(serverName)
                                 .mcpMethod(action)
                                 .capabilityType(decision)
                                 .durationMs(durationMs)
+                                .requestId(requestId)
                                 .responsePayload(toJson(context))
                                 .build());
         }

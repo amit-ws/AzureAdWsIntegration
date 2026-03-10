@@ -12,6 +12,7 @@ import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyChatResponse;
 import com.ws.wsAgenticSecurityGateway.pdp.entity.GatewayCustomAttributeEntity;
 import com.ws.wsAgenticSecurityGateway.pdp.entity.GatewayPolicyEntity;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.net.URI;
@@ -58,7 +59,7 @@ public class PolicyLlmService {
     private final CustomAttributeService customAttributeService;
     private final McpAuditService auditService;
 
-//    @Value("${ws.gateway.pdp.anthropic-api-key:}")
+    @Value("${ws.gateway.pdp.anthropic-api-key:}")
     private String anthropicApiKey;
 
     // ── Metadata cache ──────────────────────────────────────────────────

@@ -210,16 +210,17 @@ public class ToolCallOrchestrator {
 
             // Audit: PDP evaluation requested
             auditService.auditPdpEvaluationRequested(
-                    correlationId, pdpRequest.getAgentName(),
-                    publicName, "toolCall", pdpRequest);
+                    correlationId, sessionId, pdpRequest.getAgentName(),
+                    publicName, "toolCall", serverName, pdpRequest, requestId, clientName);
 
             PolicyEvaluationResult pdpResult = cedarPolicyEngine.evaluate(pdpRequest);
 
             // Audit: PDP decision rendered
             auditService.auditPdpDecisionRendered(
-                    correlationId, pdpRequest.getAgentName(),
+                    correlationId, sessionId, pdpRequest.getAgentName(),
                     publicName, "toolCall", pdpResult.getDecision(),
-                    pdpResult, pdpResult.getEvaluationDurationMs());
+                    serverName, pdpResult, pdpResult.getEvaluationDurationMs(),
+                    requestId, clientName);
 
             if (pdpResult.isDenied()) {
                 log.warn("🏛️ [{}] PDP DENIED: agent='{}', tool='{}', reason='{}'",
@@ -752,15 +753,16 @@ public class ToolCallOrchestrator {
                     correlationId, sessionId);
 
             auditService.auditPdpEvaluationRequested(
-                    correlationId, pdpRequest.getAgentName(),
-                    publicName, "promptGet", pdpRequest);
+                    correlationId, sessionId, pdpRequest.getAgentName(),
+                    publicName, "promptGet", serverName, pdpRequest, requestId, clientName);
 
             PolicyEvaluationResult pdpResult = cedarPolicyEngine.evaluate(pdpRequest);
 
             auditService.auditPdpDecisionRendered(
-                    correlationId, pdpRequest.getAgentName(),
+                    correlationId, sessionId, pdpRequest.getAgentName(),
                     publicName, "promptGet", pdpResult.getDecision(),
-                    pdpResult, pdpResult.getEvaluationDurationMs());
+                    serverName, pdpResult, pdpResult.getEvaluationDurationMs(),
+                    requestId, clientName);
 
             if (pdpResult.isDenied()) {
                 log.warn("🏛️ [{}] PDP DENIED: agent='{}', prompt='{}', reason='{}'",
@@ -980,15 +982,16 @@ public class ToolCallOrchestrator {
                     correlationId, sessionId);
 
             auditService.auditPdpEvaluationRequested(
-                    correlationId, pdpRequest.getAgentName(),
-                    publicName, "resourceRead", pdpRequest);
+                    correlationId, sessionId, pdpRequest.getAgentName(),
+                    publicName, "resourceRead", serverName, pdpRequest, requestId, clientName);
 
             PolicyEvaluationResult pdpResult = cedarPolicyEngine.evaluate(pdpRequest);
 
             auditService.auditPdpDecisionRendered(
-                    correlationId, pdpRequest.getAgentName(),
+                    correlationId, sessionId, pdpRequest.getAgentName(),
                     publicName, "resourceRead", pdpResult.getDecision(),
-                    pdpResult, pdpResult.getEvaluationDurationMs());
+                    serverName, pdpResult, pdpResult.getEvaluationDurationMs(),
+                    requestId, clientName);
 
             if (pdpResult.isDenied()) {
                 log.warn("🏛️ [{}] PDP DENIED: agent='{}', resource='{}', reason='{}'",
