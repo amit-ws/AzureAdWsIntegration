@@ -1436,6 +1436,22 @@ public class McpAuditService {
                                 .build());
         }
 
+        @Async("mcpAuditExecutor")
+        public void auditCapabilityAccessGranted(String sessionId, String correlationId,
+                        String agentName, String capabilityName, String capabilityType) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.CAPABILITY_ACCESS_GRANTED)
+                                .module(AuditModule.CAPABILITY_PROFILES)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .sessionId(sessionId)
+                                .correlationId(correlationId != null ? correlationId : generateCorrelationId())
+                                .agentName(agentName)
+                                .capabilityName(capabilityName)
+                                .capabilityType(capabilityType)
+                                .build());
+        }
+
         // ════════════════════════════════════════════════════════════════════
         // GENERAL — System events
         // ════════════════════════════════════════════════════════════════════

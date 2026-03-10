@@ -181,6 +181,10 @@ public class ToolCallOrchestrator {
             auditService.auditCapabilityAccessDenied(sessionId, correlationId, clientName, publicName, "TOOL");
             return buildErrorResult(McpErrorCode.CAPABILITY_NOT_ALLOWED, publicName);
         }
+        // Audit capability access granted (only for managed agents with profiles)
+        if (agentIdForAccess != null && capabilityFilterService.hasProfiles(agentIdForAccess)) {
+            auditService.auditCapabilityAccessGranted(sessionId, correlationId, clientName, publicName, "TOOL");
+        }
 
         log.info("═══════════════════════════════════════════════════════════");
         log.info("🎯 Tool ORCHESTRATION START [{}]", correlationId);
@@ -743,6 +747,10 @@ public class ToolCallOrchestrator {
                     McpErrorCode.CAPABILITY_NOT_ALLOWED.getCode(),
                     McpErrorCode.CAPABILITY_NOT_ALLOWED.getMessage(), publicName));
         }
+        // Audit capability access granted (only for managed agents with profiles)
+        if (promptAgentId != null && capabilityFilterService.hasProfiles(promptAgentId)) {
+            auditService.auditCapabilityAccessGranted(sessionId, correlationId, clientName, publicName, "PROMPT");
+        }
 
         log.info("═══════════════════════════════════════════════════════════");
         log.info("📝 PROMPT ORCHESTRATION START [{}]", correlationId);
@@ -988,6 +996,10 @@ public class ToolCallOrchestrator {
             throw new RuntimeException(String.format("[%d] %s: resource '%s'",
                     McpErrorCode.CAPABILITY_NOT_ALLOWED.getCode(),
                     McpErrorCode.CAPABILITY_NOT_ALLOWED.getMessage(), publicName));
+        }
+        // Audit capability access granted (only for managed agents with profiles)
+        if (resourceAgentId != null && capabilityFilterService.hasProfiles(resourceAgentId)) {
+            auditService.auditCapabilityAccessGranted(sessionId, correlationId, clientName, publicName, "RESOURCE");
         }
 
         log.info("═══════════════════════════════════════════════════════════");
