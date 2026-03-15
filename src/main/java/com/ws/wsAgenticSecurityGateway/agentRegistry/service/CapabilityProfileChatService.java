@@ -173,16 +173,19 @@ public class CapabilityProfileChatService {
             }
         }
 
-        sb.append("\n## Registered Agents\n");
-        sb.append("These are the agents in the system. If the admin mentions an agent by name, ");
-        sb.append("include it in assignToAgents so the profile gets auto-assigned.\n");
+        sb.append("\n## Registered Agents (use these EXACT names in assignToAgents)\n");
+        sb.append("When the admin references any of these agents, you MUST include the matching name in assignToAgents.\n");
         List<GatewayAgentEntity> agents = agentRegistryService.getAllAgents();
-        for (GatewayAgentEntity agent : agents) {
-            sb.append("- ").append(agent.getAgentName());
-            if (agent.getAgentVersion() != null) {
-                sb.append(" v").append(agent.getAgentVersion());
+        if (agents.isEmpty()) {
+            sb.append("No agents registered yet.\n");
+        } else {
+            for (GatewayAgentEntity agent : agents) {
+                sb.append("- name: \"").append(agent.getAgentName()).append("\"");
+                if (agent.getAgentVersion() != null) {
+                    sb.append("  version: ").append(agent.getAgentVersion());
+                }
+                sb.append("  status: ").append(agent.getApprovalStatus()).append("\n");
             }
-            sb.append(" (").append(agent.getApprovalStatus()).append(")\n");
         }
 
         sb.append("\n## Response Format\n");
@@ -198,12 +201,18 @@ public class CapabilityProfileChatService {
         sb.append("      \"capabilityNames\": [\"name1\", \"name2\"]  // null for INCLUDE_ALL\n");
         sb.append("    }\n");
         sb.append("  ],\n");
-        sb.append("  \"assignToAgents\": [\"agent-name-1\"],  // optional: agent names to auto-assign this profile to\n");
+        sb.append("  \"assignToAgents\": [\"agent-name-1\"],\n");
         sb.append("  \"message\": \"Human-readable explanation of what this profile does\"\n");
         sb.append("}\n\n");
-        sb.append("If the admin mentions specific agent names (e.g., 'for OCR-Agent' or 'assign to Slack-Bot'), ");
-        sb.append("include those exact agent names in the assignToAgents array. Match against the agent list above.\n");
-        sb.append("If no agents are mentioned, omit assignToAgents or set it to an empty array.\n\n");
+
+        sb.append("## IMPORTANT: Agent Assignment Rules\n");
+        sb.append("ALWAYS check if the admin mentions ANY agent by name, partial name, or reference. ");
+        sb.append("If they do, you MUST populate the assignToAgents array with matching agent names from the Registered Agents list above.\n");
+        sb.append("Match flexibly: if the admin says 'assign to Claude' and there is 'claude-code-agent' in the list, use 'claude-code-agent'.\n");
+        sb.append("If the admin says 'for XYZ agent' or 'assign this to XYZ' or 'give XYZ access' — always include that agent.\n");
+        sb.append("If no agents are mentioned at all, set assignToAgents to an empty array [].\n\n");
+
+        sb.append("## Other Rules\n");
         sb.append("If the request is unclear, ask a follow-up question (no JSON needed).\n");
         sb.append("Use INCLUDE_ALL when the admin says 'all' or 'full access' for a server.\n");
         sb.append("Use INCLUDE_ONLY when specific capabilities are named.\n");
