@@ -142,7 +142,7 @@ public interface McpAuditLogRepository
     @Query("SELECT a.capabilityName, a.serverName, COUNT(a), AVG(a.durationMs) " +
             "FROM McpAuditLog a " +
             "WHERE a.sessionId IN :sessionIds AND a.timestamp > :since " +
-            "AND a.eventType = com.ws.wsAgenticSecurityGateway.audit.constants.AuditEventType.ORCHESTRATION_CALL_FORWARDED " +
+            "AND a.eventType = com.ws.wsAgenticSecurityGateway.audit.constants.AuditEventType.ORCHESTRATION_RESPONSE_RETURNED " +
             "GROUP BY a.capabilityName, a.serverName ORDER BY COUNT(a) DESC")
     List<Object[]> toolUsageForSessions(
             @Param("sessionIds") List<String> sessionIds,

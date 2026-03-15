@@ -23,6 +23,7 @@ import io.modelcontextprotocol.spec.McpSchema;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.*;
 
 /**
@@ -150,6 +151,9 @@ public class ToolCallOrchestrator {
         // ── Step 2b: Track agent request (async, non-blocking) ───────
         agentRegistryService.recordRequest(sessionId);
 
+        // Monotonic event sequence counter for deterministic audit ordering within this correlation chain
+        int seq = 0;
+
         // ── Step 2c: Agent approval gate (O(1), in-memory) ──────────
         // If admin has blocked this agent, reject immediately — no PDP involved,
         // just a connection-level admin gate checked on every call.
@@ -160,7 +164,8 @@ public class ToolCallOrchestrator {
                     correlationId, sessionId, null, publicName,
                     McpErrorCode.AGENT_BLOCKED,
                     "Agent is blocked by admin. Contact your gateway administrator.",
-                    requestId, clientName);
+                    requestId, clientName,
+                    LocalDateTime.now(), ++seq);
             return buildErrorResult(McpErrorCode.AGENT_BLOCKED, publicName);
         }
 
@@ -177,13 +182,16 @@ public class ToolCallOrchestrator {
                     McpErrorCode.CAPABILITY_NOT_ALLOWED,
                     "Tool '" + publicName + "' is not permitted for this agent. "
                             + "Contact your gateway administrator to assign a capability profile.",
-                    requestId, clientName);
-            auditService.auditCapabilityAccessDenied(sessionId, correlationId, clientName, publicName, "TOOL");
+                    requestId, clientName,
+                    LocalDateTime.now(), ++seq);
+            auditService.auditCapabilityAccessDenied(sessionId, correlationId, clientName, publicName, "TOOL",
+                    LocalDateTime.now(), ++seq);
             return buildErrorResult(McpErrorCode.CAPABILITY_NOT_ALLOWED, publicName);
         }
         // Audit capability access granted (only for managed agents with profiles)
         if (agentIdForAccess != null && capabilityFilterService.hasProfiles(agentIdForAccess)) {
-            auditService.auditCapabilityAccessGranted(sessionId, correlationId, clientName, publicName, "TOOL");
+            auditService.auditCapabilityAccessGranted(sessionId, correlationId, clientName, publicName, "TOOL",
+                    LocalDateTime.now(), ++seq);
         }
 
         log.info("═══════════════════════════════════════════════════════════");
@@ -198,7 +206,8 @@ public class ToolCallOrchestrator {
         long orchestrationStart = System.currentTimeMillis();
 
         // ── Step 3: Audit — tool extracted from AI agent request ────────
-        auditService.auditOrchestrationToolExtracted(correlationId, publicName, sessionId, requestId, clientName);
+        auditService.auditOrchestrationToolExtracted(correlationId, publicName, sessionId, requestId, clientName,
+                LocalDateTime.now(), ++seq);
 
         // ── Step 4: Registry lookup ─────────────────────────────────────
         long lookupStart = System.currentTimeMillis();
@@ -211,7 +220,8 @@ public class ToolCallOrchestrator {
                     correlationId, sessionId, null, publicName,
                     McpErrorCode.CAPABILITY_NOT_FOUND,
                     "Tool '" + publicName + "' not found in capability registry",
-                    requestId, clientName);
+                    requestId, clientName,
+                    LocalDateTime.now(), ++seq);
             return buildErrorResult(McpErrorCode.CAPABILITY_NOT_FOUND, publicName);
         }
 
@@ -224,7 +234,8 @@ public class ToolCallOrchestrator {
 
         // ── Step 5: Audit — registry lookup success ─────────────────────
         auditService.auditOrchestrationRegistryLookup(
-                correlationId, sessionId, publicName, serverName, lookupDuration, requestId, clientName);
+                correlationId, sessionId, publicName, serverName, lookupDuration, requestId, clientName,
+                LocalDateTime.now(), ++seq);
 
         // ── Step 5c: PDP — Cedar policy evaluation ─────────────────────
         // Evaluate the request against all active Cedar policies.
@@ -237,7 +248,8 @@ public class ToolCallOrchestrator {
             // Audit: PDP evaluation requested
             auditService.auditPdpEvaluationRequested(
                     correlationId, sessionId, pdpRequest.getAgentName(),
-                    publicName, "toolCall", serverName, pdpRequest, requestId, clientName);
+                    publicName, "toolCall", serverName, pdpRequest, requestId, clientName,
+                    LocalDateTime.now(), ++seq);
 
             PolicyEvaluationResult pdpResult = cedarPolicyEngine.evaluate(pdpRequest);
 
@@ -246,7 +258,8 @@ public class ToolCallOrchestrator {
                     correlationId, sessionId, pdpRequest.getAgentName(),
                     publicName, "toolCall", pdpResult.getDecision(),
                     serverName, pdpResult, pdpResult.getEvaluationDurationMs(),
-                    requestId, clientName);
+                    requestId, clientName,
+                    LocalDateTime.now(), ++seq);
 
             if (pdpResult.isDenied()) {
                 log.warn("🏛️ [{}] PDP DENIED: agent='{}', tool='{}', reason='{}'",
@@ -274,7 +287,8 @@ public class ToolCallOrchestrator {
                     correlationId, sessionId, serverName, publicName,
                     McpErrorCode.SERVER_UNAVAILABLE,
                     "Server '" + serverName + "' is not connected",
-                    requestId, clientName);
+                    requestId, clientName,
+                    LocalDateTime.now(), ++seq);
             return buildErrorResult(McpErrorCode.SERVER_UNAVAILABLE,
                     publicName, serverName, "Server '" + serverName + "' is not connected");
         }
@@ -313,7 +327,8 @@ public class ToolCallOrchestrator {
                     correlationId, sessionId, serverName, publicName,
                     McpErrorCode.ORCHESTRATION_FAILURE,
                     "Argument conversion failed: " + e.getMessage(),
-                    requestId, clientName);
+                    requestId, clientName,
+                    LocalDateTime.now(), ++seq);
             return buildErrorResult(McpErrorCode.ORCHESTRATION_FAILURE,
                     publicName, serverName, "Argument conversion failed: " + e.getMessage());
         }
@@ -335,7 +350,8 @@ public class ToolCallOrchestrator {
                     usingAgentToken ? "AGENT-PROVIDED" : "CONFIG");
 
             List<McpSchema.Content> contentList =
-                    mcpClientService.callTool(correlationId, serverName, originalName, argsAsJson);
+                    mcpClientService.callTool(correlationId, serverName, originalName, argsAsJson,
+                            LocalDateTime.now(), ++seq);
 
             long callDuration = System.currentTimeMillis() - callStart;
             long totalDuration = System.currentTimeMillis() - orchestrationStart;
@@ -346,7 +362,8 @@ public class ToolCallOrchestrator {
 
             // ── Step 9: Audit — call forwarded successfully ─────────────
             auditService.auditOrchestrationCallForwarded(
-                    correlationId, sessionId, serverName, originalName, callDuration, requestId, clientName);
+                    correlationId, sessionId, serverName, originalName, callDuration, requestId, clientName,
+                    LocalDateTime.now(), ++seq);
 
             // ── Step 10: Deregister in-flight, return result ────────────
             inFlightRegistry.complete(correlationId);
@@ -376,7 +393,8 @@ public class ToolCallOrchestrator {
             auditService.auditOrchestrationError(
                     correlationId, sessionId, serverName, publicName,
                     McpErrorCode.SERVER_UNAVAILABLE, e.getMessage(),
-                    requestId, clientName);
+                    requestId, clientName,
+                    LocalDateTime.now(), ++seq);
 
             return buildErrorResult(McpErrorCode.SERVER_UNAVAILABLE,
                     publicName, serverName, e.getMessage());
@@ -391,7 +409,8 @@ public class ToolCallOrchestrator {
             auditService.auditOrchestrationError(
                     correlationId, sessionId, serverName, publicName,
                     McpErrorCode.ORCHESTRATION_FAILURE, e.getMessage(),
-                    requestId, clientName);
+                    requestId, clientName,
+                    LocalDateTime.now(), ++seq);
 
             return buildErrorResult(McpErrorCode.ORCHESTRATION_FAILURE,
                     publicName, serverName, e.getMessage());
@@ -716,6 +735,7 @@ public class ToolCallOrchestrator {
         String sessionId = resolveSessionId(exchange);
         String clientName = resolveClientName(exchange);
         agentRegistryService.recordRequest(sessionId);
+        int seq = 0;
 
         // Agent approval gate (O(1), in-memory)
         if (agentRegistryService.isAgentBlocked(sessionId)) {
@@ -725,7 +745,8 @@ public class ToolCallOrchestrator {
                     correlationId, sessionId, null, publicName,
                     McpErrorCode.AGENT_BLOCKED,
                     "Agent is blocked by admin. Contact your gateway administrator.",
-                    requestId, clientName);
+                    requestId, clientName,
+                    LocalDateTime.now(), ++seq);
             throw new RuntimeException(String.format("[%d] %s",
                     McpErrorCode.AGENT_BLOCKED.getCode(),
                     McpErrorCode.AGENT_BLOCKED.getMessage()));
@@ -741,15 +762,18 @@ public class ToolCallOrchestrator {
                     correlationId, sessionId, null, publicName,
                     McpErrorCode.CAPABILITY_NOT_ALLOWED,
                     "Prompt '" + publicName + "' is not permitted for this agent.",
-                    requestId, clientName);
-            auditService.auditCapabilityAccessDenied(sessionId, correlationId, clientName, publicName, "PROMPT");
+                    requestId, clientName,
+                    LocalDateTime.now(), ++seq);
+            auditService.auditCapabilityAccessDenied(sessionId, correlationId, clientName, publicName, "PROMPT",
+                    LocalDateTime.now(), ++seq);
             throw new RuntimeException(String.format("[%d] %s: prompt '%s'",
                     McpErrorCode.CAPABILITY_NOT_ALLOWED.getCode(),
                     McpErrorCode.CAPABILITY_NOT_ALLOWED.getMessage(), publicName));
         }
         // Audit capability access granted (only for managed agents with profiles)
         if (promptAgentId != null && capabilityFilterService.hasProfiles(promptAgentId)) {
-            auditService.auditCapabilityAccessGranted(sessionId, correlationId, clientName, publicName, "PROMPT");
+            auditService.auditCapabilityAccessGranted(sessionId, correlationId, clientName, publicName, "PROMPT",
+                    LocalDateTime.now(), ++seq);
         }
 
         log.info("═══════════════════════════════════════════════════════════");
@@ -764,7 +788,8 @@ public class ToolCallOrchestrator {
         long orchestrationStart = System.currentTimeMillis();
 
         // Audit — prompt extracted
-        auditService.auditOrchestrationToolExtracted(correlationId, publicName, sessionId, requestId, clientName);
+        auditService.auditOrchestrationToolExtracted(correlationId, publicName, sessionId, requestId, clientName,
+                LocalDateTime.now(), ++seq);
 
         // Registry lookup
         long lookupStart = System.currentTimeMillis();
@@ -777,7 +802,8 @@ public class ToolCallOrchestrator {
                     correlationId, sessionId, null, publicName,
                     McpErrorCode.CAPABILITY_NOT_FOUND,
                     "Prompt '" + publicName + "' not found in capability registry",
-                    requestId, clientName);
+                    requestId, clientName,
+                    LocalDateTime.now(), ++seq);
             throw new RuntimeException(String.format("[%d] %s: prompt '%s'",
                     McpErrorCode.CAPABILITY_NOT_FOUND.getCode(),
                     McpErrorCode.CAPABILITY_NOT_FOUND.getMessage(), publicName));
@@ -791,7 +817,8 @@ public class ToolCallOrchestrator {
                 correlationId, publicName, serverName, originalName);
 
         auditService.auditOrchestrationRegistryLookup(
-                correlationId, sessionId, publicName, serverName, lookupDuration, requestId, clientName);
+                correlationId, sessionId, publicName, serverName, lookupDuration, requestId, clientName,
+                LocalDateTime.now(), ++seq);
 
         // ── PDP — Cedar policy evaluation for prompt ────────────────────
         try {
@@ -801,7 +828,8 @@ public class ToolCallOrchestrator {
 
             auditService.auditPdpEvaluationRequested(
                     correlationId, sessionId, pdpRequest.getAgentName(),
-                    publicName, "promptGet", serverName, pdpRequest, requestId, clientName);
+                    publicName, "promptGet", serverName, pdpRequest, requestId, clientName,
+                    LocalDateTime.now(), ++seq);
 
             PolicyEvaluationResult pdpResult = cedarPolicyEngine.evaluate(pdpRequest);
 
@@ -809,7 +837,8 @@ public class ToolCallOrchestrator {
                     correlationId, sessionId, pdpRequest.getAgentName(),
                     publicName, "promptGet", pdpResult.getDecision(),
                     serverName, pdpResult, pdpResult.getEvaluationDurationMs(),
-                    requestId, clientName);
+                    requestId, clientName,
+                    LocalDateTime.now(), ++seq);
 
             if (pdpResult.isDenied()) {
                 log.warn("🏛️ [{}] PDP DENIED: agent='{}', prompt='{}', reason='{}'",
@@ -835,7 +864,8 @@ public class ToolCallOrchestrator {
                     correlationId, sessionId, serverName, publicName,
                     McpErrorCode.SERVER_UNAVAILABLE,
                     "Server '" + serverName + "' is not connected",
-                    requestId, clientName);
+                    requestId, clientName,
+                    LocalDateTime.now(), ++seq);
             throw new RuntimeException(String.format("[%d] %s: server '%s' is not connected",
                     McpErrorCode.SERVER_UNAVAILABLE.getCode(),
                     McpErrorCode.SERVER_UNAVAILABLE.getMessage(), serverName));
@@ -892,7 +922,8 @@ public class ToolCallOrchestrator {
             inFlightRegistry.updateTimings(correlationId, lookupDuration, callDuration);
 
             auditService.auditOrchestrationCallForwarded(
-                    correlationId, sessionId, serverName, originalName, callDuration, requestId, clientName);
+                    correlationId, sessionId, serverName, originalName, callDuration, requestId, clientName,
+                    LocalDateTime.now(), ++seq);
 
             inFlightRegistry.complete(correlationId);
 
@@ -916,7 +947,8 @@ public class ToolCallOrchestrator {
             auditService.auditOrchestrationError(
                     correlationId, sessionId, serverName, publicName,
                     McpErrorCode.SERVER_UNAVAILABLE, e.getMessage(),
-                    requestId, clientName);
+                    requestId, clientName,
+                    LocalDateTime.now(), ++seq);
             throw new RuntimeException(String.format("[%d] %s: prompt '%s' on server '%s' — %s",
                     McpErrorCode.SERVER_UNAVAILABLE.getCode(),
                     McpErrorCode.SERVER_UNAVAILABLE.getMessage(),
@@ -929,7 +961,8 @@ public class ToolCallOrchestrator {
             auditService.auditOrchestrationError(
                     correlationId, sessionId, serverName, publicName,
                     McpErrorCode.ORCHESTRATION_FAILURE, e.getMessage(),
-                    requestId, clientName);
+                    requestId, clientName,
+                    LocalDateTime.now(), ++seq);
             throw new RuntimeException(String.format("[%d] %s: prompt '%s' on server '%s' — %s",
                     McpErrorCode.ORCHESTRATION_FAILURE.getCode(),
                     McpErrorCode.ORCHESTRATION_FAILURE.getMessage(),
@@ -966,6 +999,7 @@ public class ToolCallOrchestrator {
         String sessionId = resolveSessionId(exchange);
         String clientName = resolveClientName(exchange);
         agentRegistryService.recordRequest(sessionId);
+        int seq = 0;
 
         // Agent approval gate (O(1), in-memory)
         if (agentRegistryService.isAgentBlocked(sessionId)) {
@@ -975,7 +1009,8 @@ public class ToolCallOrchestrator {
                     correlationId, sessionId, null, publicName,
                     McpErrorCode.AGENT_BLOCKED,
                     "Agent is blocked by admin. Contact your gateway administrator.",
-                    requestId, clientName);
+                    requestId, clientName,
+                    LocalDateTime.now(), ++seq);
             throw new RuntimeException(String.format("[%d] %s",
                     McpErrorCode.AGENT_BLOCKED.getCode(),
                     McpErrorCode.AGENT_BLOCKED.getMessage()));
@@ -991,15 +1026,18 @@ public class ToolCallOrchestrator {
                     correlationId, sessionId, null, publicName,
                     McpErrorCode.CAPABILITY_NOT_ALLOWED,
                     "Resource '" + publicName + "' is not permitted for this agent.",
-                    requestId, clientName);
-            auditService.auditCapabilityAccessDenied(sessionId, correlationId, clientName, publicName, "RESOURCE");
+                    requestId, clientName,
+                    LocalDateTime.now(), ++seq);
+            auditService.auditCapabilityAccessDenied(sessionId, correlationId, clientName, publicName, "RESOURCE",
+                    LocalDateTime.now(), ++seq);
             throw new RuntimeException(String.format("[%d] %s: resource '%s'",
                     McpErrorCode.CAPABILITY_NOT_ALLOWED.getCode(),
                     McpErrorCode.CAPABILITY_NOT_ALLOWED.getMessage(), publicName));
         }
         // Audit capability access granted (only for managed agents with profiles)
         if (resourceAgentId != null && capabilityFilterService.hasProfiles(resourceAgentId)) {
-            auditService.auditCapabilityAccessGranted(sessionId, correlationId, clientName, publicName, "RESOURCE");
+            auditService.auditCapabilityAccessGranted(sessionId, correlationId, clientName, publicName, "RESOURCE",
+                    LocalDateTime.now(), ++seq);
         }
 
         log.info("═══════════════════════════════════════════════════════════");
@@ -1014,7 +1052,8 @@ public class ToolCallOrchestrator {
         long orchestrationStart = System.currentTimeMillis();
 
         // Audit — resource extracted
-        auditService.auditOrchestrationToolExtracted(correlationId, publicName, sessionId, requestId, clientName);
+        auditService.auditOrchestrationToolExtracted(correlationId, publicName, sessionId, requestId, clientName,
+                LocalDateTime.now(), ++seq);
 
         // Registry lookup by public name
         long lookupStart = System.currentTimeMillis();
@@ -1027,7 +1066,8 @@ public class ToolCallOrchestrator {
                     correlationId, sessionId, null, publicName,
                     McpErrorCode.CAPABILITY_NOT_FOUND,
                     "Resource '" + publicName + "' not found in capability registry",
-                    requestId, clientName);
+                    requestId, clientName,
+                    LocalDateTime.now(), ++seq);
             throw new RuntimeException(String.format("[%d] %s: resource '%s'",
                     McpErrorCode.CAPABILITY_NOT_FOUND.getCode(),
                     McpErrorCode.CAPABILITY_NOT_FOUND.getMessage(), publicName));
@@ -1041,7 +1081,8 @@ public class ToolCallOrchestrator {
                 correlationId, publicName, serverName, originalUri);
 
         auditService.auditOrchestrationRegistryLookup(
-                correlationId, sessionId, publicName, serverName, lookupDuration, requestId, clientName);
+                correlationId, sessionId, publicName, serverName, lookupDuration, requestId, clientName,
+                LocalDateTime.now(), ++seq);
 
         // ── PDP — Cedar policy evaluation for resource read ─────────────
         try {
@@ -1051,7 +1092,8 @@ public class ToolCallOrchestrator {
 
             auditService.auditPdpEvaluationRequested(
                     correlationId, sessionId, pdpRequest.getAgentName(),
-                    publicName, "resourceRead", serverName, pdpRequest, requestId, clientName);
+                    publicName, "resourceRead", serverName, pdpRequest, requestId, clientName,
+                    LocalDateTime.now(), ++seq);
 
             PolicyEvaluationResult pdpResult = cedarPolicyEngine.evaluate(pdpRequest);
 
@@ -1059,7 +1101,8 @@ public class ToolCallOrchestrator {
                     correlationId, sessionId, pdpRequest.getAgentName(),
                     publicName, "resourceRead", pdpResult.getDecision(),
                     serverName, pdpResult, pdpResult.getEvaluationDurationMs(),
-                    requestId, clientName);
+                    requestId, clientName,
+                    LocalDateTime.now(), ++seq);
 
             if (pdpResult.isDenied()) {
                 log.warn("🏛️ [{}] PDP DENIED: agent='{}', resource='{}', reason='{}'",
@@ -1085,7 +1128,8 @@ public class ToolCallOrchestrator {
                     correlationId, sessionId, serverName, publicName,
                     McpErrorCode.SERVER_UNAVAILABLE,
                     "Server '" + serverName + "' is not connected",
-                    requestId, clientName);
+                    requestId, clientName,
+                    LocalDateTime.now(), ++seq);
             throw new RuntimeException(String.format("[%d] %s: server '%s' is not connected",
                     McpErrorCode.SERVER_UNAVAILABLE.getCode(),
                     McpErrorCode.SERVER_UNAVAILABLE.getMessage(), serverName));
@@ -1129,7 +1173,8 @@ public class ToolCallOrchestrator {
                     usingAgentToken ? "AGENT-PROVIDED" : "CONFIG");
 
             List<McpSchema.ResourceContents> contents =
-                    mcpClientService.readResource(correlationId, serverName, originalUri);
+                    mcpClientService.readResource(correlationId, serverName, originalUri,
+                            LocalDateTime.now(), ++seq);
 
             long callDuration = System.currentTimeMillis() - callStart;
             long totalDuration = System.currentTimeMillis() - orchestrationStart;
@@ -1138,7 +1183,8 @@ public class ToolCallOrchestrator {
             inFlightRegistry.updateTimings(correlationId, lookupDuration, callDuration);
 
             auditService.auditOrchestrationCallForwarded(
-                    correlationId, sessionId, serverName, publicName, callDuration, requestId, clientName);
+                    correlationId, sessionId, serverName, publicName, callDuration, requestId, clientName,
+                    LocalDateTime.now(), ++seq);
 
             inFlightRegistry.complete(correlationId);
 
@@ -1161,7 +1207,8 @@ public class ToolCallOrchestrator {
             auditService.auditOrchestrationError(
                     correlationId, sessionId, serverName, publicName,
                     McpErrorCode.SERVER_UNAVAILABLE, e.getMessage(),
-                    requestId, clientName);
+                    requestId, clientName,
+                    LocalDateTime.now(), ++seq);
             throw new RuntimeException(String.format("[%d] %s: resource '%s' on server '%s' — %s",
                     McpErrorCode.SERVER_UNAVAILABLE.getCode(),
                     McpErrorCode.SERVER_UNAVAILABLE.getMessage(),
@@ -1174,7 +1221,8 @@ public class ToolCallOrchestrator {
             auditService.auditOrchestrationError(
                     correlationId, sessionId, serverName, publicName,
                     McpErrorCode.ORCHESTRATION_FAILURE, e.getMessage(),
-                    requestId, clientName);
+                    requestId, clientName,
+                    LocalDateTime.now(), ++seq);
             throw new RuntimeException(String.format("[%d] %s: resource '%s' on server '%s' — %s",
                     McpErrorCode.ORCHESTRATION_FAILURE.getCode(),
                     McpErrorCode.ORCHESTRATION_FAILURE.getMessage(),

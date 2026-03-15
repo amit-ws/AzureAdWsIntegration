@@ -147,7 +147,7 @@ public class HttpMcpAuditFilter implements Filter {
         // ── Block requests from sessions flagged as blocked ──────────
         String sessionId = wrappedRequest.getHeader("Mcp-Session-Id");
         if (sessionId != null && blockedSessionIds.contains(sessionId)) {
-            String blockedAgentName = sessionAgentNames.getOrDefault(sessionId, "unknown");
+            String blockedAgentName = resolveAgentName(sessionId);
             auditService.auditAgentConnectionRejected(
                     sessionId,
                     requestId,
@@ -273,12 +273,23 @@ public class HttpMcpAuditFilter implements Filter {
         // Track ALL sessions (including probes) for stale session detection
         knownSessionIds.add(sessionId);
 
+        // Extract agent name early — BEFORE any early returns — so every session
+        // in knownSessionIds also has an entry in sessionAgentNames. Without this,
+        // subsequent requests (tools/list, notifications) on duplicate or probe
+        // sessions resolve to "unresolved" because the name was never stored.
+        String earlyAgentName = "unknown";
+        try {
+            earlyAgentName = json.path("params").path("clientInfo").path("name").asText("unknown");
+        } catch (Exception ignored) {
+        }
+        sessionAgentNames.put(sessionId, earlyAgentName);
+
         if (registeredSessions.containsKey(sessionId))
             return;
         if (registeredSessions.putIfAbsent(sessionId, Boolean.TRUE) != null)
             return;
 
-        String agentName = "unknown";
+        String agentName = earlyAgentName;
         String agentVersion = null;
         String protocolVersion = null;
 
@@ -296,9 +307,6 @@ public class HttpMcpAuditFilter implements Filter {
                 registeredSessions.remove(sessionId);
                 return;
             }
-
-            // Track sessionId → agentName for list/disconnect audit
-            sessionAgentNames.put(sessionId, agentName);
 
             // Agent Registry — discover (upsert) and register session
             GatewayAgentEntity agent = agentRegistryService.discoverAgent(
@@ -503,21 +511,21 @@ public class HttpMcpAuditFilter implements Filter {
     // ════════════════════════════════════════════════════════════════════
 
     private void handleToolsList(String sessionId, String requestId, long durationMs) {
-        String agentName = sessionAgentNames.getOrDefault(sessionId, "unknown");
+        String agentName = resolveAgentName(sessionId);
         int toolCount = registryService.getToolDescriptors().size();
         auditService.auditServerToolsListRequested(sessionId, toolCount, durationMs, requestId, agentName);
         log.debug("Audited HTTP tools/list: session={}, count={}, duration={}ms", sessionId, toolCount, durationMs);
     }
 
     private void handlePromptsList(String sessionId, String requestId, long durationMs) {
-        String agentName = sessionAgentNames.getOrDefault(sessionId, "unknown");
+        String agentName = resolveAgentName(sessionId);
         int promptCount = registryService.getPromptDescriptors().size();
         auditService.auditServerPromptsListRequested(sessionId, promptCount, durationMs, requestId, agentName);
         log.debug("Audited HTTP prompts/list: session={}, count={}, duration={}ms", sessionId, promptCount, durationMs);
     }
 
     private void handleResourcesList(String sessionId, String requestId, long durationMs) {
-        String agentName = sessionAgentNames.getOrDefault(sessionId, "unknown");
+        String agentName = resolveAgentName(sessionId);
         int resourceCount = registryService.getResourceDescriptors().size();
         auditService.auditServerResourcesListRequested(sessionId, resourceCount, durationMs, requestId, agentName);
         log.debug("Audited HTTP resources/list: session={}, count={}, duration={}ms", sessionId, resourceCount,
@@ -529,7 +537,7 @@ public class HttpMcpAuditFilter implements Filter {
     // ════════════════════════════════════════════════════════════════════
 
     private void handleNotification(String sessionId, String method, JsonNode params) {
-        String agentName = sessionAgentNames.getOrDefault(sessionId, "unknown");
+        String agentName = resolveAgentName(sessionId);
         auditService.auditServerNotificationReceived(sessionId, method, params, agentName);
         log.debug("Audited HTTP notification: session={}, method={}", sessionId, method);
     }
@@ -679,7 +687,7 @@ public class HttpMcpAuditFilter implements Filter {
         // After SDK processing, audit if this was a tracked session
         if (sessionId != null && registeredSessions.containsKey(sessionId)) {
             try {
-                String agentName = sessionAgentNames.getOrDefault(sessionId, "unknown");
+                String agentName = resolveAgentName(sessionId);
 
                 // Audit disconnect (synchronous — ensure it persists)
                 auditService.auditServerSessionDisconnectedSync(sessionId, agentName);
@@ -698,5 +706,40 @@ public class HttpMcpAuditFilter implements Filter {
                 log.error("Failed to audit HTTP session disconnect {}: {}", sessionId, e.getMessage());
             }
         }
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // AGENT NAME RESOLUTION — in-memory → DB fallback (never "unknown")
+    // ════════════════════════════════════════════════════════════════════
+
+    /**
+     * Resolves the agent name for a given session ID.
+     *
+     * <p>Lookup chain:
+     * <ol>
+     *   <li>In-memory {@code sessionAgentNames} map (fast, covers active sessions)</li>
+     *   <li>{@link AgentRegistryService#getAgentNameBySessionId} (DB fallback for
+     *       reaped/disconnected sessions)</li>
+     * </ol>
+     *
+     * <p>Falls back to {@code "unresolved"} only if both lookups fail — this should
+     * never happen in practice since every session is persisted during initialize.
+     */
+    private String resolveAgentName(String sessionId) {
+        // 1. Fast in-memory lookup (active sessions)
+        String name = sessionAgentNames.get(sessionId);
+        if (name != null) {
+            return name;
+        }
+
+        // 2. DB fallback (reaped/disconnected sessions still have persisted records)
+        String dbName = agentRegistryService.getAgentNameBySessionId(sessionId);
+        if (dbName != null && !"unknown".equals(dbName)) {
+            // Cache it for subsequent calls in same session
+            sessionAgentNames.putIfAbsent(sessionId, dbName);
+            return dbName;
+        }
+
+        return "unresolved";
     }
 }

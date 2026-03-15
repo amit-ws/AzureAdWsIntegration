@@ -127,7 +127,10 @@ public class AuditController {
             }
         }
 
-        records.sort(Comparator.comparing(McpAuditLog::getTimestamp));
+        records.sort(Comparator
+                .comparing(McpAuditLog::getEventSequence,
+                           Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(McpAuditLog::getTimestamp));
         return ResponseEntity.ok(records);
     }
 

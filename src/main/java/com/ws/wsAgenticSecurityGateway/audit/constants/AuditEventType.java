@@ -49,7 +49,7 @@ public enum AuditEventType {
     // ── Area 4 — Orchestration Layer ──────────────────────────────────
     ORCHESTRATION_TOOL_EXTRACTED,
     ORCHESTRATION_REGISTRY_LOOKUP,
-    ORCHESTRATION_CALL_FORWARDED,
+    ORCHESTRATION_RESPONSE_RETURNED,
     ORCHESTRATION_ERROR,
 
     // ── Area 5 — PDP (Policy Decision Point) ──────────────────────────

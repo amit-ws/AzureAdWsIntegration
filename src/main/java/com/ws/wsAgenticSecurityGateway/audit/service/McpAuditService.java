@@ -16,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -330,7 +331,9 @@ public class McpAuditService {
                         String toolName,
                         Object requestArgs,
                         Object responseContent,
-                        long durationMs) {
+                        long durationMs,
+                        LocalDateTime firedAt,
+                        Integer eventSequence) {
                 persist(McpAuditLog.builder()
                                 .eventType(AuditEventType.CLIENT_TOOL_INVOCATION)
                                 .module(AuditModule.WS_CLIENT)
@@ -348,6 +351,8 @@ public class McpAuditService {
                                 .responsePayload(toJson(Map.of(
                                                 "content", responseContent != null ? responseContent : "[]")))
                                 .durationMs(durationMs)
+                                .timestamp(firedAt)
+                                .eventSequence(eventSequence)
                                 .build());
         }
 
@@ -362,7 +367,9 @@ public class McpAuditService {
                         Object requestArgs,
                         String errorMessage,
                         McpErrorCode errorCode,
-                        long durationMs) {
+                        long durationMs,
+                        LocalDateTime firedAt,
+                        Integer eventSequence) {
                 persist(McpAuditLog.builder()
                                 .eventType(AuditEventType.CLIENT_TOOL_INVOCATION)
                                 .module(AuditModule.WS_CLIENT)
@@ -381,6 +388,8 @@ public class McpAuditService {
                                                 : McpErrorCode.INTERNAL_ERROR.getCode())
                                 .errorMessage(errorMessage)
                                 .durationMs(durationMs)
+                                .timestamp(firedAt)
+                                .eventSequence(eventSequence)
                                 .build());
         }
 
@@ -393,7 +402,9 @@ public class McpAuditService {
                         String serverName,
                         String resourceUri,
                         Object responseContent,
-                        long durationMs) {
+                        long durationMs,
+                        LocalDateTime firedAt,
+                        Integer eventSequence) {
                 persist(McpAuditLog.builder()
                                 .eventType(AuditEventType.CLIENT_RESOURCE_READ)
                                 .module(AuditModule.WS_CLIENT)
@@ -409,6 +420,8 @@ public class McpAuditService {
                                 .responsePayload(toJson(Map.of(
                                                 "content", responseContent != null ? responseContent : "[]")))
                                 .durationMs(durationMs)
+                                .timestamp(firedAt)
+                                .eventSequence(eventSequence)
                                 .build());
         }
 
@@ -421,7 +434,9 @@ public class McpAuditService {
                         String serverName,
                         String resourceUri,
                         String errorMessage,
-                        long durationMs) {
+                        long durationMs,
+                        LocalDateTime firedAt,
+                        Integer eventSequence) {
                 persist(McpAuditLog.builder()
                                 .eventType(AuditEventType.CLIENT_RESOURCE_READ)
                                 .module(AuditModule.WS_CLIENT)
@@ -437,6 +452,8 @@ public class McpAuditService {
                                 .errorCode(McpErrorCode.INTERNAL_ERROR.getCode())
                                 .errorMessage(errorMessage)
                                 .durationMs(durationMs)
+                                .timestamp(firedAt)
+                                .eventSequence(eventSequence)
                                 .build());
         }
 
@@ -792,7 +809,8 @@ public class McpAuditService {
                         String toolName,
                         String sessionId,
                         String requestId,
-                        String agentName) {
+                        String agentName,
+                        LocalDateTime firedAt, Integer eventSequence) {
                 persist(McpAuditLog.builder()
                                 .eventType(AuditEventType.ORCHESTRATION_TOOL_EXTRACTED)
                                 .module(AuditModule.ORCHESTRATION_LAYER)
@@ -804,6 +822,8 @@ public class McpAuditService {
                                 .requestId(requestId)
                                 .capabilityName(toolName)
                                 .capabilityType("TOOL")
+                                .timestamp(firedAt)
+                                .eventSequence(eventSequence)
                                 .build());
         }
 
@@ -814,7 +834,8 @@ public class McpAuditService {
                         String resolvedServerName,
                         long durationMs,
                         String requestId,
-                        String agentName) {
+                        String agentName,
+                        LocalDateTime firedAt, Integer eventSequence) {
                 persist(McpAuditLog.builder()
                                 .eventType(AuditEventType.ORCHESTRATION_REGISTRY_LOOKUP)
                                 .module(AuditModule.ORCHESTRATION_LAYER)
@@ -827,6 +848,8 @@ public class McpAuditService {
                                 .capabilityName(publicCapabilityName)
                                 .serverName(resolvedServerName)
                                 .durationMs(durationMs)
+                                .timestamp(firedAt)
+                                .eventSequence(eventSequence)
                                 .build());
         }
 
@@ -837,9 +860,10 @@ public class McpAuditService {
                         String toolName,
                         long durationMs,
                         String requestId,
-                        String agentName) {
+                        String agentName,
+                        LocalDateTime firedAt, Integer eventSequence) {
                 persist(McpAuditLog.builder()
-                                .eventType(AuditEventType.ORCHESTRATION_CALL_FORWARDED)
+                                .eventType(AuditEventType.ORCHESTRATION_RESPONSE_RETURNED)
                                 .module(AuditModule.ORCHESTRATION_LAYER)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.INFO)
@@ -852,6 +876,8 @@ public class McpAuditService {
                                 .capabilityType("TOOL")
                                 .mcpMethod("tools/call")
                                 .durationMs(durationMs)
+                                .timestamp(firedAt)
+                                .eventSequence(eventSequence)
                                 .build());
         }
 
@@ -863,7 +889,8 @@ public class McpAuditService {
                         McpErrorCode errorCode,
                         String errorMessage,
                         String requestId,
-                        String agentName) {
+                        String agentName,
+                        LocalDateTime firedAt, Integer eventSequence) {
                 persist(McpAuditLog.builder()
                                 .eventType(AuditEventType.ORCHESTRATION_ERROR)
                                 .module(AuditModule.ORCHESTRATION_LAYER)
@@ -877,6 +904,8 @@ public class McpAuditService {
                                 .capabilityName(capabilityName)
                                 .errorCode(errorCode.getCode())
                                 .errorMessage(errorMessage)
+                                .timestamp(firedAt)
+                                .eventSequence(eventSequence)
                                 .build());
         }
 
@@ -895,7 +924,8 @@ public class McpAuditService {
                         String serverName,
                         Object context,
                         String requestId,
-                        String agentName) {
+                        String agentName,
+                        LocalDateTime firedAt, Integer eventSequence) {
                 persistPdp(PdpAuditLog.builder()
                                 .eventType(AuditEventType.PDP_EVALUATION_REQUESTED)
                                 .status(AuditStatus.SUCCESS)
@@ -920,6 +950,8 @@ public class McpAuditService {
                                 .mcpMethod(action)
                                 .requestId(requestId)
                                 .requestPayload(toJson(context))
+                                .timestamp(firedAt)
+                                .eventSequence(eventSequence)
                                 .build());
         }
 
@@ -934,7 +966,8 @@ public class McpAuditService {
                         Object context,
                         long durationMs,
                         String requestId,
-                        String agentName) {
+                        String agentName,
+                        LocalDateTime firedAt, Integer eventSequence) {
                 AuditStatus decisionStatus = "ALLOW".equalsIgnoreCase(decision)
                                 ? AuditStatus.SUCCESS : AuditStatus.DENIED;
                 AuditSeverity decisionSeverity = "ALLOW".equalsIgnoreCase(decision)
@@ -968,6 +1001,8 @@ public class McpAuditService {
                                 .durationMs(durationMs)
                                 .requestId(requestId)
                                 .responsePayload(toJson(context))
+                                .timestamp(firedAt)
+                                .eventSequence(eventSequence)
                                 .build());
         }
 
@@ -1421,7 +1456,8 @@ public class McpAuditService {
 
         @Async("mcpAuditExecutor")
         public void auditCapabilityAccessDenied(String sessionId, String correlationId,
-                        String agentName, String capabilityName, String capabilityType) {
+                        String agentName, String capabilityName, String capabilityType,
+                        LocalDateTime firedAt, Integer eventSequence) {
                 persist(McpAuditLog.builder()
                                 .eventType(AuditEventType.CAPABILITY_ACCESS_DENIED)
                                 .module(AuditModule.CAPABILITY_PROFILES)
@@ -1433,12 +1469,15 @@ public class McpAuditService {
                                 .capabilityName(capabilityName)
                                 .capabilityType(capabilityType)
                                 .errorMessage("Capability access denied — no profile grants access")
+                                .timestamp(firedAt)
+                                .eventSequence(eventSequence)
                                 .build());
         }
 
         @Async("mcpAuditExecutor")
         public void auditCapabilityAccessGranted(String sessionId, String correlationId,
-                        String agentName, String capabilityName, String capabilityType) {
+                        String agentName, String capabilityName, String capabilityType,
+                        LocalDateTime firedAt, Integer eventSequence) {
                 persist(McpAuditLog.builder()
                                 .eventType(AuditEventType.CAPABILITY_ACCESS_GRANTED)
                                 .module(AuditModule.CAPABILITY_PROFILES)
@@ -1449,6 +1488,8 @@ public class McpAuditService {
                                 .agentName(agentName)
                                 .capabilityName(capabilityName)
                                 .capabilityType(capabilityType)
+                                .timestamp(firedAt)
+                                .eventSequence(eventSequence)
                                 .build());
         }
 
@@ -1499,6 +1540,10 @@ public class McpAuditService {
 
         private void persist(McpAuditLog auditLog) {
                 try {
+                        // Fire-time fallback: set timestamp if not already captured by caller
+                        if (auditLog.getTimestamp() == null) {
+                                auditLog.setTimestamp(LocalDateTime.now());
+                        }
                         repository.save(auditLog);
                         log.debug("Audit [{}] {} — {} | server={} capability={}",
                                         auditLog.getModule(),

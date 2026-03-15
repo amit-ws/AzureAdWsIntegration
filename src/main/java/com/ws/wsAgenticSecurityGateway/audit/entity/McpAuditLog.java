@@ -11,8 +11,6 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.CreationTimestamp;
-
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -88,6 +86,10 @@ public class McpAuditLog {
     @Column(name = "request_id", length = 64)
     private String requestId;
 
+    /** Deterministic ordering within a correlation chain (1-based, null for non-orchestration events). */
+    @Column(name = "event_sequence")
+    private Integer eventSequence;
+
     /** AI agent name (e.g., "claude-desktop", "cursor") — set for northbound + orchestration events. */
     @Column(name = "agent_name", length = 256)
     private String agentName;
@@ -144,7 +146,6 @@ public class McpAuditLog {
     @Column(name = "duration_ms")
     private Long durationMs;
 
-    @CreationTimestamp
     @Column(name = "timestamp", nullable = false, updatable = false)
     private LocalDateTime timestamp;
 
