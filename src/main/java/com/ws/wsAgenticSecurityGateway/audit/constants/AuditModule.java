@@ -25,6 +25,9 @@ public enum AuditModule {
     /** Agent discovery/approval/blocking workflow (admin + policy gates). */
     AGENT_REGISTRY,
 
+    /** Capability Access Profile management (CRUD, assignment, access control). */
+    CAPABILITY_PROFILES,
+
     /** Cross-cutting system events (startup, shutdown, etc.). */
     SYSTEM
 }

@@ -962,8 +962,8 @@ public class AzureResourceService {
             RoleAssignment createdRoleAssignment = armAdmin.accessManagement()
                     .roleAssignments()
                     .define(UUID.randomUUID().toString())
-                    .forObjectId("44686a19-4bf2-4026-8b5f-213ab2ba8676")
-                    .withRoleDefinition("/subscriptions/4769af8e-ca3d-448d-bd1a-80e03ed94158/providers/Microsoft.Authorization/roleDefinitions/8e3af657-a8ff-443c-a75c-2fe8c4bcb635")
+                    .forObjectId("aef1eeca-1e26-47a2-99a4-ec6360718b3c")
+                    .withRoleDefinition("/subscriptions/4769af8e-ca3d-448d-bd1a-80e03ed94158/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48ef-bd42-f606fba81ae7")
                     .withScope("/subscriptions/4769af8e-ca3d-448d-bd1a-80e03ed94158")
                     .withDescription("Owner access to the JIT ACESS app on Subs")
                     .create();

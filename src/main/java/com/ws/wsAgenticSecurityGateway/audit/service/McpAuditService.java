@@ -16,6 +16,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -329,7 +331,9 @@ public class McpAuditService {
                         String toolName,
                         Object requestArgs,
                         Object responseContent,
-                        long durationMs) {
+                        long durationMs,
+                        LocalDateTime firedAt,
+                        Integer eventSequence) {
                 persist(McpAuditLog.builder()
                                 .eventType(AuditEventType.CLIENT_TOOL_INVOCATION)
                                 .module(AuditModule.WS_CLIENT)
@@ -347,6 +351,8 @@ public class McpAuditService {
                                 .responsePayload(toJson(Map.of(
                                                 "content", responseContent != null ? responseContent : "[]")))
                                 .durationMs(durationMs)
+                                .timestamp(firedAt)
+                                .eventSequence(eventSequence)
                                 .build());
         }
 
@@ -361,7 +367,9 @@ public class McpAuditService {
                         Object requestArgs,
                         String errorMessage,
                         McpErrorCode errorCode,
-                        long durationMs) {
+                        long durationMs,
+                        LocalDateTime firedAt,
+                        Integer eventSequence) {
                 persist(McpAuditLog.builder()
                                 .eventType(AuditEventType.CLIENT_TOOL_INVOCATION)
                                 .module(AuditModule.WS_CLIENT)
@@ -380,6 +388,8 @@ public class McpAuditService {
                                                 : McpErrorCode.INTERNAL_ERROR.getCode())
                                 .errorMessage(errorMessage)
                                 .durationMs(durationMs)
+                                .timestamp(firedAt)
+                                .eventSequence(eventSequence)
                                 .build());
         }
 
@@ -392,7 +402,9 @@ public class McpAuditService {
                         String serverName,
                         String resourceUri,
                         Object responseContent,
-                        long durationMs) {
+                        long durationMs,
+                        LocalDateTime firedAt,
+                        Integer eventSequence) {
                 persist(McpAuditLog.builder()
                                 .eventType(AuditEventType.CLIENT_RESOURCE_READ)
                                 .module(AuditModule.WS_CLIENT)
@@ -408,6 +420,8 @@ public class McpAuditService {
                                 .responsePayload(toJson(Map.of(
                                                 "content", responseContent != null ? responseContent : "[]")))
                                 .durationMs(durationMs)
+                                .timestamp(firedAt)
+                                .eventSequence(eventSequence)
                                 .build());
         }
 
@@ -420,7 +434,9 @@ public class McpAuditService {
                         String serverName,
                         String resourceUri,
                         String errorMessage,
-                        long durationMs) {
+                        long durationMs,
+                        LocalDateTime firedAt,
+                        Integer eventSequence) {
                 persist(McpAuditLog.builder()
                                 .eventType(AuditEventType.CLIENT_RESOURCE_READ)
                                 .module(AuditModule.WS_CLIENT)
@@ -436,6 +452,8 @@ public class McpAuditService {
                                 .errorCode(McpErrorCode.INTERNAL_ERROR.getCode())
                                 .errorMessage(errorMessage)
                                 .durationMs(durationMs)
+                                .timestamp(firedAt)
+                                .eventSequence(eventSequence)
                                 .build());
         }
 
@@ -791,7 +809,8 @@ public class McpAuditService {
                         String toolName,
                         String sessionId,
                         String requestId,
-                        String agentName) {
+                        String agentName,
+                        LocalDateTime firedAt, Integer eventSequence) {
                 persist(McpAuditLog.builder()
                                 .eventType(AuditEventType.ORCHESTRATION_TOOL_EXTRACTED)
                                 .module(AuditModule.ORCHESTRATION_LAYER)
@@ -803,6 +822,8 @@ public class McpAuditService {
                                 .requestId(requestId)
                                 .capabilityName(toolName)
                                 .capabilityType("TOOL")
+                                .timestamp(firedAt)
+                                .eventSequence(eventSequence)
                                 .build());
         }
 
@@ -813,7 +834,8 @@ public class McpAuditService {
                         String resolvedServerName,
                         long durationMs,
                         String requestId,
-                        String agentName) {
+                        String agentName,
+                        LocalDateTime firedAt, Integer eventSequence) {
                 persist(McpAuditLog.builder()
                                 .eventType(AuditEventType.ORCHESTRATION_REGISTRY_LOOKUP)
                                 .module(AuditModule.ORCHESTRATION_LAYER)
@@ -826,6 +848,8 @@ public class McpAuditService {
                                 .capabilityName(publicCapabilityName)
                                 .serverName(resolvedServerName)
                                 .durationMs(durationMs)
+                                .timestamp(firedAt)
+                                .eventSequence(eventSequence)
                                 .build());
         }
 
@@ -836,9 +860,10 @@ public class McpAuditService {
                         String toolName,
                         long durationMs,
                         String requestId,
-                        String agentName) {
+                        String agentName,
+                        LocalDateTime firedAt, Integer eventSequence) {
                 persist(McpAuditLog.builder()
-                                .eventType(AuditEventType.ORCHESTRATION_CALL_FORWARDED)
+                                .eventType(AuditEventType.ORCHESTRATION_RESPONSE_RETURNED)
                                 .module(AuditModule.ORCHESTRATION_LAYER)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.INFO)
@@ -851,6 +876,8 @@ public class McpAuditService {
                                 .capabilityType("TOOL")
                                 .mcpMethod("tools/call")
                                 .durationMs(durationMs)
+                                .timestamp(firedAt)
+                                .eventSequence(eventSequence)
                                 .build());
         }
 
@@ -862,7 +889,8 @@ public class McpAuditService {
                         McpErrorCode errorCode,
                         String errorMessage,
                         String requestId,
-                        String agentName) {
+                        String agentName,
+                        LocalDateTime firedAt, Integer eventSequence) {
                 persist(McpAuditLog.builder()
                                 .eventType(AuditEventType.ORCHESTRATION_ERROR)
                                 .module(AuditModule.ORCHESTRATION_LAYER)
@@ -876,21 +904,28 @@ public class McpAuditService {
                                 .capabilityName(capabilityName)
                                 .errorCode(errorCode.getCode())
                                 .errorMessage(errorMessage)
+                                .timestamp(firedAt)
+                                .eventSequence(eventSequence)
                                 .build());
         }
 
         // ════════════════════════════════════════════════════════════════════
         // AREA 5 — PDP (Policy Decision Point)
-        // Persists to dedicated `pdp_audit_log` table.
-        // Linked to mcp_audit_log via correlation_id (logical join, not FK).
+        // Dual-write: pdp_audit_log (compliance retention) + mcp_audit_log (UI visibility).
+        // Both linked by correlation_id.
         // ════════════════════════════════════════════════════════════════════
 
         @Async("mcpAuditExecutor")
         public void auditPdpEvaluationRequested(String correlationId,
+                        String sessionId,
                         String subject,
                         String resource,
                         String action,
-                        Object context) {
+                        String serverName,
+                        Object context,
+                        String requestId,
+                        String agentName,
+                        LocalDateTime firedAt, Integer eventSequence) {
                 persistPdp(PdpAuditLog.builder()
                                 .eventType(AuditEventType.PDP_EVALUATION_REQUESTED)
                                 .status(AuditStatus.SUCCESS)
@@ -901,20 +936,47 @@ public class McpAuditService {
                                 .pdpAction(action)
                                 .pdpContext(toJson(context))
                                 .build());
+
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.PDP_EVALUATION_REQUESTED)
+                                .module(AuditModule.PDP)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .correlationId(correlationId)
+                                .sessionId(sessionId)
+                                .agentName(agentName)
+                                .capabilityName(resource)
+                                .serverName(serverName)
+                                .mcpMethod(action)
+                                .requestId(requestId)
+                                .requestPayload(toJson(context))
+                                .timestamp(firedAt)
+                                .eventSequence(eventSequence)
+                                .build());
         }
 
         @Async("mcpAuditExecutor")
         public void auditPdpDecisionRendered(String correlationId,
+                        String sessionId,
                         String subject,
                         String resource,
                         String action,
                         String decision,
+                        String serverName,
                         Object context,
-                        long durationMs) {
+                        long durationMs,
+                        String requestId,
+                        String agentName,
+                        LocalDateTime firedAt, Integer eventSequence) {
+                AuditStatus decisionStatus = "ALLOW".equalsIgnoreCase(decision)
+                                ? AuditStatus.SUCCESS : AuditStatus.DENIED;
+                AuditSeverity decisionSeverity = "ALLOW".equalsIgnoreCase(decision)
+                                ? AuditSeverity.INFO : AuditSeverity.WARN;
+
                 persistPdp(PdpAuditLog.builder()
                                 .eventType(AuditEventType.PDP_DECISION_RENDERED)
-                                .status("ALLOW".equalsIgnoreCase(decision) ? AuditStatus.SUCCESS : AuditStatus.DENIED)
-                                .severity("ALLOW".equalsIgnoreCase(decision) ? AuditSeverity.INFO : AuditSeverity.WARN)
+                                .status(decisionStatus)
+                                .severity(decisionSeverity)
                                 .correlationId(correlationId)
                                 .pdpSubject(subject)
                                 .pdpResource(resource)
@@ -922,6 +984,253 @@ public class McpAuditService {
                                 .pdpDecision(decision)
                                 .pdpContext(toJson(context))
                                 .durationMs(durationMs)
+                                .build());
+
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.PDP_DECISION_RENDERED)
+                                .module(AuditModule.PDP)
+                                .status(decisionStatus)
+                                .severity(decisionSeverity)
+                                .correlationId(correlationId)
+                                .sessionId(sessionId)
+                                .agentName(agentName)
+                                .capabilityName(resource)
+                                .serverName(serverName)
+                                .mcpMethod(action)
+                                .capabilityType(decision)
+                                .durationMs(durationMs)
+                                .requestId(requestId)
+                                .responsePayload(toJson(context))
+                                .timestamp(firedAt)
+                                .eventSequence(eventSequence)
+                                .build());
+        }
+
+        // ════════════════════════════════════════════════════════════════════
+        // AREA 5b — PDP Policy Management (admin CRUD → mcp_audit_log)
+        // ════════════════════════════════════════════════════════════════════
+
+        @Async("mcpAuditExecutor")
+        public void auditPdpPolicyCreated(String policyName, String effect, String source,
+                        String description, String policyText, String createdBy,
+                        String tags, String originalPrompt,
+                        Map<String, String> refs) {
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("policyName", policyName != null ? policyName : "");
+                payload.put("effect", effect != null ? effect : "");
+                payload.put("source", source != null ? source : "MANUAL");
+                payload.put("description", description != null ? description : "");
+                payload.put("policyText", policyText != null ? policyText : "");
+                payload.put("createdBy", createdBy != null ? createdBy : "");
+                payload.put("tags", tags != null ? tags : "");
+                payload.put("originalPrompt", originalPrompt != null ? originalPrompt : "");
+                if (refs != null) {
+                        payload.put("referencedAgent", refs.getOrDefault("agentName", ""));
+                        payload.put("referencedCapability", refs.getOrDefault("capabilityName", ""));
+                        payload.put("referencedCapabilityType", refs.getOrDefault("capabilityType", ""));
+                        payload.put("referencedServer", refs.getOrDefault("serverName", ""));
+                        payload.put("referencedAction", refs.getOrDefault("actionName", ""));
+                }
+
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.PDP_POLICY_CREATED)
+                                .module(AuditModule.PDP)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .agentName(refs != null ? refs.get("agentName") : null)
+                                .serverName(refs != null ? refs.get("serverName") : null)
+                                .capabilityName(policyName)
+                                .capabilityType(effect)
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(payload))
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditPdpPolicyUpdated(String policyName, String changedFields,
+                        String description, String policyText, String effect,
+                        String tags, Map<String, String> refs) {
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("policyName", policyName != null ? policyName : "");
+                payload.put("changedFields", changedFields != null ? changedFields : "");
+                payload.put("description", description != null ? description : "");
+                payload.put("policyText", policyText != null ? policyText : "");
+                payload.put("effect", effect != null ? effect : "");
+                payload.put("tags", tags != null ? tags : "");
+                if (refs != null) {
+                        payload.put("referencedAgent", refs.getOrDefault("agentName", ""));
+                        payload.put("referencedCapability", refs.getOrDefault("capabilityName", ""));
+                        payload.put("referencedCapabilityType", refs.getOrDefault("capabilityType", ""));
+                        payload.put("referencedServer", refs.getOrDefault("serverName", ""));
+                        payload.put("referencedAction", refs.getOrDefault("actionName", ""));
+                }
+
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.PDP_POLICY_UPDATED)
+                                .module(AuditModule.PDP)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .agentName(refs != null ? refs.get("agentName") : null)
+                                .serverName(refs != null ? refs.get("serverName") : null)
+                                .capabilityName(policyName)
+                                .capabilityType(effect)
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(payload))
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditPdpPolicyDeleted(String policyName) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.PDP_POLICY_DELETED)
+                                .module(AuditModule.PDP)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.WARN)
+                                .capabilityName(policyName)
+                                .correlationId(generateCorrelationId())
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditPdpPolicyToggled(String policyName, boolean enabled) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.PDP_POLICY_TOGGLED)
+                                .module(AuditModule.PDP)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .capabilityName(policyName)
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(Map.of(
+                                                "policyName", policyName != null ? policyName : "",
+                                                "enabled", enabled)))
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditPdpPolicyValidated(String cedarText, boolean valid, String error) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.PDP_POLICY_VALIDATED)
+                                .module(AuditModule.PDP)
+                                .status(valid ? AuditStatus.SUCCESS : AuditStatus.FAILURE)
+                                .severity(AuditSeverity.INFO)
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(Map.of("policyText",
+                                                cedarText != null && cedarText.length() > 500
+                                                                ? cedarText.substring(0, 500) + "...[truncated]"
+                                                                : (cedarText != null ? cedarText : ""))))
+                                .errorMessage(error)
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditPdpEngineReloaded(int policyCount) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.PDP_ENGINE_RELOADED)
+                                .module(AuditModule.PDP)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(Map.of("policyCount", policyCount)))
+                                .build());
+        }
+
+        // ════════════════════════════════════════════════════════════════════
+        // AREA 5c — PDP LLM Chat (admin policy generation → mcp_audit_log)
+        // ════════════════════════════════════════════════════════════════════
+
+        @Async("mcpAuditExecutor")
+        public void auditPdpLlmChatRequested(String prompt, int messageCount) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.PDP_LLM_CHAT_REQUESTED)
+                                .module(AuditModule.PDP)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(Map.of(
+                                                "prompt", prompt != null && prompt.length() > 500
+                                                                ? prompt.substring(0, 500) + "...[truncated]"
+                                                                : (prompt != null ? prompt : ""),
+                                                "messageCount", messageCount)))
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditPdpLlmChatCompleted(String prompt, String responseText,
+                        long durationMs, boolean success) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.PDP_LLM_CHAT_COMPLETED)
+                                .module(AuditModule.PDP)
+                                .status(success ? AuditStatus.SUCCESS : AuditStatus.FAILURE)
+                                .severity(success ? AuditSeverity.INFO : AuditSeverity.WARN)
+                                .correlationId(generateCorrelationId())
+                                .durationMs(durationMs)
+                                .requestPayload(toJson(Map.of("prompt",
+                                                prompt != null && prompt.length() > 500
+                                                                ? prompt.substring(0, 500) + "...[truncated]"
+                                                                : (prompt != null ? prompt : ""))))
+                                .responsePayload(toJson(Map.of("response",
+                                                responseText != null && responseText.length() > 500
+                                                                ? responseText.substring(0, 500) + "...[truncated]"
+                                                                : (responseText != null ? responseText : ""))))
+                                .build());
+        }
+
+        // ════════════════════════════════════════════════════════════════════
+        // AREA 5d — PDP Custom Attributes (admin CRUD → mcp_audit_log)
+        // ════════════════════════════════════════════════════════════════════
+
+        @Async("mcpAuditExecutor")
+        public void auditPdpCustomAttrCreated(String attrName, String valueSource, String dataType) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.PDP_CUSTOM_ATTR_CREATED)
+                                .module(AuditModule.PDP)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .capabilityName(attrName)
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(Map.of(
+                                                "attributeName", attrName != null ? attrName : "",
+                                                "valueSource", valueSource != null ? valueSource : "",
+                                                "dataType", dataType != null ? dataType : "")))
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditPdpCustomAttrUpdated(String attrName) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.PDP_CUSTOM_ATTR_UPDATED)
+                                .module(AuditModule.PDP)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .capabilityName(attrName)
+                                .correlationId(generateCorrelationId())
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditPdpCustomAttrDeleted(String attrName) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.PDP_CUSTOM_ATTR_DELETED)
+                                .module(AuditModule.PDP)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.WARN)
+                                .capabilityName(attrName)
+                                .correlationId(generateCorrelationId())
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditPdpCustomAttrToggled(String attrName, boolean enabled) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.PDP_CUSTOM_ATTR_TOGGLED)
+                                .module(AuditModule.PDP)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .capabilityName(attrName)
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(Map.of(
+                                                "attributeName", attrName != null ? attrName : "",
+                                                "enabled", enabled)))
                                 .build());
         }
 
@@ -1054,6 +1363,137 @@ public class McpAuditService {
         }
 
         // ════════════════════════════════════════════════════════════════════
+        // AREA 8 — Capability Access Profiles
+        // ════════════════════════════════════════════════════════════════════
+
+        @Async("mcpAuditExecutor")
+        public void auditCapabilityProfileCreated(String profileName, UUID profileId,
+                        String description, int ruleCount) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.CAPABILITY_PROFILE_CREATED)
+                                .module(AuditModule.CAPABILITY_PROFILES)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .correlationId(generateCorrelationId())
+                                .capabilityName(profileName)
+                                .requestPayload(toJson(Map.of(
+                                                "profileName", profileName != null ? profileName : "",
+                                                "profileId", profileId != null ? profileId.toString() : "",
+                                                "description", description != null ? description : "",
+                                                "ruleCount", ruleCount)))
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditCapabilityProfileUpdated(String profileName, UUID profileId,
+                        String changedFields) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.CAPABILITY_PROFILE_UPDATED)
+                                .module(AuditModule.CAPABILITY_PROFILES)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .correlationId(generateCorrelationId())
+                                .capabilityName(profileName)
+                                .requestPayload(toJson(Map.of(
+                                                "profileName", profileName != null ? profileName : "",
+                                                "profileId", profileId != null ? profileId.toString() : "",
+                                                "changedFields", changedFields != null ? changedFields : "")))
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditCapabilityProfileDeleted(String profileName, UUID profileId) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.CAPABILITY_PROFILE_DELETED)
+                                .module(AuditModule.CAPABILITY_PROFILES)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.WARN)
+                                .correlationId(generateCorrelationId())
+                                .capabilityName(profileName)
+                                .requestPayload(toJson(Map.of(
+                                                "profileName", profileName != null ? profileName : "",
+                                                "profileId", profileId != null ? profileId.toString() : "")))
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditCapabilityProfileAssigned(String profileName, UUID profileId,
+                        String agentName, UUID agentId) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.CAPABILITY_PROFILE_ASSIGNED)
+                                .module(AuditModule.CAPABILITY_PROFILES)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .correlationId(generateCorrelationId())
+                                .capabilityName(profileName)
+                                .agentName(agentName)
+                                .requestPayload(toJson(Map.of(
+                                                "profileName", profileName != null ? profileName : "",
+                                                "profileId", profileId != null ? profileId.toString() : "",
+                                                "agentName", agentName != null ? agentName : "",
+                                                "agentId", agentId != null ? agentId.toString() : "")))
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditCapabilityProfileUnassigned(String profileName, UUID profileId,
+                        String agentName, UUID agentId) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.CAPABILITY_PROFILE_UNASSIGNED)
+                                .module(AuditModule.CAPABILITY_PROFILES)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .correlationId(generateCorrelationId())
+                                .capabilityName(profileName)
+                                .agentName(agentName)
+                                .requestPayload(toJson(Map.of(
+                                                "profileName", profileName != null ? profileName : "",
+                                                "profileId", profileId != null ? profileId.toString() : "",
+                                                "agentName", agentName != null ? agentName : "",
+                                                "agentId", agentId != null ? agentId.toString() : "")))
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditCapabilityAccessDenied(String sessionId, String correlationId,
+                        String agentName, String capabilityName, String capabilityType,
+                        LocalDateTime firedAt, Integer eventSequence) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.CAPABILITY_ACCESS_DENIED)
+                                .module(AuditModule.CAPABILITY_PROFILES)
+                                .status(AuditStatus.FAILURE)
+                                .severity(AuditSeverity.WARN)
+                                .sessionId(sessionId)
+                                .correlationId(correlationId != null ? correlationId : generateCorrelationId())
+                                .agentName(agentName)
+                                .capabilityName(capabilityName)
+                                .capabilityType(capabilityType)
+                                .errorMessage("Capability access denied — no profile grants access")
+                                .timestamp(firedAt)
+                                .eventSequence(eventSequence)
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditCapabilityAccessGranted(String sessionId, String correlationId,
+                        String agentName, String capabilityName, String capabilityType,
+                        LocalDateTime firedAt, Integer eventSequence) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.CAPABILITY_ACCESS_GRANTED)
+                                .module(AuditModule.CAPABILITY_PROFILES)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .sessionId(sessionId)
+                                .correlationId(correlationId != null ? correlationId : generateCorrelationId())
+                                .agentName(agentName)
+                                .capabilityName(capabilityName)
+                                .capabilityType(capabilityType)
+                                .timestamp(firedAt)
+                                .eventSequence(eventSequence)
+                                .build());
+        }
+
+        // ════════════════════════════════════════════════════════════════════
         // GENERAL — System events
         // ════════════════════════════════════════════════════════════════════
 
@@ -1100,6 +1540,10 @@ public class McpAuditService {
 
         private void persist(McpAuditLog auditLog) {
                 try {
+                        // Fire-time fallback: set timestamp if not already captured by caller
+                        if (auditLog.getTimestamp() == null) {
+                                auditLog.setTimestamp(LocalDateTime.now());
+                        }
                         repository.save(auditLog);
                         log.debug("Audit [{}] {} — {} | server={} capability={}",
                                         auditLog.getModule(),

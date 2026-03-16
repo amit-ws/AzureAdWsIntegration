@@ -49,12 +49,30 @@ public enum AuditEventType {
     // ── Area 4 — Orchestration Layer ──────────────────────────────────
     ORCHESTRATION_TOOL_EXTRACTED,
     ORCHESTRATION_REGISTRY_LOOKUP,
-    ORCHESTRATION_CALL_FORWARDED,
+    ORCHESTRATION_RESPONSE_RETURNED,
     ORCHESTRATION_ERROR,
 
     // ── Area 5 — PDP (Policy Decision Point) ──────────────────────────
     PDP_EVALUATION_REQUESTED,
     PDP_DECISION_RENDERED,
+
+    // ── Area 5b — PDP Policy Management ─────────────────────────────
+    PDP_POLICY_CREATED,
+    PDP_POLICY_UPDATED,
+    PDP_POLICY_DELETED,
+    PDP_POLICY_TOGGLED,
+    PDP_POLICY_VALIDATED,
+    PDP_ENGINE_RELOADED,
+
+    // ── Area 5c — PDP LLM Chat ──────────────────────────────────────
+    PDP_LLM_CHAT_REQUESTED,
+    PDP_LLM_CHAT_COMPLETED,
+
+    // ── Area 5d — PDP Custom Attributes ─────────────────────────────
+    PDP_CUSTOM_ATTR_CREATED,
+    PDP_CUSTOM_ATTR_UPDATED,
+    PDP_CUSTOM_ATTR_DELETED,
+    PDP_CUSTOM_ATTR_TOGGLED,
 
     // ── Area 6 — Server Configuration Management ─────────────────────
     SERVER_CONFIG_CREATED,
@@ -65,6 +83,15 @@ public enum AuditEventType {
     AGENT_APPROVED,
     AGENT_BLOCKED,
     AGENT_CONNECTION_REJECTED,
+
+    // ── Area 8 — Capability Access Profiles ─────────────────────────
+    CAPABILITY_ACCESS_GRANTED,
+    CAPABILITY_ACCESS_DENIED,
+    CAPABILITY_PROFILE_CREATED,
+    CAPABILITY_PROFILE_UPDATED,
+    CAPABILITY_PROFILE_DELETED,
+    CAPABILITY_PROFILE_ASSIGNED,
+    CAPABILITY_PROFILE_UNASSIGNED,
 
     // ── System-level ──────────────────────────────────────────────────
     SYSTEM_STARTUP,

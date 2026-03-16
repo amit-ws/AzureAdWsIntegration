@@ -2,6 +2,7 @@ package com.ws.wsAgenticSecurityGateway.wsServer.transport;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentCapabilityFilterService;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
@@ -125,13 +126,14 @@ public class HttpTransportConfig {
     @Bean
     public FilterRegistrationBean<HttpMcpAuditFilter> mcpAuditFilterRegistration(
             AgentRegistryService agentRegistryService,
+            AgentCapabilityFilterService capabilityFilterService,
             McpAuditService auditService,
             CapabilityRegistryService registryService,
             ObjectMapper objectMapper) {
 
         FilterRegistrationBean<HttpMcpAuditFilter> registration = new FilterRegistrationBean<>();
         registration.setFilter(new HttpMcpAuditFilter(
-                agentRegistryService, auditService, registryService, objectMapper));
+                agentRegistryService, capabilityFilterService, auditService, registryService, objectMapper));
         registration.addUrlPatterns("/mcp/*");
         registration.setOrder(2);
         registration.setName("mcpAuditFilter");

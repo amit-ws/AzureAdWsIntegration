@@ -31,7 +31,8 @@ public enum McpErrorCode {
     ORCHESTRATION_FAILURE(-33004, "Orchestration routing failure"),
     REGISTRY_ERROR(-33005, "Capability registry error"),
     TRANSPORT_ERROR(-33006, "Transport layer error"),
-    AGENT_BLOCKED(-33007, "Agent is blocked by admin");
+    AGENT_BLOCKED(-33007, "Agent is blocked by admin"),
+    CAPABILITY_NOT_ALLOWED(-33008, "Capability not permitted for this agent");
 
     private final int code;
     private final String message;

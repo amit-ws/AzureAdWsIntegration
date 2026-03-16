@@ -112,7 +112,7 @@ public class McpClientController {
 
         try {
             String correlationId = UUID.randomUUID().toString();
-            List<McpSchema.Content> result = service.callTool(correlationId, serverName, toolName, input);
+            List<McpSchema.Content> result = service.callTool(correlationId, serverName, toolName, input, null, null);
             return ResponseEntity.ok(result);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();
@@ -137,7 +137,7 @@ public class McpClientController {
 
         try {
             String correlationId = UUID.randomUUID().toString();
-            List<McpSchema.ResourceContents> contents = service.readResource(correlationId, serverName, uri);
+            List<McpSchema.ResourceContents> contents = service.readResource(correlationId, serverName, uri, null, null);
             return ResponseEntity.ok(contents);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();

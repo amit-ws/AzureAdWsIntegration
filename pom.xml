@@ -312,6 +312,10 @@
         </dependency>
 
 
+        <!-- Cedar Policy Engine: pure-Java evaluator (no external dependency needed) -->
+        <!-- Parses and evaluates Cedar policy syntax using regex-based parser.       -->
+        <!-- Supports permit/forbid, when/unless, entity hierarchy, context checks.   -->
+
         <!-- MCP RELATED  -->
         <dependency>
             <groupId>io.modelcontextprotocol.sdk</groupId>

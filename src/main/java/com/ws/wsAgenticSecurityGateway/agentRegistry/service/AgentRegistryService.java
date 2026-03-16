@@ -367,6 +367,18 @@ public class AgentRegistryService {
     }
 
     /**
+     * Resolve session ID to agent UUID — O(1) ConcurrentHashMap lookup.
+     * Used by {@code AgentCapabilityFilterService} for capability access checks.
+     *
+     * @param sessionId the agent's MCP session ID
+     * @return the agent's UUID, or null if session is unknown
+     */
+    public UUID getAgentIdForSession(String sessionId) {
+        if (sessionId == null) return null;
+        return sessionToAgentId.get(sessionId);
+    }
+
+    /**
      * Retrieve the agent name associated with a session ID, even if disconnected.
      * Uses DB lookup for stale sessions not in memory.
      */
@@ -428,6 +440,11 @@ public class AgentRegistryService {
     /** Return a specific agent by ID. */
     public Optional<GatewayAgentEntity> getAgent(UUID id) {
         return agentRepository.findById(id);
+    }
+
+    /** Return agents matching the given name (may have multiple versions). */
+    public List<GatewayAgentEntity> findAgentsByName(String agentName) {
+        return agentRepository.findByAgentName(agentName);
     }
 
     /** Return session history for a specific agent, newest first. */

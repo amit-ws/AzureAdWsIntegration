@@ -3,6 +3,7 @@ package com.ws.wsAgenticSecurityGateway.wsServer;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import com.ws.wsAgenticSecurityGateway.orchestration.ToolCallOrchestrator;
+import com.ws.wsAgenticSecurityGateway.pdp.service.PolicyContextBuilder;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
 import com.ws.wsAgenticSecurityGateway.wsServer.session.SessionManager;
@@ -63,6 +64,7 @@ public class McpServerApplication implements ApplicationRunner {
     private final AgentRegistryService agentRegistryService;
     private final ObjectMapper objectMapper;
     private final SessionReaperService sessionReaperService; // nullable — disabled by config
+    private final PolicyContextBuilder policyContextBuilder;
 
     private McpSyncServer server;
     private SessionManager sessionManager;
@@ -72,13 +74,15 @@ public class McpServerApplication implements ApplicationRunner {
                                 ToolCallOrchestrator orchestrator,
                                 AgentRegistryService agentRegistryService,
                                 ObjectMapper objectMapper,
-                                @Autowired(required = false) SessionReaperService sessionReaperService) {
+                                @Autowired(required = false) SessionReaperService sessionReaperService,
+                                PolicyContextBuilder policyContextBuilder) {
         this.registryService = registryService;
         this.auditService = auditService;
         this.orchestrator = orchestrator;
         this.agentRegistryService = agentRegistryService;
         this.objectMapper = objectMapper;
         this.sessionReaperService = sessionReaperService;
+        this.policyContextBuilder = policyContextBuilder;
     }
 
     @Override
@@ -92,8 +96,12 @@ public class McpServerApplication implements ApplicationRunner {
             sessionManager = new SessionManager(auditService);
             sessionManager.setAgentRegistryService(agentRegistryService);
 
-            // Wire session manager into orchestrator (setter injection — SessionManager is a POJO, not a Spring bean)
+            // Wire session manager into orchestrator and PDP context builder
+            // (setter injection — SessionManager is a POJO, not a Spring bean)
             orchestrator.setSessionManager(sessionManager);
+            if (policyContextBuilder != null) {
+                policyContextBuilder.setSessionManager(sessionManager);
+            }
 
             // Wire session manager into reaper for idle session cleanup
             if (sessionReaperService != null) {

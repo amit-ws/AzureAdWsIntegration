@@ -142,6 +142,8 @@ ws:
       max-reconnect-attempts: 3
     server-config-encryption:
       key: ${WS_GATEWAY_SERVER_CONFIG_ENCRYPTION_KEY:}
+    pdp:
+      anthropic-api-key: ${WS_GATEWAY_ANTHROPIC_API_KEY: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}   # Anthropic API key for LLM policy generation
 
 # ─── NOTE ────────────────────────────────────────────────────────────
 # The audit table 'mcp_audit_log' lives in schema 'ws_agentic_security'.

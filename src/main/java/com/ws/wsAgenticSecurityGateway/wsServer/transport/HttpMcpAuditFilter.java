@@ -2,7 +2,10 @@ package com.ws.wsAgenticSecurityGateway.wsServer.transport;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentCapabilityFilterService;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService.AgentBlockedException;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
@@ -13,6 +16,7 @@ import jakarta.servlet.http.HttpServletRequestWrapper;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.util.ContentCachingRequestWrapper;
+import org.springframework.web.util.ContentCachingResponseWrapper;
 
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
@@ -20,6 +24,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -57,6 +62,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class HttpMcpAuditFilter implements Filter {
 
     private final AgentRegistryService agentRegistryService;
+    private final AgentCapabilityFilterService capabilityFilterService;
     private final McpAuditService auditService;
     private final CapabilityRegistryService registryService;
     private final ObjectMapper objectMapper;
@@ -81,11 +87,17 @@ public class HttpMcpAuditFilter implements Filter {
     /** Agent names from mcp-remote that are probes/tests, not real agents. */
     private static final Set<String> PROBE_NAMES = Set.of("mcp-remote-fallback-test");
 
+    /** Capability list methods that require response filtering. */
+    private static final Set<String> LIST_METHODS = Set.of(
+            "tools/list", "prompts/list", "resources/list", "resources/templates/list");
+
     public HttpMcpAuditFilter(AgentRegistryService agentRegistryService,
+            AgentCapabilityFilterService capabilityFilterService,
             McpAuditService auditService,
             CapabilityRegistryService registryService,
             ObjectMapper objectMapper) {
         this.agentRegistryService = agentRegistryService;
+        this.capabilityFilterService = capabilityFilterService;
         this.auditService = auditService;
         this.registryService = registryService;
         this.objectMapper = objectMapper;
@@ -135,7 +147,7 @@ public class HttpMcpAuditFilter implements Filter {
         // ── Block requests from sessions flagged as blocked ──────────
         String sessionId = wrappedRequest.getHeader("Mcp-Session-Id");
         if (sessionId != null && blockedSessionIds.contains(sessionId)) {
-            String blockedAgentName = sessionAgentNames.getOrDefault(sessionId, "unknown");
+            String blockedAgentName = resolveAgentName(sessionId);
             auditService.auditAgentConnectionRejected(
                     sessionId,
                     requestId,
@@ -174,13 +186,39 @@ public class HttpMcpAuditFilter implements Filter {
 
         long startTime = System.currentTimeMillis();
 
-        // ── Let the SDK handle the request normally ────────────────
-        chain.doFilter(wrappedRequest, httpResponse);
+        // ── Capability filtering: wrap response for list methods ────
+        // For tools/list, prompts/list, resources/list — intercept the response
+        // to filter capabilities based on the agent's assigned profiles.
+        boolean shouldFilterResponse = LIST_METHODS.contains(mcpMethod) && sessionId != null;
+        UUID filterAgentId = null;
+        if (shouldFilterResponse) {
+            filterAgentId = capabilityFilterService.resolveAgentId(sessionId);
+            // Only filter if the agent exists in the registry
+            shouldFilterResponse = (filterAgentId != null);
+        }
 
-        long durationMs = System.currentTimeMillis() - startTime;
+        if (shouldFilterResponse) {
+            ContentCachingResponseWrapper responseWrapper = new ContentCachingResponseWrapper(httpResponse);
 
-        // ── After SDK processing — audit based on method ───────────
-        afterSdkProcessing(wrappedRequest, httpResponse, durationMs);
+            // Let SDK handle and cache the response
+            chain.doFilter(wrappedRequest, responseWrapper);
+
+            long durationMs = System.currentTimeMillis() - startTime;
+
+            // Filter the cached response body
+            filterListResponse(responseWrapper, httpResponse, filterAgentId, mcpMethod);
+
+            // After filtering — audit
+            afterSdkProcessing(wrappedRequest, httpResponse, durationMs);
+        } else {
+            // No filtering needed — pass through normally
+            chain.doFilter(wrappedRequest, httpResponse);
+
+            long durationMs = System.currentTimeMillis() - startTime;
+
+            // After SDK processing — audit based on method
+            afterSdkProcessing(wrappedRequest, httpResponse, durationMs);
+        }
     }
 
     // ════════════════════════════════════════════════════════════════════
@@ -235,12 +273,23 @@ public class HttpMcpAuditFilter implements Filter {
         // Track ALL sessions (including probes) for stale session detection
         knownSessionIds.add(sessionId);
 
+        // Extract agent name early — BEFORE any early returns — so every session
+        // in knownSessionIds also has an entry in sessionAgentNames. Without this,
+        // subsequent requests (tools/list, notifications) on duplicate or probe
+        // sessions resolve to "unresolved" because the name was never stored.
+        String earlyAgentName = "unknown";
+        try {
+            earlyAgentName = json.path("params").path("clientInfo").path("name").asText("unknown");
+        } catch (Exception ignored) {
+        }
+        sessionAgentNames.put(sessionId, earlyAgentName);
+
         if (registeredSessions.containsKey(sessionId))
             return;
         if (registeredSessions.putIfAbsent(sessionId, Boolean.TRUE) != null)
             return;
 
-        String agentName = "unknown";
+        String agentName = earlyAgentName;
         String agentVersion = null;
         String protocolVersion = null;
 
@@ -258,9 +307,6 @@ public class HttpMcpAuditFilter implements Filter {
                 registeredSessions.remove(sessionId);
                 return;
             }
-
-            // Track sessionId → agentName for list/disconnect audit
-            sessionAgentNames.put(sessionId, agentName);
 
             // Agent Registry — discover (upsert) and register session
             GatewayAgentEntity agent = agentRegistryService.discoverAgent(
@@ -341,25 +387,145 @@ public class HttpMcpAuditFilter implements Filter {
     }
 
     // ════════════════════════════════════════════════════════════════════
+    // CAPABILITY FILTERING — intercept list responses for per-agent access
+    // ════════════════════════════════════════════════════════════════════
+
+    /**
+     * Filter the SDK's list response to only include capabilities the agent is
+     * allowed to see based on their assigned capability profiles.
+     *
+     * <p>Reads the cached response body, parses the JSON-RPC result, filters the
+     * capabilities array, and writes the modified response to the original response.
+     */
+    private void filterListResponse(ContentCachingResponseWrapper responseWrapper,
+                                      HttpServletResponse originalResponse,
+                                      UUID agentId,
+                                      String mcpMethod) {
+        try {
+            byte[] responseBody = responseWrapper.getContentAsByteArray();
+            if (responseBody.length == 0) {
+                responseWrapper.copyBodyToResponse();
+                return;
+            }
+
+            // Determine capability type from the method
+            String capabilityType;
+            String resultArrayField;
+            switch (mcpMethod) {
+                case "tools/list" -> { capabilityType = "TOOL"; resultArrayField = "tools"; }
+                case "prompts/list" -> { capabilityType = "PROMPT"; resultArrayField = "prompts"; }
+                case "resources/list", "resources/templates/list" -> {
+                    capabilityType = "RESOURCE"; resultArrayField = "resources";
+                    if ("resources/templates/list".equals(mcpMethod)) {
+                        resultArrayField = "resourceTemplates";
+                    }
+                }
+                default -> {
+                    responseWrapper.copyBodyToResponse();
+                    return;
+                }
+            }
+
+            Set<String> allowedNames = capabilityFilterService.getAllowedCapabilities(agentId, capabilityType);
+
+            // HTTP Streamable transport returns SSE format (id:xxx\ndata:{json}\n\n),
+            // not raw JSON. Detect and extract the JSON payload accordingly.
+            String bodyStr = new String(responseBody, StandardCharsets.UTF_8);
+            String trimmed = bodyStr.trim();
+            String jsonPayload;
+            String sseIdLine = null;
+
+            if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+                // SSE format — extract id: and data: lines
+                String dataPayload = null;
+                for (String line : trimmed.split("\n")) {
+                    String l = line.trim();
+                    if (l.startsWith("id:")) {
+                        sseIdLine = l;
+                    } else if (l.startsWith("data:")) {
+                        dataPayload = l.substring(5);
+                    }
+                }
+                if (dataPayload == null) {
+                    responseWrapper.copyBodyToResponse();
+                    return;
+                }
+                jsonPayload = dataPayload;
+            } else {
+                jsonPayload = trimmed;
+            }
+
+            // Parse the JSON-RPC response
+            JsonNode responseJson = objectMapper.readTree(jsonPayload);
+
+            // Navigate to result -> tools/prompts/resources array
+            JsonNode resultNode = responseJson.path("result");
+            if (resultNode.isMissingNode() || !resultNode.has(resultArrayField)) {
+                // Not a valid list response — pass through unchanged
+                responseWrapper.copyBodyToResponse();
+                return;
+            }
+
+            ArrayNode itemsArray = (ArrayNode) resultNode.get(resultArrayField);
+            ArrayNode filteredArray = objectMapper.createArrayNode();
+
+            for (JsonNode item : itemsArray) {
+                String itemName = item.path("name").asText("");
+                if (allowedNames.contains(itemName)) {
+                    filteredArray.add(item);
+                }
+            }
+
+            // Replace the array in the result
+            ((ObjectNode) resultNode).set(resultArrayField, filteredArray);
+
+            // Write the modified response — reconstruct SSE format if needed
+            byte[] filteredBody;
+            if (sseIdLine != null) {
+                String sseOutput = sseIdLine + "\ndata:" + objectMapper.writeValueAsString(responseJson) + "\n\n";
+                filteredBody = sseOutput.getBytes(StandardCharsets.UTF_8);
+            } else {
+                filteredBody = objectMapper.writeValueAsBytes(responseJson);
+            }
+            originalResponse.setContentLength(filteredBody.length);
+            originalResponse.getOutputStream().write(filteredBody);
+            originalResponse.getOutputStream().flush();
+
+            log.debug("Filtered {}: {} → {} items for agent {}",
+                    mcpMethod, itemsArray.size(), filteredArray.size(), agentId);
+
+        } catch (Exception e) {
+            log.error("Error filtering {} response for agent {}: {}",
+                    mcpMethod, agentId, e.getMessage(), e);
+            // On error, pass through the original response unchanged
+            try {
+                responseWrapper.copyBodyToResponse();
+            } catch (IOException ioe) {
+                log.error("Failed to copy original response body: {}", ioe.getMessage());
+            }
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════════
     // LIST OPERATIONS — audit using CapabilityRegistryService for counts
     // ════════════════════════════════════════════════════════════════════
 
     private void handleToolsList(String sessionId, String requestId, long durationMs) {
-        String agentName = sessionAgentNames.getOrDefault(sessionId, "unknown");
+        String agentName = resolveAgentName(sessionId);
         int toolCount = registryService.getToolDescriptors().size();
         auditService.auditServerToolsListRequested(sessionId, toolCount, durationMs, requestId, agentName);
         log.debug("Audited HTTP tools/list: session={}, count={}, duration={}ms", sessionId, toolCount, durationMs);
     }
 
     private void handlePromptsList(String sessionId, String requestId, long durationMs) {
-        String agentName = sessionAgentNames.getOrDefault(sessionId, "unknown");
+        String agentName = resolveAgentName(sessionId);
         int promptCount = registryService.getPromptDescriptors().size();
         auditService.auditServerPromptsListRequested(sessionId, promptCount, durationMs, requestId, agentName);
         log.debug("Audited HTTP prompts/list: session={}, count={}, duration={}ms", sessionId, promptCount, durationMs);
     }
 
     private void handleResourcesList(String sessionId, String requestId, long durationMs) {
-        String agentName = sessionAgentNames.getOrDefault(sessionId, "unknown");
+        String agentName = resolveAgentName(sessionId);
         int resourceCount = registryService.getResourceDescriptors().size();
         auditService.auditServerResourcesListRequested(sessionId, resourceCount, durationMs, requestId, agentName);
         log.debug("Audited HTTP resources/list: session={}, count={}, duration={}ms", sessionId, resourceCount,
@@ -371,7 +537,7 @@ public class HttpMcpAuditFilter implements Filter {
     // ════════════════════════════════════════════════════════════════════
 
     private void handleNotification(String sessionId, String method, JsonNode params) {
-        String agentName = sessionAgentNames.getOrDefault(sessionId, "unknown");
+        String agentName = resolveAgentName(sessionId);
         auditService.auditServerNotificationReceived(sessionId, method, params, agentName);
         log.debug("Audited HTTP notification: session={}, method={}", sessionId, method);
     }
@@ -521,7 +687,7 @@ public class HttpMcpAuditFilter implements Filter {
         // After SDK processing, audit if this was a tracked session
         if (sessionId != null && registeredSessions.containsKey(sessionId)) {
             try {
-                String agentName = sessionAgentNames.getOrDefault(sessionId, "unknown");
+                String agentName = resolveAgentName(sessionId);
 
                 // Audit disconnect (synchronous — ensure it persists)
                 auditService.auditServerSessionDisconnectedSync(sessionId, agentName);
@@ -540,5 +706,40 @@ public class HttpMcpAuditFilter implements Filter {
                 log.error("Failed to audit HTTP session disconnect {}: {}", sessionId, e.getMessage());
             }
         }
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // AGENT NAME RESOLUTION — in-memory → DB fallback (never "unknown")
+    // ════════════════════════════════════════════════════════════════════
+
+    /**
+     * Resolves the agent name for a given session ID.
+     *
+     * <p>Lookup chain:
+     * <ol>
+     *   <li>In-memory {@code sessionAgentNames} map (fast, covers active sessions)</li>
+     *   <li>{@link AgentRegistryService#getAgentNameBySessionId} (DB fallback for
+     *       reaped/disconnected sessions)</li>
+     * </ol>
+     *
+     * <p>Falls back to {@code "unresolved"} only if both lookups fail — this should
+     * never happen in practice since every session is persisted during initialize.
+     */
+    private String resolveAgentName(String sessionId) {
+        // 1. Fast in-memory lookup (active sessions)
+        String name = sessionAgentNames.get(sessionId);
+        if (name != null) {
+            return name;
+        }
+
+        // 2. DB fallback (reaped/disconnected sessions still have persisted records)
+        String dbName = agentRegistryService.getAgentNameBySessionId(sessionId);
+        if (dbName != null && !"unknown".equals(dbName)) {
+            // Cache it for subsequent calls in same session
+            sessionAgentNames.putIfAbsent(sessionId, dbName);
+            return dbName;
+        }
+
+        return "unresolved";
     }
 }
