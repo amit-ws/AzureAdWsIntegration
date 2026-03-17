@@ -91,4 +91,12 @@ public class GatewayAgentEntity {
     @Column(name = "total_requests")
     @Builder.Default
     private Long totalRequests = 0L;
+
+    /** OAuth2 client_id (azp claim) — verified identity from JWT. Primary identity when OAuth2 is active. */
+    @Column(name = "auth_client_id", length = 256)
+    private String authClientId;
+
+    /** Token classification: "AUTOMATED_AGENT" or "HUMAN_DELEGATED". */
+    @Column(name = "token_type", length = 32)
+    private String tokenType;
 }

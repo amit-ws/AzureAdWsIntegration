@@ -206,12 +206,57 @@ public class PolicyContextBuilder {
                 httpHeaders, transportContext, agentName, action,
                 publicName, serverName, arguments);
 
+        // ── JWT identity from transport context (set by GatewayOAuth2Filter → McpGatewayContextExtractor) ──
+        String agentClientId = null;
+        String jwtSubject = null;
+        List<String> agentRoles = null;
+        List<String> tcRealmRoles = null;
+        List<String> tcClientRoles = null;
+        String userIdentity = null;
+        String tokenType = null;
+        Map<String, Object> jwtCustomClaims = null;
+        try {
+            if (exchange != null) {
+                Object o;
+                o = exchange.transportContext().get("agentClientId");
+                if (o instanceof String s) agentClientId = s;
+                o = exchange.transportContext().get("jwtSubject");
+                if (o instanceof String s) jwtSubject = s;
+                o = exchange.transportContext().get("userIdentity");
+                if (o instanceof String s) userIdentity = s;
+                o = exchange.transportContext().get("tokenType");
+                if (o instanceof String s) tokenType = s;
+                o = exchange.transportContext().get("agentRoles");
+                if (o instanceof List<?> l) agentRoles = l.stream().map(String::valueOf).toList();
+                o = exchange.transportContext().get("realmRoles");
+                if (o instanceof List<?> l) tcRealmRoles = l.stream().map(String::valueOf).toList();
+                o = exchange.transportContext().get("clientRoles");
+                if (o instanceof List<?> l) tcClientRoles = l.stream().map(String::valueOf).toList();
+                o = exchange.transportContext().get("customClaims");
+                if (o instanceof Map<?, ?> m) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> cast = (Map<String, Object>) m;
+                    jwtCustomClaims = cast;
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Could not extract JWT claims from transport context: {}", e.getMessage());
+        }
+
         // ── Build request ─────────────────────────────────────────────
         return PolicyEvaluationRequest.builder()
                 .agentName(agentName)
                 .agentVersion(agentVersion)
                 .agentApprovalStatus(approvalStatus)
                 .agentSessionId(sessionId)
+                .agentClientId(agentClientId)
+                .jwtSubject(jwtSubject)
+                .agentRoles(agentRoles)
+                .realmRoles(tcRealmRoles)
+                .clientRoles(tcClientRoles)
+                .userIdentity(userIdentity)
+                .tokenType(tokenType)
+                .jwtCustomClaims(jwtCustomClaims)
                 .action(action)
                 .resourceName(publicName)
                 .serverName(serverName)

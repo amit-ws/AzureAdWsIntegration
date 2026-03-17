@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -29,6 +30,24 @@ public class PolicyEvaluationRequest {
     private String agentVersion;
     private String agentApprovalStatus;
     private String agentSessionId;
+
+    // ── OAuth2 Identity (from JWT) ─────────────────────────────────────
+    /** OAuth2 client_id (azp claim) — verified agent identity. */
+    private String agentClientId;
+    /** JWT subject (service account UUID or human UUID). */
+    private String jwtSubject;
+    /** All roles merged from realm + client. */
+    private List<String> agentRoles;
+    /** Realm-level roles only (for granular PDP policies). */
+    private List<String> realmRoles;
+    /** Client-level roles only (for granular PDP policies). */
+    private List<String> clientRoles;
+    /** Human username (null for AUTOMATED_AGENT). */
+    private String userIdentity;
+    /** "AUTOMATED_AGENT" or "HUMAN_DELEGATED". */
+    private String tokenType;
+    /** ws_gateway_* custom claims from JWT. */
+    private Map<String, Object> jwtCustomClaims;
 
     // ── Action ────────────────────────────────────────────────────────
     /** The MCP method: "toolCall", "promptGet", "resourceRead", etc. */

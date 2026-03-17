@@ -11,7 +11,10 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -93,6 +96,41 @@ public class McpAuditLog {
     /** AI agent name (e.g., "claude-desktop", "cursor") — set for northbound + orchestration events. */
     @Column(name = "agent_name", length = 256)
     private String agentName;
+
+    // ── Authentication & Identity Context ───────────────────────────────
+
+    /** Authentication method: "OAUTH2" or "NONE". */
+    @Column(name = "auth_method", length = 32)
+    private String authMethod;
+
+    /** JWT subject (service account UUID or human UUID from IdP). */
+    @Column(name = "auth_identity", length = 256)
+    private String authIdentity;
+
+    /** Human username from JWT preferred_username (null for AUTOMATED_AGENT). */
+    @Column(name = "user_identity", length = 256)
+    private String userIdentity;
+
+    /** Token classification: "AUTOMATED_AGENT" or "HUMAN_DELEGATED". */
+    @Column(name = "token_type", length = 32)
+    private String tokenType;
+
+    /** OAuth2 client_id (azp claim) — verified agent identity from JWT. */
+    @Column(name = "agent_client_id", length = 256)
+    private String agentClientId;
+
+    /** All roles from JWT (realm + client roles merged). */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "agent_roles", columnDefinition = "jsonb")
+    private List<String> agentRoles;
+
+    /** PDP evaluation decision: "ALLOWED" or "DENIED". */
+    @Column(name = "pdp_decision", length = 16)
+    private String pdpDecision;
+
+    /** PDP evaluation reason or matched policy name. */
+    @Column(name = "pdp_reason", length = 1024)
+    private String pdpReason;
 
     // ── Server / Capability Context ───────────────────────────────────
 

@@ -33,6 +33,13 @@
 
 
 spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${OAUTH2_ISSUER_URI:}          # e.g., http://localhost:8180/realms/ws-gateway
+          jwk-set-uri: ${OAUTH2_JWKS_URI:}            # Optional override (auto-derived from issuer-uri if omitted)
+
   cloud:
     azure:
       active-directory:
@@ -129,8 +136,7 @@ ws:
   gateway:
     transport: http                    # "http" (default, production) or "stdio" (dev/Claude Desktop)
     auth:
-      enabled: false                   # Set true to enable gateway API key auth on /mcp
-      api-key: ""                      # Only used when auth.enabled=true
+      mode: ${AUTH_MODE:none}          # "oauth2" (production, JWT via OIDC) or "none" (dev/stdio)
     session:
       idle-timeout-minutes: 10         # Mark session DISCONNECTED after this idle duration (safe with response-completion activity updates)
       reaper-interval-seconds: 30      # How often the reaper runs (30s for faster zombie cleanup)
@@ -143,7 +149,7 @@ ws:
     server-config-encryption:
       key: ${WS_GATEWAY_SERVER_CONFIG_ENCRYPTION_KEY:}
     pdp:
-      anthropic-api-key: ${WS_GATEWAY_ANTHROPIC_API_KEY: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}   # Anthropic API key for LLM policy generation
+      anthropic-api-key: ${WS_GATEWAY_ANTHROPIC_API_KEY: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}   # Anthropic API key for LLM policy generation
 
 # ─── NOTE ────────────────────────────────────────────────────────────
 # The audit table 'mcp_audit_log' lives in schema 'ws_agentic_security'.

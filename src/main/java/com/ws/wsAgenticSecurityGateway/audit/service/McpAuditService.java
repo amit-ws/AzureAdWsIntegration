@@ -2,6 +2,8 @@ package com.ws.wsAgenticSecurityGateway.audit.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditEventType;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditModule;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditSeverity;
@@ -18,6 +20,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -55,7 +58,9 @@ public class McpAuditService {
                         PdpAuditLogRepository pdpRepository) {
                 this.repository = repository;
                 this.pdpRepository = pdpRepository;
-                this.objectMapper = new ObjectMapper();
+                this.objectMapper = new ObjectMapper()
+                        .registerModule(new JavaTimeModule())
+                        .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         }
 
         // ════════════════════════════════════════════════════════════════════
@@ -1537,6 +1542,55 @@ public class McpAuditService {
         // ════════════════════════════════════════════════════════════════════
         // INTERNAL HELPERS
         // ════════════════════════════════════════════════════════════════════
+
+        // ════════════════════════════════════════════════════════════════════
+        // AREA 0 — Authentication Events
+        // ════════════════════════════════════════════════════════════════════
+
+        /**
+         * Audit: OAuth2 JWT authentication succeeded.
+         * Logs the full JWT claims payload for debugging and data discovery.
+         */
+        @Async("mcpAuditExecutor")
+        public void auditOAuth2AuthSuccess(String sessionId, String agentClientId, String subject,
+                        List<String> roles, String tokenType, String userIdentity,
+                        Map<String, Object> rawClaims, String requestId) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.OAUTH2_AUTH_SUCCESS)
+                                .module(AuditModule.WS_SERVER)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .sessionId(sessionId)
+                                .requestId(requestId)
+                                .authMethod("OAUTH2")
+                                .authIdentity(subject)
+                                .agentClientId(agentClientId)
+                                .agentRoles(roles)
+                                .tokenType(tokenType)
+                                .userIdentity(userIdentity)
+                                .agentName(agentClientId)
+                                .requestPayload(toJson(rawClaims))
+                                .build());
+        }
+
+        /**
+         * Audit: OAuth2 JWT authentication failed.
+         * Called when Spring Security rejects a token and we can intercept it,
+         * or when the SecurityContext is unexpectedly empty.
+         */
+        @Async("mcpAuditExecutor")
+        public void auditOAuth2AuthFailure(String remoteAddr, String errorMessage, String requestId) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.OAUTH2_AUTH_FAILURE)
+                                .module(AuditModule.WS_SERVER)
+                                .status(AuditStatus.FAILURE)
+                                .severity(AuditSeverity.WARN)
+                                .requestId(requestId)
+                                .authMethod("OAUTH2")
+                                .errorMessage(errorMessage)
+                                .agentName(remoteAddr)
+                                .build());
+        }
 
         private void persist(McpAuditLog auditLog) {
                 try {

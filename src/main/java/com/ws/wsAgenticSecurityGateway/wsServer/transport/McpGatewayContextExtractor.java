@@ -68,6 +68,9 @@ public class McpGatewayContextExtractor implements McpTransportContextExtractor<
             ctx.put("clientIp", clientIp);
         }
 
+        // ── JWT claims (set by GatewayOAuth2Filter as request attributes) ─────
+        propagateJwtClaims(request, ctx);
+
         // ── Capture ALL HTTP headers for custom attribute resolution ────────
         // Stored as a sub-map so CustomAttributeService can resolve HEADER-sourced
         // attributes from ANY header the agent sends (scalable for cloud deployment).
@@ -82,6 +85,40 @@ public class McpGatewayContextExtractor implements McpTransportContextExtractor<
         }
 
         return ctx.isEmpty() ? McpTransportContext.EMPTY : McpTransportContext.create(ctx);
+    }
+
+    /**
+     * Propagates JWT claims from request attributes (set by GatewayOAuth2Filter)
+     * into the MCP transport context. These flow through the SDK's Reactor pipeline
+     * and are available in tool/prompt/resource handlers via exchange.transportContext().
+     */
+    @SuppressWarnings("unchecked")
+    private void propagateJwtClaims(HttpServletRequest request, Map<String, Object> ctx) {
+        Object clientId = request.getAttribute(GatewayOAuth2Filter.ATTR_CLIENT_ID);
+        if (clientId == null) return; // No JWT claims — mode=none or non-OAuth2 request
+
+        ctx.put("agentClientId", clientId);
+        putIfPresent(ctx, "jwtSubject", request.getAttribute(GatewayOAuth2Filter.ATTR_SUBJECT));
+        putIfPresent(ctx, "userIdentity", request.getAttribute(GatewayOAuth2Filter.ATTR_PREFERRED_USERNAME));
+        putIfPresent(ctx, "userEmail", request.getAttribute(GatewayOAuth2Filter.ATTR_EMAIL));
+        putIfPresent(ctx, "userFullName", request.getAttribute(GatewayOAuth2Filter.ATTR_FULL_NAME));
+        putIfPresent(ctx, "userGivenName", request.getAttribute(GatewayOAuth2Filter.ATTR_GIVEN_NAME));
+        putIfPresent(ctx, "userFamilyName", request.getAttribute(GatewayOAuth2Filter.ATTR_FAMILY_NAME));
+        putIfPresent(ctx, "userEmailVerified", request.getAttribute(GatewayOAuth2Filter.ATTR_EMAIL_VERIFIED));
+        putIfPresent(ctx, "idpIssuer", request.getAttribute(GatewayOAuth2Filter.ATTR_ISSUER));
+        putIfPresent(ctx, "tokenType", request.getAttribute(GatewayOAuth2Filter.ATTR_TOKEN_TYPE));
+        putIfPresent(ctx, "authMethod", request.getAttribute(GatewayOAuth2Filter.ATTR_AUTH_METHOD));
+        putIfPresent(ctx, "agentRoles", request.getAttribute(GatewayOAuth2Filter.ATTR_ALL_ROLES));
+        putIfPresent(ctx, "realmRoles", request.getAttribute(GatewayOAuth2Filter.ATTR_REALM_ROLES));
+        putIfPresent(ctx, "clientRoles", request.getAttribute(GatewayOAuth2Filter.ATTR_CLIENT_ROLES));
+        putIfPresent(ctx, "customClaims", request.getAttribute(GatewayOAuth2Filter.ATTR_CUSTOM_CLAIMS));
+        putIfPresent(ctx, "rawJwtClaims", request.getAttribute(GatewayOAuth2Filter.ATTR_RAW_CLAIMS));
+    }
+
+    private void putIfPresent(Map<String, Object> ctx, String key, Object value) {
+        if (value != null) {
+            ctx.put(key, value);
+        }
     }
 
     /**

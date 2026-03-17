@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayHumanUserEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentCapabilityFilterService;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService.AgentBlockedException;
@@ -23,6 +24,8 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -166,15 +169,27 @@ public class HttpMcpAuditFilter implements Filter {
             String agentName = clientInfoNode.path("name").asText("unknown");
             String agentVersion = clientInfoNode.path("version").asText(null);
 
+            // Also check by JWT client_id (cryptographically verified identity)
+            String preAuthClientId = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_CLIENT_ID);
+
             // Probes are allowed through (handled separately in registration logic).
-            if (!isProbeAgent(agentName)
-                    && agentRegistryService.isAgentBlocked(agentName, agentVersion)) {
-                log.warn("🚫 Pre-initialize rejection for BLOCKED agent: {} v{}",
-                        agentName, agentVersion);
+            boolean blocked = false;
+            if (!isProbeAgent(agentName)) {
+                // Check by verified OAuth2 client_id first, then by self-reported name+version
+                if (preAuthClientId != null) {
+                    blocked = agentRegistryService.isAgentBlocked(preAuthClientId, null);
+                }
+                if (!blocked) {
+                    blocked = agentRegistryService.isAgentBlocked(agentName, agentVersion);
+                }
+            }
+            if (blocked) {
+                log.warn("🚫 Pre-initialize rejection for BLOCKED agent: {} v{} (authClientId={})",
+                        agentName, agentVersion, preAuthClientId);
                 auditService.auditAgentConnectionRejected(
                         null,
                         requestId,
-                        agentName,
+                        preAuthClientId != null ? preAuthClientId : agentName,
                         agentVersion,
                         "initialize",
                         "HTTP",
@@ -246,7 +261,7 @@ public class HttpMcpAuditFilter implements Filter {
                 return;
 
             switch (mcpMethod) {
-                case "initialize" -> handleInitialize(json, sessionId, requestId);
+                case "initialize" -> handleInitialize(json, sessionId, requestId, wrappedRequest);
                 case "tools/list" -> handleToolsList(sessionId, requestId, durationMs);
                 case "prompts/list" -> handlePromptsList(sessionId, requestId, durationMs);
                 case "resources/list" -> handleResourcesList(sessionId, requestId, durationMs);
@@ -269,20 +284,39 @@ public class HttpMcpAuditFilter implements Filter {
     // INITIALIZE — agent registration + audit
     // ════════════════════════════════════════════════════════════════════
 
-    private void handleInitialize(JsonNode json, String sessionId, String requestId) {
+    @SuppressWarnings("unchecked")
+    private void handleInitialize(JsonNode json, String sessionId, String requestId,
+                                  HttpServletRequest httpRequest) {
         // Track ALL sessions (including probes) for stale session detection
         knownSessionIds.add(sessionId);
 
+        // ── Extract JWT attributes (set by GatewayOAuth2Filter at Order 1) ───
+        String authClientId = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_CLIENT_ID);
+        String jwtSubject = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_SUBJECT);
+        String tokenType = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_TOKEN_TYPE);
+        String authMethod = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_AUTH_METHOD);
+        String preferredUsername = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_PREFERRED_USERNAME);
+        String userEmail = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_EMAIL);
+        String userFullName = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_FULL_NAME);
+        String userGivenName = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_GIVEN_NAME);
+        String userFamilyName = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_FAMILY_NAME);
+        Boolean emailVerified = (Boolean) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_EMAIL_VERIFIED);
+        String idpIssuer = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_ISSUER);
+        List<String> realmRoles = (List<String>) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_REALM_ROLES);
+        List<String> clientRoles = (List<String>) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_CLIENT_ROLES);
+        Map<String, Object> customClaims = (Map<String, Object>) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_CUSTOM_CLAIMS);
+        Map<String, Object> rawJwtClaims = (Map<String, Object>) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_RAW_CLAIMS);
+
         // Extract agent name early — BEFORE any early returns — so every session
-        // in knownSessionIds also has an entry in sessionAgentNames. Without this,
-        // subsequent requests (tools/list, notifications) on duplicate or probe
-        // sessions resolve to "unresolved" because the name was never stored.
+        // in knownSessionIds also has an entry in sessionAgentNames.
         String earlyAgentName = "unknown";
         try {
             earlyAgentName = json.path("params").path("clientInfo").path("name").asText("unknown");
         } catch (Exception ignored) {
         }
-        sessionAgentNames.put(sessionId, earlyAgentName);
+        // Use authClientId as agent name when available (verified identity), fallback to self-reported
+        String resolvedAgentName = authClientId != null ? authClientId : earlyAgentName;
+        sessionAgentNames.put(sessionId, resolvedAgentName);
 
         if (registeredSessions.containsKey(sessionId))
             return;
@@ -308,23 +342,40 @@ public class HttpMcpAuditFilter implements Filter {
                 return;
             }
 
-            // Agent Registry — discover (upsert) and register session
+            // Agent Registry — discover (upsert) with OAuth2 identity context
             GatewayAgentEntity agent = agentRegistryService.discoverAgent(
                     agentName, agentVersion, protocolVersion,
-                    capabilities.isMissingNode() || capabilities.isEmpty() ? null : capabilities);
-            agentRegistryService.registerSession(agent.getId(), sessionId, "HTTP", null);
+                    capabilities.isMissingNode() || capabilities.isEmpty() ? null : capabilities,
+                    authClientId, tokenType);
+
+            // ── Human user discovery (for HUMAN_DELEGATED tokens) ────
+            UUID humanUserId = null;
+            if (GatewayOAuth2Filter.TOKEN_TYPE_HUMAN.equals(tokenType) && jwtSubject != null) {
+                GatewayHumanUserEntity humanUser = agentRegistryService.discoverHumanUser(
+                        jwtSubject, preferredUsername, userEmail,
+                        userFullName, userGivenName, userFamilyName,
+                        idpIssuer, emailVerified,
+                        realmRoles, clientRoles, customClaims, rawJwtClaims);
+                humanUserId = humanUser.getId();
+                agentRegistryService.incrementHumanSessionCount(humanUserId);
+                log.info("👤 Human-delegated session: user={} linked to agent={}",
+                        preferredUsername, authClientId != null ? authClientId : agentName);
+            }
+
+            // Register session with full OAuth2 context
+            agentRegistryService.registerSession(
+                    agent.getId(), sessionId,
+                    authMethod != null ? authMethod : "HTTP",
+                    jwtSubject,
+                    tokenType, humanUserId);
 
             // ── Layer 1: Active Session Replacement ──────────────────
-            // Disconnect stale sessions for this agent (zombie cleanup on reconnect).
-            // This handles: close/reopen, delete/reconfig, network interruption +
-            // reconnect.
             int replaced = agentRegistryService.disconnectExistingSessionsForAgent(
                     agent.getId(), sessionId);
             if (replaced > 0) {
                 log.info("♻️ Replaced {} stale session(s) for agent {} on reconnect",
-                        replaced, agentName);
-                final String currentAgentName = agentName;
-                // Clean up in-memory tracking maps for replaced sessions
+                        replaced, resolvedAgentName);
+                final String currentAgentName = resolvedAgentName;
                 registeredSessions.entrySet().removeIf(entry -> !entry.getKey().equals(sessionId) &&
                         currentAgentName.equals(sessionAgentNames.get(entry.getKey())));
                 knownSessionIds.removeIf(id -> !id.equals(sessionId) &&
@@ -337,16 +388,19 @@ public class HttpMcpAuditFilter implements Filter {
             auditService.auditServerSessionInitialized(
                     sessionId, protocolVersion,
                     agentName + (agentVersion != null ? " v" + agentVersion : ""),
-                    capabilities, requestId, agentName);
+                    capabilities, requestId, resolvedAgentName);
 
             log.info("════════════════════════════════════════════════");
             log.info("   HTTP AGENT SESSION REGISTERED");
             log.info("════════════════════════════════════════════════");
-            log.info("   Session:  {}", sessionId);
-            log.info("   Agent:    {} v{}", agentName, agentVersion);
-            log.info("   Protocol: {}", protocolVersion);
+            log.info("   Session:    {}", sessionId);
+            log.info("   Agent:      {} v{}", agentName, agentVersion);
+            log.info("   AuthClient: {}", authClientId != null ? authClientId : "(none — mode=none)");
+            log.info("   TokenType:  {}", tokenType != null ? tokenType : "(none)");
+            log.info("   Human:      {}", preferredUsername != null ? preferredUsername : "(automated)");
+            log.info("   Protocol:   {}", protocolVersion);
             if (replaced > 0) {
-                log.info("   Replaced: {} stale session(s)", replaced);
+                log.info("   Replaced:   {} stale session(s)", replaced);
             }
             log.info("════════════════════════════════════════════════");
 
@@ -357,7 +411,7 @@ public class HttpMcpAuditFilter implements Filter {
             auditService.auditAgentConnectionRejected(
                     sessionId,
                     requestId,
-                    agentName,
+                    authClientId != null ? authClientId : agentName,
                     agentVersion,
                     "initialize",
                     "HTTP",

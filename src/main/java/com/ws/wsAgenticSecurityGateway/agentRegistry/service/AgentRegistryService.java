@@ -3,8 +3,10 @@ package com.ws.wsAgenticSecurityGateway.agentRegistry.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentSessionEntity;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayHumanUserEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayAgentRepository;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayAgentSessionRepository;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayHumanUserRepository;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -38,6 +40,7 @@ public class AgentRegistryService {
 
     private final GatewayAgentRepository agentRepository;
     private final GatewayAgentSessionRepository sessionRepository;
+    private final GatewayHumanUserRepository humanUserRepository;
     private final McpAuditService auditService;
 
     /**
@@ -52,9 +55,11 @@ public class AgentRegistryService {
 
     public AgentRegistryService(GatewayAgentRepository agentRepository,
             GatewayAgentSessionRepository sessionRepository,
+            GatewayHumanUserRepository humanUserRepository,
             McpAuditService auditService) {
         this.agentRepository = agentRepository;
         this.sessionRepository = sessionRepository;
+        this.humanUserRepository = humanUserRepository;
         this.auditService = auditService;
     }
 
@@ -113,6 +118,20 @@ public class AgentRegistryService {
     public GatewayAgentEntity discoverAgent(String name, String version,
             String protocolVersion,
             JsonNode capabilities) {
+        return discoverAgent(name, version, protocolVersion, capabilities, null, null);
+    }
+
+    /**
+     * Discover (or update) an agent profile with OAuth2 identity context.
+     *
+     * @param authClientId OAuth2 client_id (azp claim) — verified identity from JWT, or null
+     * @param tokenType    "AUTOMATED_AGENT" or "HUMAN_DELEGATED", or null
+     */
+    @Transactional
+    public GatewayAgentEntity discoverAgent(String name, String version,
+            String protocolVersion,
+            JsonNode capabilities,
+            String authClientId, String tokenType) {
         String key = cacheKey(name, version);
 
         // Check cache first
@@ -137,10 +156,12 @@ public class AgentRegistryService {
             cached.setProtocolVersion(protocolVersion);
             cached.setCapabilities(capabilities);
             cached.setStatus("ACTIVE");
+            if (authClientId != null) cached.setAuthClientId(authClientId);
+            if (tokenType != null) cached.setTokenType(tokenType);
             GatewayAgentEntity updated = agentRepository.saveAndFlush(cached);
             agentCache.put(key, updated);
-            log.info("🤖 Agent re-discovered: {} v{} (id={}, approval={})",
-                    name, version, updated.getId(), updated.getApprovalStatus());
+            log.info("🤖 Agent re-discovered: {} v{} (id={}, approval={}, authClientId={})",
+                    name, version, updated.getId(), updated.getApprovalStatus(), authClientId);
             return updated;
         }
 
@@ -167,10 +188,12 @@ public class AgentRegistryService {
             entity.setProtocolVersion(protocolVersion);
             entity.setCapabilities(capabilities);
             entity.setStatus("ACTIVE");
+            if (authClientId != null) entity.setAuthClientId(authClientId);
+            if (tokenType != null) entity.setTokenType(tokenType);
             GatewayAgentEntity updated = agentRepository.saveAndFlush(entity);
             agentCache.put(key, updated);
-            log.info("🤖 Agent re-discovered (from DB): {} v{} (id={}, approval={})",
-                    name, version, updated.getId(), updated.getApprovalStatus());
+            log.info("🤖 Agent re-discovered (from DB): {} v{} (id={}, approval={}, authClientId={})",
+                    name, version, updated.getId(), updated.getApprovalStatus(), authClientId);
             return updated;
         }
 
@@ -182,6 +205,8 @@ public class AgentRegistryService {
                 .capabilities(capabilities)
                 .status("ACTIVE")
                 .approvalStatus("PENDING")
+                .authClientId(authClientId)
+                .tokenType(tokenType)
                 .totalSessions(0)
                 .totalRequests(0L)
                 .build();
@@ -205,6 +230,19 @@ public class AgentRegistryService {
     public GatewayAgentSessionEntity registerSession(UUID agentId, String sessionId,
             String authMethod,
             String authIdentity) {
+        return registerSession(agentId, sessionId, authMethod, authIdentity, null, null);
+    }
+
+    /**
+     * Register a new agent session with OAuth2 context.
+     *
+     * @param tokenType   "AUTOMATED_AGENT" or "HUMAN_DELEGATED", or null
+     * @param humanUserId FK to gateway_human_users (set when HUMAN_DELEGATED), or null
+     */
+    @Transactional
+    public GatewayAgentSessionEntity registerSession(UUID agentId, String sessionId,
+            String authMethod, String authIdentity,
+            String tokenType, UUID humanUserId) {
         GatewayAgentEntity agent = agentRepository.findById(agentId).orElse(null);
         if (agent == null) {
             log.warn("Cannot register session — agent not found: {}", agentId);
@@ -216,6 +254,8 @@ public class AgentRegistryService {
                 .sessionId(sessionId)
                 .authMethod(authMethod)
                 .authIdentity(authIdentity)
+                .tokenType(tokenType)
+                .humanUserId(humanUserId)
                 .requestCount(0)
                 .status("CONNECTED")
                 .build();
@@ -553,6 +593,99 @@ public class AgentRegistryService {
         log.info("🚫 Agent BLOCKED: {} v{} (id={})",
                 agent.getAgentName(), agent.getAgentVersion(), agentId);
         return updated;
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // HUMAN USER MANAGEMENT
+    // ════════════════════════════════════════════════════════════════════
+
+    /**
+     * Discover (or update) a human user. Called when a HUMAN_DELEGATED token is seen.
+     * Upserts by IdP subject (JWT "sub" — stable UUID).
+     *
+     * @param idpSubject        JWT "sub" — stable identity from IdP
+     * @param preferredUsername  JWT "preferred_username"
+     * @param email             JWT "email"
+     * @param fullName          JWT "name"
+     * @param givenName         JWT "given_name"
+     * @param familyName        JWT "family_name"
+     * @param idpIssuer         JWT "iss"
+     * @param emailVerified     JWT "email_verified"
+     * @param realmRoles        realm_access.roles from JWT
+     * @param clientRoles       resource_access.<client>.roles from JWT
+     * @param customClaims      ws_gateway_* prefixed claims
+     * @param rawJwtClaims      Full JWT claims snapshot
+     * @return the human user entity
+     */
+    @Transactional
+    public GatewayHumanUserEntity discoverHumanUser(
+            String idpSubject, String preferredUsername, String email,
+            String fullName, String givenName, String familyName,
+            String idpIssuer, Boolean emailVerified,
+            java.util.List<String> realmRoles, java.util.List<String> clientRoles,
+            java.util.Map<String, Object> customClaims,
+            java.util.Map<String, Object> rawJwtClaims) {
+
+        Optional<GatewayHumanUserEntity> existing = humanUserRepository.findByIdpSubject(idpSubject);
+        LocalDateTime now = LocalDateTime.now();
+
+        if (existing.isPresent()) {
+            GatewayHumanUserEntity user = existing.get();
+            // Update mutable fields with latest JWT data
+            user.setPreferredUsername(preferredUsername);
+            user.setEmail(email);
+            user.setFullName(fullName);
+            user.setGivenName(givenName);
+            user.setFamilyName(familyName);
+            user.setIdpIssuer(idpIssuer);
+            user.setEmailVerified(emailVerified);
+            user.setRealmRoles(realmRoles);
+            user.setClientRoles(clientRoles);
+            user.setCustomClaims(customClaims);
+            user.setLastSeenAt(now);
+            user.setLastJwtClaims(rawJwtClaims);
+            GatewayHumanUserEntity updated = humanUserRepository.saveAndFlush(user);
+            log.info("👤 Human user updated: {} (sub={}, email={})",
+                    preferredUsername, idpSubject, email);
+            return updated;
+        }
+
+        // New human user
+        GatewayHumanUserEntity newUser = GatewayHumanUserEntity.builder()
+                .idpSubject(idpSubject)
+                .preferredUsername(preferredUsername)
+                .email(email)
+                .fullName(fullName)
+                .givenName(givenName)
+                .familyName(familyName)
+                .idpIssuer(idpIssuer)
+                .emailVerified(emailVerified)
+                .realmRoles(realmRoles)
+                .clientRoles(clientRoles)
+                .customClaims(customClaims)
+                .firstSeenAt(now)
+                .lastSeenAt(now)
+                .totalSessions(0)
+                .totalRequests(0L)
+                .status("ACTIVE")
+                .lastJwtClaims(rawJwtClaims)
+                .build();
+
+        GatewayHumanUserEntity saved = humanUserRepository.saveAndFlush(newUser);
+        log.info("👤 NEW human user discovered: {} (sub={}, email={})",
+                preferredUsername, idpSubject, email);
+        return saved;
+    }
+
+    /**
+     * Increment session count for a human user.
+     */
+    @Transactional
+    public void incrementHumanSessionCount(UUID humanUserId) {
+        humanUserRepository.findById(humanUserId).ifPresent(user -> {
+            user.setTotalSessions(user.getTotalSessions() + 1);
+            humanUserRepository.saveAndFlush(user);
+        });
     }
 
     // ════════════════════════════════════════════════════════════════════

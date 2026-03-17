@@ -619,21 +619,13 @@ public class ToolCallOrchestrator {
         }
 
         // ── (2) HTTP mode fallback: token from transport context ──────
-        try {
-            if (exchange != null && exchange.transportContext() != null) {
-                Object authToken = exchange.transportContext().get("authorization");
-                if (authToken != null && !authToken.toString().isBlank()) {
-                    Map<String, String> overrideHeaders = new HashMap<>();
-                    overrideHeaders.put("Authorization", authToken.toString());
-                    HttpMcpTransport.setRequestOverrideHeaders(overrideHeaders);
-                    log.info("🔑 [{}] HTTP agent token forwarded from transport context",
-                            correlationId);
-                    return true;
-                }
-            }
-        } catch (Exception e) {
-            log.debug("Could not resolve agent token from HTTP context: {}", e.getMessage());
-        }
+        // NOTE: In OAuth2 mode, the transport context "authorization" contains the
+        // agent's Keycloak JWT (used to authenticate to the gateway). This MUST NOT
+        // be forwarded to downstream servers — they have their own auth configured
+        // in the server config headers. Only forward if the agent explicitly provides
+        // a separate downstream token (e.g., via a custom "x-downstream-token" header).
+        // Agent token forwarding in HTTP mode is disabled to prevent leaking the
+        // gateway auth JWT to downstream servers.
 
         return false;
     }

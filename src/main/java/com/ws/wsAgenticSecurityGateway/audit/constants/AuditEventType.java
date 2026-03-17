@@ -17,6 +17,10 @@ package com.ws.wsAgenticSecurityGateway.audit.constants;
  */
 public enum AuditEventType {
 
+    // ── Area 0 — Authentication Events ────────────────────────────────
+    OAUTH2_AUTH_SUCCESS,            // JWT validated, claims extracted
+    OAUTH2_AUTH_FAILURE,            // JWT validation failed (expired, bad sig, wrong issuer)
+
     // ── Area 1 — AI Client <-> WS Server (Northbound) ────────────────
     SERVER_SESSION_INITIALIZED,
     SERVER_SESSION_DISCONNECTED,

@@ -1,0 +1,262 @@
+package com.ws.wsAgenticSecurityGateway.wsServer.transport;
+
+import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
+import jakarta.servlet.*;
+import jakarta.servlet.http.HttpServletRequest;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+
+import java.io.IOException;
+import java.util.*;
+import java.util.stream.Collectors;
+
+/**
+ * JWT claim extraction filter for the MCP HTTP endpoint ({@code /mcp/*}).
+ *
+ * <p>Runs at Order 1 (before HttpMcpAuditFilter at Order 2). By the time this filter
+ * executes, Spring Security has already validated the JWT (signature, expiry, issuer).
+ * Invalid tokens never reach this filter — Spring Security returns 401 directly.
+ *
+ * <p>This filter extracts ALL JWT claims and stores them as request attributes,
+ * making them available to downstream filters and the context extractor without
+ * coupling to Spring Security directly.
+ *
+ * <p>Classifies tokens as:
+ * <ul>
+ *   <li>{@code AUTOMATED_AGENT} — Client Credentials flow (no human involved)</li>
+ *   <li>{@code HUMAN_DELEGATED} — Authorization Code flow (human logged in via agent)</li>
+ * </ul>
+ */
+@Slf4j
+public class GatewayOAuth2Filter implements Filter {
+
+    public static final String ATTR_CLIENT_ID = "jwt.client_id";
+    public static final String ATTR_SUBJECT = "jwt.subject";
+    public static final String ATTR_PREFERRED_USERNAME = "jwt.preferred_username";
+    public static final String ATTR_EMAIL = "jwt.email";
+    public static final String ATTR_FULL_NAME = "jwt.full_name";
+    public static final String ATTR_GIVEN_NAME = "jwt.given_name";
+    public static final String ATTR_FAMILY_NAME = "jwt.family_name";
+    public static final String ATTR_EMAIL_VERIFIED = "jwt.email_verified";
+    public static final String ATTR_ISSUER = "jwt.issuer";
+    public static final String ATTR_REALM_ROLES = "jwt.realm_roles";
+    public static final String ATTR_CLIENT_ROLES = "jwt.client_roles";
+    public static final String ATTR_ALL_ROLES = "jwt.all_roles";
+    public static final String ATTR_TOKEN_TYPE = "jwt.token_type";
+    public static final String ATTR_AUTH_METHOD = "jwt.auth_method";
+    public static final String ATTR_CUSTOM_CLAIMS = "jwt.custom_claims";
+    public static final String ATTR_RAW_CLAIMS = "jwt.raw_claims";
+
+    public static final String TOKEN_TYPE_AUTOMATED = "AUTOMATED_AGENT";
+    public static final String TOKEN_TYPE_HUMAN = "HUMAN_DELEGATED";
+    public static final String AUTH_METHOD_OAUTH2 = "OAUTH2";
+
+    private static final String WS_GATEWAY_CLAIM_PREFIX = "ws_gateway_";
+
+    private final McpAuditService auditService;
+
+    public GatewayOAuth2Filter(McpAuditService auditService) {
+        this.auditService = auditService;
+    }
+
+    @Override
+    public void doFilter(ServletRequest servletRequest, ServletResponse servletResponse,
+                         FilterChain chain) throws IOException, ServletException {
+
+        HttpServletRequest request = (HttpServletRequest) servletRequest;
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        if (authentication instanceof JwtAuthenticationToken jwtAuth) {
+            Jwt jwt = jwtAuth.getToken();
+            extractAndStoreJwtClaims(request, jwt);
+        } else {
+            log.warn("No JWT authentication found in SecurityContext for request from {}",
+                    request.getRemoteAddr());
+        }
+
+        chain.doFilter(servletRequest, servletResponse);
+    }
+
+    /**
+     * Extracts ALL claims from the validated JWT and stores them as request attributes.
+     * Downstream filters (HttpMcpAuditFilter) and McpGatewayContextExtractor read these.
+     */
+    @SuppressWarnings("unchecked")
+    private void extractAndStoreJwtClaims(HttpServletRequest request, Jwt jwt) {
+        // ── Core Identity ──
+        String clientId = resolveClientId(jwt);
+        String subject = jwt.getSubject();
+        String preferredUsername = jwt.getClaimAsString("preferred_username");
+        String email = jwt.getClaimAsString("email");
+        String fullName = jwt.getClaimAsString("name");
+        String givenName = jwt.getClaimAsString("given_name");
+        String familyName = jwt.getClaimAsString("family_name");
+        Boolean emailVerified = jwt.getClaim("email_verified");
+        String issuer = jwt.getIssuer() != null ? jwt.getIssuer().toString() : null;
+
+        request.setAttribute(ATTR_CLIENT_ID, clientId);
+        request.setAttribute(ATTR_SUBJECT, subject);
+        request.setAttribute(ATTR_PREFERRED_USERNAME, preferredUsername);
+        request.setAttribute(ATTR_EMAIL, email);
+        request.setAttribute(ATTR_FULL_NAME, fullName);
+        request.setAttribute(ATTR_GIVEN_NAME, givenName);
+        request.setAttribute(ATTR_FAMILY_NAME, familyName);
+        request.setAttribute(ATTR_EMAIL_VERIFIED, emailVerified);
+        request.setAttribute(ATTR_ISSUER, issuer);
+
+        // ── Roles ──
+        List<String> realmRoles = extractRealmRoles(jwt);
+        List<String> clientRoles = extractClientRoles(jwt, clientId);
+        List<String> allRoles = mergeRoles(realmRoles, clientRoles);
+
+        request.setAttribute(ATTR_REALM_ROLES, realmRoles);
+        request.setAttribute(ATTR_CLIENT_ROLES, clientRoles);
+        request.setAttribute(ATTR_ALL_ROLES, allRoles);
+
+        // ── Custom Claims (ws_gateway_* prefix) — extracted BEFORE classification ──
+        Map<String, Object> customClaims = extractCustomClaims(jwt);
+        request.setAttribute(ATTR_CUSTOM_CLAIMS, customClaims);
+
+        // ── Token Classification (Standard 2 custom claim first, heuristic fallback) ──
+        String tokenType = classifyToken(customClaims, preferredUsername, subject, clientId);
+        request.setAttribute(ATTR_TOKEN_TYPE, tokenType);
+        request.setAttribute(ATTR_AUTH_METHOD, AUTH_METHOD_OAUTH2);
+
+        // ── Raw JWT claims (full payload for debugging) ──
+        Map<String, Object> rawClaims = new HashMap<>(jwt.getClaims());
+        request.setAttribute(ATTR_RAW_CLAIMS, rawClaims);
+
+        log.debug("JWT claims extracted: client_id={}, sub={}, tokenType={}, roles={}, user={}",
+                clientId, subject, tokenType, allRoles, preferredUsername);
+
+        // ── Async audit ──
+        String sessionId = request.getHeader("Mcp-Session-Id");
+        auditService.auditOAuth2AuthSuccess(
+                sessionId, clientId, subject, allRoles, tokenType,
+                preferredUsername, rawClaims, null);
+    }
+
+    /**
+     * Resolves the OAuth2 client ID from JWT claims.
+     * Checks azp (authorized party) first, then client_id.
+     */
+    private String resolveClientId(Jwt jwt) {
+        String azp = jwt.getClaimAsString("azp");
+        if (azp != null && !azp.isBlank()) return azp;
+
+        String clientId = jwt.getClaimAsString("client_id");
+        if (clientId != null && !clientId.isBlank()) return clientId;
+
+        // Fallback: some IdPs use aud as a single string for the client
+        List<String> audience = jwt.getAudience();
+        if (audience != null && audience.size() == 1) return audience.get(0);
+
+        return null;
+    }
+
+    /**
+     * Extracts realm-level roles from Keycloak's realm_access.roles claim.
+     */
+    @SuppressWarnings("unchecked")
+    private List<String> extractRealmRoles(Jwt jwt) {
+        Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
+        if (realmAccess != null && realmAccess.get("roles") instanceof List<?> roles) {
+            return roles.stream().map(String::valueOf).collect(Collectors.toList());
+        }
+        // Azure AD / Okta fallback: flat "roles" or "groups" claim
+        List<String> flatRoles = jwt.getClaimAsStringList("roles");
+        if (flatRoles != null) return new ArrayList<>(flatRoles);
+
+        List<String> groups = jwt.getClaimAsStringList("groups");
+        if (groups != null) return new ArrayList<>(groups);
+
+        return List.of();
+    }
+
+    /**
+     * Extracts client-level roles from Keycloak's resource_access.<client>.roles claim.
+     */
+    @SuppressWarnings("unchecked")
+    private List<String> extractClientRoles(Jwt jwt, String clientId) {
+        Map<String, Object> resourceAccess = jwt.getClaimAsMap("resource_access");
+        if (resourceAccess == null || clientId == null) return List.of();
+
+        Object clientAccess = resourceAccess.get(clientId);
+        if (clientAccess instanceof Map<?, ?> clientMap) {
+            Object roles = clientMap.get("roles");
+            if (roles instanceof List<?> roleList) {
+                return roleList.stream().map(String::valueOf).collect(Collectors.toList());
+            }
+        }
+        return List.of();
+    }
+
+    /**
+     * Merges realm and client roles into a single deduplicated list.
+     */
+    private List<String> mergeRoles(List<String> realmRoles, List<String> clientRoles) {
+        Set<String> merged = new LinkedHashSet<>(realmRoles);
+        merged.addAll(clientRoles);
+        return new ArrayList<>(merged);
+    }
+
+    /**
+     * Classifies the token as AUTOMATED_AGENT or HUMAN_DELEGATED.
+     *
+     * <p>Priority chain (Standard 2 first, heuristic fallback):
+     * <ol>
+     *   <li><b>ws_gateway_token_type</b> custom claim — IdP admin explicitly declares the token type.
+     *       This is the IdP-agnostic path; no heuristic needed. Works identically across
+     *       Keycloak, Azure AD, Okta, Auth0.</li>
+     *   <li><b>preferred_username present</b> — Authorization Code flow (human logged in).</li>
+     *   <li><b>service-account- prefix in sub</b> — Keycloak Client Credentials convention.</li>
+     *   <li><b>sub == client_id</b> — Azure AD / Auth0 Client Credentials convention.</li>
+     *   <li><b>Default</b> — AUTOMATED_AGENT (no human indicators found).</li>
+     * </ol>
+     */
+    private String classifyToken(Map<String, Object> customClaims,
+                                 String preferredUsername, String subject, String clientId) {
+        // Standard 2: Explicit custom claim takes highest priority — IdP-agnostic
+        Object explicitType = customClaims.get("ws_gateway_token_type");
+        if (explicitType instanceof String tokenTypeValue && !tokenTypeValue.isBlank()) {
+            String normalized = tokenTypeValue.trim().toUpperCase();
+            if (TOKEN_TYPE_HUMAN.equals(normalized) || TOKEN_TYPE_AUTOMATED.equals(normalized)) {
+                log.debug("Token type resolved from ws_gateway_token_type custom claim: {}", normalized);
+                return normalized;
+            }
+            log.warn("Unknown ws_gateway_token_type value: '{}', falling back to heuristic", tokenTypeValue);
+        }
+
+        // Heuristic fallback: preferred_username present = human logged in
+        if (preferredUsername != null && !preferredUsername.isBlank()) {
+            return TOKEN_TYPE_HUMAN;
+        }
+        // Keycloak service accounts have sub starting with "service-account-"
+        if (subject != null && subject.startsWith("service-account-")) {
+            return TOKEN_TYPE_AUTOMATED;
+        }
+        // If sub equals client_id, likely client credentials (Azure AD, Auth0)
+        if (subject != null && subject.equals(clientId)) {
+            return TOKEN_TYPE_AUTOMATED;
+        }
+        // Default to automated if no human indicators
+        return TOKEN_TYPE_AUTOMATED;
+    }
+
+    /**
+     * Extracts all custom claims prefixed with "ws_gateway_" from the JWT.
+     * These are enterprise-specific claims configured in the IdP (Standard 2).
+     */
+    private Map<String, Object> extractCustomClaims(Jwt jwt) {
+        Map<String, Object> customClaims = new HashMap<>();
+        for (Map.Entry<String, Object> entry : jwt.getClaims().entrySet()) {
+            if (entry.getKey().startsWith(WS_GATEWAY_CLAIM_PREFIX)) {
+                customClaims.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return customClaims;
+    }
+}
