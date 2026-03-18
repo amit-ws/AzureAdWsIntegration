@@ -3,6 +3,8 @@ package com.ws.wsAgenticSecurityGateway.pdp.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayHumanUserEntity;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayHumanUserRepository;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor;
@@ -58,6 +60,7 @@ public class PolicyLlmService {
     private final CedarPolicyEngine cedarEngine;
     private final CustomAttributeService customAttributeService;
     private final McpAuditService auditService;
+    private final GatewayHumanUserRepository humanUserRepository;
 
     @Value("${ws.gateway.pdp.anthropic-api-key:}")
     private String anthropicApiKey;
@@ -77,7 +80,8 @@ public class PolicyLlmService {
                              PolicyService policyService,
                              CedarPolicyEngine cedarEngine,
                              CustomAttributeService customAttributeService,
-                             McpAuditService auditService) {
+                             McpAuditService auditService,
+                             GatewayHumanUserRepository humanUserRepository) {
         this.objectMapper = objectMapper;
         this.agentRegistryService = agentRegistryService;
         this.capabilityRegistryService = capabilityRegistryService;
@@ -85,6 +89,7 @@ public class PolicyLlmService {
         this.cedarEngine = cedarEngine;
         this.customAttributeService = customAttributeService;
         this.auditService = auditService;
+        this.humanUserRepository = humanUserRepository;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
@@ -486,6 +491,36 @@ public class PolicyLlmService {
         } catch (Exception e) {
             sb.append("### Registered Agents\nUnable to fetch agent data.\n\n");
             log.debug("🤖 Could not fetch agents for LLM metadata: {}", e.getMessage());
+        }
+
+        // ── Human Users (OAuth2 delegated) ──
+        try {
+            List<GatewayHumanUserEntity> humans = humanUserRepository.findAll();
+            sb.append("### Registered Human Users\n");
+            if (humans == null || humans.isEmpty()) {
+                sb.append("No human users discovered yet.\n\n");
+            } else {
+                sb.append("| Username | Email | Status | Roles | Sessions | Last Seen |\n");
+                sb.append("|----------|-------|--------|-------|----------|-----------|\n");
+                for (GatewayHumanUserEntity h : humans) {
+                    String roles = "";
+                    if (h.getRealmRoles() != null && !h.getRealmRoles().isEmpty()) {
+                        roles = h.getRealmRoles().stream()
+                                .filter(r -> !r.startsWith("default-roles-"))
+                                .collect(Collectors.joining(", "));
+                    }
+                    sb.append("| `").append(h.getPreferredUsername() != null ? h.getPreferredUsername() : "-").append("` | ")
+                            .append(h.getEmail() != null ? h.getEmail() : "-").append(" | ")
+                            .append(h.getStatus()).append(" | ")
+                            .append(roles.isEmpty() ? "-" : roles).append(" | ")
+                            .append(h.getTotalSessions()).append(" | ")
+                            .append(h.getLastSeenAt() != null ? h.getLastSeenAt().toString() : "-").append(" |\n");
+                }
+                sb.append("\nHuman users authenticate via OAuth2/OIDC and interact through AI agents. Each agent session may be linked to a human user. Use agent-level policies to control access for humans through their agents.\n\n");
+            }
+        } catch (Exception e) {
+            sb.append("### Registered Human Users\nUnable to fetch human user data.\n\n");
+            log.debug("🤖 Could not fetch human users for LLM metadata: {}", e.getMessage());
         }
 
         // ── Connected Servers + Tools ──

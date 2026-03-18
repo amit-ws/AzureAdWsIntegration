@@ -163,6 +163,22 @@ public class HttpMcpAuditFilter implements Filter {
             return;
         }
 
+        // ── Block requests from human users who have been blocked by admin ──
+        if (sessionId != null && agentRegistryService.isHumanBlocked(sessionId)) {
+            String blockedAgentName = resolveAgentName(sessionId);
+            log.warn("🚫 Request rejected — human user behind session {} is BLOCKED", sessionId);
+            auditService.auditAgentConnectionRejected(
+                    sessionId,
+                    requestId,
+                    blockedAgentName,
+                    null,
+                    mcpMethod,
+                    "HTTP",
+                    "Human user is BLOCKED by admin; all delegated requests are rejected.");
+            rejectBlockedRequest(httpResponse, requestIdRaw);
+            return;
+        }
+
         // ── Pre-initialize approval gate (must run BEFORE SDK creates session) ───
         if ("initialize".equals(mcpMethod) && requestJson != null) {
             JsonNode clientInfoNode = requestJson.path("params").path("clientInfo");
@@ -194,6 +210,26 @@ public class HttpMcpAuditFilter implements Filter {
                         "initialize",
                         "HTTP",
                         "Agent rejected during initialize because profile is BLOCKED.");
+                rejectBlockedInitialize(httpResponse, requestIdRaw);
+                return;
+            }
+
+            // Check if the human user behind this token is blocked
+            String jwtSubject = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_SUBJECT);
+            String tokenType = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_TOKEN_TYPE);
+            if ("HUMAN_DELEGATED".equals(tokenType) && jwtSubject != null
+                    && agentRegistryService.isHumanBlockedBySubject(jwtSubject)) {
+                String humanUsername = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_PREFERRED_USERNAME);
+                log.warn("🚫 Pre-initialize rejection — human user BLOCKED: {} (sub={})",
+                        humanUsername, jwtSubject);
+                auditService.auditAgentConnectionRejected(
+                        null,
+                        requestId,
+                        preAuthClientId != null ? preAuthClientId : agentName,
+                        agentVersion,
+                        "initialize",
+                        "HTTP",
+                        "Human user '" + (humanUsername != null ? humanUsername : jwtSubject) + "' is BLOCKED by admin.");
                 rejectBlockedInitialize(httpResponse, requestIdRaw);
                 return;
             }

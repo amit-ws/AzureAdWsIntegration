@@ -53,6 +53,11 @@ public class AgentRegistryService {
      */
     private final ConcurrentHashMap<String, UUID> sessionToAgentId = new ConcurrentHashMap<>();
 
+    /**
+     * In-memory: sessionId → humanUserId (for O(1) human request counting, null-safe).
+     */
+    private final ConcurrentHashMap<String, UUID> sessionToHumanUserId = new ConcurrentHashMap<>();
+
     public AgentRegistryService(GatewayAgentRepository agentRepository,
             GatewayAgentSessionRepository sessionRepository,
             GatewayHumanUserRepository humanUserRepository,
@@ -275,8 +280,13 @@ public class AgentRegistryService {
         // Map session → agent for fast request counting
         sessionToAgentId.put(sessionId, agentId);
 
-        log.info("📡 Agent session registered: {} → agent {} v{} (session={})",
-                sessionId, agent.getAgentName(), agent.getAgentVersion(), saved.getId());
+        // Map session → human user for fast human request counting (HUMAN_DELEGATED only)
+        if (humanUserId != null) {
+            sessionToHumanUserId.put(sessionId, humanUserId);
+        }
+
+        log.info("📡 Agent session registered: {} → agent {} v{} (session={}, humanUser={})",
+                sessionId, agent.getAgentName(), agent.getAgentVersion(), saved.getId(), humanUserId);
         return saved;
     }
 
@@ -287,6 +297,7 @@ public class AgentRegistryService {
     public void disconnectSession(String sessionId) {
         sessionRepository.markDisconnected(sessionId);
         sessionToAgentId.remove(sessionId);
+        sessionToHumanUserId.remove(sessionId);
         log.info("📡 Agent session disconnected: {}", sessionId);
     }
 
@@ -368,6 +379,12 @@ public class AgentRegistryService {
             UUID agentId = sessionToAgentId.get(sessionId);
             if (agentId != null) {
                 agentRepository.incrementRequestCount(agentId);
+            }
+
+            // Increment human user request count (HUMAN_DELEGATED sessions only)
+            UUID humanUserId = sessionToHumanUserId.get(sessionId);
+            if (humanUserId != null) {
+                humanUserRepository.incrementRequestCount(humanUserId);
             }
         } catch (Exception e) {
             log.debug("Failed to record agent request for session {}: {}",
@@ -686,6 +703,36 @@ public class AgentRegistryService {
             user.setTotalSessions(user.getTotalSessions() + 1);
             humanUserRepository.saveAndFlush(user);
         });
+    }
+
+    /**
+     * Check if the human user behind a session is blocked.
+     * O(1) — ConcurrentHashMap lookup + DB read (small table, typically < 100 rows).
+     *
+     * @param sessionId the agent's MCP session ID
+     * @return {@code true} if the human user is BLOCKED, {@code false} otherwise
+     */
+    public boolean isHumanBlocked(String sessionId) {
+        if (sessionId == null) return false;
+        UUID humanUserId = sessionToHumanUserId.get(sessionId);
+        if (humanUserId == null) return false;  // automated agent or unknown — not a human
+        return humanUserRepository.findById(humanUserId)
+                .map(h -> "BLOCKED".equals(h.getStatus()))
+                .orElse(false);
+    }
+
+    /**
+     * Check if a human user is blocked by their IdP subject (JWT sub).
+     * Used during initialize to reject connections from blocked humans.
+     *
+     * @param idpSubject the JWT "sub" claim
+     * @return {@code true} if the human is BLOCKED
+     */
+    public boolean isHumanBlockedBySubject(String idpSubject) {
+        if (idpSubject == null) return false;
+        return humanUserRepository.findByIdpSubject(idpSubject)
+                .map(h -> "BLOCKED".equals(h.getStatus()))
+                .orElse(false);
     }
 
     // ════════════════════════════════════════════════════════════════════

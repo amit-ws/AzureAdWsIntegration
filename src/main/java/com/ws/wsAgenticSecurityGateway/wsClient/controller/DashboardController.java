@@ -1,5 +1,6 @@
 package com.ws.wsAgenticSecurityGateway.wsClient.controller;
 
+import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayHumanUserRepository;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditModule;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditStatus;
@@ -41,6 +42,7 @@ public class DashboardController {
     private final PolicyService policyService;
     private final CustomAttributeService customAttributeService;
     private final PolicyLlmService policyLlmService;
+    private final GatewayHumanUserRepository humanUserRepository;
 
     public DashboardController(McpSessionManager sessionManager,
                                CapabilityRegistryService registryService,
@@ -49,7 +51,8 @@ public class DashboardController {
                                AgentRegistryService agentRegistryService,
                                PolicyService policyService,
                                CustomAttributeService customAttributeService,
-                               PolicyLlmService policyLlmService) {
+                               PolicyLlmService policyLlmService,
+                               GatewayHumanUserRepository humanUserRepository) {
         this.sessionManager = sessionManager;
         this.registryService = registryService;
         this.auditRepo = auditRepo;
@@ -58,6 +61,7 @@ public class DashboardController {
         this.policyService = policyService;
         this.customAttributeService = customAttributeService;
         this.policyLlmService = policyLlmService;
+        this.humanUserRepository = humanUserRepository;
     }
 
     /**
@@ -99,6 +103,9 @@ public class DashboardController {
         // Agent registry stats
         summary.put("totalAgents", agentRegistryService.getAllAgents().size());
         summary.put("connectedAgentSessions", agentRegistryService.getConnectedSessions().size());
+
+        // Human user stats
+        summary.put("totalHumanUsers", humanUserRepository.count());
 
         return ResponseEntity.ok(summary);
     }

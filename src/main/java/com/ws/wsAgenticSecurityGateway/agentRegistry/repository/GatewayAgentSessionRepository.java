@@ -67,6 +67,9 @@ public interface GatewayAgentSessionRepository extends JpaRepository<GatewayAgen
     /** Count total sessions for a specific agent. */
     long countByAgentId(UUID agentId);
 
+    /** Find all sessions for a specific human user (for human-user detail page). */
+    List<GatewayAgentSessionEntity> findByHumanUserIdOrderByConnectedAtDesc(UUID humanUserId);
+
     /**
      * Layer 2 — Smart Idle Timeout: lightweight activity timestamp update.
      * Called at response completion to keep sessions alive during long-running tool calls.
