@@ -4,6 +4,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.AgentCapabilityProfile;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentSessionEntity;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayHumanUserEntity;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayAgentSessionRepository;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayHumanUserRepository;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
 import lombok.extern.slf4j.Slf4j;
@@ -40,6 +44,8 @@ public class CapabilityProfileChatService {
     private final AgentRegistryService agentRegistryService;
     private final AgentCapabilityFilterService filterService;
     private final CapabilityRegistryService registryService;
+    private final GatewayHumanUserRepository humanUserRepository;
+    private final GatewayAgentSessionRepository agentSessionRepository;
 
     @Value("${ws.gateway.pdp.anthropic-api-key:}")
     private String anthropicApiKey;
@@ -47,11 +53,15 @@ public class CapabilityProfileChatService {
     public CapabilityProfileChatService(ObjectMapper objectMapper,
                                           AgentRegistryService agentRegistryService,
                                           AgentCapabilityFilterService filterService,
-                                          CapabilityRegistryService registryService) {
+                                          CapabilityRegistryService registryService,
+                                          GatewayHumanUserRepository humanUserRepository,
+                                          GatewayAgentSessionRepository agentSessionRepository) {
         this.objectMapper = objectMapper;
         this.agentRegistryService = agentRegistryService;
         this.filterService = filterService;
         this.registryService = registryService;
+        this.humanUserRepository = humanUserRepository;
+        this.agentSessionRepository = agentSessionRepository;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
@@ -174,18 +184,78 @@ public class CapabilityProfileChatService {
         }
 
         sb.append("\n## Registered Agents (use these EXACT names in assignToAgents)\n");
-        sb.append("When the admin references any of these agents, you MUST include the matching name in assignToAgents.\n");
+        sb.append("When the admin references any of these agents, you MUST include the matching name in assignToAgents.\n\n");
         List<GatewayAgentEntity> agents = agentRegistryService.getAllAgents();
         if (agents.isEmpty()) {
             sb.append("No agents registered yet.\n");
         } else {
+            sb.append("| Agent Name | Version | Auth Client ID | Token Type | Approval | Status | Sessions | Requests | First Seen | Last Seen |\n");
+            sb.append("|------------|---------|---------------|------------|----------|--------|----------|----------|------------|----------|\n");
             for (GatewayAgentEntity agent : agents) {
-                sb.append("- name: \"").append(agent.getAgentName()).append("\"");
-                if (agent.getAgentVersion() != null) {
-                    sb.append("  version: ").append(agent.getAgentVersion());
-                }
-                sb.append("  status: ").append(agent.getApprovalStatus()).append("\n");
+                sb.append("| `").append(agent.getAgentName()).append("` | ")
+                        .append(agent.getAgentVersion() != null ? agent.getAgentVersion() : "-").append(" | ")
+                        .append(agent.getAuthClientId() != null ? agent.getAuthClientId() : "-").append(" | ")
+                        .append(agent.getTokenType() != null ? agent.getTokenType() : "-").append(" | ")
+                        .append(agent.getApprovalStatus()).append(" | ")
+                        .append(agent.getStatus()).append(" | ")
+                        .append(agent.getTotalSessions() != null ? agent.getTotalSessions() : 0).append(" | ")
+                        .append(agent.getTotalRequests() != null ? agent.getTotalRequests() : 0).append(" | ")
+                        .append(agent.getFirstSeenAt() != null ? agent.getFirstSeenAt().toLocalDate() : "-").append(" | ")
+                        .append(agent.getLastSeenAt() != null ? agent.getLastSeenAt().toLocalDate() : "-").append(" |\n");
             }
+        }
+
+        // ── Human Users (OAuth2 delegated) ──
+        sb.append("\n## Registered Human Users (who interact through agents)\n");
+        sb.append("Human users authenticate via OAuth2/OIDC and use AI agents to interact with MCP servers.\n");
+        sb.append("Consider human user context when designing profiles — profiles assigned to agents affect all humans who use those agents.\n\n");
+        try {
+            List<GatewayHumanUserEntity> humans = humanUserRepository.findAll();
+            if (humans == null || humans.isEmpty()) {
+                sb.append("No human users discovered yet.\n");
+            } else {
+                sb.append("| Username | Full Name | Email | Status | Realm Roles | Client Roles | Agents Used |\n");
+                sb.append("|----------|-----------|-------|--------|-------------|-------------|-------------|\n");
+                for (GatewayHumanUserEntity h : humans) {
+                    String realmRoles = h.getRealmRoles() != null
+                            ? h.getRealmRoles().stream().filter(r -> !r.startsWith("default-roles-")).collect(Collectors.joining(", "))
+                            : "-";
+                    String clientRoles = h.getClientRoles() != null && !h.getClientRoles().isEmpty()
+                            ? String.join(", ", h.getClientRoles()) : "-";
+
+                    // Find agents this human uses
+                    String agentsUsed = "-";
+                    try {
+                        List<GatewayAgentSessionEntity> sessions = agentSessionRepository.findByHumanUserIdWithAgent(h.getId());
+                        if (sessions != null && !sessions.isEmpty()) {
+                            agentsUsed = sessions.stream()
+                                    .map(s -> s.getAgent().getAgentName())
+                                    .distinct()
+                                    .collect(Collectors.joining(", "));
+                        }
+                    } catch (Exception ignored) {}
+
+                    sb.append("| `").append(h.getPreferredUsername() != null ? h.getPreferredUsername() : "-").append("` | ")
+                            .append(h.getFullName() != null ? h.getFullName() : "-").append(" | ")
+                            .append(h.getEmail() != null ? h.getEmail() : "-").append(" | ")
+                            .append(h.getStatus()).append(" | ")
+                            .append(realmRoles.isEmpty() ? "-" : realmRoles).append(" | ")
+                            .append(clientRoles).append(" | ")
+                            .append(agentsUsed).append(" |\n");
+                }
+                if (humans.stream().anyMatch(h -> "BLOCKED".equals(h.getStatus()))) {
+                    sb.append("\n**Blocked users:** ");
+                    sb.append(humans.stream()
+                            .filter(h -> "BLOCKED".equals(h.getStatus()))
+                            .map(h -> "`" + (h.getPreferredUsername() != null ? h.getPreferredUsername() : h.getEmail())
+                                    + "` (" + (h.getBlockedReason() != null ? h.getBlockedReason() : "no reason") + ")")
+                            .collect(Collectors.joining(", ")));
+                    sb.append("\n");
+                }
+            }
+        } catch (Exception e) {
+            sb.append("Unable to fetch human user data.\n");
+            log.debug("Could not fetch human users for profile chat: {}", e.getMessage());
         }
 
         sb.append("\n## Response Format\n");
@@ -218,6 +288,8 @@ public class CapabilityProfileChatService {
         sb.append("Use INCLUDE_ONLY when specific capabilities are named.\n");
         sb.append("Use EXCLUDE when the admin says 'all except' or 'everything but'.\n");
         sb.append("For 'read-only' access, use INCLUDE_ONLY with tools containing: list, get, search, read, describe, view.\n");
+        sb.append("Consider human user roles when designing profiles — agents used by admin-role humans may need broader access; agents used by limited-role or external humans should have tighter profiles.\n");
+        sb.append("If the admin mentions a human user by name, find which agents that human uses and suggest assigning the profile to those agents.\n");
 
         return sb.toString();
     }

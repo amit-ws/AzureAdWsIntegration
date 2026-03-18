@@ -3,7 +3,9 @@ package com.ws.wsAgenticSecurityGateway.pdp.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentSessionEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayHumanUserEntity;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayAgentSessionRepository;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayHumanUserRepository;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
@@ -61,6 +63,7 @@ public class PolicyLlmService {
     private final CustomAttributeService customAttributeService;
     private final McpAuditService auditService;
     private final GatewayHumanUserRepository humanUserRepository;
+    private final GatewayAgentSessionRepository agentSessionRepository;
 
     @Value("${ws.gateway.pdp.anthropic-api-key:}")
     private String anthropicApiKey;
@@ -81,7 +84,8 @@ public class PolicyLlmService {
                              CedarPolicyEngine cedarEngine,
                              CustomAttributeService customAttributeService,
                              McpAuditService auditService,
-                             GatewayHumanUserRepository humanUserRepository) {
+                             GatewayHumanUserRepository humanUserRepository,
+                             GatewayAgentSessionRepository agentSessionRepository) {
         this.objectMapper = objectMapper;
         this.agentRegistryService = agentRegistryService;
         this.capabilityRegistryService = capabilityRegistryService;
@@ -90,6 +94,7 @@ public class PolicyLlmService {
         this.customAttributeService = customAttributeService;
         this.auditService = auditService;
         this.humanUserRepository = humanUserRepository;
+        this.agentSessionRepository = agentSessionRepository;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
@@ -479,12 +484,19 @@ public class PolicyLlmService {
             if (agents == null || agents.isEmpty()) {
                 sb.append("No agents registered yet.\n\n");
             } else {
-                sb.append("| Agent Name | Version | Approval Status |\n");
-                sb.append("|------------|---------|----------------|\n");
+                sb.append("| Agent Name | Version | Auth Client ID | Token Type | Approval | Status | Sessions | Requests | First Seen | Last Seen |\n");
+                sb.append("|------------|---------|---------------|------------|----------|--------|----------|----------|------------|----------|\n");
                 for (GatewayAgentEntity agent : agents) {
                     sb.append("| `").append(agent.getAgentName()).append("` | ")
                             .append(agent.getAgentVersion() != null ? agent.getAgentVersion() : "-").append(" | ")
-                            .append(agent.getApprovalStatus()).append(" |\n");
+                            .append(agent.getAuthClientId() != null ? agent.getAuthClientId() : "-").append(" | ")
+                            .append(agent.getTokenType() != null ? agent.getTokenType() : "-").append(" | ")
+                            .append(agent.getApprovalStatus()).append(" | ")
+                            .append(agent.getStatus()).append(" | ")
+                            .append(agent.getTotalSessions() != null ? agent.getTotalSessions() : 0).append(" | ")
+                            .append(agent.getTotalRequests() != null ? agent.getTotalRequests() : 0).append(" | ")
+                            .append(agent.getFirstSeenAt() != null ? agent.getFirstSeenAt().toLocalDate() : "-").append(" | ")
+                            .append(agent.getLastSeenAt() != null ? agent.getLastSeenAt().toLocalDate() : "-").append(" |\n");
                 }
                 sb.append("\n");
             }
@@ -495,31 +507,9 @@ public class PolicyLlmService {
 
         // ── Human Users (OAuth2 delegated) ──
         try {
-            List<GatewayHumanUserEntity> humans = humanUserRepository.findAll();
-            sb.append("### Registered Human Users\n");
-            if (humans == null || humans.isEmpty()) {
-                sb.append("No human users discovered yet.\n\n");
-            } else {
-                sb.append("| Username | Email | Status | Roles | Sessions | Last Seen |\n");
-                sb.append("|----------|-------|--------|-------|----------|-----------|\n");
-                for (GatewayHumanUserEntity h : humans) {
-                    String roles = "";
-                    if (h.getRealmRoles() != null && !h.getRealmRoles().isEmpty()) {
-                        roles = h.getRealmRoles().stream()
-                                .filter(r -> !r.startsWith("default-roles-"))
-                                .collect(Collectors.joining(", "));
-                    }
-                    sb.append("| `").append(h.getPreferredUsername() != null ? h.getPreferredUsername() : "-").append("` | ")
-                            .append(h.getEmail() != null ? h.getEmail() : "-").append(" | ")
-                            .append(h.getStatus()).append(" | ")
-                            .append(roles.isEmpty() ? "-" : roles).append(" | ")
-                            .append(h.getTotalSessions()).append(" | ")
-                            .append(h.getLastSeenAt() != null ? h.getLastSeenAt().toString() : "-").append(" |\n");
-                }
-                sb.append("\nHuman users authenticate via OAuth2/OIDC and interact through AI agents. Each agent session may be linked to a human user. Use agent-level policies to control access for humans through their agents.\n\n");
-            }
+            appendHumanUserMetadata(sb);
         } catch (Exception e) {
-            sb.append("### Registered Human Users\nUnable to fetch human user data.\n\n");
+            sb.append("### Human Users\nUnable to fetch human user data.\n\n");
             log.debug("🤖 Could not fetch human users for LLM metadata: {}", e.getMessage());
         }
 
@@ -617,6 +607,133 @@ public class PolicyLlmService {
         String metadata = sb.toString();
         metadataCache.put("liveMetadata", new CachedValue(metadata, System.currentTimeMillis()));
         return metadata;
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  HUMAN USER METADATA BUILDER
+    // ════════════════════════════════════════════════════════════════════
+
+    private void appendHumanUserMetadata(StringBuilder sb) {
+        List<GatewayHumanUserEntity> allHumans = humanUserRepository.findAll();
+        if (allHumans == null || allHumans.isEmpty()) {
+            sb.append("### Human Users\nNo human users discovered yet.\n\n");
+            return;
+        }
+
+        // ── Summary stats ──
+        long activeToday = humanUserRepository.countActiveHumansSince(
+                java.time.LocalDateTime.now().toLocalDate().atStartOfDay());
+        long blockedCount = humanUserRepository.countBlocked();
+        sb.append("### Human Users Overview\n");
+        sb.append("**Total:** ").append(allHumans.size())
+                .append(" | **Active today:** ").append(activeToday)
+                .append(" | **Blocked:** ").append(blockedCount).append("\n\n");
+
+        // ── Active Human Users (enriched table) ──
+        List<GatewayHumanUserEntity> activeHumans = allHumans.stream()
+                .filter(h -> "ACTIVE".equals(h.getStatus()))
+                .limit(50)
+                .toList();
+
+        if (!activeHumans.isEmpty()) {
+            sb.append("### Active Human Users\n");
+            sb.append("| Username | Full Name | Email | Verified | IdP Issuer | Realm Roles | Client Roles | Custom Claims | Requests | Sessions | First Seen | Last Seen |\n");
+            sb.append("|----------|-----------|-------|----------|-----------|-------------|-------------|---------------|----------|----------|------------|----------|\n");
+            for (GatewayHumanUserEntity h : activeHumans) {
+                String realmRoles = formatRoles(h.getRealmRoles());
+                String clientRoles = formatRoles(h.getClientRoles());
+                String customClaims = h.getCustomClaims() != null && !h.getCustomClaims().isEmpty()
+                        ? h.getCustomClaims().entrySet().stream()
+                        .map(e -> e.getKey() + "=" + e.getValue())
+                        .collect(Collectors.joining(", "))
+                        : "-";
+                String issuerHost = extractHost(h.getIdpIssuer());
+
+                sb.append("| `").append(h.getPreferredUsername() != null ? h.getPreferredUsername() : "-").append("` | ")
+                        .append(h.getFullName() != null ? h.getFullName() : "-").append(" | ")
+                        .append(h.getEmail() != null ? h.getEmail() : "-").append(" | ")
+                        .append(h.getEmailVerified() != null && h.getEmailVerified() ? "Yes" : "No").append(" | ")
+                        .append(issuerHost).append(" | ")
+                        .append(realmRoles).append(" | ")
+                        .append(clientRoles).append(" | ")
+                        .append(customClaims).append(" | ")
+                        .append(h.getTotalRequests() != null ? h.getTotalRequests() : 0).append(" | ")
+                        .append(h.getTotalSessions() != null ? h.getTotalSessions() : 0).append(" | ")
+                        .append(h.getFirstSeenAt() != null ? h.getFirstSeenAt().toLocalDate() : "-").append(" | ")
+                        .append(h.getLastSeenAt() != null ? h.getLastSeenAt().toLocalDate() : "-").append(" |\n");
+            }
+            sb.append("\n");
+        }
+
+        // ── Blocked Human Users ──
+        List<GatewayHumanUserEntity> blockedHumans = allHumans.stream()
+                .filter(h -> "BLOCKED".equals(h.getStatus()))
+                .toList();
+
+        if (!blockedHumans.isEmpty()) {
+            sb.append("### Blocked Human Users\n");
+            sb.append("| Username | Email | Blocked At | Reason |\n");
+            sb.append("|----------|-------|-----------|--------|\n");
+            for (GatewayHumanUserEntity h : blockedHumans) {
+                sb.append("| `").append(h.getPreferredUsername() != null ? h.getPreferredUsername() : "-").append("` | ")
+                        .append(h.getEmail() != null ? h.getEmail() : "-").append(" | ")
+                        .append(h.getBlockedAt() != null ? h.getBlockedAt().toString() : "-").append(" | ")
+                        .append(h.getBlockedReason() != null ? h.getBlockedReason() : "-").append(" |\n");
+            }
+            sb.append("\n");
+        }
+
+        // ── Human-Agent Relationships ──
+        sb.append("### Human-Agent Relationships\n");
+        sb.append("Shows which humans delegate to which AI agents.\n\n");
+        sb.append("| Human User | Agent | Token Type | Sessions | Last Session |\n");
+        sb.append("|-----------|-------|-----------|----------|-------------|\n");
+        int relationshipCount = 0;
+        for (GatewayHumanUserEntity h : activeHumans) {
+            if (relationshipCount >= 30) break;
+            try {
+                List<GatewayAgentSessionEntity> sessions = agentSessionRepository.findByHumanUserIdWithAgent(h.getId());
+                if (sessions == null || sessions.isEmpty()) continue;
+
+                // Group by agent name
+                Map<String, List<GatewayAgentSessionEntity>> byAgent = sessions.stream()
+                        .collect(Collectors.groupingBy(s -> s.getAgent().getAgentName()));
+
+                for (Map.Entry<String, List<GatewayAgentSessionEntity>> entry : byAgent.entrySet()) {
+                    if (relationshipCount >= 30) break;
+                    List<GatewayAgentSessionEntity> agentSessions = entry.getValue();
+                    GatewayAgentSessionEntity latest = agentSessions.get(0); // already ordered DESC
+                    sb.append("| `").append(h.getPreferredUsername() != null ? h.getPreferredUsername() : "-").append("` | ")
+                            .append(entry.getKey()).append(" | ")
+                            .append(latest.getTokenType() != null ? latest.getTokenType() : "-").append(" | ")
+                            .append(agentSessions.size()).append(" | ")
+                            .append(latest.getConnectedAt() != null ? latest.getConnectedAt().toLocalDate() : "-").append(" |\n");
+                    relationshipCount++;
+                }
+            } catch (Exception e) {
+                log.debug("Could not fetch sessions for human {}: {}", h.getId(), e.getMessage());
+            }
+        }
+        if (relationshipCount == 0) {
+            sb.append("| - | No human-agent sessions recorded yet | - | - | - |\n");
+        }
+        sb.append("\nHuman users authenticate via OAuth2/OIDC and interact through AI agents. Use agent-level policies to control access. Consider human roles when writing policies.\n\n");
+    }
+
+    private String formatRoles(List<String> roles) {
+        if (roles == null || roles.isEmpty()) return "-";
+        return roles.stream()
+                .filter(r -> !r.startsWith("default-roles-"))
+                .collect(Collectors.joining(", "));
+    }
+
+    private String extractHost(String uri) {
+        if (uri == null || uri.isBlank()) return "-";
+        try {
+            return java.net.URI.create(uri).getHost();
+        } catch (Exception e) {
+            return uri.length() > 40 ? uri.substring(0, 40) + "..." : uri;
+        }
     }
 
     // ════════════════════════════════════════════════════════════════════

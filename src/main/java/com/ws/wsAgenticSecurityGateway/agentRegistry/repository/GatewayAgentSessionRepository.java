@@ -70,6 +70,10 @@ public interface GatewayAgentSessionRepository extends JpaRepository<GatewayAgen
     /** Find all sessions for a specific human user (for human-user detail page). */
     List<GatewayAgentSessionEntity> findByHumanUserIdOrderByConnectedAtDesc(UUID humanUserId);
 
+    /** Find sessions for a human user with agent eagerly loaded (avoids LazyInitializationException in metadata builders). */
+    @Query("SELECT s FROM GatewayAgentSessionEntity s JOIN FETCH s.agent WHERE s.humanUserId = :humanUserId ORDER BY s.connectedAt DESC")
+    List<GatewayAgentSessionEntity> findByHumanUserIdWithAgent(@Param("humanUserId") UUID humanUserId);
+
     /**
      * Layer 2 — Smart Idle Timeout: lightweight activity timestamp update.
      * Called at response completion to keep sessions alive during long-running tool calls.
