@@ -2,10 +2,9 @@ package com.ws.wsAgenticSecurityGateway.agentRegistry.controller;
 
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentSessionEntity;
-import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayAgentSessionRepository;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.audit.entity.McpAuditLog;
-import com.ws.wsAgenticSecurityGateway.audit.repository.McpAuditLogRepository;
+import com.ws.wsAgenticSecurityGateway.audit.service.AuditQueryService;
 import lombok.extern.slf4j.Slf4j;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.data.domain.Page;
@@ -29,15 +28,12 @@ import java.util.stream.Collectors;
 public class AgentController {
 
     private final AgentRegistryService agentRegistryService;
-    private final GatewayAgentSessionRepository sessionRepository;
-    private final McpAuditLogRepository auditLogRepository;
+    private final AuditQueryService auditQueryService;
 
     public AgentController(AgentRegistryService agentRegistryService,
-                           GatewayAgentSessionRepository sessionRepository,
-                           McpAuditLogRepository auditLogRepository) {
+                           AuditQueryService auditQueryService) {
         this.agentRegistryService = agentRegistryService;
-        this.sessionRepository = sessionRepository;
-        this.auditLogRepository = auditLogRepository;
+        this.auditQueryService = auditQueryService;
     }
 
     /**
@@ -55,10 +51,7 @@ public class AgentController {
                         Collectors.counting()));
 
         // True total session counts from the sessions table (not the denormalized counter)
-        Map<UUID, Long> totalSessionsByAgent = new HashMap<>();
-        for (Object[] row : sessionRepository.countSessionsByAgent()) {
-            totalSessionsByAgent.put((UUID) row[0], (Long) row[1]);
-        }
+        Map<UUID, Long> totalSessionsByAgent = agentRegistryService.countSessionsByAgent();
 
         List<Map<String, Object>> result = new ArrayList<>();
         for (GatewayAgentEntity agent : agents) {
@@ -90,7 +83,7 @@ public class AgentController {
         return agentRegistryService.getAgent(id)
                 .map(agent -> {
                     // True total from sessions table (not the denormalized counter)
-                    long totalSessions = sessionRepository.countByAgentId(id);
+                    long totalSessions = agentRegistryService.countSessionsForAgent(id);
 
                     Map<String, Object> map = new LinkedHashMap<>();
                     map.put("id", agent.getId());
@@ -204,7 +197,7 @@ public class AgentController {
 
         // Get session metadata — search all sessions (connected + disconnected)
         Map<String, Object> sessionInfo = new LinkedHashMap<>();
-        sessionRepository.findBySessionId(sessionId).ifPresentOrElse(
+        agentRegistryService.findSessionBySessionId(sessionId).ifPresentOrElse(
                 sessionEntity -> {
                     sessionInfo.put("sessionId", sessionEntity.getSessionId());
                     sessionInfo.put("agentName", sessionEntity.getAgent().getAgentName());
@@ -220,7 +213,7 @@ public class AgentController {
         );
 
         // Query audit logs for this session
-        Page<McpAuditLog> auditPage = auditLogRepository.findBySessionIdOrderByTimestampDesc(
+        Page<McpAuditLog> auditPage = auditQueryService.getSessionTimeline(
                 sessionId, PageRequest.of(page, size));
 
         List<Map<String, Object>> timeline = new ArrayList<>();

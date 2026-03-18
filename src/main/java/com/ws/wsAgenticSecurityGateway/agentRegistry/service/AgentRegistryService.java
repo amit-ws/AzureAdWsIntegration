@@ -557,6 +557,30 @@ public class AgentRegistryService {
     }
 
     // ════════════════════════════════════════════════════════════════════
+    // SESSION QUERY METHODS (for AgentController service-layer access)
+    // ════════════════════════════════════════════════════════════════════
+
+    /** Batch session counts grouped by agent — for agent list totals. */
+    public Map<UUID, Long> countSessionsByAgent() {
+        List<Object[]> raw = sessionRepository.countSessionsByAgent();
+        Map<UUID, Long> result = new HashMap<>();
+        for (Object[] row : raw) {
+            result.put((UUID) row[0], (Long) row[1]);
+        }
+        return result;
+    }
+
+    /** Total sessions for a specific agent. */
+    public long countSessionsForAgent(UUID agentId) {
+        return sessionRepository.countByAgentId(agentId);
+    }
+
+    /** Find a session by its MCP session ID. */
+    public Optional<GatewayAgentSessionEntity> findSessionBySessionId(String sessionId) {
+        return sessionRepository.findBySessionId(sessionId);
+    }
+
+    // ════════════════════════════════════════════════════════════════════
     // APPROVAL WORKFLOW
     // ════════════════════════════════════════════════════════════════════
 

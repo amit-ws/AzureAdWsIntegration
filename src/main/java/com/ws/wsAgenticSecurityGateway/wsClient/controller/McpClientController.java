@@ -1,5 +1,6 @@
-package com.ws.wsAgenticSecurityGateway.wsClient;
+package com.ws.wsAgenticSecurityGateway.wsClient.controller;
 
+import com.ws.wsAgenticSecurityGateway.wsClient.service.McpClientService;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.modelcontextprotocol.spec.McpSchema;
 import lombok.extern.slf4j.Slf4j;

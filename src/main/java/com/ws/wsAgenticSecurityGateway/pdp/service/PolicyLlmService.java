@@ -5,9 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentSessionEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayHumanUserEntity;
-import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayAgentSessionRepository;
-import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayHumanUserRepository;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.service.HumanUserService;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
@@ -62,8 +61,7 @@ public class PolicyLlmService {
     private final CedarPolicyEngine cedarEngine;
     private final CustomAttributeService customAttributeService;
     private final McpAuditService auditService;
-    private final GatewayHumanUserRepository humanUserRepository;
-    private final GatewayAgentSessionRepository agentSessionRepository;
+    private final HumanUserService humanUserService;
 
     @Value("${ws.gateway.pdp.anthropic-api-key:}")
     private String anthropicApiKey;
@@ -84,8 +82,7 @@ public class PolicyLlmService {
                              CedarPolicyEngine cedarEngine,
                              CustomAttributeService customAttributeService,
                              McpAuditService auditService,
-                             GatewayHumanUserRepository humanUserRepository,
-                             GatewayAgentSessionRepository agentSessionRepository) {
+                             HumanUserService humanUserService) {
         this.objectMapper = objectMapper;
         this.agentRegistryService = agentRegistryService;
         this.capabilityRegistryService = capabilityRegistryService;
@@ -93,8 +90,7 @@ public class PolicyLlmService {
         this.cedarEngine = cedarEngine;
         this.customAttributeService = customAttributeService;
         this.auditService = auditService;
-        this.humanUserRepository = humanUserRepository;
-        this.agentSessionRepository = agentSessionRepository;
+        this.humanUserService = humanUserService;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
@@ -614,16 +610,16 @@ public class PolicyLlmService {
     // ════════════════════════════════════════════════════════════════════
 
     private void appendHumanUserMetadata(StringBuilder sb) {
-        List<GatewayHumanUserEntity> allHumans = humanUserRepository.findAll();
+        List<GatewayHumanUserEntity> allHumans = humanUserService.findAll();
         if (allHumans == null || allHumans.isEmpty()) {
             sb.append("### Human Users\nNo human users discovered yet.\n\n");
             return;
         }
 
         // ── Summary stats ──
-        long activeToday = humanUserRepository.countActiveHumansSince(
+        long activeToday = humanUserService.countActiveHumansSince(
                 java.time.LocalDateTime.now().toLocalDate().atStartOfDay());
-        long blockedCount = humanUserRepository.countBlocked();
+        long blockedCount = humanUserService.countBlocked();
         sb.append("### Human Users Overview\n");
         sb.append("**Total:** ").append(allHumans.size())
                 .append(" | **Active today:** ").append(activeToday)
@@ -692,7 +688,7 @@ public class PolicyLlmService {
         for (GatewayHumanUserEntity h : activeHumans) {
             if (relationshipCount >= 30) break;
             try {
-                List<GatewayAgentSessionEntity> sessions = agentSessionRepository.findByHumanUserIdWithAgent(h.getId());
+                List<GatewayAgentSessionEntity> sessions = humanUserService.getHumanSessionsWithAgent(h.getId());
                 if (sessions == null || sessions.isEmpty()) continue;
 
                 // Group by agent name

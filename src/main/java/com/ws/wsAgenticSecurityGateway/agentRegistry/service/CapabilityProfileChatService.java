@@ -6,8 +6,6 @@ import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.AgentCapabilityProfi
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentSessionEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayHumanUserEntity;
-import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayAgentSessionRepository;
-import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayHumanUserRepository;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
 import lombok.extern.slf4j.Slf4j;
@@ -44,8 +42,7 @@ public class CapabilityProfileChatService {
     private final AgentRegistryService agentRegistryService;
     private final AgentCapabilityFilterService filterService;
     private final CapabilityRegistryService registryService;
-    private final GatewayHumanUserRepository humanUserRepository;
-    private final GatewayAgentSessionRepository agentSessionRepository;
+    private final HumanUserService humanUserService;
 
     @Value("${ws.gateway.pdp.anthropic-api-key:}")
     private String anthropicApiKey;
@@ -54,14 +51,12 @@ public class CapabilityProfileChatService {
                                           AgentRegistryService agentRegistryService,
                                           AgentCapabilityFilterService filterService,
                                           CapabilityRegistryService registryService,
-                                          GatewayHumanUserRepository humanUserRepository,
-                                          GatewayAgentSessionRepository agentSessionRepository) {
+                                          HumanUserService humanUserService) {
         this.objectMapper = objectMapper;
         this.agentRegistryService = agentRegistryService;
         this.filterService = filterService;
         this.registryService = registryService;
-        this.humanUserRepository = humanUserRepository;
-        this.agentSessionRepository = agentSessionRepository;
+        this.humanUserService = humanUserService;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
@@ -210,7 +205,7 @@ public class CapabilityProfileChatService {
         sb.append("Human users authenticate via OAuth2/OIDC and use AI agents to interact with MCP servers.\n");
         sb.append("Consider human user context when designing profiles — profiles assigned to agents affect all humans who use those agents.\n\n");
         try {
-            List<GatewayHumanUserEntity> humans = humanUserRepository.findAll();
+            List<GatewayHumanUserEntity> humans = humanUserService.findAll();
             if (humans == null || humans.isEmpty()) {
                 sb.append("No human users discovered yet.\n");
             } else {
@@ -226,7 +221,7 @@ public class CapabilityProfileChatService {
                     // Find agents this human uses
                     String agentsUsed = "-";
                     try {
-                        List<GatewayAgentSessionEntity> sessions = agentSessionRepository.findByHumanUserIdWithAgent(h.getId());
+                        List<GatewayAgentSessionEntity> sessions = humanUserService.getHumanSessionsWithAgent(h.getId());
                         if (sessions != null && !sessions.isEmpty()) {
                             agentsUsed = sessions.stream()
                                     .map(s -> s.getAgent().getAgentName())

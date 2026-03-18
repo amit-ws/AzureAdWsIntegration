@@ -1,4 +1,4 @@
-package com.ws.wsAgenticSecurityGateway.wsClient;
+package com.ws.wsAgenticSecurityGateway.wsClient.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;

@@ -5,10 +5,7 @@ import com.ws.wsAgenticSecurityGateway.audit.constants.AuditModule;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditSeverity;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditStatus;
 import com.ws.wsAgenticSecurityGateway.audit.entity.McpAuditLog;
-import com.ws.wsAgenticSecurityGateway.audit.entity.PdpAuditLog;
-import com.ws.wsAgenticSecurityGateway.audit.repository.McpAuditLogRepository;
-import com.ws.wsAgenticSecurityGateway.audit.repository.McpAuditLogSpecification;
-import com.ws.wsAgenticSecurityGateway.audit.repository.PdpAuditLogRepository;
+import com.ws.wsAgenticSecurityGateway.audit.service.AuditQueryService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -18,9 +15,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * REST controller for the Admin Dashboard audit log page.
@@ -33,13 +28,10 @@ import java.util.stream.Collectors;
 @Slf4j
 public class AuditController {
 
-    private final McpAuditLogRepository auditRepo;
-    private final PdpAuditLogRepository pdpAuditRepo;
+    private final AuditQueryService auditQueryService;
 
-    public AuditController(McpAuditLogRepository auditRepo,
-                           PdpAuditLogRepository pdpAuditRepo) {
-        this.auditRepo = auditRepo;
-        this.pdpAuditRepo = pdpAuditRepo;
+    public AuditController(AuditQueryService auditQueryService) {
+        this.auditQueryService = auditQueryService;
     }
 
     /**
@@ -80,13 +72,10 @@ public class AuditController {
         AuditStatus statusEnum = parseEnum(AuditStatus.class, status);
         AuditSeverity severityEnum = parseEnum(AuditSeverity.class, severity);
 
-        // Build dynamic specification
-        var spec = McpAuditLogSpecification.build(
+        Page<McpAuditLog> results = auditQueryService.queryLogs(
                 moduleEnum, eventTypeEnum, statusEnum, severityEnum,
                 serverName, capabilityName, correlationId, sessionId,
-                agentName, search, fromDate, toDate);
-
-        Page<McpAuditLog> results = auditRepo.findAll(spec, pageRequest);
+                agentName, search, fromDate, toDate, pageRequest);
         return ResponseEntity.ok(results);
     }
 
@@ -97,7 +86,7 @@ public class AuditController {
     @GetMapping("/logs/{id}")
     public ResponseEntity<McpAuditLog> getLogById(@PathVariable UUID id) {
         log.info("📋 GET /api/admin/audit/logs/{}", id);
-        return auditRepo.findById(id)
+        return auditQueryService.findById(id)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -109,28 +98,7 @@ public class AuditController {
     @GetMapping("/logs/correlation/{correlationId}")
     public ResponseEntity<List<McpAuditLog>> getByCorrelationId(@PathVariable String correlationId) {
         log.info("📋 GET /api/admin/audit/logs/correlation/{}", correlationId);
-        List<McpAuditLog> records = new ArrayList<>(auditRepo.findByCorrelationId(correlationId));
-
-        // Collect existing PDP event types from mcp_audit_log to avoid duplicates
-        Set<AuditEventType> existingPdpTypes = records.stream()
-                .filter(r -> r.getModule() == AuditModule.PDP
-                        && (r.getEventType() == AuditEventType.PDP_EVALUATION_REQUESTED
-                            || r.getEventType() == AuditEventType.PDP_DECISION_RENDERED))
-                .map(McpAuditLog::getEventType)
-                .collect(Collectors.toSet());
-
-        // Merge PDP events from pdp_audit_log (covers pre-dual-write data)
-        List<PdpAuditLog> pdpRecords = pdpAuditRepo.findByCorrelationId(correlationId);
-        for (PdpAuditLog pdp : pdpRecords) {
-            if (!existingPdpTypes.contains(pdp.getEventType())) {
-                records.add(toChainEntry(pdp));
-            }
-        }
-
-        records.sort(Comparator
-                .comparing(McpAuditLog::getEventSequence,
-                           Comparator.nullsLast(Comparator.naturalOrder()))
-                .thenComparing(McpAuditLog::getTimestamp));
+        List<McpAuditLog> records = auditQueryService.getCorrelationChain(correlationId);
         return ResponseEntity.ok(records);
     }
 
@@ -143,47 +111,7 @@ public class AuditController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime since) {
 
         log.info("📊 GET /api/admin/audit/stats");
-
-        Map<String, Object> stats = new LinkedHashMap<>();
-
-        long totalEvents = auditRepo.count();
-        long errorCount = auditRepo.countByStatus(AuditStatus.ERROR)
-                + auditRepo.countByStatus(AuditStatus.FAILURE);
-        Double avgDuration = since != null
-                ? auditRepo.findAverageDurationMsSince(since)
-                : auditRepo.findAverageDurationMs();
-
-        stats.put("totalEvents", totalEvents);
-        stats.put("errorCount", errorCount);
-        stats.put("errorRate", totalEvents > 0
-                ? Math.round((double) errorCount / totalEvents * 10000.0) / 100.0
-                : 0.0);
-        stats.put("avgDurationMs", avgDuration != null ? Math.round(avgDuration * 10.0) / 10.0 : 0.0);
-
-        // Counts by module
-        Map<String, Long> byModule = new LinkedHashMap<>();
-        for (AuditModule m : AuditModule.values()) {
-            long count = auditRepo.countByModule(m);
-            if (count > 0) byModule.put(m.name(), count);
-        }
-        stats.put("byModule", byModule);
-
-        // Counts by status
-        Map<String, Long> byStatus = new LinkedHashMap<>();
-        for (AuditStatus s : AuditStatus.values()) {
-            long count = auditRepo.countByStatus(s);
-            if (count > 0) byStatus.put(s.name(), count);
-        }
-        stats.put("byStatus", byStatus);
-
-        // Counts by severity
-        Map<String, Long> bySeverity = new LinkedHashMap<>();
-        for (AuditSeverity s : AuditSeverity.values()) {
-            long count = auditRepo.countBySeverity(s);
-            if (count > 0) bySeverity.put(s.name(), count);
-        }
-        stats.put("bySeverity", bySeverity);
-
+        Map<String, Object> stats = auditQueryService.getStats(since);
         return ResponseEntity.ok(stats);
     }
 
@@ -196,20 +124,7 @@ public class AuditController {
             @RequestParam(defaultValue = "24") int hours) {
 
         log.info("📊 GET /api/admin/audit/stats/timeline?hours={}", hours);
-
-        LocalDateTime since = LocalDateTime.now().minusHours(hours);
-        List<Object[]> raw = auditRepo.countByHourSince(since);
-
-        List<Map<String, Object>> timeline = raw.stream().map(row -> {
-            Map<String, Object> point = new LinkedHashMap<>();
-            // row[0] is java.sql.Timestamp from native query
-            if (row[0] != null) {
-                point.put("timestamp", row[0].toString());
-            }
-            point.put("count", ((Number) row[1]).longValue());
-            return point;
-        }).collect(Collectors.toList());
-
+        List<Map<String, Object>> timeline = auditQueryService.getTimeline(hours);
         return ResponseEntity.ok(timeline);
     }
 
@@ -220,47 +135,11 @@ public class AuditController {
     @GetMapping("/filters")
     public ResponseEntity<Map<String, Object>> getFilterValues() {
         log.info("📋 GET /api/admin/audit/filters");
-
-        Map<String, Object> filters = new LinkedHashMap<>();
-
-        filters.put("modules", Arrays.stream(AuditModule.values())
-                .map(Enum::name).collect(Collectors.toList()));
-        filters.put("eventTypes", Arrays.stream(AuditEventType.values())
-                .map(Enum::name).collect(Collectors.toList()));
-        filters.put("statuses", Arrays.stream(AuditStatus.values())
-                .map(Enum::name).collect(Collectors.toList()));
-        filters.put("severities", Arrays.stream(AuditSeverity.values())
-                .map(Enum::name).collect(Collectors.toList()));
-        filters.put("serverNames", auditRepo.findDistinctServerNames());
-        filters.put("capabilityNames", auditRepo.findDistinctCapabilityNames());
-        filters.put("agentNames", auditRepo.findDistinctAgentNames());
-
+        Map<String, Object> filters = auditQueryService.getFilterValues();
         return ResponseEntity.ok(filters);
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────
-
-    /**
-     * Convert a PDP audit record into an McpAuditLog-shaped object
-     * for the correlation chain response.
-     */
-    private McpAuditLog toChainEntry(PdpAuditLog pdp) {
-        return McpAuditLog.builder()
-                .id(pdp.getId())
-                .eventType(pdp.getEventType())
-                .module(AuditModule.PDP)
-                .status(pdp.getStatus())
-                .severity(pdp.getSeverity())
-                .correlationId(pdp.getCorrelationId())
-                .agentName(pdp.getPdpSubject())
-                .capabilityName(pdp.getPdpResource())
-                .mcpMethod(pdp.getPdpAction())
-                .capabilityType(pdp.getPdpDecision())
-                .durationMs(pdp.getDurationMs())
-                .requestPayload(pdp.getPdpContext())
-                .timestamp(pdp.getTimestamp())
-                .build();
-    }
 
     private Sort parseSort(String sortParam) {
         try {
