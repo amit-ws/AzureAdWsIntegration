@@ -26,7 +26,7 @@ import org.springframework.context.annotation.Configuration;
  * the gateway over HTTP instead of stdio, decoupling agent lifecycle from
  * the gateway process and enabling:
  * <ul>
- *   <li>Persistent southbound MCP server connections across agent reconnects</li>
+ *   <li>Persistent WS Client MCP server connections across agent reconnects</li>
  *   <li>Multiple concurrent agent sessions</li>
  *   <li>Deployment as a standalone service (Docker, K8s, systemd)</li>
  * </ul>

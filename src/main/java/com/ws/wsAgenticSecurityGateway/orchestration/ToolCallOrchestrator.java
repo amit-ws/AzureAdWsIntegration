@@ -279,7 +279,7 @@ public class ToolCallOrchestrator {
         }
 
         // ── Step 5b: Pre-check — is the server connected? ────────────────
-        // Fail fast if the southbound server is disconnected instead of
+        // Fail fast if the enterprise MCP server is disconnected instead of
         // waiting for an HTTP timeout (~75s) during callTool().
         if (!mcpSessionManager.isConnected(serverName)) {
             log.error("❌ [{}] Server '{}' is not connected — rejecting immediately", correlationId, serverName);
@@ -863,7 +863,7 @@ public class ToolCallOrchestrator {
                     McpErrorCode.SERVER_UNAVAILABLE.getMessage(), serverName));
         }
 
-        // Resolve client (southbound) session ID
+        // Resolve client (WS Client-side) session ID
         String pClientSessionId = null;
         try {
             McpSession pClientSession = mcpSessionManager.getSession(serverName);
@@ -1127,7 +1127,7 @@ public class ToolCallOrchestrator {
                     McpErrorCode.SERVER_UNAVAILABLE.getMessage(), serverName));
         }
 
-        // Resolve client (southbound) session ID
+        // Resolve client (WS Client-side) session ID
         String rClientSessionId = null;
         try {
             McpSession rClientSession = mcpSessionManager.getSession(serverName);

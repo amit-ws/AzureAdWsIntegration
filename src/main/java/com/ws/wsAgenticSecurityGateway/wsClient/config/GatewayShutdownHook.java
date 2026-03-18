@@ -13,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 
 /**
- * Handles graceful shutdown of ALL sessions — both northbound (agent) and southbound (MCP server).
+ * Handles graceful shutdown of ALL sessions — both WS Server-side (agent) and WS Client-side (MCP server).
  *
  * <p>Uses {@link ContextClosedEvent} instead of {@code @PreDestroy} so that
  * the EntityManager, transaction manager, and async executor are still alive
@@ -43,7 +43,7 @@ public class GatewayShutdownHook {
     public void onShutdown(ContextClosedEvent event) {
         log.info("🛑 Gateway shutting down — cleaning up all sessions...");
 
-        // 1. Northbound: audit + mark all agent sessions DISCONNECTED
+        // 1. WS Server-side: audit + mark all agent sessions DISCONNECTED
         try {
             List<GatewayAgentSessionEntity> agentSessions = agentSessionRepository.findByStatus("CONNECTED");
             for (GatewayAgentSessionEntity session : agentSessions) {
@@ -61,7 +61,7 @@ public class GatewayShutdownHook {
             log.error("⚠️  Failed to mark agent sessions DISCONNECTED: {}", e.getMessage());
         }
 
-        // 2. Southbound: audit + mark all MCP server sessions DISCONNECTED + close clients
+        // 2. WS Client-side: audit + mark all MCP server sessions DISCONNECTED + close clients
         sessionManager.shutdown();
     }
 }

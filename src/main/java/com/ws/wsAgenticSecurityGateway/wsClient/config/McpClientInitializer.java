@@ -37,7 +37,7 @@ public class McpClientInitializer implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
-        // Clean up orphaned southbound sessions from previous run BEFORE creating new ones
+        // Clean up orphaned WS Client-side sessions from previous run BEFORE creating new ones
         sessionManager.cleanupOrphanedSessions();
 
         log.info("═══════════════════════════════════════════════════════════");

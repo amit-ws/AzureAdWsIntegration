@@ -109,12 +109,16 @@ public class McpSessionManager {
                     null       // No custom capabilities
             );
 
-            // Build sync client
+            // Build sync client with notification handlers for server-facing tool/prompt/resource changes
             log.info("🔄 Building MCP client for '{}'...", serverName);
             McpSyncClient client = McpClient.sync(mcpTransport)
                     .clientInfo(new McpSchema.Implementation(
                             "ws-agentic-gateway", "1.0.0"))
                     .capabilities(capabilities)
+                    .toolsChangeConsumer(updatedTools -> {
+                        log.info("📢 WS Client-side notification: tools/list_changed from '{}' — re-fetching capabilities", serverName);
+                        handleSouthboundCapabilityChange(serverName);
+                    })
                     .build();
 
             log.info("🔄 Initializing MCP client for '{}'...", serverName);
@@ -178,7 +182,7 @@ public class McpSessionManager {
                 // Don't throw — connection is still valid even if registry fails
             }
 
-            // ── Persist southbound session to DB ──────────────────────
+            // ── Persist WS Client-side session to DB ──────────────────────
             try {
                 GatewayMcpServerSessionEntity entity = GatewayMcpServerSessionEntity.builder()
                         .serverName(serverName)
@@ -192,9 +196,9 @@ public class McpSessionManager {
                         .status("CONNECTED")
                         .build();
                 serverSessionRepository.save(entity);
-                log.info("💾 Southbound session persisted for server '{}'", serverName);
+                log.info("💾 WS Client-side session persisted for server '{}'", serverName);
             } catch (Exception dbEx) {
-                log.error("⚠️  Failed to persist southbound session for '{}': {}",
+                log.error("⚠️  Failed to persist WS Client-side session for '{}': {}",
                         serverName, dbEx.getMessage());
                 // Don't throw — connection is still valid even if DB persistence fails
             }
@@ -305,6 +309,63 @@ public class McpSessionManager {
     }
 
     /**
+     * Handle enterprise MCP server capability change notification.
+     *
+     * <p>When a connected MCP server sends {@code notifications/tools/list_changed},
+     * this method re-fetches all capabilities, updates the registry, and fires
+     * a {@link CapabilityRegistryChangedEvent} so connected agents are notified.
+     */
+    private void handleSouthboundCapabilityChange(String serverName) {
+        McpSession session = sessions.get(serverName);
+        if (session == null) {
+            log.warn("Received tool change notification for unknown server '{}' — ignoring", serverName);
+            return;
+        }
+
+        // Audit: enterprise MCP server sent us a notification
+        auditService.auditClientNotificationReceived(
+                session.getSessionId(), serverName, "notifications/tools/list_changed");
+
+        try {
+            // Re-fetch tools, prompts, resources from the server
+            fetchAndCacheTools(serverName, session);
+
+            // Re-register in capability registry (upserts — handles adds, updates, removes)
+            JsonNode capsJson = null;
+            if (session.getCapabilities() != null) {
+                capsJson = objectMapper.valueToTree(Map.of(
+                        "tools", session.getCapabilities().tools() != null,
+                        "resources", session.getCapabilities().resources() != null,
+                        "prompts", session.getCapabilities().prompts() != null,
+                        "logging", session.getCapabilities().logging() != null
+                ));
+            }
+
+            registryService.registerServer(
+                    session.getSessionId(),
+                    serverName,
+                    session.getServerInfo() != null ? session.getServerInfo().name() : serverName,
+                    session.getServerInfo() != null ? session.getServerInfo().version() : null,
+                    null,
+                    capsJson,
+                    session.getTools(),
+                    session.getResources(),
+                    session.getPrompts()
+            );
+
+            log.info("🔄 Server '{}' capabilities refreshed after WS Client-side notification", serverName);
+
+            // Fire event → HttpMcpServerInitializer refreshes WS Server-side + notifies agents
+            eventPublisher.publishEvent(
+                    new CapabilityRegistryChangedEvent("SOUTHBOUND_TOOLS_CHANGED", serverName));
+
+        } catch (Exception e) {
+            log.error("⚠️  Failed to handle WS Client-side capability change for '{}': {}",
+                    serverName, e.getMessage(), e);
+        }
+    }
+
+    /**
      * Get a specific session by server name
      */
     public McpSession getSession(String serverName) {
@@ -341,7 +402,7 @@ public class McpSessionManager {
      *
      * <p>Connected means:
      * <ol>
-     *   <li>In-memory southbound session exists</li>
+     *   <li>In-memory WS Client-side session exists</li>
      *   <li>DB has CONNECTED status for the same server (admin source of truth)</li>
      *   <li>HTTP transport SSE channel is currently connected</li>
      * </ol>
@@ -407,18 +468,18 @@ public class McpSessionManager {
                     log.error("⚠️  Failed audit for '{}': {}", serverName, e.getMessage());
                 }
 
-                // Mark southbound session as disconnected in DB
+                // Mark WS Client-side session as disconnected in DB
                 try {
                     int updated = serverSessionRepository.markDisconnected(serverName);
                     if (updated > 0) {
-                        log.info("💾 Southbound session marked DISCONNECTED for '{}' (rows={})",
+                        log.info("💾 WS Client-side session marked DISCONNECTED for '{}' (rows={})",
                                 serverName, updated);
                     } else {
-                        log.warn("⚠️  No CONNECTED southbound DB session row found to disconnect for '{}'",
+                        log.warn("⚠️  No CONNECTED WS Client-side DB session row found to disconnect for '{}'",
                                 serverName);
                     }
                 } catch (Exception dbEx) {
-                    log.error("⚠️  Failed to mark southbound session DISCONNECTED for '{}': {}",
+                    log.error("⚠️  Failed to mark WS Client-side session DISCONNECTED for '{}': {}",
                             serverName, dbEx.getMessage(), dbEx);
                 }
 
@@ -442,13 +503,13 @@ public class McpSessionManager {
      */
     @Transactional
     public synchronized void shutdown() {
-        log.info("🛑 Gateway shutting down — disconnecting all southbound MCP servers...");
+        log.info("🛑 Gateway shutting down — disconnecting all WS Client-side MCP servers...");
         shuttingDown = true;
 
         // 1. Bulk-update DB: mark ALL connected sessions as DISCONNECTED in one query
         try {
             serverSessionRepository.markAllDisconnected();
-            log.info("💾 All southbound sessions marked DISCONNECTED in DB");
+            log.info("💾 All WS Client-side sessions marked DISCONNECTED in DB");
         } catch (Exception e) {
             log.error("⚠️  Failed to mark sessions DISCONNECTED in DB: {}", e.getMessage());
         }
@@ -472,7 +533,7 @@ public class McpSessionManager {
             }
         }
         sessions.clear();
-        log.info("✅ All southbound sessions disconnected gracefully");
+        log.info("✅ All WS Client-side sessions disconnected gracefully");
     }
 
     /**
@@ -489,7 +550,7 @@ public class McpSessionManager {
     }
 
     /**
-     * Startup cleanup — mark all orphaned CONNECTED southbound sessions as DISCONNECTED.
+     * Startup cleanup — mark all orphaned CONNECTED WS Client-side sessions as DISCONNECTED.
      * Called explicitly from {@code McpClientInitializer.run()} BEFORE creating new connections.
      */
     @Transactional
@@ -501,12 +562,12 @@ public class McpSessionManager {
                     auditService.auditClientSessionDisconnectedSync(session.getSessionId(), session.getServerName());
                 }
                 serverSessionRepository.markAllDisconnected();
-                log.info("🧹 Startup cleanup: marked {} orphaned southbound session(s) as DISCONNECTED", orphaned.size());
+                log.info("🧹 Startup cleanup: marked {} orphaned WS Client-side session(s) as DISCONNECTED", orphaned.size());
             } else {
-                log.info("🧹 Startup cleanup: no orphaned southbound sessions found");
+                log.info("🧹 Startup cleanup: no orphaned WS Client-side sessions found");
             }
         } catch (Exception e) {
-            log.error("⚠️  Failed to cleanup orphaned southbound sessions: {}", e.getMessage());
+            log.error("⚠️  Failed to cleanup orphaned WS Client-side sessions: {}", e.getMessage());
         }
     }
 }

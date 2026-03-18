@@ -8,8 +8,10 @@ import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.AgentCapabilityP
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.AgentCapabilityProfileRepository;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayAgentRepository;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
+import com.ws.wsAgenticSecurityGateway.capabilityRegistry.event.CapabilityProfileChangedEvent;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
+import org.springframework.context.ApplicationEventPublisher;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,19 +37,22 @@ public class CapabilityProfileService {
     private final CapabilityRegistryService registryService;
     private final GatewayAgentRepository agentRepository;
     private final McpAuditService auditService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public CapabilityProfileService(AgentCapabilityProfileRepository profileRepository,
                                      AgentCapabilityProfileAssignmentRepository assignmentRepository,
                                      AgentCapabilityFilterService filterService,
                                      CapabilityRegistryService registryService,
                                      GatewayAgentRepository agentRepository,
-                                     McpAuditService auditService) {
+                                     McpAuditService auditService,
+                                     ApplicationEventPublisher eventPublisher) {
         this.profileRepository = profileRepository;
         this.assignmentRepository = assignmentRepository;
         this.filterService = filterService;
         this.registryService = registryService;
         this.agentRepository = agentRepository;
         this.auditService = auditService;
+        this.eventPublisher = eventPublisher;
     }
 
     // ════════════════════════════════════════════════════════════════════
@@ -130,6 +135,15 @@ public class CapabilityProfileService {
         log.info("Updated capability profile: {} (id={})", saved.getName(), saved.getId());
         auditService.auditCapabilityProfileUpdated(saved.getName(), saved.getId(),
                 String.join(", ", changed));
+
+        // Notify agents whose effective tool list may have changed
+        List<String> affectedAgentNames = assignmentRepository.findByProfileId(id).stream()
+                .map(a -> getAgentName(a.getAgentId()))
+                .collect(Collectors.toList());
+        if (!affectedAgentNames.isEmpty()) {
+            eventPublisher.publishEvent(new CapabilityProfileChangedEvent(
+                    "PROFILE_UPDATED", saved.getName(), id, affectedAgentNames));
+        }
         return saved;
     }
 
@@ -151,6 +165,15 @@ public class CapabilityProfileService {
 
         log.info("Deleted capability profile: {} (id={})", profile.getName(), id);
         auditService.auditCapabilityProfileDeleted(profile.getName(), id);
+
+        // Notify affected agents
+        List<String> affectedAgentNames = affectedAgentIds.stream()
+                .map(this::getAgentName)
+                .collect(Collectors.toList());
+        if (!affectedAgentNames.isEmpty()) {
+            eventPublisher.publishEvent(new CapabilityProfileChangedEvent(
+                    "PROFILE_DELETED", profile.getName(), id, affectedAgentNames));
+        }
     }
 
     // ════════════════════════════════════════════════════════════════════
@@ -176,6 +199,10 @@ public class CapabilityProfileService {
         String agentName = getAgentName(agentId);
         log.info("Assigned profile {} to agent {}", profileId, agentId);
         auditService.auditCapabilityProfileAssigned(profile.getName(), profileId, agentName, agentId);
+
+        // Notify — this agent's effective tool list just changed
+        eventPublisher.publishEvent(new CapabilityProfileChangedEvent(
+                "PROFILE_ASSIGNED", profile.getName(), profileId, List.of(agentName)));
     }
 
     @Transactional
@@ -192,6 +219,10 @@ public class CapabilityProfileService {
         String agentName = getAgentName(agentId);
         log.info("Unassigned profile {} from agent {}", profileId, agentId);
         auditService.auditCapabilityProfileUnassigned(profileName, profileId, agentName, agentId);
+
+        // Notify — this agent's effective tool list just changed
+        eventPublisher.publishEvent(new CapabilityProfileChangedEvent(
+                "PROFILE_UNASSIGNED", profileName, profileId, List.of(agentName)));
     }
 
     public boolean isAssigned(UUID profileId, UUID agentId) {

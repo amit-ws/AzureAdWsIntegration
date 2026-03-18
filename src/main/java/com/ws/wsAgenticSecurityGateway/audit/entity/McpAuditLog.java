@@ -22,8 +22,8 @@ import java.util.UUID;
  *
  * <p>Covers all five auditable areas:
  * <ol>
- *   <li>AI Client  &lt;-&gt;  WS Server (Northbound)</li>
- *   <li>WS Client  &lt;-&gt;  Enterprise MCP Server (Southbound)</li>
+ *   <li>AI Client  &lt;-&gt;  WS Server (Agent-Facing)</li>
+ *   <li>WS Client  &lt;-&gt;  Enterprise MCP Server (Server-Facing)</li>
  *   <li>Capability Registry CRUD</li>
  *   <li>Orchestration Layer</li>
  * </ol>
@@ -81,7 +81,7 @@ public class McpAuditLog {
     @Column(name = "correlation_id", length = 64)
     private String correlationId;
 
-    /** MCP session identifier (Northbound or Southbound). */
+    /** MCP session identifier (WS Server-side or WS Client-side). */
     @Column(name = "session_id", length = 128)
     private String sessionId;
 
@@ -93,7 +93,7 @@ public class McpAuditLog {
     @Column(name = "event_sequence")
     private Integer eventSequence;
 
-    /** AI agent name (e.g., "claude-desktop", "cursor") — set for northbound + orchestration events. */
+    /** AI agent name (e.g., "claude-desktop", "cursor") — set for agent-facing + orchestration events. */
     @Column(name = "agent_name", length = 256)
     private String agentName;
 

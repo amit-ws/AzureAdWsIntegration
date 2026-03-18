@@ -34,8 +34,8 @@ import java.util.UUID;
  *
  * <h3>Covered Activity Areas</h3>
  * <ol>
- * <li>AI Client &lt;-&gt; WS Server (Northbound) → {@code mcp_audit_log}</li>
- * <li>WS Client &lt;-&gt; Enterprise MCP Server (Southbound) →
+ * <li>AI Client &lt;-&gt; WS Server (Agent-Facing) → {@code mcp_audit_log}</li>
+ * <li>WS Client &lt;-&gt; Enterprise MCP Server (Server-Facing) →
  * {@code mcp_audit_log}</li>
  * <li>Capability Registry CRUD → {@code mcp_audit_log}</li>
  * <li>Orchestration Layer → {@code mcp_audit_log}</li>
@@ -64,7 +64,7 @@ public class McpAuditService {
         }
 
         // ════════════════════════════════════════════════════════════════════
-        // AREA 2 — WS Client <-> Enterprise MCP Server (Southbound)
+        // AREA 2 — WS Client <-> Enterprise MCP Server (Server-Facing)
         // ════════════════════════════════════════════════════════════════════
 
         /**
@@ -157,7 +157,7 @@ public class McpAuditService {
         }
 
         /**
-         * Audit: southbound health check failed for an enterprise MCP server.
+         * Audit: WS Client-side health check failed for an enterprise MCP server.
          */
         @Async("mcpAuditExecutor")
         public void auditClientHealthCheckFailed(String sessionId,
@@ -462,8 +462,32 @@ public class McpAuditService {
                                 .build());
         }
 
+        /**
+         * Audit: enterprise MCP server sent us a notification (e.g., tools/list_changed).
+         */
+        @Async("mcpAuditExecutor")
+        public void auditClientNotificationReceived(String sessionId,
+                        String serverName,
+                        String notificationType) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.CLIENT_NOTIFICATION_RECEIVED)
+                                .module(AuditModule.WS_CLIENT)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .sessionId(sessionId)
+                                .serverName(serverName)
+                                .mcpMethod(notificationType)
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(Map.of(
+                                                "notification", notificationType,
+                                                "serverName", serverName,
+                                                "description", "Enterprise MCP server '" + serverName
+                                                                + "' sent " + notificationType + " notification")))
+                                .build());
+        }
+
         // ════════════════════════════════════════════════════════════════════
-        // AREA 1 — AI Client <-> WS Server (Northbound)
+        // AREA 1 — AI Client <-> WS Server (Agent-Facing)
         // ════════════════════════════════════════════════════════════════════
 
         @Async("mcpAuditExecutor")
@@ -803,6 +827,72 @@ public class McpAuditService {
                 }
 
                 persist(builder.build());
+        }
+
+        /**
+         * Audit: notifications/tools/list_changed (and/or prompts/resources) broadcast to agents.
+         * Fired when the gateway's capability list changes and connected agents are notified.
+         */
+        /**
+         * Workflow 1: Registry change notification broadcast.
+         * Fired when enterprise MCP servers connect/disconnect and tools/prompts/resources change.
+         */
+        @Async("mcpAuditExecutor")
+        public void auditNotificationBroadcast(String reason,
+                        String serverConfigName,
+                        int toolsAdded, int toolsUpdated, int toolsRemoved,
+                        int promptsAdded, int promptsUpdated, int promptsRemoved,
+                        int resourcesAdded, int resourcesUpdated, int resourcesRemoved,
+                        boolean toolsNotified, boolean promptsNotified, boolean resourcesNotified,
+                        List<String> notifiedAgents) {
+                List<String> notified = new java.util.ArrayList<>();
+                if (toolsNotified) notified.add("tools");
+                if (promptsNotified) notified.add("prompts");
+                if (resourcesNotified) notified.add("resources");
+
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.REGISTRY_NOTIFICATION_BROADCAST)
+                                .module(AuditModule.CAPABILITY_REGISTRY)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .serverName(serverConfigName)
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(Map.of(
+                                                "reason", reason,
+                                                "serverConfigName", serverConfigName,
+                                                "changes", Map.of(
+                                                                "tools", Map.of("added", toolsAdded, "updated", toolsUpdated, "removed", toolsRemoved),
+                                                                "prompts", Map.of("added", promptsAdded, "updated", promptsUpdated, "removed", promptsRemoved),
+                                                                "resources", Map.of("added", resourcesAdded, "updated", resourcesUpdated, "removed", resourcesRemoved)),
+                                                "notificationsSent", notified,
+                                                "notifiedAgents", notifiedAgents != null ? notifiedAgents : List.of())))
+                                .build());
+        }
+
+        /**
+         * Workflow 2: Capability profile change notification broadcast.
+         * Fired when a profile is assigned, unassigned, updated, or deleted.
+         */
+        @Async("mcpAuditExecutor")
+        public void auditProfileNotificationBroadcast(String reason,
+                        String profileName,
+                        java.util.UUID profileId,
+                        List<String> affectedAgents,
+                        List<String> notifiedAgents) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.REGISTRY_NOTIFICATION_BROADCAST)
+                                .module(AuditModule.CAPABILITY_REGISTRY)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(Map.of(
+                                                "reason", reason,
+                                                "profileName", profileName,
+                                                "profileId", profileId != null ? profileId.toString() : "",
+                                                "affectedAgents", affectedAgents != null ? affectedAgents : List.of(),
+                                                "notifiedAgents", notifiedAgents != null ? notifiedAgents : List.of(),
+                                                "notificationsSent", List.of("tools", "prompts", "resources"))))
+                                .build());
         }
 
         // ════════════════════════════════════════════════════════════════════

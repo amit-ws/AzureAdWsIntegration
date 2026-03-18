@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 /**
- * Tracks southbound sessions between the WS Gateway and enterprise MCP servers.
+ * Tracks WS Client-side sessions between the WS Gateway and enterprise MCP servers.
  *
  * <p>Persisted in {@code gateway_mcp_server_session} table, this entity provides
  * visibility into server connection lifecycle, health status, and activity.

@@ -15,7 +15,7 @@ import java.util.*;
  * <p>The extracted context is available in tool/prompt/resource handlers via
  * {@code exchange.transportContext().get("key")}, enabling:
  * <ul>
- *   <li>Agent token forwarding to southbound MCP servers</li>
+ *   <li>Agent token forwarding to enterprise MCP servers</li>
  *   <li>Agent identification for audit logging</li>
  *   <li>Correlation ID propagation across the request chain</li>
  * </ul>
@@ -44,7 +44,7 @@ public class McpGatewayContextExtractor implements McpTransportContextExtractor<
     public McpTransportContext extract(HttpServletRequest request) {
         Map<String, Object> ctx = new HashMap<>();
 
-        // ── Auth token (for agent token forwarding to southbound servers) ────
+        // ── Auth token (for agent token forwarding to enterprise MCP servers) ────
         String auth = request.getHeader("Authorization");
         if (auth != null && !auth.isBlank()) {
             ctx.put("authorization", auth);

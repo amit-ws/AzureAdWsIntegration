@@ -6,9 +6,9 @@ package com.ws.wsAgenticSecurityGateway.audit.constants;
  * <p>
  * Grouped by the five activity areas:
  * <ul>
- * <li>{@code SERVER_*} — AI Client &lt;-&gt; WS Server (Northbound)</li>
+ * <li>{@code SERVER_*} — AI Client &lt;-&gt; WS Server (Agent-Facing)</li>
  * <li>{@code CLIENT_*} — WS Client &lt;-&gt; Enterprise MCP Server
- * (Southbound)</li>
+ * (Server-Facing)</li>
  * <li>{@code REGISTRY_*} — Capability Registry CRUD</li>
  * <li>{@code ORCHESTRATION_*} — Orchestration Layer</li>
  * <li>{@code PDP_*} — Policy Decision Point</li>
@@ -21,7 +21,7 @@ public enum AuditEventType {
     OAUTH2_AUTH_SUCCESS,            // JWT validated, claims extracted
     OAUTH2_AUTH_FAILURE,            // JWT validation failed (expired, bad sig, wrong issuer)
 
-    // ── Area 1 — AI Client <-> WS Server (Northbound) ────────────────
+    // ── Area 1 — AI Client <-> WS Server (Agent-Facing) ────────────────
     SERVER_SESSION_INITIALIZED,
     SERVER_SESSION_DISCONNECTED,
     SERVER_SESSION_IDLE_REAPED,
@@ -33,7 +33,7 @@ public enum AuditEventType {
     SERVER_RESOURCE_READ,
     SERVER_NOTIFICATION_RECEIVED,
 
-    // ── Area 2 — WS Client <-> Enterprise MCP Server (Southbound) ────
+    // ── Area 2 — WS Client <-> Enterprise MCP Server (Server-Facing) ────
     CLIENT_SESSION_INITIALIZED,
     CLIENT_SESSION_DISCONNECTED,
     CLIENT_HEALTH_CHECK_FAILED,
@@ -42,6 +42,7 @@ public enum AuditEventType {
     CLIENT_PROMPTS_LIST_FETCHED,
     CLIENT_TOOL_INVOCATION,
     CLIENT_RESOURCE_READ,
+    CLIENT_NOTIFICATION_RECEIVED,
 
     // ── Area 3 — Capability Registry CRUD ─────────────────────────────
     REGISTRY_CAPABILITY_REGISTERED,
@@ -49,6 +50,7 @@ public enum AuditEventType {
     REGISTRY_CAPABILITY_REMOVED,
     REGISTRY_BULK_LOAD,
     REGISTRY_SERVER_REFRESH,
+    REGISTRY_NOTIFICATION_BROADCAST,
 
     // ── Area 4 — Orchestration Layer ──────────────────────────────────
     ORCHESTRATION_TOOL_EXTRACTED,

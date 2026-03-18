@@ -336,7 +336,7 @@ public class AgentRegistryService {
      * Layer 2 — Smart Idle Timeout: lightweight activity timestamp update.
      *
      * <p>
-     * Called at the END of each orchestration method (after the southbound call
+     * Called at the END of each orchestration method (after the server-facing call
      * completes) to keep sessions alive during long-running tool calls.
      * The existing {@link #recordRequest(String)} updates lastRequestAt at request
      * START;

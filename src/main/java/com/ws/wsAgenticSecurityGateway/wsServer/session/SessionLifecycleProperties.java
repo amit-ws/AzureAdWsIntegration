@@ -5,7 +5,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 /**
- * Configuration properties for northbound session lifecycle management.
+ * Configuration properties for agent-facing session lifecycle management.
  *
  * <p>Controls the idle session reaper that detects and cleans up
  * stale agent sessions (e.g., agent crashed, network dropped).
