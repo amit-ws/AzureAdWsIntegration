@@ -69,6 +69,7 @@ public class HttpMcpAuditFilter implements Filter {
     private final McpAuditService auditService;
     private final CapabilityRegistryService registryService;
     private final ObjectMapper objectMapper;
+    private final TokenClassificationService tokenClassificationService;
 
     /**
      * Tracks which sessions have been registered (prevents duplicate registration).
@@ -98,12 +99,14 @@ public class HttpMcpAuditFilter implements Filter {
             AgentCapabilityFilterService capabilityFilterService,
             McpAuditService auditService,
             CapabilityRegistryService registryService,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            TokenClassificationService tokenClassificationService) {
         this.agentRegistryService = agentRegistryService;
         this.capabilityFilterService = capabilityFilterService;
         this.auditService = auditService;
         this.registryService = registryService;
         this.objectMapper = objectMapper;
+        this.tokenClassificationService = tokenClassificationService;
     }
 
     @Override
@@ -340,6 +343,8 @@ public class HttpMcpAuditFilter implements Filter {
         String idpIssuer = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_ISSUER);
         List<String> realmRoles = (List<String>) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_REALM_ROLES);
         List<String> clientRoles = (List<String>) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_CLIENT_ROLES);
+        @SuppressWarnings("unchecked")
+        List<String> allRoles = (List<String>) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_ALL_ROLES);
         Map<String, Object> customClaims = (Map<String, Object>) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_CUSTOM_CLAIMS);
         Map<String, Object> rawJwtClaims = (Map<String, Object>) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_RAW_CLAIMS);
 
@@ -350,8 +355,9 @@ public class HttpMcpAuditFilter implements Filter {
             earlyAgentName = json.path("params").path("clientInfo").path("name").asText("unknown");
         } catch (Exception ignored) {
         }
-        // Use authClientId as agent name when available (verified identity), fallback to self-reported
-        String resolvedAgentName = authClientId != null ? authClientId : earlyAgentName;
+        // Use self-reported MCP clientInfo name as display name (e.g., "Anthropic/Toolbox")
+        // authClientId (e.g., "claude-desktop") is stored separately in agentClientId for verified identity
+        String resolvedAgentName = earlyAgentName;
         sessionAgentNames.put(sessionId, resolvedAgentName);
 
         if (registeredSessions.containsKey(sessionId))
@@ -376,6 +382,34 @@ public class HttpMcpAuditFilter implements Filter {
                 log.debug("Skipping probe/test agent registration: {} (session={})", agentName, sessionId);
                 registeredSessions.remove(sessionId);
                 return;
+            }
+
+            // ── Tier 1: Token Introspection (once per session) ─────────
+            // If mode=introspect and introspection returns a different classification
+            // than the JWT signal chain (Tier 2), the introspection result wins.
+            String accessToken = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_ACCESS_TOKEN);
+            String jwtSignal = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_CLASSIFICATION_SIGNAL);
+
+            if (accessToken != null && tokenType != null) {
+                TokenClassificationService.ClassificationResult introspectionResult =
+                        tokenClassificationService.classifyViaIntrospection(accessToken);
+
+                if (introspectionResult != null && !introspectionResult.tokenType().equals(tokenType)) {
+                    log.info("🔄 Tier 1 introspection overrides Tier 2: {} ({}) → {} ({})",
+                            tokenType, jwtSignal, introspectionResult.tokenType(), introspectionResult.matchedSignal());
+                    auditService.auditTokenClassificationOverride(
+                            sessionId, resolvedAgentName,
+                            tokenType, jwtSignal,
+                            introspectionResult.tokenType(), introspectionResult.matchedSignal(),
+                            requestId);
+                    tokenType = introspectionResult.tokenType();
+                }
+
+                // Cache final classification for this session
+                TokenClassificationService.ClassificationResult finalResult =
+                        introspectionResult != null ? introspectionResult :
+                        new TokenClassificationService.ClassificationResult(tokenType, jwtSignal);
+                tokenClassificationService.cacheClassification(sessionId, finalResult);
             }
 
             // Agent Registry — discover (upsert) with OAuth2 identity context
@@ -404,6 +438,18 @@ public class HttpMcpAuditFilter implements Filter {
                     authMethod != null ? authMethod : "HTTP",
                     jwtSubject,
                     tokenType, humanUserId);
+
+            // Register identity context for audit enrichment — every future audit log for this session
+            // will automatically carry tokenType, userIdentity, humanUserId, auth fields
+            auditService.registerSessionIdentity(sessionId,
+                    new McpAuditService.AuditIdentityContext(
+                            tokenType,
+                            preferredUsername,
+                            humanUserId != null ? humanUserId.toString() : null,
+                            authMethod != null ? authMethod : "HTTP",
+                            jwtSubject,
+                            authClientId,
+                            allRoles));
 
             // ── Layer 1: Active Session Replacement ──────────────────
             int replaced = agentRegistryService.disconnectExistingSessionsForAgent(
@@ -785,11 +831,15 @@ public class HttpMcpAuditFilter implements Filter {
                 // Update Agent Registry DB state
                 agentRegistryService.disconnectSession(sessionId);
 
+                // Clean up audit identity cache for this session
+                auditService.evictSessionIdentity(sessionId);
+
                 // Clean up tracking maps
                 registeredSessions.remove(sessionId);
                 knownSessionIds.remove(sessionId);
                 blockedSessionIds.remove(sessionId);
                 sessionAgentNames.remove(sessionId);
+                tokenClassificationService.evictSession(sessionId);
 
                 log.info("HTTP session disconnected: {} (agent={})", sessionId, agentName);
             } catch (Exception e) {

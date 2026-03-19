@@ -107,6 +107,7 @@ public class McpGatewayContextExtractor implements McpTransportContextExtractor<
         putIfPresent(ctx, "userEmailVerified", request.getAttribute(GatewayOAuth2Filter.ATTR_EMAIL_VERIFIED));
         putIfPresent(ctx, "idpIssuer", request.getAttribute(GatewayOAuth2Filter.ATTR_ISSUER));
         putIfPresent(ctx, "tokenType", request.getAttribute(GatewayOAuth2Filter.ATTR_TOKEN_TYPE));
+        putIfPresent(ctx, "classificationSignal", request.getAttribute(GatewayOAuth2Filter.ATTR_CLASSIFICATION_SIGNAL));
         putIfPresent(ctx, "authMethod", request.getAttribute(GatewayOAuth2Filter.ATTR_AUTH_METHOD));
         putIfPresent(ctx, "agentRoles", request.getAttribute(GatewayOAuth2Filter.ATTR_ALL_ROLES));
         putIfPresent(ctx, "realmRoles", request.getAttribute(GatewayOAuth2Filter.ATTR_REALM_ROLES));

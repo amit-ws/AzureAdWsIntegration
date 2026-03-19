@@ -49,6 +49,8 @@ public class GatewayOAuth2Filter implements Filter {
     public static final String ATTR_AUTH_METHOD = "jwt.auth_method";
     public static final String ATTR_CUSTOM_CLAIMS = "jwt.custom_claims";
     public static final String ATTR_RAW_CLAIMS = "jwt.raw_claims";
+    public static final String ATTR_ACCESS_TOKEN = "jwt.access_token";
+    public static final String ATTR_CLASSIFICATION_SIGNAL = "jwt.classification_signal";
 
     public static final String TOKEN_TYPE_AUTOMATED = "AUTOMATED_AGENT";
     public static final String TOKEN_TYPE_HUMAN = "HUMAN_DELEGATED";
@@ -57,9 +59,12 @@ public class GatewayOAuth2Filter implements Filter {
     private static final String WS_GATEWAY_CLAIM_PREFIX = "ws_gateway_";
 
     private final McpAuditService auditService;
+    private final TokenClassificationService tokenClassificationService;
 
-    public GatewayOAuth2Filter(McpAuditService auditService) {
+    public GatewayOAuth2Filter(McpAuditService auditService,
+                               TokenClassificationService tokenClassificationService) {
         this.auditService = auditService;
+        this.tokenClassificationService = tokenClassificationService;
     }
 
     @Override
@@ -120,17 +125,23 @@ public class GatewayOAuth2Filter implements Filter {
         Map<String, Object> customClaims = extractCustomClaims(jwt);
         request.setAttribute(ATTR_CUSTOM_CLAIMS, customClaims);
 
-        // ── Token Classification (Standard 2 custom claim first, heuristic fallback) ──
-        String tokenType = classifyToken(customClaims, preferredUsername, subject, clientId);
-        request.setAttribute(ATTR_TOKEN_TYPE, tokenType);
-        request.setAttribute(ATTR_AUTH_METHOD, AUTH_METHOD_OAUTH2);
-
         // ── Raw JWT claims (full payload for debugging) ──
         Map<String, Object> rawClaims = new HashMap<>(jwt.getClaims());
         request.setAttribute(ATTR_RAW_CLAIMS, rawClaims);
 
-        log.debug("JWT claims extracted: client_id={}, sub={}, tokenType={}, roles={}, user={}",
-                clientId, subject, tokenType, allRoles, preferredUsername);
+        // ── Token Classification (Tier 2: JWT Signal Chain — 7 signals, zero latency) ──
+        TokenClassificationService.ClassificationResult classification =
+                tokenClassificationService.classifyFromJwtSignals(rawClaims, customClaims);
+        String tokenType = classification.tokenType();
+        request.setAttribute(ATTR_TOKEN_TYPE, tokenType);
+        request.setAttribute(ATTR_CLASSIFICATION_SIGNAL, classification.matchedSignal());
+        request.setAttribute(ATTR_AUTH_METHOD, AUTH_METHOD_OAUTH2);
+
+        // Store raw access token for Tier 1 introspection in HttpMcpAuditFilter
+        request.setAttribute(ATTR_ACCESS_TOKEN, jwt.getTokenValue());
+
+        log.debug("JWT claims extracted: client_id={}, sub={}, tokenType={} ({}), roles={}, user={}",
+                clientId, subject, tokenType, classification.matchedSignal(), allRoles, preferredUsername);
 
         // ── Async audit ──
         String sessionId = request.getHeader("Mcp-Session-Id");
@@ -201,49 +212,6 @@ public class GatewayOAuth2Filter implements Filter {
         Set<String> merged = new LinkedHashSet<>(realmRoles);
         merged.addAll(clientRoles);
         return new ArrayList<>(merged);
-    }
-
-    /**
-     * Classifies the token as AUTOMATED_AGENT or HUMAN_DELEGATED.
-     *
-     * <p>Priority chain (Standard 2 first, heuristic fallback):
-     * <ol>
-     *   <li><b>ws_gateway_token_type</b> custom claim — IdP admin explicitly declares the token type.
-     *       This is the IdP-agnostic path; no heuristic needed. Works identically across
-     *       Keycloak, Azure AD, Okta, Auth0.</li>
-     *   <li><b>preferred_username present</b> — Authorization Code flow (human logged in).</li>
-     *   <li><b>service-account- prefix in sub</b> — Keycloak Client Credentials convention.</li>
-     *   <li><b>sub == client_id</b> — Azure AD / Auth0 Client Credentials convention.</li>
-     *   <li><b>Default</b> — AUTOMATED_AGENT (no human indicators found).</li>
-     * </ol>
-     */
-    private String classifyToken(Map<String, Object> customClaims,
-                                 String preferredUsername, String subject, String clientId) {
-        // Standard 2: Explicit custom claim takes highest priority — IdP-agnostic
-        Object explicitType = customClaims.get("ws_gateway_token_type");
-        if (explicitType instanceof String tokenTypeValue && !tokenTypeValue.isBlank()) {
-            String normalized = tokenTypeValue.trim().toUpperCase();
-            if (TOKEN_TYPE_HUMAN.equals(normalized) || TOKEN_TYPE_AUTOMATED.equals(normalized)) {
-                log.debug("Token type resolved from ws_gateway_token_type custom claim: {}", normalized);
-                return normalized;
-            }
-            log.warn("Unknown ws_gateway_token_type value: '{}', falling back to heuristic", tokenTypeValue);
-        }
-
-        // Heuristic fallback: preferred_username present = human logged in
-        if (preferredUsername != null && !preferredUsername.isBlank()) {
-            return TOKEN_TYPE_HUMAN;
-        }
-        // Keycloak service accounts have sub starting with "service-account-"
-        if (subject != null && subject.startsWith("service-account-")) {
-            return TOKEN_TYPE_AUTOMATED;
-        }
-        // If sub equals client_id, likely client credentials (Azure AD, Auth0)
-        if (subject != null && subject.equals(clientId)) {
-            return TOKEN_TYPE_AUTOMATED;
-        }
-        // Default to automated if no human indicators
-        return TOKEN_TYPE_AUTOMATED;
     }
 
     /**

@@ -730,6 +730,15 @@ public class AgentRegistryService {
     }
 
     /**
+     * Get the human user UUID for a session, if any.
+     * Returns null for automated agent sessions.
+     */
+    public UUID getHumanUserIdForSession(String sessionId) {
+        if (sessionId == null) return null;
+        return sessionToHumanUserId.get(sessionId);
+    }
+
+    /**
      * Check if the human user behind a session is blocked.
      * O(1) — ConcurrentHashMap lookup + DB read (small table, typically < 100 rows).
      *

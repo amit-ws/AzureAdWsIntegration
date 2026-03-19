@@ -124,6 +124,10 @@ public class McpAuditLog {
     @Column(name = "agent_roles", columnDefinition = "jsonb")
     private List<String> agentRoles;
 
+    /** Human user UUID from gateway_human_users — set when tokenType is HUMAN_DELEGATED. */
+    @Column(name = "human_user_id", length = 64)
+    private String humanUserId;
+
     /** PDP evaluation decision: "ALLOWED" or "DENIED". */
     @Column(name = "pdp_decision", length = 16)
     private String pdpDecision;

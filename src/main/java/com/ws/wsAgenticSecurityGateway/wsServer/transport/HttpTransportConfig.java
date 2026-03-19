@@ -98,9 +98,10 @@ public class HttpTransportConfig {
     @Bean
     @ConditionalOnProperty(name = "ws.gateway.auth.mode", havingValue = "oauth2")
     public FilterRegistrationBean<GatewayOAuth2Filter> mcpOAuth2FilterRegistration(
-            McpAuditService auditService) {
+            McpAuditService auditService,
+            TokenClassificationService tokenClassificationService) {
         FilterRegistrationBean<GatewayOAuth2Filter> registration = new FilterRegistrationBean<>();
-        registration.setFilter(new GatewayOAuth2Filter(auditService));
+        registration.setFilter(new GatewayOAuth2Filter(auditService, tokenClassificationService));
         registration.addUrlPatterns("/mcp/*");
         registration.setOrder(1);
         registration.setName("mcpOAuth2Filter");
@@ -122,11 +123,13 @@ public class HttpTransportConfig {
             AgentCapabilityFilterService capabilityFilterService,
             McpAuditService auditService,
             CapabilityRegistryService registryService,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            TokenClassificationService tokenClassificationService) {
 
         FilterRegistrationBean<HttpMcpAuditFilter> registration = new FilterRegistrationBean<>();
         registration.setFilter(new HttpMcpAuditFilter(
-                agentRegistryService, capabilityFilterService, auditService, registryService, objectMapper));
+                agentRegistryService, capabilityFilterService, auditService, registryService,
+                objectMapper, tokenClassificationService));
         registration.addUrlPatterns("/mcp/*");
         registration.setOrder(2);
         registration.setName("mcpAuditFilter");

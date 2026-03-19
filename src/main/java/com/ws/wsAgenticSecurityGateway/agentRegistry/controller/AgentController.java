@@ -121,6 +121,8 @@ public class AgentController {
             map.put("requestCount", session.getRequestCount());
             map.put("lastRequestAt", session.getLastRequestAt());
             map.put("status", session.getStatus());
+            map.put("tokenType", session.getTokenType());
+            map.put("humanUserId", session.getHumanUserId());
             result.add(map);
         }
 

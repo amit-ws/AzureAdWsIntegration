@@ -20,6 +20,7 @@ public enum AuditEventType {
     // ── Area 0 — Authentication Events ────────────────────────────────
     OAUTH2_AUTH_SUCCESS,            // JWT validated, claims extracted
     OAUTH2_AUTH_FAILURE,            // JWT validation failed (expired, bad sig, wrong issuer)
+    OAUTH2_TOKEN_CLASSIFICATION_OVERRIDE, // Tier 1 introspection overrode Tier 2 JWT signal classification
 
     // ── Area 1 — AI Client <-> WS Server (Agent-Facing) ────────────────
     SERVER_SESSION_INITIALIZED,

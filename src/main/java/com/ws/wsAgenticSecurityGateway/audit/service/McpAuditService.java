@@ -54,6 +54,42 @@ public class McpAuditService {
         private final PdpAuditLogRepository pdpRepository;
         private final ObjectMapper objectMapper;
 
+        /**
+         * Session-scoped identity context — keyed by MCP sessionId.
+         * Set once during session initialization by HttpMcpAuditFilter.
+         * Read by persist() to auto-enrich every audit log entry with human identity.
+         * Thread-safe: ConcurrentHashMap supports concurrent reads from @Async threads.
+         */
+        private final java.util.concurrent.ConcurrentHashMap<String, AuditIdentityContext> sessionIdentityCache =
+                new java.util.concurrent.ConcurrentHashMap<>();
+
+        /** Immutable identity context for a session — set once, read many times. */
+        public record AuditIdentityContext(
+                String tokenType,       // HUMAN_DELEGATED or AUTOMATED_AGENT
+                String userIdentity,    // preferred_username (null for automated)
+                String humanUserId,     // UUID string from gateway_human_users (null for automated)
+                String authMethod,      // OAUTH2 or NONE
+                String authIdentity,    // JWT subject
+                String agentClientId,   // OAuth2 azp claim
+                List<String> agentRoles // merged roles
+        ) {}
+
+        /** Called by HttpMcpAuditFilter after session registration — sets identity for all future audit entries on this session. */
+        public void registerSessionIdentity(String sessionId, AuditIdentityContext ctx) {
+                if (sessionId != null && ctx != null) {
+                        sessionIdentityCache.put(sessionId, ctx);
+                        log.debug("Audit identity registered for session {}: tokenType={}, user={}",
+                                sessionId, ctx.tokenType(), ctx.userIdentity());
+                }
+        }
+
+        /** Called on session disconnect — cleans up the cache entry. */
+        public void evictSessionIdentity(String sessionId) {
+                if (sessionId != null) {
+                        sessionIdentityCache.remove(sessionId);
+                }
+        }
+
         public McpAuditService(McpAuditLogRepository repository,
                         PdpAuditLogRepository pdpRepository) {
                 this.repository = repository;
@@ -1682,12 +1718,54 @@ public class McpAuditService {
                                 .build());
         }
 
+        /**
+         * Audit: Tier 1 token introspection overrode Tier 2 JWT signal classification.
+         * Important for debugging misclassification issues and monitoring IdP behavior.
+         */
+        @Async("mcpAuditExecutor")
+        public void auditTokenClassificationOverride(
+                        String sessionId, String agentName,
+                        String jwtSignalType, String jwtSignal,
+                        String introspectionType, String introspectionSignal,
+                        String requestId) {
+                String message = String.format(
+                                "Introspection overrode JWT signal: %s (%s) → %s (%s)",
+                                jwtSignalType, jwtSignal, introspectionType, introspectionSignal);
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.OAUTH2_TOKEN_CLASSIFICATION_OVERRIDE)
+                                .module(AuditModule.WS_SERVER)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.WARN)
+                                .sessionId(sessionId)
+                                .requestId(requestId)
+                                .agentName(agentName)
+                                .tokenType(introspectionType)
+                                .errorMessage(message)
+                                .build());
+        }
+
         private void persist(McpAuditLog auditLog) {
                 try {
                         // Fire-time fallback: set timestamp if not already captured by caller
                         if (auditLog.getTimestamp() == null) {
                                 auditLog.setTimestamp(LocalDateTime.now());
                         }
+
+                        // Auto-enrich with identity context from session cache
+                        // Only fills in fields that are NOT already set (explicit values take priority)
+                        if (auditLog.getSessionId() != null) {
+                                AuditIdentityContext ctx = sessionIdentityCache.get(auditLog.getSessionId());
+                                if (ctx != null) {
+                                        if (auditLog.getTokenType() == null) auditLog.setTokenType(ctx.tokenType());
+                                        if (auditLog.getUserIdentity() == null) auditLog.setUserIdentity(ctx.userIdentity());
+                                        if (auditLog.getHumanUserId() == null) auditLog.setHumanUserId(ctx.humanUserId());
+                                        if (auditLog.getAuthMethod() == null) auditLog.setAuthMethod(ctx.authMethod());
+                                        if (auditLog.getAuthIdentity() == null) auditLog.setAuthIdentity(ctx.authIdentity());
+                                        if (auditLog.getAgentClientId() == null) auditLog.setAgentClientId(ctx.agentClientId());
+                                        if (auditLog.getAgentRoles() == null) auditLog.setAgentRoles(ctx.agentRoles());
+                                }
+                        }
+
                         repository.save(auditLog);
                         log.debug("Audit [{}] {} — {} | server={} capability={}",
                                         auditLog.getModule(),
