@@ -128,6 +128,14 @@ public class McpAuditLog {
     @Column(name = "human_user_id", length = 64)
     private String humanUserId;
 
+    /** NHI UUID from gateway_nhi_registry — set when tokenType is AUTOMATED_AGENT. */
+    @Column(name = "nhi_id", length = 64)
+    private String nhiId;
+
+    /** Client IP address (X-Forwarded-For aware). */
+    @Column(name = "source_ip", length = 64)
+    private String sourceIp;
+
     /** PDP evaluation decision: "ALLOWED" or "DENIED". */
     @Column(name = "pdp_decision", length = 16)
     private String pdpDecision;

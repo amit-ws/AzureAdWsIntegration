@@ -36,6 +36,9 @@ public class McpAuditLogSpecification {
             String correlationId,
             String sessionId,
             String agentName,
+            String tokenType,
+            String userIdentity,
+            String sourceIp,
             String searchText,
             LocalDateTime fromDate,
             LocalDateTime toDate) {
@@ -71,6 +74,18 @@ public class McpAuditLogSpecification {
         if (agentName != null && !agentName.isBlank()) {
             spec = spec.and((root, query, cb) -> cb.equal(root.get("agentName"), agentName));
         }
+        if (tokenType != null && !tokenType.isBlank()) {
+            spec = spec.and((root, query, cb) -> cb.equal(root.get("tokenType"), tokenType));
+        }
+        if (userIdentity != null && !userIdentity.isBlank()) {
+            spec = spec.and((root, query, cb) ->
+                    cb.like(cb.lower(root.get("userIdentity")),
+                            "%" + userIdentity.toLowerCase() + "%"));
+        }
+        if (sourceIp != null && !sourceIp.isBlank()) {
+            spec = spec.and((root, query, cb) ->
+                    cb.like(root.get("sourceIp"), sourceIp + "%"));
+        }
         if (fromDate != null) {
             spec = spec.and((root, query, cb) ->
                     cb.greaterThanOrEqualTo(root.get("timestamp"), fromDate));
@@ -87,7 +102,10 @@ public class McpAuditLogSpecification {
                     cb.like(cb.lower(root.get("capabilityName")), lower),
                     cb.like(cb.lower(root.get("errorMessage")), lower),
                     cb.like(cb.lower(root.get("serverName")), lower),
-                    cb.like(cb.lower(root.get("agentName")), lower)
+                    cb.like(cb.lower(root.get("agentName")), lower),
+                    cb.like(cb.lower(root.get("userIdentity")), lower),
+                    cb.like(cb.lower(root.get("agentClientId")), lower),
+                    cb.like(cb.lower(root.get("sourceIp")), lower)
             ));
         }
 

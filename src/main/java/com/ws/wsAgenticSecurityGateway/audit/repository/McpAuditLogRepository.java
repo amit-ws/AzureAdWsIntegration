@@ -78,6 +78,9 @@ public interface McpAuditLogRepository
     @Query("SELECT DISTINCT m.agentName FROM McpAuditLog m WHERE m.agentName IS NOT NULL ORDER BY m.agentName")
     List<String> findDistinctAgentNames();
 
+    @Query("SELECT DISTINCT m.userIdentity FROM McpAuditLog m WHERE m.userIdentity IS NOT NULL ORDER BY m.userIdentity")
+    List<String> findDistinctUserIdentities();
+
     long countByTimestampAfter(LocalDateTime since);
 
     long countByModuleAndTimestampAfter(AuditModule module, LocalDateTime since);

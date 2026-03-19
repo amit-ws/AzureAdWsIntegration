@@ -6,6 +6,7 @@ import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.AgentCapabilityProfi
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentSessionEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayHumanUserEntity;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayNhiEntity;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
 import lombok.extern.slf4j.Slf4j;
@@ -43,6 +44,7 @@ public class CapabilityProfileChatService {
     private final AgentCapabilityFilterService filterService;
     private final CapabilityRegistryService registryService;
     private final HumanUserService humanUserService;
+    private final NhiService nhiService;
 
     @Value("${ws.gateway.pdp.anthropic-api-key:}")
     private String anthropicApiKey;
@@ -51,12 +53,14 @@ public class CapabilityProfileChatService {
                                           AgentRegistryService agentRegistryService,
                                           AgentCapabilityFilterService filterService,
                                           CapabilityRegistryService registryService,
-                                          HumanUserService humanUserService) {
+                                          HumanUserService humanUserService,
+                                          NhiService nhiService) {
         this.objectMapper = objectMapper;
         this.agentRegistryService = agentRegistryService;
         this.filterService = filterService;
         this.registryService = registryService;
         this.humanUserService = humanUserService;
+        this.nhiService = nhiService;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
@@ -251,6 +255,56 @@ public class CapabilityProfileChatService {
         } catch (Exception e) {
             sb.append("Unable to fetch human user data.\n");
             log.debug("Could not fetch human users for profile chat: {}", e.getMessage());
+        }
+
+        // ── Non-Human Identities (NHIs) ──
+        sb.append("\n## Registered Non-Human Identities (service accounts, bots)\n");
+        sb.append("NHIs authenticate via Client Credentials flow and use agents to interact with MCP servers.\n\n");
+        try {
+            List<GatewayNhiEntity> nhis = nhiService.findAll();
+            if (nhis == null || nhis.isEmpty()) {
+                sb.append("No NHIs discovered yet.\n");
+            } else {
+                sb.append("| Service Name | Client ID | Status | Realm Roles | Client Roles | Agents Used |\n");
+                sb.append("|-------------|-----------|--------|-------------|-------------|-------------|\n");
+                for (GatewayNhiEntity n : nhis) {
+                    String realmRoles = n.getRealmRoles() != null
+                            ? n.getRealmRoles().stream().filter(r -> !r.startsWith("default-roles-")).collect(Collectors.joining(", "))
+                            : "-";
+                    String clientRoles = n.getClientRoles() != null && !n.getClientRoles().isEmpty()
+                            ? String.join(", ", n.getClientRoles()) : "-";
+
+                    String agentsUsed = "-";
+                    try {
+                        List<GatewayAgentSessionEntity> sessions = nhiService.getNhiSessionsWithAgent(n.getId());
+                        if (sessions != null && !sessions.isEmpty()) {
+                            agentsUsed = sessions.stream()
+                                    .map(s -> s.getAgent().getAgentName())
+                                    .distinct()
+                                    .collect(Collectors.joining(", "));
+                        }
+                    } catch (Exception ignored) {}
+
+                    sb.append("| `").append(n.getServiceName() != null ? n.getServiceName() : "-").append("` | ")
+                            .append(n.getClientId() != null ? n.getClientId() : "-").append(" | ")
+                            .append(n.getStatus()).append(" | ")
+                            .append(realmRoles.isEmpty() ? "-" : realmRoles).append(" | ")
+                            .append(clientRoles).append(" | ")
+                            .append(agentsUsed).append(" |\n");
+                }
+                if (nhis.stream().anyMatch(n -> "BLOCKED".equals(n.getStatus()))) {
+                    sb.append("\n**Blocked NHIs:** ");
+                    sb.append(nhis.stream()
+                            .filter(n -> "BLOCKED".equals(n.getStatus()))
+                            .map(n -> "`" + (n.getServiceName() != null ? n.getServiceName() : n.getClientId())
+                                    + "` (" + (n.getBlockedReason() != null ? n.getBlockedReason() : "no reason") + ")")
+                            .collect(Collectors.joining(", ")));
+                    sb.append("\n");
+                }
+            }
+        } catch (Exception e) {
+            sb.append("Unable to fetch NHI data.\n");
+            log.debug("Could not fetch NHIs for profile chat: {}", e.getMessage());
         }
 
         sb.append("\n## Response Format\n");

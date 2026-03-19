@@ -14,33 +14,34 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Persistent identity record for human users who interact with the gateway through AI agents.
+ * Persistent identity record for Non-Human Identities (NHIs) — service accounts, CI bots,
+ * monitoring agents — that interact with the gateway via Client Credentials flow.
  *
- * <p>Populated on first HUMAN_DELEGATED token seen, upserted on every subsequent request.
- * Stores ALL identity claims from the JWT — roles, custom claims, and raw snapshot.
+ * <p>Mirrors {@link GatewayHumanUserEntity} for the automated side. Populated on first
+ * AUTOMATED_AGENT token seen, upserted on every subsequent request.
  *
- * <p>Provides a queryable identity store separate from audit logs:
+ * <p>Provides a queryable identity store:
  * <ul>
- *   <li>Admin can list/search all human users</li>
- *   <li>Admin can block a human across all agents</li>
- *   <li>Sessions link to human via FK — "Which agents did this human use?"</li>
- *   <li>PDP can reference human attributes without JWT parsing at eval time</li>
+ *   <li>Admin can list/search all service accounts using the gateway</li>
+ *   <li>Admin can block an NHI across all agents</li>
+ *   <li>Sessions link to NHI via FK — "Which agents does this bot use?"</li>
+ *   <li>PDP can reference NHI attributes for Cedar policies</li>
  * </ul>
  */
 @Entity
-@Table(name = "gateway_human_users", schema = "ws_agentic_security",
-        uniqueConstraints = @UniqueConstraint(name = "uq_human_idp_subject",
+@Table(name = "gateway_nhi_registry", schema = "ws_agentic_security",
+        uniqueConstraints = @UniqueConstraint(name = "uq_nhi_idp_subject",
                 columnNames = {"idp_subject"}),
         indexes = {
-                @Index(name = "idx_human_username", columnList = "preferred_username"),
-                @Index(name = "idx_human_email", columnList = "email"),
-                @Index(name = "idx_human_status", columnList = "status")
+                @Index(name = "idx_nhi_service_name", columnList = "service_name"),
+                @Index(name = "idx_nhi_client_id", columnList = "client_id"),
+                @Index(name = "idx_nhi_status", columnList = "status")
         })
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class GatewayHumanUserEntity {
+public class GatewayNhiEntity {
 
     @Id
     @GeneratedValue(generator = "UUID")
@@ -48,39 +49,23 @@ public class GatewayHumanUserEntity {
 
     // ── Core Identity (from JWT) ────────────────────────────────────────
 
-    /** JWT "sub" — stable UUID from IdP. Immutable per user per IdP. */
+    /** JWT "sub" — stable service account UUID from IdP. Immutable. */
     @Column(name = "idp_subject", nullable = false, length = 256)
     private String idpSubject;
 
-    /** JWT "preferred_username" (e.g., "amit-prakash"). */
-    @Column(name = "preferred_username", length = 256)
-    private String preferredUsername;
+    /** Display name for admin — derived from clientId or sub (whichever is human-readable). */
+    @Column(name = "service_name", length = 256)
+    private String serviceName;
 
-    /** JWT "email". */
-    @Column(name = "email", length = 256)
-    private String email;
-
-    /** JWT "name" (display name). */
-    @Column(name = "full_name", length = 256)
-    private String fullName;
-
-    /** JWT "given_name". */
-    @Column(name = "given_name", length = 128)
-    private String givenName;
-
-    /** JWT "family_name". */
-    @Column(name = "family_name", length = 128)
-    private String familyName;
+    /** JWT "azp" — OAuth2 client_id that authenticated. */
+    @Column(name = "client_id", length = 256)
+    private String clientId;
 
     // ── IdP Metadata ────────────────────────────────────────────────────
 
     /** JWT "iss" — which IdP issued this identity. */
     @Column(name = "idp_issuer", length = 512)
     private String idpIssuer;
-
-    /** JWT "email_verified". */
-    @Column(name = "email_verified")
-    private Boolean emailVerified;
 
     // ── Roles (snapshot from latest JWT — always up to date) ────────────
 
@@ -103,27 +88,27 @@ public class GatewayHumanUserEntity {
 
     // ── Activity Tracking ───────────────────────────────────────────────
 
-    /** First time this human was seen via the gateway. */
+    /** First time this NHI was seen via the gateway. */
     @Column(name = "first_seen_at", nullable = false)
     private LocalDateTime firstSeenAt;
 
-    /** Last time this human made a request through the gateway. */
+    /** Last time this NHI made a request through the gateway. */
     @Column(name = "last_seen_at", nullable = false)
     private LocalDateTime lastSeenAt;
 
-    /** How many MCP sessions this human has initiated. */
+    /** How many MCP sessions this NHI has initiated. */
     @Column(name = "total_sessions", nullable = false)
     @Builder.Default
     private Integer totalSessions = 0;
 
-    /** Total MCP requests from this human across all sessions. */
+    /** Total MCP requests from this NHI across all sessions. */
     @Column(name = "total_requests", nullable = false)
     @Builder.Default
     private Long totalRequests = 0L;
 
     // ── Status & Admin Controls ─────────────────────────────────────────
 
-    /** ACTIVE or BLOCKED. Admin can block a human across all agents. */
+    /** ACTIVE or BLOCKED. Admin can block an NHI across all agents. */
     @Column(name = "status", nullable = false, length = 16)
     @Builder.Default
     private String status = "ACTIVE";
@@ -132,9 +117,13 @@ public class GatewayHumanUserEntity {
     @Column(name = "blocked_reason", length = 512)
     private String blockedReason;
 
-    /** When the user was blocked. */
+    /** When the NHI was blocked. */
     @Column(name = "blocked_at")
     private LocalDateTime blockedAt;
+
+    /** Admin-set description (e.g., "CI/CD pipeline for staging deployments"). */
+    @Column(name = "description", length = 512)
+    private String description;
 
     // ── Network Context ────────────────────────────────────────────────
 
@@ -144,7 +133,7 @@ public class GatewayHumanUserEntity {
 
     // ── Raw JWT Snapshot ────────────────────────────────────────────────
 
-    /** Full raw JWT claims from the latest token (for debugging + discovering new data). */
+    /** Full raw JWT claims from the latest token (for debugging). */
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "last_jwt_claims", columnDefinition = "jsonb")
     private Map<String, Object> lastJwtClaims;

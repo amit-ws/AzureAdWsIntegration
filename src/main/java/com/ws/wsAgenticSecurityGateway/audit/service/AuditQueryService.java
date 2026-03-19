@@ -47,13 +47,16 @@ public class AuditQueryService {
                                         AuditStatus status, AuditSeverity severity,
                                         String serverName, String capabilityName,
                                         String correlationId, String sessionId,
-                                        String agentName, String search,
+                                        String agentName, String tokenType,
+                                        String userIdentity, String sourceIp,
+                                        String search,
                                         LocalDateTime fromDate, LocalDateTime toDate,
                                         PageRequest pageRequest) {
         var spec = McpAuditLogSpecification.build(
                 module, eventType, status, severity,
                 serverName, capabilityName, correlationId, sessionId,
-                agentName, search, fromDate, toDate);
+                agentName, tokenType, userIdentity, sourceIp,
+                search, fromDate, toDate);
         return auditRepo.findAll(spec, pageRequest);
     }
 
@@ -164,6 +167,8 @@ public class AuditQueryService {
         filters.put("serverNames", auditRepo.findDistinctServerNames());
         filters.put("capabilityNames", auditRepo.findDistinctCapabilityNames());
         filters.put("agentNames", auditRepo.findDistinctAgentNames());
+        filters.put("tokenTypes", List.of("HUMAN_DELEGATED", "AUTOMATED_AGENT"));
+        filters.put("userIdentities", auditRepo.findDistinctUserIdentities());
         return filters;
     }
 

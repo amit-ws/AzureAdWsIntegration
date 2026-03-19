@@ -49,6 +49,9 @@ public class AuditController {
             @RequestParam(required = false) String correlationId,
             @RequestParam(required = false) String sessionId,
             @RequestParam(required = false) String agentName,
+            @RequestParam(required = false) String tokenType,
+            @RequestParam(required = false) String userIdentity,
+            @RequestParam(required = false) String sourceIp,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fromDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime toDate,
@@ -75,7 +78,8 @@ public class AuditController {
         Page<McpAuditLog> results = auditQueryService.queryLogs(
                 moduleEnum, eventTypeEnum, statusEnum, severityEnum,
                 serverName, capabilityName, correlationId, sessionId,
-                agentName, search, fromDate, toDate, pageRequest);
+                agentName, tokenType, userIdentity, sourceIp,
+                search, fromDate, toDate, pageRequest);
         return ResponseEntity.ok(results);
     }
 

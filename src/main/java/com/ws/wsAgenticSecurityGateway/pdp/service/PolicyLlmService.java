@@ -6,7 +6,9 @@ import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentSessionEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayHumanUserEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayNhiEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.HumanUserService;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.service.NhiService;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
@@ -62,6 +64,7 @@ public class PolicyLlmService {
     private final CustomAttributeService customAttributeService;
     private final McpAuditService auditService;
     private final HumanUserService humanUserService;
+    private final NhiService nhiService;
 
     @Value("${ws.gateway.pdp.anthropic-api-key:}")
     private String anthropicApiKey;
@@ -82,7 +85,8 @@ public class PolicyLlmService {
                              CedarPolicyEngine cedarEngine,
                              CustomAttributeService customAttributeService,
                              McpAuditService auditService,
-                             HumanUserService humanUserService) {
+                             HumanUserService humanUserService,
+                             NhiService nhiService) {
         this.objectMapper = objectMapper;
         this.agentRegistryService = agentRegistryService;
         this.capabilityRegistryService = capabilityRegistryService;
@@ -91,6 +95,7 @@ public class PolicyLlmService {
         this.customAttributeService = customAttributeService;
         this.auditService = auditService;
         this.humanUserService = humanUserService;
+        this.nhiService = nhiService;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
@@ -509,6 +514,14 @@ public class PolicyLlmService {
             log.debug("🤖 Could not fetch human users for LLM metadata: {}", e.getMessage());
         }
 
+        // ── Non-Human Identities (NHIs — service accounts, bots) ──
+        try {
+            appendNhiMetadata(sb);
+        } catch (Exception e) {
+            sb.append("### Non-Human Identities\nUnable to fetch NHI data.\n\n");
+            log.debug("Could not fetch NHIs for LLM metadata: {}", e.getMessage());
+        }
+
         // ── Connected Servers + Tools ──
         try {
             Set<String> servers = capabilityRegistryService.getRegisteredServerNames();
@@ -714,6 +727,72 @@ public class PolicyLlmService {
             sb.append("| - | No human-agent sessions recorded yet | - | - | - |\n");
         }
         sb.append("\nHuman users authenticate via OAuth2/OIDC and interact through AI agents. Use agent-level policies to control access. Consider human roles when writing policies.\n\n");
+    }
+
+    private void appendNhiMetadata(StringBuilder sb) {
+        List<GatewayNhiEntity> allNhis = nhiService.findAll();
+        if (allNhis == null || allNhis.isEmpty()) {
+            sb.append("### Non-Human Identities (NHIs)\nNo NHIs discovered yet.\n\n");
+            return;
+        }
+
+        long activeToday = nhiService.countActiveSince(
+                java.time.LocalDateTime.now().toLocalDate().atStartOfDay());
+        long blockedCount = nhiService.countBlocked();
+        sb.append("### Non-Human Identities Overview\n");
+        sb.append("NHIs are service accounts, CI bots, and automated systems that authenticate via Client Credentials flow.\n\n");
+        sb.append("**Total:** ").append(allNhis.size())
+                .append(" | **Active today:** ").append(activeToday)
+                .append(" | **Blocked:** ").append(blockedCount).append("\n\n");
+
+        List<GatewayNhiEntity> activeNhis = allNhis.stream()
+                .filter(n -> "ACTIVE".equals(n.getStatus()))
+                .limit(50)
+                .toList();
+
+        if (!activeNhis.isEmpty()) {
+            sb.append("### Active NHIs\n");
+            sb.append("| Service Name | Client ID | IdP Issuer | Realm Roles | Client Roles | Custom Claims | Requests | Sessions | First Seen | Last Seen |\n");
+            sb.append("|-------------|-----------|-----------|-------------|-------------|---------------|----------|----------|------------|----------|\n");
+            for (GatewayNhiEntity n : activeNhis) {
+                String realmRoles = formatRoles(n.getRealmRoles());
+                String clientRoles = formatRoles(n.getClientRoles());
+                String customClaims = n.getCustomClaims() != null && !n.getCustomClaims().isEmpty()
+                        ? n.getCustomClaims().entrySet().stream()
+                        .map(e -> e.getKey() + "=" + e.getValue())
+                        .collect(Collectors.joining(", "))
+                        : "-";
+
+                sb.append("| `").append(n.getServiceName() != null ? n.getServiceName() : "-").append("` | ")
+                        .append(n.getClientId() != null ? n.getClientId() : "-").append(" | ")
+                        .append(extractHost(n.getIdpIssuer())).append(" | ")
+                        .append(realmRoles).append(" | ")
+                        .append(clientRoles).append(" | ")
+                        .append(customClaims).append(" | ")
+                        .append(n.getTotalRequests() != null ? n.getTotalRequests() : 0).append(" | ")
+                        .append(n.getTotalSessions() != null ? n.getTotalSessions() : 0).append(" | ")
+                        .append(n.getFirstSeenAt() != null ? n.getFirstSeenAt().toLocalDate() : "-").append(" | ")
+                        .append(n.getLastSeenAt() != null ? n.getLastSeenAt().toLocalDate() : "-").append(" |\n");
+            }
+            sb.append("\n");
+        }
+
+        List<GatewayNhiEntity> blockedNhis = allNhis.stream()
+                .filter(n -> "BLOCKED".equals(n.getStatus()))
+                .toList();
+        if (!blockedNhis.isEmpty()) {
+            sb.append("### Blocked NHIs\n");
+            sb.append("| Service Name | Client ID | Blocked At | Reason |\n");
+            sb.append("|-------------|-----------|-----------|--------|\n");
+            for (GatewayNhiEntity n : blockedNhis) {
+                sb.append("| `").append(n.getServiceName() != null ? n.getServiceName() : "-").append("` | ")
+                        .append(n.getClientId() != null ? n.getClientId() : "-").append(" | ")
+                        .append(n.getBlockedAt() != null ? n.getBlockedAt().toString() : "-").append(" | ")
+                        .append(n.getBlockedReason() != null ? n.getBlockedReason() : "-").append(" |\n");
+            }
+            sb.append("\n");
+        }
+        sb.append("NHIs authenticate via OAuth2 Client Credentials flow. They interact with MCP servers through agents, similar to human users but without human involvement.\n\n");
     }
 
     private String formatRoles(List<String> roles) {

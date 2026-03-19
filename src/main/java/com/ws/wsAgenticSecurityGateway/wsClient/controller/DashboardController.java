@@ -100,7 +100,9 @@ public class DashboardController {
 
         // Agent registry stats
         summary.put("totalAgents", agentRegistryService.getAllAgents().size());
-        summary.put("connectedAgentSessions", agentRegistryService.getConnectedSessions().size());
+        int connectedSessions = agentRegistryService.getConnectedSessions().size();
+        summary.put("connectedAgentSessions", connectedSessions);
+        summary.put("activeSessions", connectedSessions);
 
         // Human user stats
         summary.put("totalHumanUsers", humanUserService.count());

@@ -71,8 +71,28 @@ public class McpAuditService {
                 String authMethod,      // OAUTH2 or NONE
                 String authIdentity,    // JWT subject
                 String agentClientId,   // OAuth2 azp claim
-                List<String> agentRoles // merged roles
-        ) {}
+                List<String> agentRoles, // merged roles
+                String nhiId,           // UUID string from gateway_nhi_registry (null for human-delegated)
+                String sourceIp         // Client IP address (X-Forwarded-For aware)
+        ) {
+                /** Backwards-compatible constructor (without nhiId and sourceIp). */
+                public AuditIdentityContext(
+                        String tokenType, String userIdentity, String humanUserId,
+                        String authMethod, String authIdentity, String agentClientId,
+                        List<String> agentRoles) {
+                    this(tokenType, userIdentity, humanUserId, authMethod, authIdentity,
+                         agentClientId, agentRoles, null, null);
+                }
+
+                /** Constructor with nhiId but without sourceIp. */
+                public AuditIdentityContext(
+                        String tokenType, String userIdentity, String humanUserId,
+                        String authMethod, String authIdentity, String agentClientId,
+                        List<String> agentRoles, String nhiId) {
+                    this(tokenType, userIdentity, humanUserId, authMethod, authIdentity,
+                         agentClientId, agentRoles, nhiId, null);
+                }
+        }
 
         /** Called by HttpMcpAuditFilter after session registration — sets identity for all future audit entries on this session. */
         public void registerSessionIdentity(String sessionId, AuditIdentityContext ctx) {
@@ -1493,6 +1513,73 @@ public class McpAuditService {
                                 .build());
         }
 
+        /**
+         * Audit: session-identity mismatch — a different JWT subject attempted to use
+         * an existing session bound to another identity. This is a security event.
+         */
+        /**
+         * Audit a session-identity mismatch — a security incident where someone attempts
+         * to use a session that belongs to a different identity. Full forensic context captured.
+         */
+        @Async("mcpAuditExecutor")
+        public void auditSessionIdentityMismatch(String sessionId, String agentName,
+                        String foundingSubject, String currentSubject,
+                        String currentClientId, String currentUsername, String currentEmail,
+                        String currentTokenType, String currentIssuer,
+                        java.util.List<String> currentRoles,
+                        String remoteAddr, String userAgent, String requestId) {
+
+                // Build comprehensive forensic payload
+                Map<String, Object> forensics = new java.util.LinkedHashMap<>();
+                forensics.put("incident", "SESSION_IDENTITY_MISMATCH");
+                forensics.put("sessionId", sessionId != null ? sessionId : "");
+
+                // The legitimate session owner
+                Map<String, Object> legitimateOwner = new java.util.LinkedHashMap<>();
+                legitimateOwner.put("jwtSubject", foundingSubject != null ? foundingSubject : "");
+                forensics.put("legitimateOwner", legitimateOwner);
+
+                // The intruder who attempted to use this session
+                Map<String, Object> intruder = new java.util.LinkedHashMap<>();
+                intruder.put("jwtSubject", currentSubject != null ? currentSubject : "");
+                intruder.put("clientId", currentClientId != null ? currentClientId : "");
+                intruder.put("preferredUsername", currentUsername != null ? currentUsername : "");
+                intruder.put("email", currentEmail != null ? currentEmail : "");
+                intruder.put("tokenType", currentTokenType != null ? currentTokenType : "");
+                intruder.put("idpIssuer", currentIssuer != null ? currentIssuer : "");
+                intruder.put("roles", currentRoles != null ? currentRoles : java.util.List.of());
+                forensics.put("intruder", intruder);
+
+                // Network context
+                Map<String, Object> network = new java.util.LinkedHashMap<>();
+                network.put("remoteAddress", remoteAddr != null ? remoteAddr : "");
+                network.put("userAgent", userAgent != null ? userAgent : "");
+                forensics.put("network", network);
+
+                forensics.put("timestamp", java.time.LocalDateTime.now().toString());
+                forensics.put("action", "REQUEST_REJECTED");
+
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.SESSION_IDENTITY_MISMATCH)
+                                .module(AuditModule.AGENT_REGISTRY)
+                                .status(AuditStatus.DENIED)
+                                .severity(AuditSeverity.WARN)
+                                .sessionId(sessionId)
+                                .requestId(requestId)
+                                .agentName(agentName)
+                                .agentClientId(currentClientId)
+                                .authIdentity(currentSubject)
+                                .userIdentity(currentUsername)
+                                .tokenType(currentTokenType)
+                                .agentRoles(currentRoles)
+                                .correlationId(generateCorrelationId())
+                                .errorCode(-32001)
+                                .errorMessage("Session identity mismatch: founding=" + foundingSubject
+                                        + ", intruder=" + currentSubject + ", ip=" + remoteAddr)
+                                .requestPayload(toJson(forensics))
+                                .build());
+        }
+
         // ════════════════════════════════════════════════════════════════════
         // AREA 8 — Capability Access Profiles
         // ════════════════════════════════════════════════════════════════════
@@ -1759,10 +1846,12 @@ public class McpAuditService {
                                         if (auditLog.getTokenType() == null) auditLog.setTokenType(ctx.tokenType());
                                         if (auditLog.getUserIdentity() == null) auditLog.setUserIdentity(ctx.userIdentity());
                                         if (auditLog.getHumanUserId() == null) auditLog.setHumanUserId(ctx.humanUserId());
+                                        if (auditLog.getNhiId() == null) auditLog.setNhiId(ctx.nhiId());
                                         if (auditLog.getAuthMethod() == null) auditLog.setAuthMethod(ctx.authMethod());
                                         if (auditLog.getAuthIdentity() == null) auditLog.setAuthIdentity(ctx.authIdentity());
                                         if (auditLog.getAgentClientId() == null) auditLog.setAgentClientId(ctx.agentClientId());
                                         if (auditLog.getAgentRoles() == null) auditLog.setAgentRoles(ctx.agentRoles());
+                                        if (auditLog.getSourceIp() == null) auditLog.setSourceIp(ctx.sourceIp());
                                 }
                         }
 

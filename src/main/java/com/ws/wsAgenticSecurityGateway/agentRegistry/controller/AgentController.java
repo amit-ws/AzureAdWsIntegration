@@ -2,7 +2,11 @@ package com.ws.wsAgenticSecurityGateway.agentRegistry.controller;
 
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentSessionEntity;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayHumanUserEntity;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayNhiEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.service.HumanUserService;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.service.NhiService;
 import com.ws.wsAgenticSecurityGateway.audit.entity.McpAuditLog;
 import com.ws.wsAgenticSecurityGateway.audit.service.AuditQueryService;
 import lombok.extern.slf4j.Slf4j;
@@ -29,11 +33,17 @@ public class AgentController {
 
     private final AgentRegistryService agentRegistryService;
     private final AuditQueryService auditQueryService;
+    private final HumanUserService humanUserService;
+    private final NhiService nhiService;
 
     public AgentController(AgentRegistryService agentRegistryService,
-                           AuditQueryService auditQueryService) {
+                           AuditQueryService auditQueryService,
+                           HumanUserService humanUserService,
+                           NhiService nhiService) {
         this.agentRegistryService = agentRegistryService;
         this.auditQueryService = auditQueryService;
+        this.humanUserService = humanUserService;
+        this.nhiService = nhiService;
     }
 
     /**
@@ -123,6 +133,21 @@ public class AgentController {
             map.put("status", session.getStatus());
             map.put("tokenType", session.getTokenType());
             map.put("humanUserId", session.getHumanUserId());
+            map.put("nhiId", session.getNhiId());
+            map.put("ipAddress", session.getIpAddress());
+
+            // Resolve caller name for display
+            String calledByName = null;
+            String callerType = session.getTokenType();
+            if (session.getHumanUserId() != null) {
+                humanUserService.findById(session.getHumanUserId())
+                        .ifPresent(h -> map.put("calledByName", h.getPreferredUsername() != null
+                                ? h.getPreferredUsername() : h.getFullName()));
+            } else if (session.getNhiId() != null) {
+                nhiService.findById(session.getNhiId())
+                        .ifPresent(n -> map.put("calledByName", n.getServiceName() != null
+                                ? n.getServiceName() : n.getClientId()));
+            }
             result.add(map);
         }
 

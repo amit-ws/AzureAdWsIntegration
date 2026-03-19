@@ -90,6 +90,7 @@ public enum AuditEventType {
     AGENT_APPROVED,
     AGENT_BLOCKED,
     AGENT_CONNECTION_REJECTED,
+    SESSION_IDENTITY_MISMATCH,
 
     // ── Area 8 — Capability Access Profiles ─────────────────────────
     CAPABILITY_ACCESS_GRANTED,

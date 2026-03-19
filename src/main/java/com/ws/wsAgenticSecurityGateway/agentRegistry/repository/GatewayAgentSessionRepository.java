@@ -74,6 +74,13 @@ public interface GatewayAgentSessionRepository extends JpaRepository<GatewayAgen
     @Query("SELECT s FROM GatewayAgentSessionEntity s JOIN FETCH s.agent WHERE s.humanUserId = :humanUserId ORDER BY s.connectedAt DESC")
     List<GatewayAgentSessionEntity> findByHumanUserIdWithAgent(@Param("humanUserId") UUID humanUserId);
 
+    /** Find all sessions for a specific NHI (for NHI detail page). */
+    List<GatewayAgentSessionEntity> findByNhiIdOrderByConnectedAtDesc(UUID nhiId);
+
+    /** Find sessions for an NHI with agent eagerly loaded. */
+    @Query("SELECT s FROM GatewayAgentSessionEntity s JOIN FETCH s.agent WHERE s.nhiId = :nhiId ORDER BY s.connectedAt DESC")
+    List<GatewayAgentSessionEntity> findByNhiIdWithAgent(@Param("nhiId") UUID nhiId);
+
     /**
      * Layer 2 — Smart Idle Timeout: lightweight activity timestamp update.
      * Called at response completion to keep sessions alive during long-running tool calls.

@@ -1,8 +1,8 @@
 package com.ws.wsAgenticSecurityGateway.agentRegistry.controller;
 
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentSessionEntity;
-import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayHumanUserEntity;
-import com.ws.wsAgenticSecurityGateway.agentRegistry.service.HumanUserService;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayNhiEntity;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.service.NhiService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -11,26 +11,26 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * REST controller for Human User management and enterprise analytics.
+ * REST controller for Non-Human Identity (NHI) management and enterprise analytics.
  *
  * <p>Provides:
  * <ul>
  *   <li>Core CRUD — list, detail, search, block/unblock</li>
- *   <li>Session Lineage — "Which human authorized which AI actions?"</li>
- *   <li>Who's Active Now — real-time human activity for SOC teams</li>
+ *   <li>Session Lineage — "Which NHI authorized which AI actions?"</li>
+ *   <li>Who's Active Now — real-time NHI activity for SOC teams</li>
  *   <li>Risk Assessment — behavioral anomaly scoring</li>
- *   <li>Usage Analytics — per-human consumption breakdown</li>
+ *   <li>Usage Analytics — per-NHI consumption breakdown</li>
  * </ul>
  */
 @RestController
-@RequestMapping("/api/admin/human-users")
+@RequestMapping("/api/admin/nhis")
 @Slf4j
-public class HumanUserController {
+public class NhiController {
 
-    private final HumanUserService humanUserService;
+    private final NhiService nhiService;
 
-    public HumanUserController(HumanUserService humanUserService) {
-        this.humanUserService = humanUserService;
+    public NhiController(NhiService nhiService) {
+        this.nhiService = nhiService;
     }
 
     // ════════════════════════════════════════════════════════════════════
@@ -38,28 +38,28 @@ public class HumanUserController {
     // ════════════════════════════════════════════════════════════════════
 
     @GetMapping
-    public ResponseEntity<List<Map<String, Object>>> listHumanUsers() {
-        log.info("GET /api/admin/human-users");
-        List<GatewayHumanUserEntity> humans = humanUserService.findAll();
-        List<Map<String, Object>> result = humans.stream()
+    public ResponseEntity<List<Map<String, Object>>> listNhis() {
+        log.info("GET /api/admin/nhis");
+        List<GatewayNhiEntity> nhis = nhiService.findAll();
+        List<Map<String, Object>> result = nhis.stream()
                 .map(this::toListView)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(result);
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Map<String, Object>> getHumanUser(@PathVariable UUID id) {
-        return humanUserService.findById(id)
-                .map(human -> ResponseEntity.ok(toDetailView(human)))
+    public ResponseEntity<Map<String, Object>> getNhi(@PathVariable UUID id) {
+        return nhiService.findById(id)
+                .map(nhi -> ResponseEntity.ok(toDetailView(nhi)))
                 .orElse(ResponseEntity.notFound().build());
     }
 
     @GetMapping("/{id}/sessions")
-    public ResponseEntity<List<Map<String, Object>>> getHumanSessions(@PathVariable UUID id) {
-        if (!humanUserService.existsById(id)) {
+    public ResponseEntity<List<Map<String, Object>>> getNhiSessions(@PathVariable UUID id) {
+        if (!nhiService.existsById(id)) {
             return ResponseEntity.notFound().build();
         }
-        List<GatewayAgentSessionEntity> sessions = humanUserService.getHumanSessions(id);
+        List<GatewayAgentSessionEntity> sessions = nhiService.getNhiSessions(id);
 
         List<Map<String, Object>> result = sessions.stream().map(s -> {
             Map<String, Object> map = new LinkedHashMap<>();
@@ -82,39 +82,39 @@ public class HumanUserController {
     }
 
     @GetMapping("/{id}/agents")
-    public ResponseEntity<List<Map<String, Object>>> getHumanAgents(@PathVariable UUID id) {
-        if (!humanUserService.existsById(id)) {
+    public ResponseEntity<List<Map<String, Object>>> getNhiAgents(@PathVariable UUID id) {
+        if (!nhiService.existsById(id)) {
             return ResponseEntity.notFound().build();
         }
-        List<Map<String, Object>> result = humanUserService.getHumanAgents(id);
+        List<Map<String, Object>> result = nhiService.getNhiAgents(id);
         return ResponseEntity.ok(result);
     }
 
     @GetMapping("/summary")
     public ResponseEntity<Map<String, Object>> getSummary() {
-        return ResponseEntity.ok(humanUserService.getSummary());
+        return ResponseEntity.ok(nhiService.getSummary());
     }
 
     @GetMapping("/search")
-    public ResponseEntity<List<Map<String, Object>>> searchHumans(
+    public ResponseEntity<List<Map<String, Object>>> searchNhis(
             @RequestParam("q") String query) {
-        List<GatewayHumanUserEntity> results = humanUserService.search(query);
+        List<GatewayNhiEntity> results = nhiService.search(query);
         return ResponseEntity.ok(results.stream()
                 .map(this::toListView)
                 .collect(Collectors.toList()));
     }
 
     @PostMapping("/{id}/block")
-    public ResponseEntity<Map<String, Object>> blockHuman(
+    public ResponseEntity<Map<String, Object>> blockNhi(
             @PathVariable UUID id, @RequestBody(required = false) Map<String, String> body) {
         try {
             String reason = body != null ? body.get("reason") : null;
-            GatewayHumanUserEntity human = humanUserService.blockHumanUser(id, reason);
+            GatewayNhiEntity nhi = nhiService.blockNhi(id, reason);
 
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("status", "ok");
-            result.put("message", "Human user '" + human.getPreferredUsername() + "' blocked");
-            result.put("userStatus", human.getStatus());
+            result.put("message", "NHI '" + nhi.getServiceName() + "' blocked");
+            result.put("nhiStatus", nhi.getStatus());
             return ResponseEntity.ok(result);
         } catch (NoSuchElementException e) {
             return ResponseEntity.notFound().build();
@@ -122,14 +122,14 @@ public class HumanUserController {
     }
 
     @PostMapping("/{id}/unblock")
-    public ResponseEntity<Map<String, Object>> unblockHuman(@PathVariable UUID id) {
+    public ResponseEntity<Map<String, Object>> unblockNhi(@PathVariable UUID id) {
         try {
-            GatewayHumanUserEntity human = humanUserService.unblockHumanUser(id);
+            GatewayNhiEntity nhi = nhiService.unblockNhi(id);
 
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("status", "ok");
-            result.put("message", "Human user '" + human.getPreferredUsername() + "' unblocked");
-            result.put("userStatus", human.getStatus());
+            result.put("message", "NHI '" + nhi.getServiceName() + "' unblocked");
+            result.put("nhiStatus", nhi.getStatus());
             return ResponseEntity.ok(result);
         } catch (NoSuchElementException e) {
             return ResponseEntity.notFound().build();
@@ -137,32 +137,32 @@ public class HumanUserController {
     }
 
     // ════════════════════════════════════════════════════════════════════
-    //  C2: HUMAN-AGENT SESSION LINEAGE
+    //  NHI-AGENT SESSION LINEAGE
     // ════════════════════════════════════════════════════════════════════
 
     @GetMapping("/{id}/lineage")
     public ResponseEntity<Map<String, Object>> getSessionLineage(@PathVariable UUID id) {
-        Optional<GatewayHumanUserEntity> opt = humanUserService.findById(id);
+        Optional<GatewayNhiEntity> opt = nhiService.findById(id);
         if (opt.isEmpty()) return ResponseEntity.notFound().build();
 
-        GatewayHumanUserEntity human = opt.get();
-        Map<String, Object> lineage = humanUserService.getSessionLineage(human);
-        lineage.put("humanUser", toListView(human));
+        GatewayNhiEntity nhi = opt.get();
+        Map<String, Object> lineage = nhiService.getSessionLineage(nhi);
+        lineage.put("nhi", toListView(nhi));
 
         return ResponseEntity.ok(lineage);
     }
 
     // ════════════════════════════════════════════════════════════════════
-    //  C3: WHO'S ACTIVE NOW
+    //  WHO'S ACTIVE NOW
     // ════════════════════════════════════════════════════════════════════
 
     @GetMapping("/active-now")
     public ResponseEntity<Map<String, Object>> getActiveNow() {
-        return ResponseEntity.ok(humanUserService.getActiveNow());
+        return ResponseEntity.ok(nhiService.getActiveNow());
     }
 
     // ════════════════════════════════════════════════════════════════════
-    //  C4: HUMAN RISK ASSESSMENT
+    //  NHI RISK ASSESSMENT
     // ════════════════════════════════════════════════════════════════════
 
     @GetMapping("/{id}/risk-assessment")
@@ -170,18 +170,18 @@ public class HumanUserController {
             @PathVariable UUID id,
             @RequestParam(defaultValue = "24") int hours) {
 
-        Optional<GatewayHumanUserEntity> opt = humanUserService.findById(id);
+        Optional<GatewayNhiEntity> opt = nhiService.findById(id);
         if (opt.isEmpty()) return ResponseEntity.notFound().build();
 
-        GatewayHumanUserEntity human = opt.get();
-        Map<String, Object> assessment = humanUserService.getRiskAssessment(human, hours);
-        assessment.put("humanUser", toListView(human));
+        GatewayNhiEntity nhi = opt.get();
+        Map<String, Object> assessment = nhiService.getRiskAssessment(nhi, hours);
+        assessment.put("nhi", toListView(nhi));
 
         return ResponseEntity.ok(assessment);
     }
 
     // ════════════════════════════════════════════════════════════════════
-    //  C5: USAGE ANALYTICS PER HUMAN
+    //  USAGE ANALYTICS PER NHI
     // ════════════════════════════════════════════════════════════════════
 
     @GetMapping("/{id}/analytics")
@@ -189,12 +189,12 @@ public class HumanUserController {
             @PathVariable UUID id,
             @RequestParam(defaultValue = "24") int hours) {
 
-        Optional<GatewayHumanUserEntity> opt = humanUserService.findById(id);
+        Optional<GatewayNhiEntity> opt = nhiService.findById(id);
         if (opt.isEmpty()) return ResponseEntity.notFound().build();
 
-        GatewayHumanUserEntity human = opt.get();
-        Map<String, Object> analytics = humanUserService.getUsageAnalytics(human, hours);
-        analytics.put("humanUser", toListView(human));
+        GatewayNhiEntity nhi = opt.get();
+        Map<String, Object> analytics = nhiService.getUsageAnalytics(nhi, hours);
+        analytics.put("nhi", toListView(nhi));
 
         return ResponseEntity.ok(analytics);
     }
@@ -203,34 +203,31 @@ public class HumanUserController {
     //  HELPERS
     // ════════════════════════════════════════════════════════════════════
 
-    private Map<String, Object> toListView(GatewayHumanUserEntity h) {
+    private Map<String, Object> toListView(GatewayNhiEntity n) {
         Map<String, Object> map = new LinkedHashMap<>();
-        map.put("id", h.getId());
-        map.put("preferredUsername", h.getPreferredUsername());
-        map.put("email", h.getEmail());
-        map.put("fullName", h.getFullName());
-        map.put("idpIssuer", h.getIdpIssuer());
-        map.put("emailVerified", h.getEmailVerified());
-        map.put("realmRoles", h.getRealmRoles());
-        map.put("clientRoles", h.getClientRoles());
-        map.put("totalSessions", h.getTotalSessions());
-        map.put("totalRequests", h.getTotalRequests());
-        map.put("firstSeenAt", h.getFirstSeenAt());
-        map.put("lastSeenAt", h.getLastSeenAt());
-        map.put("lastIpAddress", h.getLastIpAddress());
-        map.put("status", h.getStatus());
+        map.put("id", n.getId());
+        map.put("serviceName", n.getServiceName());
+        map.put("clientId", n.getClientId());
+        map.put("idpIssuer", n.getIdpIssuer());
+        map.put("realmRoles", n.getRealmRoles());
+        map.put("clientRoles", n.getClientRoles());
+        map.put("totalSessions", n.getTotalSessions());
+        map.put("totalRequests", n.getTotalRequests());
+        map.put("firstSeenAt", n.getFirstSeenAt());
+        map.put("lastSeenAt", n.getLastSeenAt());
+        map.put("lastIpAddress", n.getLastIpAddress());
+        map.put("status", n.getStatus());
         return map;
     }
 
-    private Map<String, Object> toDetailView(GatewayHumanUserEntity h) {
-        Map<String, Object> map = toListView(h);
-        map.put("idpSubject", h.getIdpSubject());
-        map.put("givenName", h.getGivenName());
-        map.put("familyName", h.getFamilyName());
-        map.put("customClaims", h.getCustomClaims());
-        map.put("lastJwtClaims", h.getLastJwtClaims());
-        map.put("blockedReason", h.getBlockedReason());
-        map.put("blockedAt", h.getBlockedAt());
+    private Map<String, Object> toDetailView(GatewayNhiEntity n) {
+        Map<String, Object> map = toListView(n);
+        map.put("idpSubject", n.getIdpSubject());
+        map.put("customClaims", n.getCustomClaims());
+        map.put("lastJwtClaims", n.getLastJwtClaims());
+        map.put("blockedReason", n.getBlockedReason());
+        map.put("blockedAt", n.getBlockedAt());
+        map.put("description", n.getDescription());
         return map;
     }
 }

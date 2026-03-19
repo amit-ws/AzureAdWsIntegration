@@ -4,9 +4,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentSessionEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayHumanUserEntity;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayNhiEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayAgentRepository;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayAgentSessionRepository;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayHumanUserRepository;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayNhiRepository;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -41,6 +43,7 @@ public class AgentRegistryService {
     private final GatewayAgentRepository agentRepository;
     private final GatewayAgentSessionRepository sessionRepository;
     private final GatewayHumanUserRepository humanUserRepository;
+    private final GatewayNhiRepository nhiRepository;
     private final McpAuditService auditService;
 
     /**
@@ -58,13 +61,20 @@ public class AgentRegistryService {
      */
     private final ConcurrentHashMap<String, UUID> sessionToHumanUserId = new ConcurrentHashMap<>();
 
+    /**
+     * In-memory: sessionId → nhiId (for O(1) NHI request counting, null-safe).
+     */
+    private final ConcurrentHashMap<String, UUID> sessionToNhiId = new ConcurrentHashMap<>();
+
     public AgentRegistryService(GatewayAgentRepository agentRepository,
             GatewayAgentSessionRepository sessionRepository,
             GatewayHumanUserRepository humanUserRepository,
+            GatewayNhiRepository nhiRepository,
             McpAuditService auditService) {
         this.agentRepository = agentRepository;
         this.sessionRepository = sessionRepository;
         this.humanUserRepository = humanUserRepository;
+        this.nhiRepository = nhiRepository;
         this.auditService = auditService;
     }
 
@@ -248,6 +258,31 @@ public class AgentRegistryService {
     public GatewayAgentSessionEntity registerSession(UUID agentId, String sessionId,
             String authMethod, String authIdentity,
             String tokenType, UUID humanUserId) {
+        return registerSession(agentId, sessionId, authMethod, authIdentity, tokenType, humanUserId, null);
+    }
+
+    /**
+     * Register a new agent session with full identity context (human or NHI) — without IP.
+     */
+    @Transactional
+    public GatewayAgentSessionEntity registerSession(UUID agentId, String sessionId,
+            String authMethod, String authIdentity,
+            String tokenType, UUID humanUserId, UUID nhiId) {
+        return registerSession(agentId, sessionId, authMethod, authIdentity, tokenType, humanUserId, nhiId, null);
+    }
+
+    /**
+     * Register a new agent session with full identity context + client IP address.
+     *
+     * @param tokenType   "AUTOMATED_AGENT" or "HUMAN_DELEGATED", or null
+     * @param humanUserId FK to gateway_human_users (set when HUMAN_DELEGATED), or null
+     * @param nhiId       FK to gateway_nhi_registry (set when AUTOMATED_AGENT), or null
+     * @param ipAddress   Client IP address (X-Forwarded-For aware), or null
+     */
+    @Transactional
+    public GatewayAgentSessionEntity registerSession(UUID agentId, String sessionId,
+            String authMethod, String authIdentity,
+            String tokenType, UUID humanUserId, UUID nhiId, String ipAddress) {
         GatewayAgentEntity agent = agentRepository.findById(agentId).orElse(null);
         if (agent == null) {
             log.warn("Cannot register session — agent not found: {}", agentId);
@@ -261,6 +296,8 @@ public class AgentRegistryService {
                 .authIdentity(authIdentity)
                 .tokenType(tokenType)
                 .humanUserId(humanUserId)
+                .nhiId(nhiId)
+                .ipAddress(ipAddress)
                 .requestCount(0)
                 .status("CONNECTED")
                 .build();
@@ -285,6 +322,11 @@ public class AgentRegistryService {
             sessionToHumanUserId.put(sessionId, humanUserId);
         }
 
+        // Map session → NHI for fast NHI request counting (AUTOMATED_AGENT only)
+        if (saved.getNhiId() != null) {
+            sessionToNhiId.put(sessionId, saved.getNhiId());
+        }
+
         log.info("📡 Agent session registered: {} → agent {} v{} (session={}, humanUser={})",
                 sessionId, agent.getAgentName(), agent.getAgentVersion(), saved.getId(), humanUserId);
         return saved;
@@ -298,6 +340,7 @@ public class AgentRegistryService {
         sessionRepository.markDisconnected(sessionId);
         sessionToAgentId.remove(sessionId);
         sessionToHumanUserId.remove(sessionId);
+        sessionToNhiId.remove(sessionId);
         log.info("📡 Agent session disconnected: {}", sessionId);
     }
 
@@ -385,6 +428,12 @@ public class AgentRegistryService {
             UUID humanUserId = sessionToHumanUserId.get(sessionId);
             if (humanUserId != null) {
                 humanUserRepository.incrementRequestCount(humanUserId);
+            }
+
+            // Increment NHI request count (AUTOMATED_AGENT sessions only)
+            UUID nhiId = sessionToNhiId.get(sessionId);
+            if (nhiId != null) {
+                nhiRepository.incrementRequestCount(nhiId);
             }
         } catch (Exception e) {
             log.debug("Failed to record agent request for session {}: {}",
@@ -665,7 +714,8 @@ public class AgentRegistryService {
             String idpIssuer, Boolean emailVerified,
             java.util.List<String> realmRoles, java.util.List<String> clientRoles,
             java.util.Map<String, Object> customClaims,
-            java.util.Map<String, Object> rawJwtClaims) {
+            java.util.Map<String, Object> rawJwtClaims,
+            String ipAddress) {
 
         Optional<GatewayHumanUserEntity> existing = humanUserRepository.findByIdpSubject(idpSubject);
         LocalDateTime now = LocalDateTime.now();
@@ -685,9 +735,10 @@ public class AgentRegistryService {
             user.setCustomClaims(customClaims);
             user.setLastSeenAt(now);
             user.setLastJwtClaims(rawJwtClaims);
+            user.setLastIpAddress(ipAddress);
             GatewayHumanUserEntity updated = humanUserRepository.saveAndFlush(user);
-            log.info("👤 Human user updated: {} (sub={}, email={})",
-                    preferredUsername, idpSubject, email);
+            log.info("👤 Human user updated: {} (sub={}, email={}, ip={})",
+                    preferredUsername, idpSubject, email, ipAddress);
             return updated;
         }
 
@@ -710,11 +761,12 @@ public class AgentRegistryService {
                 .totalRequests(0L)
                 .status("ACTIVE")
                 .lastJwtClaims(rawJwtClaims)
+                .lastIpAddress(ipAddress)
                 .build();
 
         GatewayHumanUserEntity saved = humanUserRepository.saveAndFlush(newUser);
-        log.info("👤 NEW human user discovered: {} (sub={}, email={})",
-                preferredUsername, idpSubject, email);
+        log.info("👤 NEW human user discovered: {} (sub={}, email={}, ip={})",
+                preferredUsername, idpSubject, email, ipAddress);
         return saved;
     }
 
@@ -765,6 +817,126 @@ public class AgentRegistryService {
         if (idpSubject == null) return false;
         return humanUserRepository.findByIdpSubject(idpSubject)
                 .map(h -> "BLOCKED".equals(h.getStatus()))
+                .orElse(false);
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // NHI (NON-HUMAN IDENTITY) MANAGEMENT
+    // ════════════════════════════════════════════════════════════════════
+
+    /**
+     * Discover (or update) a Non-Human Identity. Called when an AUTOMATED_AGENT token is seen.
+     * Upserts by IdP subject (JWT "sub" — stable service account UUID).
+     *
+     * @param idpSubject   JWT "sub" — stable identity from IdP
+     * @param clientId     JWT "azp" — OAuth2 client_id
+     * @param idpIssuer    JWT "iss"
+     * @param realmRoles   realm_access.roles from JWT
+     * @param clientRoles  resource_access.<client>.roles from JWT
+     * @param customClaims ws_gateway_* prefixed claims
+     * @param rawJwtClaims Full JWT claims snapshot
+     * @return the NHI entity
+     */
+    @Transactional
+    public GatewayNhiEntity discoverNhi(
+            String idpSubject, String clientId, String idpIssuer,
+            java.util.List<String> realmRoles, java.util.List<String> clientRoles,
+            java.util.Map<String, Object> customClaims,
+            java.util.Map<String, Object> rawJwtClaims,
+            String ipAddress) {
+
+        Optional<GatewayNhiEntity> existing = nhiRepository.findByIdpSubject(idpSubject);
+        LocalDateTime now = LocalDateTime.now();
+
+        if (existing.isPresent()) {
+            GatewayNhiEntity nhi = existing.get();
+            // Update mutable fields with latest JWT data
+            if (clientId != null) nhi.setClientId(clientId);
+            nhi.setServiceName(clientId != null ? clientId : idpSubject);
+            nhi.setIdpIssuer(idpIssuer);
+            nhi.setRealmRoles(realmRoles);
+            nhi.setClientRoles(clientRoles);
+            nhi.setCustomClaims(customClaims);
+            nhi.setLastSeenAt(now);
+            nhi.setLastJwtClaims(rawJwtClaims);
+            nhi.setLastIpAddress(ipAddress);
+            GatewayNhiEntity updated = nhiRepository.saveAndFlush(nhi);
+            log.info("NHI updated: {} (sub={}, clientId={}, ip={})",
+                    updated.getServiceName(), idpSubject, clientId, ipAddress);
+            return updated;
+        }
+
+        // New NHI — first time ever seen
+        GatewayNhiEntity newNhi = GatewayNhiEntity.builder()
+                .idpSubject(idpSubject)
+                .serviceName(clientId != null ? clientId : idpSubject)
+                .clientId(clientId)
+                .idpIssuer(idpIssuer)
+                .realmRoles(realmRoles)
+                .clientRoles(clientRoles)
+                .customClaims(customClaims)
+                .firstSeenAt(now)
+                .lastSeenAt(now)
+                .totalSessions(0)
+                .totalRequests(0L)
+                .status("ACTIVE")
+                .lastJwtClaims(rawJwtClaims)
+                .lastIpAddress(ipAddress)
+                .build();
+
+        GatewayNhiEntity saved = nhiRepository.saveAndFlush(newNhi);
+        log.info("NEW NHI discovered: {} (sub={}, clientId={}, ip={})",
+                saved.getServiceName(), idpSubject, clientId, ipAddress);
+        return saved;
+    }
+
+    /**
+     * Increment session count for an NHI.
+     */
+    @Transactional
+    public void incrementNhiSessionCount(UUID nhiId) {
+        nhiRepository.findById(nhiId).ifPresent(nhi -> {
+            nhi.setTotalSessions(nhi.getTotalSessions() + 1);
+            nhiRepository.saveAndFlush(nhi);
+        });
+    }
+
+    /**
+     * Get the NHI UUID for a session, if any.
+     * Returns null for human-delegated sessions.
+     */
+    public UUID getNhiIdForSession(String sessionId) {
+        if (sessionId == null) return null;
+        return sessionToNhiId.get(sessionId);
+    }
+
+    /**
+     * Check if the NHI behind a session is blocked.
+     * O(1) — ConcurrentHashMap lookup + DB read (small table).
+     *
+     * @param sessionId the agent's MCP session ID
+     * @return {@code true} if the NHI is BLOCKED, {@code false} otherwise
+     */
+    public boolean isNhiBlocked(String sessionId) {
+        if (sessionId == null) return false;
+        UUID nhiId = sessionToNhiId.get(sessionId);
+        if (nhiId == null) return false;  // human-delegated or unknown — not an NHI
+        return nhiRepository.findById(nhiId)
+                .map(n -> "BLOCKED".equals(n.getStatus()))
+                .orElse(false);
+    }
+
+    /**
+     * Check if an NHI is blocked by their IdP subject (JWT sub).
+     * Used during initialize to reject connections from blocked NHIs.
+     *
+     * @param idpSubject the JWT "sub" claim
+     * @return {@code true} if the NHI is BLOCKED
+     */
+    public boolean isNhiBlockedBySubject(String idpSubject) {
+        if (idpSubject == null) return false;
+        return nhiRepository.findByIdpSubject(idpSubject)
+                .map(n -> "BLOCKED".equals(n.getStatus()))
                 .orElse(false);
     }
 
