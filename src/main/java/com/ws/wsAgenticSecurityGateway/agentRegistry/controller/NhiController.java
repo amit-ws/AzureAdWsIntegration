@@ -3,6 +3,7 @@ package com.ws.wsAgenticSecurityGateway.agentRegistry.controller;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentSessionEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayNhiEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.NhiService;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -106,15 +107,19 @@ public class NhiController {
 
     @PostMapping("/{id}/block")
     public ResponseEntity<Map<String, Object>> blockNhi(
-            @PathVariable UUID id, @RequestBody(required = false) Map<String, String> body) {
+            @PathVariable UUID id, @RequestBody(required = false) Map<String, String> body,
+            HttpServletRequest request) {
         try {
             String reason = body != null ? body.get("reason") : null;
-            GatewayNhiEntity nhi = nhiService.blockNhi(id, reason);
+            NhiService.BlockResult blockResult = nhiService.blockNhi(
+                    id, reason, resolveAdminActor(request), resolveAdminIp(request));
 
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("status", "ok");
-            result.put("message", "NHI '" + nhi.getServiceName() + "' blocked");
-            result.put("nhiStatus", nhi.getStatus());
+            result.put("message", "NHI '" + blockResult.nhi().getServiceName() + "' blocked");
+            result.put("nhiStatus", blockResult.nhi().getStatus());
+            result.put("sessionsTerminated", blockResult.sessionsTerminated());
+            result.put("affectedAgents", blockResult.affectedAgents().size());
             return ResponseEntity.ok(result);
         } catch (NoSuchElementException e) {
             return ResponseEntity.notFound().build();
@@ -122,9 +127,11 @@ public class NhiController {
     }
 
     @PostMapping("/{id}/unblock")
-    public ResponseEntity<Map<String, Object>> unblockNhi(@PathVariable UUID id) {
+    public ResponseEntity<Map<String, Object>> unblockNhi(@PathVariable UUID id,
+                                                           HttpServletRequest request) {
         try {
-            GatewayNhiEntity nhi = nhiService.unblockNhi(id);
+            GatewayNhiEntity nhi = nhiService.unblockNhi(
+                    id, resolveAdminActor(request), resolveAdminIp(request));
 
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("status", "ok");
@@ -134,6 +141,25 @@ public class NhiController {
         } catch (NoSuchElementException e) {
             return ResponseEntity.notFound().build();
         }
+    }
+
+    private String resolveAdminActor(HttpServletRequest request) {
+        String headerUser = request.getHeader("X-Admin-User");
+        if (headerUser != null && !headerUser.isBlank()) {
+            return headerUser;
+        }
+        return "anonymous";
+    }
+
+    private String resolveAdminIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            String[] ips = forwarded.split(",");
+            if (ips.length > 0 && !ips[0].trim().isBlank()) {
+                return ips[0].trim();
+            }
+        }
+        return request.getRemoteAddr();
     }
 
     // ════════════════════════════════════════════════════════════════════

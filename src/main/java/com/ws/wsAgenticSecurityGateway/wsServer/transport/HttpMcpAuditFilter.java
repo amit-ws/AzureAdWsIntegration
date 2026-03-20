@@ -4,12 +4,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.event.BlockedSessionEvent;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayHumanUserEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayNhiEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentCapabilityFilterService;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService.AgentBlockedException;
+import com.ws.wsAgenticSecurityGateway.audit.error.McpErrorCode;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
 import jakarta.servlet.*;
@@ -27,6 +29,7 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -166,40 +169,49 @@ public class HttpMcpAuditFilter implements Filter {
                     mcpMethod,
                     "HTTP",
                     "Blocked session attempted request; reconnect after admin approval.");
-            rejectBlockedRequest(httpResponse, requestIdRaw);
+            rejectBlocked(httpResponse, requestIdRaw, McpErrorCode.AGENT_BLOCKED,
+                    "Agent '" + (blockedAgentName != null ? blockedAgentName : "unknown") + "' is blocked by admin. Reconnect after approval.");
             return;
         }
 
         // ── Block requests from human users who have been blocked by admin ──
-        if (sessionId != null && agentRegistryService.isHumanBlocked(sessionId)) {
-            String blockedAgentName = resolveAgentName(sessionId);
-            log.warn("🚫 Request rejected — human user behind session {} is BLOCKED", sessionId);
-            auditService.auditAgentConnectionRejected(
-                    sessionId,
-                    requestId,
-                    blockedAgentName,
-                    null,
-                    mcpMethod,
-                    "HTTP",
-                    "Human user is BLOCKED by admin; all delegated requests are rejected.");
-            rejectBlockedRequest(httpResponse, requestIdRaw);
-            return;
+        if (sessionId != null) {
+            Optional<String> humanBlockReason = agentRegistryService.getHumanBlockReason(sessionId);
+            if (humanBlockReason.isPresent()) {
+                String blockedAgentName = resolveAgentName(sessionId);
+                String humanUsername = agentRegistryService.getHumanUsername(sessionId);
+                String reason = humanBlockReason.get();
+                log.warn("🚫 Request rejected — human user '{}' behind session {} is BLOCKED: {}",
+                        humanUsername, sessionId, reason);
+                auditService.auditHumanConnectionRejected(sessionId, requestId,
+                        humanUsername, null, blockedAgentName, mcpMethod,
+                        "Human user '" + (humanUsername != null ? humanUsername : "unknown") + "' is BLOCKED: " + reason);
+                rejectBlocked(httpResponse, requestIdRaw, McpErrorCode.HUMAN_BLOCKED,
+                        "Your account '" + (humanUsername != null ? humanUsername : "unknown")
+                                + "' has been blocked by an administrator. Reason: " + reason
+                                + ". Contact your gateway administrator to request access restoration.");
+                return;
+            }
         }
 
         // ── Block requests from NHIs that have been blocked by admin ──
-        if (sessionId != null && agentRegistryService.isNhiBlocked(sessionId)) {
-            String blockedAgentName = resolveAgentName(sessionId);
-            log.warn("🚫 Request rejected — NHI behind session {} is BLOCKED", sessionId);
-            auditService.auditAgentConnectionRejected(
-                    sessionId,
-                    requestId,
-                    blockedAgentName,
-                    null,
-                    mcpMethod,
-                    "HTTP",
-                    "Non-Human Identity is BLOCKED by admin; all automated requests are rejected.");
-            rejectBlockedRequest(httpResponse, requestIdRaw);
-            return;
+        if (sessionId != null) {
+            Optional<String> nhiBlockReason = agentRegistryService.getNhiBlockReason(sessionId);
+            if (nhiBlockReason.isPresent()) {
+                String blockedAgentName = resolveAgentName(sessionId);
+                String nhiName = agentRegistryService.getNhiServiceName(sessionId);
+                String reason = nhiBlockReason.get();
+                log.warn("🚫 Request rejected — NHI '{}' behind session {} is BLOCKED: {}",
+                        nhiName, sessionId, reason);
+                auditService.auditNhiConnectionRejected(sessionId, requestId,
+                        nhiName, null, null, blockedAgentName, mcpMethod,
+                        "Service identity '" + (nhiName != null ? nhiName : "unknown") + "' is BLOCKED: " + reason);
+                rejectBlocked(httpResponse, requestIdRaw, McpErrorCode.NHI_BLOCKED,
+                        "Service identity '" + (nhiName != null ? nhiName : "unknown")
+                                + "' has been blocked by an administrator. Reason: " + reason
+                                + ". Contact your gateway administrator to request access restoration.");
+                return;
+            }
         }
 
         // ── Session-identity binding: reject identity switch mid-session ──
@@ -255,17 +267,15 @@ public class HttpMcpAuditFilter implements Filter {
                 }
             }
             if (blocked) {
+                String displayName = preAuthClientId != null ? preAuthClientId : agentName;
                 log.warn("🚫 Pre-initialize rejection for BLOCKED agent: {} v{} (authClientId={})",
                         agentName, agentVersion, preAuthClientId);
                 auditService.auditAgentConnectionRejected(
-                        null,
-                        requestId,
-                        preAuthClientId != null ? preAuthClientId : agentName,
-                        agentVersion,
-                        "initialize",
-                        "HTTP",
+                        null, requestId, displayName, agentVersion,
+                        "initialize", "HTTP",
                         "Agent rejected during initialize because profile is BLOCKED.");
-                rejectBlockedInitialize(httpResponse, requestIdRaw);
+                rejectBlocked(httpResponse, requestIdRaw, McpErrorCode.AGENT_BLOCKED,
+                        "Agent '" + displayName + "' is blocked by admin. Contact your gateway administrator.");
                 return;
             }
 
@@ -275,33 +285,36 @@ public class HttpMcpAuditFilter implements Filter {
             if ("HUMAN_DELEGATED".equals(tokenType) && jwtSubject != null
                     && agentRegistryService.isHumanBlockedBySubject(jwtSubject)) {
                 String humanUsername = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_PREFERRED_USERNAME);
-                log.warn("🚫 Pre-initialize rejection — human user BLOCKED: {} (sub={})",
-                        humanUsername, jwtSubject);
-                auditService.auditAgentConnectionRejected(
-                        null,
-                        requestId,
+                String displayUsername = humanUsername != null ? humanUsername : jwtSubject;
+                // Look up blocked reason from DB
+                String blockReason = agentRegistryService.getHumanBlockReasonBySubject(jwtSubject);
+                log.warn("🚫 Pre-initialize rejection — human user BLOCKED: {} (sub={}) reason={}",
+                        displayUsername, jwtSubject, blockReason);
+                auditService.auditHumanConnectionRejected(null, requestId,
+                        displayUsername, jwtSubject,
                         preAuthClientId != null ? preAuthClientId : agentName,
-                        agentVersion,
                         "initialize",
-                        "HTTP",
-                        "Human user '" + (humanUsername != null ? humanUsername : jwtSubject) + "' is BLOCKED by admin.");
-                rejectBlockedInitialize(httpResponse, requestIdRaw);
+                        "Human user '" + displayUsername + "' is BLOCKED: " + blockReason);
+                rejectBlocked(httpResponse, requestIdRaw, McpErrorCode.HUMAN_BLOCKED,
+                        "Your account '" + displayUsername + "' has been blocked by an administrator. Reason: "
+                                + blockReason + ". Contact your gateway administrator to request access restoration.");
                 return;
             }
 
             // Check if the NHI behind this token is blocked
             if (GatewayOAuth2Filter.TOKEN_TYPE_AUTOMATED.equals(tokenType) && jwtSubject != null
                     && agentRegistryService.isNhiBlockedBySubject(jwtSubject)) {
-                log.warn("🚫 Pre-initialize rejection — NHI BLOCKED: sub={}", jwtSubject);
-                auditService.auditAgentConnectionRejected(
-                        null,
-                        requestId,
-                        preAuthClientId != null ? preAuthClientId : agentName,
-                        agentVersion,
-                        "initialize",
-                        "HTTP",
-                        "Non-Human Identity (sub=" + jwtSubject + ") is BLOCKED by admin.");
-                rejectBlockedInitialize(httpResponse, requestIdRaw);
+                String nhiClientId = preAuthClientId;
+                String blockReason = agentRegistryService.getNhiBlockReasonBySubject(jwtSubject);
+                log.warn("🚫 Pre-initialize rejection — NHI BLOCKED: sub={}, reason={}", jwtSubject, blockReason);
+                auditService.auditNhiConnectionRejected(null, requestId,
+                        nhiClientId, nhiClientId, jwtSubject,
+                        agentName, "initialize",
+                        "Service identity (sub=" + jwtSubject + ") is BLOCKED: " + blockReason);
+                rejectBlocked(httpResponse, requestIdRaw, McpErrorCode.NHI_BLOCKED,
+                        "Service identity '" + (nhiClientId != null ? nhiClientId : jwtSubject)
+                                + "' has been blocked by an administrator. Reason: " + blockReason
+                                + ". Contact your gateway administrator to request access restoration.");
                 return;
             }
         }
@@ -824,22 +837,46 @@ public class HttpMcpAuditFilter implements Filter {
                         + (requestId != null ? requestId : "null") + "}");
     }
 
-    private void rejectBlockedInitialize(HttpServletResponse response, String requestIdRaw)
-            throws IOException {
+    /**
+     * Generic blocked rejection — returns HTTP 200 + JSON-RPC error with identity-specific
+     * error code and human-readable message that agents can surface to end users.
+     */
+    private void rejectBlocked(HttpServletResponse response, String requestIdRaw,
+                               McpErrorCode errorCode, String message) throws IOException {
         response.setStatus(HttpServletResponse.SC_OK);
         response.setContentType("application/json");
         response.getWriter().write(
-                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-33007,\"message\":\"Agent is blocked by admin. Contact your gateway administrator.\"},\"id\":"
+                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":" + errorCode.getCode()
+                        + ",\"message\":\"" + escapeJson(message) + "\"},\"id\":"
                         + requestIdRaw + "}");
     }
 
-    private void rejectBlockedRequest(HttpServletResponse response, String requestIdRaw)
-            throws IOException {
-        response.setStatus(HttpServletResponse.SC_OK);
-        response.setContentType("application/json");
-        response.getWriter().write(
-                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-33007,\"message\":\"Agent is blocked by admin. Reconnect after approval.\"},\"id\":"
-                        + requestIdRaw + "}");
+    /** Escape JSON special characters to prevent injection from reason strings. */
+    private static String escapeJson(String value) {
+        if (value == null) return "";
+        return value.replace("\\", "\\\\").replace("\"", "\\\"")
+                .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
+    }
+
+    /**
+     * Public method for proactive session flagging — called via Spring events
+     * when admin blocks an identity mid-session.
+     */
+    public void addBlockedSessionId(String sessionId) {
+        if (sessionId != null) {
+            blockedSessionIds.add(sessionId);
+        }
+    }
+
+    /**
+     * Spring event listener — fired by services when admin blocks a human/NHI/agent.
+     * Flags the session for immediate rejection on next request without circular dependency.
+     */
+    @org.springframework.context.event.EventListener
+    public void onBlockedSessionEvent(BlockedSessionEvent event) {
+        addBlockedSessionId(event.sessionId());
+        log.info("🚫 Session flagged for blocked {} '{}': {}",
+                event.identityType(), event.identityName(), event.sessionId());
     }
 
     private JsonNode parseRequestJson(byte[] body) {

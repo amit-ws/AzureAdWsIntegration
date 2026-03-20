@@ -302,12 +302,15 @@ public class AgentController {
     public ResponseEntity<Map<String, Object>> blockAgent(@PathVariable UUID id,
                                                           HttpServletRequest request) {
         try {
-            GatewayAgentEntity agent = agentRegistryService.blockAgent(
+            AgentRegistryService.AgentBlockResult blockResult = agentRegistryService.blockAgent(
                     id, resolveAdminActor(request), resolveAdminIp(request));
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("status", "ok");
-            result.put("message", "Agent '" + agent.getAgentName() + "' blocked");
-            result.put("approvalStatus", agent.getApprovalStatus());
+            result.put("message", "Agent '" + blockResult.agent().getAgentName() + "' blocked");
+            result.put("approvalStatus", blockResult.agent().getApprovalStatus());
+            result.put("sessionsTerminated", blockResult.sessionsTerminated());
+            result.put("affectedHumanUsers", blockResult.affectedHumanUsers().size());
+            result.put("affectedNhis", blockResult.affectedNhis().size());
             return ResponseEntity.ok(result);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();

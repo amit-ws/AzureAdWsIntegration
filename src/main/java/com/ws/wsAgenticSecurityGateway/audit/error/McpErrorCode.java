@@ -32,7 +32,9 @@ public enum McpErrorCode {
     REGISTRY_ERROR(-33005, "Capability registry error"),
     TRANSPORT_ERROR(-33006, "Transport layer error"),
     AGENT_BLOCKED(-33007, "Agent is blocked by admin"),
-    CAPABILITY_NOT_ALLOWED(-33008, "Capability not permitted for this agent");
+    CAPABILITY_NOT_ALLOWED(-33008, "Capability not permitted for this agent"),
+    HUMAN_BLOCKED(-33009, "Human user is blocked by admin"),
+    NHI_BLOCKED(-33010, "Service identity is blocked by admin");
 
     private final int code;
     private final String message;

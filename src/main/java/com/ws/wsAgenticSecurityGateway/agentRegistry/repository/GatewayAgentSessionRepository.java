@@ -81,6 +81,18 @@ public interface GatewayAgentSessionRepository extends JpaRepository<GatewayAgen
     @Query("SELECT s FROM GatewayAgentSessionEntity s JOIN FETCH s.agent WHERE s.nhiId = :nhiId ORDER BY s.connectedAt DESC")
     List<GatewayAgentSessionEntity> findByNhiIdWithAgent(@Param("nhiId") UUID nhiId);
 
+    /** Find all CONNECTED sessions for a specific human user (for proactive session termination on block). */
+    @Query("SELECT s FROM GatewayAgentSessionEntity s LEFT JOIN FETCH s.agent WHERE s.humanUserId = :humanUserId AND s.status = 'CONNECTED'")
+    List<GatewayAgentSessionEntity> findConnectedByHumanUserId(@Param("humanUserId") UUID humanUserId);
+
+    /** Find all CONNECTED sessions for a specific NHI (for proactive session termination on block). */
+    @Query("SELECT s FROM GatewayAgentSessionEntity s LEFT JOIN FETCH s.agent WHERE s.nhiId = :nhiId AND s.status = 'CONNECTED'")
+    List<GatewayAgentSessionEntity> findConnectedByNhiId(@Param("nhiId") UUID nhiId);
+
+    /** Find all CONNECTED sessions for a specific agent (for proactive session termination on block). */
+    @Query("SELECT s FROM GatewayAgentSessionEntity s LEFT JOIN FETCH s.agent WHERE s.agent.id = :agentId AND s.status = 'CONNECTED'")
+    List<GatewayAgentSessionEntity> findConnectedByAgentId(@Param("agentId") UUID agentId);
+
     /**
      * Layer 2 — Smart Idle Timeout: lightweight activity timestamp update.
      * Called at response completion to keep sessions alive during long-running tool calls.

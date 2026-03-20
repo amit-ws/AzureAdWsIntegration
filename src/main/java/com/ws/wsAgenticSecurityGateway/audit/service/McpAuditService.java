@@ -1466,7 +1466,21 @@ public class McpAuditService {
                         String agentVersion,
                         String previousApprovalStatus,
                         String adminActor,
-                        String adminIp) {
+                        String adminIp,
+                        int sessionsTerminated,
+                        java.util.List<java.util.Map<String, Object>> affectedHumanUsers,
+                        java.util.List<java.util.Map<String, Object>> affectedNhis) {
+                java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
+                payload.put("agentId", agentId != null ? agentId.toString() : "");
+                payload.put("agentName", agentName != null ? agentName : "unknown");
+                payload.put("agentVersion", agentVersion != null ? agentVersion : "");
+                payload.put("previousApprovalStatus", previousApprovalStatus != null ? previousApprovalStatus : "UNKNOWN");
+                payload.put("newApprovalStatus", "BLOCKED");
+                payload.put("adminActor", adminActor != null ? adminActor : "unknown");
+                payload.put("adminIp", adminIp != null ? adminIp : "unknown");
+                payload.put("sessionsTerminated", sessionsTerminated);
+                payload.put("affectedHumanUsers", affectedHumanUsers != null ? affectedHumanUsers : java.util.List.of());
+                payload.put("affectedNhis", affectedNhis != null ? affectedNhis : java.util.List.of());
                 persist(McpAuditLog.builder()
                                 .eventType(AuditEventType.AGENT_BLOCKED)
                                 .module(AuditModule.AGENT_REGISTRY)
@@ -1475,15 +1489,7 @@ public class McpAuditService {
                                 .agentName(agentName)
                                 .mcpMethod("admin/agents/block")
                                 .correlationId(generateCorrelationId())
-                                .requestPayload(toJson(Map.of(
-                                                "agentId", agentId != null ? agentId.toString() : "",
-                                                "agentName", agentName != null ? agentName : "unknown",
-                                                "agentVersion", agentVersion != null ? agentVersion : "",
-                                                "previousApprovalStatus",
-                                                previousApprovalStatus != null ? previousApprovalStatus : "UNKNOWN",
-                                                "newApprovalStatus", "BLOCKED",
-                                                "adminActor", adminActor != null ? adminActor : "unknown",
-                                                "adminIp", adminIp != null ? adminIp : "unknown")))
+                                .requestPayload(toJson(payload))
                                 .build());
         }
 
@@ -1513,10 +1519,175 @@ public class McpAuditService {
                                 .build());
         }
 
-        /**
-         * Audit: session-identity mismatch — a different JWT subject attempted to use
-         * an existing session bound to another identity. This is a security event.
-         */
+        // ════════════════════════════════════════════════════════════════════
+        //  AREA 7b — Identity Blocking Events
+        // ════════════════════════════════════════════════════════════════════
+
+        /** Audit: admin blocked a human user. */
+        @Async("mcpAuditExecutor")
+        public void auditHumanUserBlocked(UUID humanUserId, String preferredUsername, String idpSubject,
+                        String previousStatus, String reason, String adminActor, String adminIp,
+                        int sessionsTerminated, java.util.List<java.util.Map<String, Object>> affectedAgents) {
+                java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
+                payload.put("humanUserId", humanUserId != null ? humanUserId.toString() : "");
+                payload.put("preferredUsername", preferredUsername != null ? preferredUsername : "unknown");
+                payload.put("idpSubject", idpSubject != null ? idpSubject : "");
+                payload.put("previousStatus", previousStatus != null ? previousStatus : "ACTIVE");
+                payload.put("newStatus", "BLOCKED");
+                payload.put("reason", reason != null ? reason : "");
+                payload.put("adminActor", adminActor != null ? adminActor : "unknown");
+                payload.put("adminIp", adminIp != null ? adminIp : "unknown");
+                payload.put("sessionsTerminated", sessionsTerminated);
+                payload.put("affectedAgents", affectedAgents != null ? affectedAgents : java.util.List.of());
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.HUMAN_USER_BLOCKED)
+                                .module(AuditModule.AGENT_REGISTRY)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.WARN)
+                                .mcpMethod("admin/human-users/block")
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(payload))
+                                .build());
+        }
+
+        /** Audit: admin unblocked a human user. */
+        @Async("mcpAuditExecutor")
+        public void auditHumanUserUnblocked(UUID humanUserId, String preferredUsername, String idpSubject,
+                        String adminActor, String adminIp) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.HUMAN_USER_UNBLOCKED)
+                                .module(AuditModule.AGENT_REGISTRY)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .mcpMethod("admin/human-users/unblock")
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(Map.of(
+                                                "humanUserId", humanUserId != null ? humanUserId.toString() : "",
+                                                "preferredUsername", preferredUsername != null ? preferredUsername : "unknown",
+                                                "idpSubject", idpSubject != null ? idpSubject : "",
+                                                "adminActor", adminActor != null ? adminActor : "unknown",
+                                                "adminIp", adminIp != null ? adminIp : "unknown")))
+                                .build());
+        }
+
+        /** Audit: admin blocked an NHI. */
+        @Async("mcpAuditExecutor")
+        public void auditNhiBlocked(UUID nhiId, String serviceName, String clientId, String idpSubject,
+                        String previousStatus, String reason, String adminActor, String adminIp,
+                        int sessionsTerminated, java.util.List<java.util.Map<String, Object>> affectedAgents) {
+                java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
+                payload.put("nhiId", nhiId != null ? nhiId.toString() : "");
+                payload.put("serviceName", serviceName != null ? serviceName : "unknown");
+                payload.put("clientId", clientId != null ? clientId : "");
+                payload.put("idpSubject", idpSubject != null ? idpSubject : "");
+                payload.put("previousStatus", previousStatus != null ? previousStatus : "ACTIVE");
+                payload.put("newStatus", "BLOCKED");
+                payload.put("reason", reason != null ? reason : "");
+                payload.put("adminActor", adminActor != null ? adminActor : "unknown");
+                payload.put("adminIp", adminIp != null ? adminIp : "unknown");
+                payload.put("sessionsTerminated", sessionsTerminated);
+                payload.put("affectedAgents", affectedAgents != null ? affectedAgents : java.util.List.of());
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.NHI_IDENTITY_BLOCKED)
+                                .module(AuditModule.AGENT_REGISTRY)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.WARN)
+                                .mcpMethod("admin/nhis/block")
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(payload))
+                                .build());
+        }
+
+        /** Audit: admin unblocked an NHI. */
+        @Async("mcpAuditExecutor")
+        public void auditNhiUnblocked(UUID nhiId, String serviceName, String clientId, String idpSubject,
+                        String adminActor, String adminIp) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.NHI_IDENTITY_UNBLOCKED)
+                                .module(AuditModule.AGENT_REGISTRY)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .mcpMethod("admin/nhis/unblock")
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(Map.of(
+                                                "nhiId", nhiId != null ? nhiId.toString() : "",
+                                                "serviceName", serviceName != null ? serviceName : "unknown",
+                                                "clientId", clientId != null ? clientId : "",
+                                                "idpSubject", idpSubject != null ? idpSubject : "",
+                                                "adminActor", adminActor != null ? adminActor : "unknown",
+                                                "adminIp", adminIp != null ? adminIp : "unknown")))
+                                .build());
+        }
+
+        /** Audit: blocked human user attempted to connect or make a request. */
+        @Async("mcpAuditExecutor")
+        public void auditHumanConnectionRejected(String sessionId, String requestId,
+                        String preferredUsername, String idpSubject,
+                        String agentName, String method, String reason) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.HUMAN_CONNECTION_REJECTED)
+                                .module(AuditModule.AGENT_REGISTRY)
+                                .status(AuditStatus.DENIED)
+                                .severity(AuditSeverity.WARN)
+                                .sessionId(sessionId)
+                                .requestId(requestId)
+                                .agentName(agentName)
+                                .mcpMethod(method != null ? method : "unknown")
+                                .errorCode(McpErrorCode.HUMAN_BLOCKED.getCode())
+                                .errorMessage(reason)
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(Map.of(
+                                                "preferredUsername", preferredUsername != null ? preferredUsername : "unknown",
+                                                "idpSubject", idpSubject != null ? idpSubject : "",
+                                                "agentName", agentName != null ? agentName : "unknown")))
+                                .build());
+        }
+
+        /** Audit: blocked NHI attempted to connect or make a request. */
+        @Async("mcpAuditExecutor")
+        public void auditNhiConnectionRejected(String sessionId, String requestId,
+                        String serviceName, String clientId, String idpSubject,
+                        String agentName, String method, String reason) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.NHI_CONNECTION_REJECTED)
+                                .module(AuditModule.AGENT_REGISTRY)
+                                .status(AuditStatus.DENIED)
+                                .severity(AuditSeverity.WARN)
+                                .sessionId(sessionId)
+                                .requestId(requestId)
+                                .agentName(agentName)
+                                .mcpMethod(method != null ? method : "unknown")
+                                .errorCode(McpErrorCode.NHI_BLOCKED.getCode())
+                                .errorMessage(reason)
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(Map.of(
+                                                "serviceName", serviceName != null ? serviceName : "unknown",
+                                                "clientId", clientId != null ? clientId : "",
+                                                "idpSubject", idpSubject != null ? idpSubject : "",
+                                                "agentName", agentName != null ? agentName : "unknown")))
+                                .build());
+        }
+
+        /** Audit: proactive session termination when admin blocks an identity. */
+        @Async("mcpAuditExecutor")
+        public void auditBlockedSessionTerminated(String sessionId, String agentName,
+                        String identityType, String identityName, String reason) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.BLOCKED_SESSION_TERMINATED)
+                                .module(AuditModule.AGENT_REGISTRY)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.WARN)
+                                .sessionId(sessionId)
+                                .agentName(agentName)
+                                .mcpMethod("admin/block/session-terminate")
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(Map.of(
+                                                "identityType", identityType != null ? identityType : "unknown",
+                                                "identityName", identityName != null ? identityName : "unknown",
+                                                "reason", reason != null ? reason : "Identity blocked by admin")))
+                                .build());
+        }
+
         /**
          * Audit a session-identity mismatch — a security incident where someone attempts
          * to use a session that belongs to a different identity. Full forensic context captured.

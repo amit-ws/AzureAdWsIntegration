@@ -169,6 +169,32 @@ public class ToolCallOrchestrator {
             return buildErrorResult(McpErrorCode.AGENT_BLOCKED, publicName);
         }
 
+        // ── Step 2c-ii: Human user block gate (defense-in-depth) ──────
+        if (agentRegistryService.isHumanBlocked(sessionId)) {
+            log.warn("🚫 [{}] BLOCKED human user attempted tool call: session={}, tool={}",
+                    correlationId, sessionId, publicName);
+            auditService.auditOrchestrationError(
+                    correlationId, sessionId, null, publicName,
+                    McpErrorCode.HUMAN_BLOCKED,
+                    "Human user is blocked by admin.",
+                    requestId, clientName,
+                    LocalDateTime.now(), ++seq);
+            return buildErrorResult(McpErrorCode.HUMAN_BLOCKED, publicName);
+        }
+
+        // ── Step 2c-iii: NHI block gate (defense-in-depth) ──────────
+        if (agentRegistryService.isNhiBlocked(sessionId)) {
+            log.warn("🚫 [{}] BLOCKED NHI attempted tool call: session={}, tool={}",
+                    correlationId, sessionId, publicName);
+            auditService.auditOrchestrationError(
+                    correlationId, sessionId, null, publicName,
+                    McpErrorCode.NHI_BLOCKED,
+                    "Service identity is blocked by admin.",
+                    requestId, clientName,
+                    LocalDateTime.now(), ++seq);
+            return buildErrorResult(McpErrorCode.NHI_BLOCKED, publicName);
+        }
+
         // ── Step 2d: Capability access check (default deny) ──────────
         // If agent has no capability profiles → no access (default deny).
         // If agent has profiles → check if this tool is in their allowed set.
@@ -733,15 +759,31 @@ public class ToolCallOrchestrator {
         if (agentRegistryService.isAgentBlocked(sessionId)) {
             log.warn("🚫 [{}] BLOCKED agent attempted prompt call: session={}, prompt={}",
                     correlationId, sessionId, publicName);
-            auditService.auditOrchestrationError(
-                    correlationId, sessionId, null, publicName,
-                    McpErrorCode.AGENT_BLOCKED,
-                    "Agent is blocked by admin. Contact your gateway administrator.",
-                    requestId, clientName,
-                    LocalDateTime.now(), ++seq);
+            auditService.auditOrchestrationError(correlationId, sessionId, null, publicName,
+                    McpErrorCode.AGENT_BLOCKED, "Agent is blocked by admin.",
+                    requestId, clientName, LocalDateTime.now(), ++seq);
             throw new RuntimeException(String.format("[%d] %s",
-                    McpErrorCode.AGENT_BLOCKED.getCode(),
-                    McpErrorCode.AGENT_BLOCKED.getMessage()));
+                    McpErrorCode.AGENT_BLOCKED.getCode(), McpErrorCode.AGENT_BLOCKED.getMessage()));
+        }
+        // Human user block gate (defense-in-depth)
+        if (agentRegistryService.isHumanBlocked(sessionId)) {
+            log.warn("🚫 [{}] BLOCKED human attempted prompt call: session={}, prompt={}",
+                    correlationId, sessionId, publicName);
+            auditService.auditOrchestrationError(correlationId, sessionId, null, publicName,
+                    McpErrorCode.HUMAN_BLOCKED, "Human user is blocked by admin.",
+                    requestId, clientName, LocalDateTime.now(), ++seq);
+            throw new RuntimeException(String.format("[%d] %s",
+                    McpErrorCode.HUMAN_BLOCKED.getCode(), McpErrorCode.HUMAN_BLOCKED.getMessage()));
+        }
+        // NHI block gate (defense-in-depth)
+        if (agentRegistryService.isNhiBlocked(sessionId)) {
+            log.warn("🚫 [{}] BLOCKED NHI attempted prompt call: session={}, prompt={}",
+                    correlationId, sessionId, publicName);
+            auditService.auditOrchestrationError(correlationId, sessionId, null, publicName,
+                    McpErrorCode.NHI_BLOCKED, "Service identity is blocked by admin.",
+                    requestId, clientName, LocalDateTime.now(), ++seq);
+            throw new RuntimeException(String.format("[%d] %s",
+                    McpErrorCode.NHI_BLOCKED.getCode(), McpErrorCode.NHI_BLOCKED.getMessage()));
         }
 
         // Capability access check (default deny)
@@ -997,15 +1039,31 @@ public class ToolCallOrchestrator {
         if (agentRegistryService.isAgentBlocked(sessionId)) {
             log.warn("🚫 [{}] BLOCKED agent attempted resource read: session={}, resource={}",
                     correlationId, sessionId, publicName);
-            auditService.auditOrchestrationError(
-                    correlationId, sessionId, null, publicName,
-                    McpErrorCode.AGENT_BLOCKED,
-                    "Agent is blocked by admin. Contact your gateway administrator.",
-                    requestId, clientName,
-                    LocalDateTime.now(), ++seq);
+            auditService.auditOrchestrationError(correlationId, sessionId, null, publicName,
+                    McpErrorCode.AGENT_BLOCKED, "Agent is blocked by admin.",
+                    requestId, clientName, LocalDateTime.now(), ++seq);
             throw new RuntimeException(String.format("[%d] %s",
-                    McpErrorCode.AGENT_BLOCKED.getCode(),
-                    McpErrorCode.AGENT_BLOCKED.getMessage()));
+                    McpErrorCode.AGENT_BLOCKED.getCode(), McpErrorCode.AGENT_BLOCKED.getMessage()));
+        }
+        // Human user block gate (defense-in-depth)
+        if (agentRegistryService.isHumanBlocked(sessionId)) {
+            log.warn("🚫 [{}] BLOCKED human attempted resource read: session={}, resource={}",
+                    correlationId, sessionId, publicName);
+            auditService.auditOrchestrationError(correlationId, sessionId, null, publicName,
+                    McpErrorCode.HUMAN_BLOCKED, "Human user is blocked by admin.",
+                    requestId, clientName, LocalDateTime.now(), ++seq);
+            throw new RuntimeException(String.format("[%d] %s",
+                    McpErrorCode.HUMAN_BLOCKED.getCode(), McpErrorCode.HUMAN_BLOCKED.getMessage()));
+        }
+        // NHI block gate (defense-in-depth)
+        if (agentRegistryService.isNhiBlocked(sessionId)) {
+            log.warn("🚫 [{}] BLOCKED NHI attempted resource read: session={}, resource={}",
+                    correlationId, sessionId, publicName);
+            auditService.auditOrchestrationError(correlationId, sessionId, null, publicName,
+                    McpErrorCode.NHI_BLOCKED, "Service identity is blocked by admin.",
+                    requestId, clientName, LocalDateTime.now(), ++seq);
+            throw new RuntimeException(String.format("[%d] %s",
+                    McpErrorCode.NHI_BLOCKED.getCode(), McpErrorCode.NHI_BLOCKED.getMessage()));
         }
 
         // Capability access check (default deny)

@@ -92,6 +92,15 @@ public enum AuditEventType {
     AGENT_CONNECTION_REJECTED,
     SESSION_IDENTITY_MISMATCH,
 
+    // ── Area 7b — Identity Blocking Events ──────────────────────────
+    HUMAN_USER_BLOCKED,              // admin action: block human user
+    HUMAN_USER_UNBLOCKED,            // admin action: unblock human user
+    NHI_IDENTITY_BLOCKED,            // admin action: block NHI
+    NHI_IDENTITY_UNBLOCKED,          // admin action: unblock NHI
+    HUMAN_CONNECTION_REJECTED,       // runtime: blocked human tried to connect/request
+    NHI_CONNECTION_REJECTED,         // runtime: blocked NHI tried to connect/request
+    BLOCKED_SESSION_TERMINATED,      // proactive: admin block killed active session
+
     // ── Area 8 — Capability Access Profiles ─────────────────────────
     CAPABILITY_ACCESS_GRANTED,
     CAPABILITY_ACCESS_DENIED,

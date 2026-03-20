@@ -9,8 +9,10 @@ import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayAgentRepo
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayAgentSessionRepository;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayHumanUserRepository;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayNhiRepository;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.event.BlockedSessionEvent;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -45,6 +47,7 @@ public class AgentRegistryService {
     private final GatewayHumanUserRepository humanUserRepository;
     private final GatewayNhiRepository nhiRepository;
     private final McpAuditService auditService;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * In-memory cache: "agentName:agentVersion" → entity (for fast upsert checks).
@@ -70,12 +73,14 @@ public class AgentRegistryService {
             GatewayAgentSessionRepository sessionRepository,
             GatewayHumanUserRepository humanUserRepository,
             GatewayNhiRepository nhiRepository,
-            McpAuditService auditService) {
+            McpAuditService auditService,
+            ApplicationEventPublisher eventPublisher) {
         this.agentRepository = agentRepository;
         this.sessionRepository = sessionRepository;
         this.humanUserRepository = humanUserRepository;
         this.nhiRepository = nhiRepository;
         this.auditService = auditService;
+        this.eventPublisher = eventPublisher;
     }
 
     // ════════════════════════════════════════════════════════════════════
@@ -660,11 +665,14 @@ public class AgentRegistryService {
     }
 
     /**
-     * Block an agent — sets approval_status to BLOCKED.
-     * Blocked agents will be rejected on next connection attempt.
+     * Block an agent — sets approval_status to BLOCKED, terminates all active sessions,
+     * publishes {@link BlockedSessionEvent} for each so {@code HttpMcpAuditFilter}
+     * immediately rejects further requests on those sessions.
+     *
+     * @return a result holder with the entity and the count of terminated sessions
      */
     @Transactional
-    public GatewayAgentEntity blockAgent(UUID agentId, String adminActor, String adminIp) {
+    public AgentBlockResult blockAgent(UUID agentId, String adminActor, String adminIp) {
         GatewayAgentEntity agent = agentRepository.findById(agentId)
                 .orElseThrow(() -> new IllegalArgumentException("Agent not found: " + agentId));
         String previousApprovalStatus = agent.getApprovalStatus();
@@ -673,17 +681,72 @@ public class AgentRegistryService {
         // Update cache
         String key = cacheKey(agent.getAgentName(), agent.getAgentVersion());
         agentCache.put(key, updated);
+
+        // ── Proactive session termination ──
+        List<GatewayAgentSessionEntity> activeSessions =
+                sessionRepository.findConnectedByAgentId(agentId);
+
+        Set<UUID> affectedHumanIds = new LinkedHashSet<>();
+        Set<UUID> affectedNhiIds = new LinkedHashSet<>();
+
+        for (GatewayAgentSessionEntity session : activeSessions) {
+            String sessionId = session.getSessionId();
+            if (session.getHumanUserId() != null) affectedHumanIds.add(session.getHumanUserId());
+            if (session.getNhiId() != null) affectedNhiIds.add(session.getNhiId());
+            disconnectSession(sessionId);
+            eventPublisher.publishEvent(new BlockedSessionEvent(sessionId, "AGENT", agent.getAgentName()));
+            auditService.auditBlockedSessionTerminated(sessionId, agent.getAgentName(),
+                    "AGENT", agent.getAgentName(),
+                    "Admin blocked agent");
+        }
+
+        // Resolve affected identity names for admin response
+        List<Map<String, Object>> affectedHumans = affectedHumanIds.stream()
+                .map(hid -> humanUserRepository.findById(hid).orElse(null))
+                .filter(java.util.Objects::nonNull)
+                .map(h -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("id", h.getId());
+                    m.put("preferredUsername", h.getPreferredUsername());
+                    m.put("email", h.getEmail());
+                    return m;
+                }).toList();
+
+        List<Map<String, Object>> affectedNhis = affectedNhiIds.stream()
+                .map(nid -> nhiRepository.findById(nid).orElse(null))
+                .filter(java.util.Objects::nonNull)
+                .map(n -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("id", n.getId());
+                    m.put("serviceName", n.getServiceName());
+                    m.put("clientId", n.getClientId());
+                    return m;
+                }).toList();
+
+        // ── Audit: admin action ──
         auditService.auditAgentBlocked(
                 updated.getId(),
                 updated.getAgentName(),
                 updated.getAgentVersion(),
                 previousApprovalStatus,
                 adminActor,
-                adminIp);
-        log.info("🚫 Agent BLOCKED: {} v{} (id={})",
-                agent.getAgentName(), agent.getAgentVersion(), agentId);
-        return updated;
+                adminIp,
+                activeSessions.size(),
+                affectedHumans,
+                affectedNhis);
+        log.info("🚫 Agent BLOCKED: {} v{} (id={}, sessions terminated: {}, humans affected: {}, NHIs affected: {})",
+                agent.getAgentName(), agent.getAgentVersion(), agentId,
+                activeSessions.size(), affectedHumans.size(), affectedNhis.size());
+        return new AgentBlockResult(updated, activeSessions.size(), affectedHumans, affectedNhis);
     }
+
+    /** Result holder for agent block operations — includes impacted identities. */
+    public record AgentBlockResult(
+            GatewayAgentEntity agent,
+            int sessionsTerminated,
+            List<Map<String, Object>> affectedHumanUsers,
+            List<Map<String, Object>> affectedNhis
+    ) {}
 
     // ════════════════════════════════════════════════════════════════════
     // HUMAN USER MANAGEMENT
@@ -807,6 +870,29 @@ public class AgentRegistryService {
     }
 
     /**
+     * Returns the blocked reason for a human user behind this session, or empty if not blocked.
+     * Combines the boolean check + reason retrieval in one DB call.
+     */
+    public Optional<String> getHumanBlockReason(String sessionId) {
+        if (sessionId == null) return Optional.empty();
+        UUID humanUserId = sessionToHumanUserId.get(sessionId);
+        if (humanUserId == null) return Optional.empty();
+        return humanUserRepository.findById(humanUserId)
+                .filter(h -> "BLOCKED".equals(h.getStatus()))
+                .map(h -> h.getBlockedReason() != null ? h.getBlockedReason() : "Blocked by admin");
+    }
+
+    /** Returns the human user's preferred username for this session (for error messages). */
+    public String getHumanUsername(String sessionId) {
+        if (sessionId == null) return null;
+        UUID humanUserId = sessionToHumanUserId.get(sessionId);
+        if (humanUserId == null) return null;
+        return humanUserRepository.findById(humanUserId)
+                .map(h -> h.getPreferredUsername())
+                .orElse(null);
+    }
+
+    /**
      * Check if a human user is blocked by their IdP subject (JWT sub).
      * Used during initialize to reject connections from blocked humans.
      *
@@ -818,6 +904,24 @@ public class AgentRegistryService {
         return humanUserRepository.findByIdpSubject(idpSubject)
                 .map(h -> "BLOCKED".equals(h.getStatus()))
                 .orElse(false);
+    }
+
+    /** Returns blocked reason for a human by JWT subject, or "Blocked by admin" if no reason stored. */
+    public String getHumanBlockReasonBySubject(String idpSubject) {
+        if (idpSubject == null) return "Blocked by admin";
+        return humanUserRepository.findByIdpSubject(idpSubject)
+                .filter(h -> "BLOCKED".equals(h.getStatus()))
+                .map(h -> h.getBlockedReason() != null ? h.getBlockedReason() : "Blocked by admin")
+                .orElse("Blocked by admin");
+    }
+
+    /** Returns blocked reason for an NHI by JWT subject, or "Blocked by admin" if no reason stored. */
+    public String getNhiBlockReasonBySubject(String idpSubject) {
+        if (idpSubject == null) return "Blocked by admin";
+        return nhiRepository.findByIdpSubject(idpSubject)
+                .filter(n -> "BLOCKED".equals(n.getStatus()))
+                .map(n -> n.getBlockedReason() != null ? n.getBlockedReason() : "Blocked by admin")
+                .orElse("Blocked by admin");
     }
 
     // ════════════════════════════════════════════════════════════════════
@@ -924,6 +1028,29 @@ public class AgentRegistryService {
         return nhiRepository.findById(nhiId)
                 .map(n -> "BLOCKED".equals(n.getStatus()))
                 .orElse(false);
+    }
+
+    /**
+     * Returns the blocked reason for an NHI behind this session, or empty if not blocked.
+     * Combines the boolean check + reason retrieval in one DB call.
+     */
+    public Optional<String> getNhiBlockReason(String sessionId) {
+        if (sessionId == null) return Optional.empty();
+        UUID nhiId = sessionToNhiId.get(sessionId);
+        if (nhiId == null) return Optional.empty();
+        return nhiRepository.findById(nhiId)
+                .filter(n -> "BLOCKED".equals(n.getStatus()))
+                .map(n -> n.getBlockedReason() != null ? n.getBlockedReason() : "Blocked by admin");
+    }
+
+    /** Returns the NHI service name for this session (for error messages). */
+    public String getNhiServiceName(String sessionId) {
+        if (sessionId == null) return null;
+        UUID nhiId = sessionToNhiId.get(sessionId);
+        if (nhiId == null) return null;
+        return nhiRepository.findById(nhiId)
+                .map(n -> n.getServiceName())
+                .orElse(null);
     }
 
     /**

@@ -3,6 +3,7 @@ package com.ws.wsAgenticSecurityGateway.agentRegistry.controller;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentSessionEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayHumanUserEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.HumanUserService;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -106,15 +107,19 @@ public class HumanUserController {
 
     @PostMapping("/{id}/block")
     public ResponseEntity<Map<String, Object>> blockHuman(
-            @PathVariable UUID id, @RequestBody(required = false) Map<String, String> body) {
+            @PathVariable UUID id, @RequestBody(required = false) Map<String, String> body,
+            HttpServletRequest request) {
         try {
             String reason = body != null ? body.get("reason") : null;
-            GatewayHumanUserEntity human = humanUserService.blockHumanUser(id, reason);
+            HumanUserService.BlockResult blockResult = humanUserService.blockHumanUser(
+                    id, reason, resolveAdminActor(request), resolveAdminIp(request));
 
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("status", "ok");
-            result.put("message", "Human user '" + human.getPreferredUsername() + "' blocked");
-            result.put("userStatus", human.getStatus());
+            result.put("message", "Human user '" + blockResult.human().getPreferredUsername() + "' blocked");
+            result.put("userStatus", blockResult.human().getStatus());
+            result.put("sessionsTerminated", blockResult.sessionsTerminated());
+            result.put("affectedAgents", blockResult.affectedAgents().size());
             return ResponseEntity.ok(result);
         } catch (NoSuchElementException e) {
             return ResponseEntity.notFound().build();
@@ -122,9 +127,11 @@ public class HumanUserController {
     }
 
     @PostMapping("/{id}/unblock")
-    public ResponseEntity<Map<String, Object>> unblockHuman(@PathVariable UUID id) {
+    public ResponseEntity<Map<String, Object>> unblockHuman(@PathVariable UUID id,
+                                                             HttpServletRequest request) {
         try {
-            GatewayHumanUserEntity human = humanUserService.unblockHumanUser(id);
+            GatewayHumanUserEntity human = humanUserService.unblockHumanUser(
+                    id, resolveAdminActor(request), resolveAdminIp(request));
 
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("status", "ok");
@@ -134,6 +141,25 @@ public class HumanUserController {
         } catch (NoSuchElementException e) {
             return ResponseEntity.notFound().build();
         }
+    }
+
+    private String resolveAdminActor(HttpServletRequest request) {
+        String headerUser = request.getHeader("X-Admin-User");
+        if (headerUser != null && !headerUser.isBlank()) {
+            return headerUser;
+        }
+        return "anonymous";
+    }
+
+    private String resolveAdminIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            String[] ips = forwarded.split(",");
+            if (ips.length > 0 && !ips[0].trim().isBlank()) {
+                return ips[0].trim();
+            }
+        }
+        return request.getRemoteAddr();
     }
 
     // ════════════════════════════════════════════════════════════════════

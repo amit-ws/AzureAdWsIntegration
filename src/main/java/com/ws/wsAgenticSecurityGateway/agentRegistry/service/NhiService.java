@@ -2,13 +2,16 @@ package com.ws.wsAgenticSecurityGateway.agentRegistry.service;
 
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentSessionEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayNhiEntity;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.event.BlockedSessionEvent;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayAgentSessionRepository;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayNhiRepository;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditEventType;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditStatus;
 import com.ws.wsAgenticSecurityGateway.audit.entity.McpAuditLog;
 import com.ws.wsAgenticSecurityGateway.audit.repository.McpAuditLogRepository;
+import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,13 +39,22 @@ public class NhiService {
     private final GatewayNhiRepository nhiRepository;
     private final GatewayAgentSessionRepository sessionRepository;
     private final McpAuditLogRepository auditLogRepository;
+    private final AgentRegistryService agentRegistryService;
+    private final McpAuditService auditService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public NhiService(GatewayNhiRepository nhiRepository,
                       GatewayAgentSessionRepository sessionRepository,
-                      McpAuditLogRepository auditLogRepository) {
+                      McpAuditLogRepository auditLogRepository,
+                      AgentRegistryService agentRegistryService,
+                      McpAuditService auditService,
+                      ApplicationEventPublisher eventPublisher) {
         this.nhiRepository = nhiRepository;
         this.sessionRepository = sessionRepository;
         this.auditLogRepository = auditLogRepository;
+        this.agentRegistryService = agentRegistryService;
+        this.auditService = auditService;
+        this.eventPublisher = eventPublisher;
     }
 
     // ════════════════════════════════════════════════════════════════════
@@ -70,29 +82,79 @@ public class NhiService {
                 .findByServiceNameContainingIgnoreCaseOrClientIdContainingIgnoreCase(query, query);
     }
 
+    /**
+     * Block an NHI — sets status to BLOCKED, terminates all active sessions,
+     * publishes {@link BlockedSessionEvent} for each so {@code HttpMcpAuditFilter}
+     * immediately rejects further requests on those sessions.
+     *
+     * @return a result holder with the entity and the count of terminated sessions
+     */
     @Transactional
-    public GatewayNhiEntity blockNhi(UUID id, String reason) {
+    public BlockResult blockNhi(UUID id, String reason, String adminActor, String adminIp) {
         GatewayNhiEntity nhi = nhiRepository.findById(id)
                 .orElseThrow(() -> new NoSuchElementException("NHI not found: " + id));
+        String previousStatus = nhi.getStatus();
         nhi.setStatus("BLOCKED");
         nhi.setBlockedReason(reason);
         nhi.setBlockedAt(LocalDateTime.now());
         nhiRepository.save(nhi);
-        log.info("NHI blocked: {} (reason: {})", nhi.getServiceName(), reason);
-        return nhi;
+
+        // ── Proactive session termination ──
+        List<GatewayAgentSessionEntity> activeSessions =
+                sessionRepository.findConnectedByNhiId(id);
+        Map<String, String> affectedAgentMap = new LinkedHashMap<>(); // agentId -> agentName
+        for (GatewayAgentSessionEntity session : activeSessions) {
+            String sessionId = session.getSessionId();
+            String agentName = session.getAgent() != null ? session.getAgent().getAgentName() : "unknown";
+            if (session.getAgent() != null) {
+                affectedAgentMap.put(session.getAgent().getId().toString(), agentName);
+            }
+            agentRegistryService.disconnectSession(sessionId);
+            eventPublisher.publishEvent(new BlockedSessionEvent(sessionId, "NHI", nhi.getServiceName()));
+            auditService.auditBlockedSessionTerminated(sessionId, agentName,
+                    "NHI", nhi.getServiceName(),
+                    "Admin blocked NHI" + (reason != null ? ": " + reason : ""));
+        }
+
+        List<Map<String, Object>> affectedAgents = affectedAgentMap.entrySet().stream()
+                .map(e -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("agentId", e.getKey());
+                    m.put("agentName", e.getValue());
+                    return m;
+                }).toList();
+
+        // ── Audit: admin action ──
+        auditService.auditNhiBlocked(
+                nhi.getId(), nhi.getServiceName(), nhi.getClientId(), nhi.getIdpSubject(),
+                previousStatus, reason, adminActor, adminIp,
+                activeSessions.size(), affectedAgents);
+
+        log.info("🚫 NHI blocked: {} (reason: {}, sessions terminated: {}, agents affected: {})",
+                nhi.getServiceName(), reason, activeSessions.size(), affectedAgents.size());
+        return new BlockResult(nhi, activeSessions.size(), affectedAgents);
     }
 
     @Transactional
-    public GatewayNhiEntity unblockNhi(UUID id) {
+    public GatewayNhiEntity unblockNhi(UUID id, String adminActor, String adminIp) {
         GatewayNhiEntity nhi = nhiRepository.findById(id)
                 .orElseThrow(() -> new NoSuchElementException("NHI not found: " + id));
         nhi.setStatus("ACTIVE");
         nhi.setBlockedReason(null);
         nhi.setBlockedAt(null);
         nhiRepository.save(nhi);
-        log.info("NHI unblocked: {}", nhi.getServiceName());
+
+        auditService.auditNhiUnblocked(
+                nhi.getId(), nhi.getServiceName(), nhi.getClientId(), nhi.getIdpSubject(),
+                adminActor, adminIp);
+
+        log.info("✅ NHI unblocked: {}", nhi.getServiceName());
         return nhi;
     }
+
+    /** Result holder for block operations — includes entity + session termination count. */
+    public record BlockResult(GatewayNhiEntity nhi, int sessionsTerminated,
+                               List<Map<String, Object>> affectedAgents) {}
 
     // ════════════════════════════════════════════════════════════════════
     //  SUMMARY STATS

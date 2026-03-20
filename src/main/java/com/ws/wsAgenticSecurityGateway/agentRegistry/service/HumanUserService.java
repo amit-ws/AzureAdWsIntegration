@@ -2,13 +2,16 @@ package com.ws.wsAgenticSecurityGateway.agentRegistry.service;
 
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentSessionEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayHumanUserEntity;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.event.BlockedSessionEvent;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayAgentSessionRepository;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayHumanUserRepository;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditEventType;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditStatus;
 import com.ws.wsAgenticSecurityGateway.audit.entity.McpAuditLog;
 import com.ws.wsAgenticSecurityGateway.audit.repository.McpAuditLogRepository;
+import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,13 +39,22 @@ public class HumanUserService {
     private final GatewayHumanUserRepository humanUserRepository;
     private final GatewayAgentSessionRepository sessionRepository;
     private final McpAuditLogRepository auditLogRepository;
+    private final AgentRegistryService agentRegistryService;
+    private final McpAuditService auditService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public HumanUserService(GatewayHumanUserRepository humanUserRepository,
                             GatewayAgentSessionRepository sessionRepository,
-                            McpAuditLogRepository auditLogRepository) {
+                            McpAuditLogRepository auditLogRepository,
+                            AgentRegistryService agentRegistryService,
+                            McpAuditService auditService,
+                            ApplicationEventPublisher eventPublisher) {
         this.humanUserRepository = humanUserRepository;
         this.sessionRepository = sessionRepository;
         this.auditLogRepository = auditLogRepository;
+        this.agentRegistryService = agentRegistryService;
+        this.auditService = auditService;
+        this.eventPublisher = eventPublisher;
     }
 
     // ════════════════════════════════════════════════════════════════════
@@ -70,29 +82,79 @@ public class HumanUserService {
                 .findByPreferredUsernameContainingIgnoreCaseOrEmailContainingIgnoreCase(query, query);
     }
 
+    /**
+     * Block a human user — sets status to BLOCKED, terminates all active sessions,
+     * publishes {@link BlockedSessionEvent} for each so {@code HttpMcpAuditFilter}
+     * immediately rejects further requests on those sessions.
+     *
+     * @return a result holder with the entity and the count of terminated sessions
+     */
     @Transactional
-    public GatewayHumanUserEntity blockHumanUser(UUID id, String reason) {
+    public BlockResult blockHumanUser(UUID id, String reason, String adminActor, String adminIp) {
         GatewayHumanUserEntity human = humanUserRepository.findById(id)
                 .orElseThrow(() -> new NoSuchElementException("Human user not found: " + id));
+        String previousStatus = human.getStatus();
         human.setStatus("BLOCKED");
         human.setBlockedReason(reason);
         human.setBlockedAt(LocalDateTime.now());
         humanUserRepository.save(human);
-        log.info("Human user blocked: {} (reason: {})", human.getPreferredUsername(), reason);
-        return human;
+
+        // ── Proactive session termination ──
+        List<GatewayAgentSessionEntity> activeSessions =
+                sessionRepository.findConnectedByHumanUserId(id);
+        Map<String, String> affectedAgentMap = new LinkedHashMap<>(); // agentId → agentName
+        for (GatewayAgentSessionEntity session : activeSessions) {
+            String sessionId = session.getSessionId();
+            String agentName = session.getAgent() != null ? session.getAgent().getAgentName() : "unknown";
+            if (session.getAgent() != null) {
+                affectedAgentMap.put(session.getAgent().getId().toString(), agentName);
+            }
+            agentRegistryService.disconnectSession(sessionId);
+            eventPublisher.publishEvent(new BlockedSessionEvent(sessionId, "HUMAN", human.getPreferredUsername()));
+            auditService.auditBlockedSessionTerminated(sessionId, agentName,
+                    "HUMAN", human.getPreferredUsername(),
+                    "Admin blocked human user" + (reason != null ? ": " + reason : ""));
+        }
+
+        List<Map<String, Object>> affectedAgents = affectedAgentMap.entrySet().stream()
+                .map(e -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("agentId", e.getKey());
+                    m.put("agentName", e.getValue());
+                    return m;
+                }).toList();
+
+        // ── Audit: admin action ──
+        auditService.auditHumanUserBlocked(
+                human.getId(), human.getPreferredUsername(), human.getIdpSubject(),
+                previousStatus, reason, adminActor, adminIp,
+                activeSessions.size(), affectedAgents);
+
+        log.info("🚫 Human user blocked: {} (reason: {}, sessions terminated: {}, agents affected: {})",
+                human.getPreferredUsername(), reason, activeSessions.size(), affectedAgents.size());
+        return new BlockResult(human, activeSessions.size(), affectedAgents);
     }
 
     @Transactional
-    public GatewayHumanUserEntity unblockHumanUser(UUID id) {
+    public GatewayHumanUserEntity unblockHumanUser(UUID id, String adminActor, String adminIp) {
         GatewayHumanUserEntity human = humanUserRepository.findById(id)
                 .orElseThrow(() -> new NoSuchElementException("Human user not found: " + id));
         human.setStatus("ACTIVE");
         human.setBlockedReason(null);
         human.setBlockedAt(null);
         humanUserRepository.save(human);
-        log.info("Human user unblocked: {}", human.getPreferredUsername());
+
+        auditService.auditHumanUserUnblocked(
+                human.getId(), human.getPreferredUsername(), human.getIdpSubject(),
+                adminActor, adminIp);
+
+        log.info("✅ Human user unblocked: {}", human.getPreferredUsername());
         return human;
     }
+
+    /** Result holder for block operations — includes entity + session termination count. */
+    public record BlockResult(GatewayHumanUserEntity human, int sessionsTerminated,
+                               List<Map<String, Object>> affectedAgents) {}
 
     // ════════════════════════════════════════════════════════════════════
     //  SUMMARY STATS
