@@ -1,12 +1,12 @@
 package com.ws.wsAgenticSecurityGateway.wsServer.config;
 
+import com.ws.wsAgenticSecurityGateway.authConfig.service.AuthConfigService;
+import com.ws.wsAgenticSecurityGateway.authConfig.service.DelegatingJwtDecoder;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.core.convert.converter.Converter;
-import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -14,7 +14,6 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.web.SecurityFilterChain;
 
@@ -22,82 +21,101 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * Spring Security configuration for the WS MCP Gateway.
+ * Dynamic Spring Security configuration for the WS MCP Gateway.
  *
- * <p>When {@code ws.gateway.auth.mode=oauth2}, the gateway acts as an OAuth2 Resource Server:
- * it validates JWT tokens against the IdP's JWKS endpoint before any request reaches
- * the MCP servlet. Invalid/expired/missing tokens get a 401 with WWW-Authenticate header.
+ * <p>Uses a request-time auth mode check instead of startup-time {@code @ConditionalOnProperty}.
+ * This allows runtime switching between oauth2 and none modes via the dashboard without restart.
  *
- * <p>When {@code ws.gateway.auth.mode=none}, all endpoints are open (dev/stdio mode).
+ * <p>Two filter chains (ordered):
+ * <ol>
+ *   <li>{@code Order(1)} — MCP endpoint chain: matches {@code /mcp/**} ONLY when auth mode is oauth2.
+ *       Enforces JWT validation via {@link DelegatingJwtDecoder}.</li>
+ *   <li>{@code Order(2)} — Catch-all permissive chain: handles everything else (admin APIs,
+ *       health, well-known endpoints) and also handles {@code /mcp/**} when mode is none.</li>
+ * </ol>
  *
  * <p>IdP-agnostic: works with Keycloak, Azure AD, Okta, Auth0 — any OIDC-compliant provider.
- * Roles are extracted from both {@code realm_access.roles} (Keycloak realm roles)
- * and {@code resource_access.<client>.roles} (Keycloak client roles), plus
- * {@code roles} (Azure AD) and {@code groups} (Okta).
  */
 @Slf4j
 @Configuration
 @EnableWebSecurity
 public class GatewaySecurityConfig {
 
-    @Value("${ws.gateway.auth.mode:none}")
-    private String authMode;
-
     /**
-     * OAuth2 security filter chain — active when auth mode is oauth2.
-     * MCP endpoints require a valid JWT; admin/health/monitoring endpoints are open.
+     * DelegatingJwtDecoder bean — the dynamic decoder that supports runtime hot-swapping.
+     * Starts with a no-op decoder; AuthConfigService.initializeOnStartup() activates it
+     * from DB config or env vars after ApplicationReadyEvent.
      */
     @Bean
-    @ConditionalOnProperty(name = "ws.gateway.auth.mode", havingValue = "oauth2")
-    public SecurityFilterChain oauth2SecurityFilterChain(HttpSecurity http) throws Exception {
-        log.info("🔐 Configuring OAuth2 Resource Server security (mode=oauth2)");
+    public DelegatingJwtDecoder delegatingJwtDecoder(AuthConfigService authConfigService) {
+        // Start with no-op — will be replaced by AuthConfigService on startup
+        JwtDecoder noOp = token -> {
+            throw new org.springframework.security.oauth2.jwt.JwtException(
+                    "JWT decoding not yet initialized — gateway starting up");
+        };
+        DelegatingJwtDecoder decoder = new DelegatingJwtDecoder(noOp);
+
+        // Wire the decoder reference into AuthConfigService (breaks circular dependency)
+        authConfigService.setDelegatingJwtDecoder(decoder);
+
+        log.info("DelegatingJwtDecoder registered — will be activated on startup from DB/env config");
+        return decoder;
+    }
+
+    /**
+     * JwtDecoder bean alias — Spring Boot's auto-config looks for a JwtDecoder bean.
+     * By providing DelegatingJwtDecoder as THE JwtDecoder, we prevent Spring from
+     * trying to auto-create one (which would fail with "jwkSetUri cannot be empty").
+     */
+    @Bean
+    public JwtDecoder jwtDecoder(DelegatingJwtDecoder delegatingJwtDecoder) {
+        return delegatingJwtDecoder;
+    }
+
+    /**
+     * MCP endpoint security chain — enforces JWT authentication for /mcp/* when auth mode is oauth2.
+     * Uses a request-time matcher that consults AuthConfigService.getEffectiveMode().
+     * When mode is "none", this chain does NOT match, and the permissive chain below handles it.
+     */
+    @Bean
+    @Order(1)
+    public SecurityFilterChain mcpSecurityFilterChain(HttpSecurity http,
+                                                       DelegatingJwtDecoder delegatingJwtDecoder,
+                                                       AuthConfigService authConfigService) throws Exception {
+        log.info("Configuring dynamic MCP security filter chain (request-time auth mode check)");
 
         http
+            .securityMatcher(request -> {
+                String path = request.getRequestURI();
+                if (!path.startsWith("/mcp")) return false;
+                return "oauth2".equals(authConfigService.getEffectiveMode());
+            })
             .csrf(csrf -> csrf.disable())
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/.well-known/**").permitAll()
-                .requestMatchers("/api/admin/**").permitAll()
-                .requestMatchers("/api/gateway/health").permitAll()
-                .requestMatchers("/api/mcp/**").permitAll()
-                .requestMatchers("/mcp/**").authenticated()
-                .anyRequest().permitAll()
-            )
+            .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
             .oauth2ResourceServer(oauth2 -> oauth2
-                .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
+                .jwt(jwt -> jwt
+                    .decoder(delegatingJwtDecoder)
+                    .jwtAuthenticationConverter(jwtAuthenticationConverter()))
             );
 
         return http.build();
     }
 
     /**
-     * Permissive security filter chain — active when auth mode is none (dev/stdio).
+     * Permissive catch-all security chain — handles all non-MCP requests and
+     * MCP requests when auth mode is "none".
      */
     @Bean
-    @ConditionalOnProperty(name = "ws.gateway.auth.mode", havingValue = "none", matchIfMissing = true)
-    public SecurityFilterChain noAuthSecurityFilterChain(HttpSecurity http) throws Exception {
-        log.info("🔓 Configuring permissive security (mode=none)");
+    @Order(2)
+    public SecurityFilterChain permissiveFilterChain(HttpSecurity http) throws Exception {
+        log.info("Configuring permissive catch-all security filter chain");
 
         http
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
 
         return http.build();
-    }
-
-    /**
-     * No-op JwtDecoder when auth is disabled.
-     * Prevents Spring Boot's OAuth2ResourceServerJwtConfiguration from failing
-     * with "jwkSetUri cannot be empty" when no JWKS URI is configured.
-     * Spring's auto-config is @ConditionalOnMissingBean, so this takes precedence.
-     */
-    @Bean
-    @ConditionalOnProperty(name = "ws.gateway.auth.mode", havingValue = "none", matchIfMissing = true)
-    public JwtDecoder noOpJwtDecoder() {
-        log.debug("No-op JwtDecoder registered (auth mode=none)");
-        return token -> {
-            throw new UnsupportedOperationException("JWT decoding is disabled (auth.mode=none)");
-        };
     }
 
     /**

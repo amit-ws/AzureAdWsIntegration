@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentCapabilityFilterService;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
+import com.ws.wsAgenticSecurityGateway.authConfig.service.AuthConfigService;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
 import io.modelcontextprotocol.server.transport.HttpServletStreamableServerTransportProvider;
@@ -96,12 +97,12 @@ public class HttpTransportConfig {
      * filters (HttpMcpAuditFilter) and the context extractor.
      */
     @Bean
-    @ConditionalOnProperty(name = "ws.gateway.auth.mode", havingValue = "oauth2")
     public FilterRegistrationBean<GatewayOAuth2Filter> mcpOAuth2FilterRegistration(
             McpAuditService auditService,
-            TokenClassificationService tokenClassificationService) {
+            TokenClassificationService tokenClassificationService,
+            AuthConfigService authConfigService) {
         FilterRegistrationBean<GatewayOAuth2Filter> registration = new FilterRegistrationBean<>();
-        registration.setFilter(new GatewayOAuth2Filter(auditService, tokenClassificationService));
+        registration.setFilter(new GatewayOAuth2Filter(auditService, tokenClassificationService, authConfigService));
         registration.addUrlPatterns("/mcp/*");
         registration.setOrder(1);
         registration.setName("mcpOAuth2Filter");

@@ -101,6 +101,17 @@ public enum AuditEventType {
     CAPABILITY_PROFILE_ASSIGNED,
     CAPABILITY_PROFILE_UNASSIGNED,
 
+    // ── Area 9 — Auth Configuration Management ──────────────────────
+    AUTH_CONFIG_CREATED,
+    AUTH_CONFIG_UPDATED,
+    AUTH_CONFIG_DELETED,
+    AUTH_MODE_CHANGED,
+    AUTH_CONFIG_VALIDATED,
+    AUTH_CONFIG_VALIDATION_FAILED,
+    AUTH_JWKS_REFRESHED,
+    AUTH_GRACE_PERIOD_STARTED,
+    AUTH_GRACE_PERIOD_ENDED,
+
     // ── System-level ──────────────────────────────────────────────────
     SYSTEM_STARTUP,
     SYSTEM_SHUTDOWN,

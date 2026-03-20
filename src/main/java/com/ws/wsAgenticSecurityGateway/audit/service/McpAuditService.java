@@ -1886,6 +1886,184 @@ public class McpAuditService {
                 }
         }
 
+        // ════════════════════════════════════════════════════════════════════
+        // AREA 9 — Auth Configuration Management
+        // ════════════════════════════════════════════════════════════════════
+
+        @Async("mcpAuditExecutor")
+        public void auditAuthConfigCreated(String authMode, String issuerUri, String idpName,
+                        String classificationMode, String adminIdentity, String sourceIp) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.AUTH_CONFIG_CREATED)
+                                .module(AuditModule.AUTH_CONFIG)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .correlationId(generateCorrelationId())
+                                .sourceIp(sourceIp)
+                                .requestPayload(toJson(Map.of(
+                                                "authMode", authMode != null ? authMode : "",
+                                                "issuerUri", issuerUri != null ? issuerUri : "",
+                                                "idpDisplayName", idpName != null ? idpName : "",
+                                                "tokenClassificationMode", classificationMode != null ? classificationMode : "",
+                                                "adminIdentity", adminIdentity != null ? adminIdentity : "unknown",
+                                                "sourceIp", sourceIp != null ? sourceIp : "unknown")))
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditAuthConfigUpdated(Map<String, Object> changedFields,
+                        String adminIdentity, String sourceIp) {
+                Map<String, Object> payload = new java.util.LinkedHashMap<>(changedFields);
+                payload.put("adminIdentity", adminIdentity != null ? adminIdentity : "unknown");
+                payload.put("sourceIp", sourceIp != null ? sourceIp : "unknown");
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.AUTH_CONFIG_UPDATED)
+                                .module(AuditModule.AUTH_CONFIG)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .correlationId(generateCorrelationId())
+                                .sourceIp(sourceIp)
+                                .requestPayload(toJson(payload))
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditAuthConfigDeleted(String authMode, String issuerUri,
+                        String adminIdentity, String sourceIp) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.AUTH_CONFIG_DELETED)
+                                .module(AuditModule.AUTH_CONFIG)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.WARN)
+                                .correlationId(generateCorrelationId())
+                                .sourceIp(sourceIp)
+                                .requestPayload(toJson(Map.of(
+                                                "deletedAuthMode", authMode != null ? authMode : "",
+                                                "deletedIssuerUri", issuerUri != null ? issuerUri : "",
+                                                "adminIdentity", adminIdentity != null ? adminIdentity : "unknown",
+                                                "sourceIp", sourceIp != null ? sourceIp : "unknown")))
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditAuthModeChanged(String previousMode, String newMode,
+                        int activeSessionCount, String adminIdentity, String sourceIp) {
+                // CRITICAL severity when disabling auth (oauth2 -> none)
+                AuditSeverity severity = "none".equals(newMode) && "oauth2".equals(previousMode)
+                                ? AuditSeverity.ERROR   // CRITICAL — auth disabled
+                                : AuditSeverity.WARN;
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.AUTH_MODE_CHANGED)
+                                .module(AuditModule.AUTH_CONFIG)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(severity)
+                                .correlationId(generateCorrelationId())
+                                .sourceIp(sourceIp)
+                                .requestPayload(toJson(Map.of(
+                                                "previousMode", previousMode != null ? previousMode : "",
+                                                "newMode", newMode != null ? newMode : "",
+                                                "activeSessionCount", activeSessionCount,
+                                                "adminIdentity", adminIdentity != null ? adminIdentity : "unknown",
+                                                "sourceIp", sourceIp != null ? sourceIp : "unknown")))
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditAuthConfigValidated(String issuerUri, boolean jwksReachable,
+                        long latencyMs, int keyCount, String adminIdentity, String sourceIp) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.AUTH_CONFIG_VALIDATED)
+                                .module(AuditModule.AUTH_CONFIG)
+                                .status(jwksReachable ? AuditStatus.SUCCESS : AuditStatus.FAILURE)
+                                .severity(AuditSeverity.INFO)
+                                .correlationId(generateCorrelationId())
+                                .sourceIp(sourceIp)
+                                .durationMs(latencyMs)
+                                .requestPayload(toJson(Map.of(
+                                                "issuerUri", issuerUri != null ? issuerUri : "",
+                                                "jwksReachable", jwksReachable,
+                                                "latencyMs", latencyMs,
+                                                "jwksKeyCount", keyCount,
+                                                "adminIdentity", adminIdentity != null ? adminIdentity : "unknown",
+                                                "sourceIp", sourceIp != null ? sourceIp : "unknown")))
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditAuthConfigValidationFailed(String issuerUri, String errorMessage,
+                        int httpStatus, long timeoutMs, String adminIdentity, String sourceIp) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.AUTH_CONFIG_VALIDATION_FAILED)
+                                .module(AuditModule.AUTH_CONFIG)
+                                .status(AuditStatus.FAILURE)
+                                .severity(AuditSeverity.WARN)
+                                .correlationId(generateCorrelationId())
+                                .sourceIp(sourceIp)
+                                .durationMs(timeoutMs)
+                                .errorMessage(errorMessage)
+                                .errorCode(httpStatus)
+                                .requestPayload(toJson(Map.of(
+                                                "issuerUri", issuerUri != null ? issuerUri : "",
+                                                "errorMessage", errorMessage != null ? errorMessage : "",
+                                                "httpStatus", httpStatus,
+                                                "timeoutMs", timeoutMs,
+                                                "adminIdentity", adminIdentity != null ? adminIdentity : "unknown",
+                                                "sourceIp", sourceIp != null ? sourceIp : "unknown")))
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditAuthJwksRefreshed(String issuerUri, int previousKeyCount,
+                        int newKeyCount, String triggeredBy) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.AUTH_JWKS_REFRESHED)
+                                .module(AuditModule.AUTH_CONFIG)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(Map.of(
+                                                "issuerUri", issuerUri != null ? issuerUri : "",
+                                                "previousKeyCount", previousKeyCount,
+                                                "newKeyCount", newKeyCount,
+                                                "triggeredBy", triggeredBy != null ? triggeredBy : "unknown")))
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditAuthGracePeriodStarted(String previousIssuer, String newIssuer,
+                        int gracePeriodMinutes, int activeSessionCount) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.AUTH_GRACE_PERIOD_STARTED)
+                                .module(AuditModule.AUTH_CONFIG)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.WARN)
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(Map.of(
+                                                "previousIssuer", previousIssuer != null ? previousIssuer : "",
+                                                "newIssuer", newIssuer != null ? newIssuer : "",
+                                                "gracePeriodMinutes", gracePeriodMinutes,
+                                                "activeSessionCount", activeSessionCount)))
+                                .build());
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditAuthGracePeriodEnded(String previousIssuer, int sessionsStillOnOldAuth) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.AUTH_GRACE_PERIOD_ENDED)
+                                .module(AuditModule.AUTH_CONFIG)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(Map.of(
+                                                "previousIssuer", previousIssuer != null ? previousIssuer : "",
+                                                "sessionsStillOnOldAuth", sessionsStillOnOldAuth)))
+                                .build());
+        }
+
+        // ════════════════════════════════════════════════════════════════════
+        // UTILITY METHODS
+        // ════════════════════════════════════════════════════════════════════
+
         private String generateCorrelationId() {
                 return UUID.randomUUID().toString().replace("-", "").substring(0, 16);
         }

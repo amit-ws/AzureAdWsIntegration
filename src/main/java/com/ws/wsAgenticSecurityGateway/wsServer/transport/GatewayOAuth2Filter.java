@@ -1,5 +1,6 @@
 package com.ws.wsAgenticSecurityGateway.wsServer.transport;
 
+import com.ws.wsAgenticSecurityGateway.authConfig.service.AuthConfigService;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import jakarta.servlet.*;
 import jakarta.servlet.http.HttpServletRequest;
@@ -60,11 +61,14 @@ public class GatewayOAuth2Filter implements Filter {
 
     private final McpAuditService auditService;
     private final TokenClassificationService tokenClassificationService;
+    private final AuthConfigService authConfigService;
 
     public GatewayOAuth2Filter(McpAuditService auditService,
-                               TokenClassificationService tokenClassificationService) {
+                               TokenClassificationService tokenClassificationService,
+                               AuthConfigService authConfigService) {
         this.auditService = auditService;
         this.tokenClassificationService = tokenClassificationService;
+        this.authConfigService = authConfigService;
     }
 
     @Override
@@ -72,6 +76,13 @@ public class GatewayOAuth2Filter implements Filter {
                          FilterChain chain) throws IOException, ServletException {
 
         HttpServletRequest request = (HttpServletRequest) servletRequest;
+
+        // Skip JWT extraction when auth mode is "none" (runtime-configurable)
+        if (!"oauth2".equals(authConfigService.getEffectiveMode())) {
+            chain.doFilter(servletRequest, servletResponse);
+            return;
+        }
+
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
         if (authentication instanceof JwtAuthenticationToken jwtAuth) {

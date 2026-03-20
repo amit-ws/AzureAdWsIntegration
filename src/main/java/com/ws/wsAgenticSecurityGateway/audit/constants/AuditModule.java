@@ -28,6 +28,9 @@ public enum AuditModule {
     /** Capability Access Profile management (CRUD, assignment, access control). */
     CAPABILITY_PROFILES,
 
+    /** Authentication configuration management (auth mode, IdP endpoints, JWKS). */
+    AUTH_CONFIG,
+
     /** Cross-cutting system events (startup, shutdown, etc.). */
     SYSTEM
 }

@@ -1,8 +1,8 @@
 package com.ws.wsAgenticSecurityGateway.wsServer.config;
 
+import com.ws.wsAgenticSecurityGateway.authConfig.service.AuthConfigService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -33,16 +33,23 @@ import java.util.Map;
  */
 @Slf4j
 @RestController
-@ConditionalOnProperty(name = "ws.gateway.auth.mode", havingValue = "oauth2")
 public class OAuth2ProtectedResourceConfig {
 
-    @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri:}")
-    private String issuerUri;
+    private final AuthConfigService authConfigService;
 
     @Value("${server.port:9492}")
     private int serverPort;
 
     private final RestTemplate restTemplate = new RestTemplate();
+
+    public OAuth2ProtectedResourceConfig(AuthConfigService authConfigService) {
+        this.authConfigService = authConfigService;
+    }
+
+    /** Resolve issuer URI dynamically: DB config > env vars > null. */
+    private String resolveIssuerUri() {
+        return authConfigService.getEffectiveIssuerUri();
+    }
 
     /**
      * RFC 9728 — OAuth 2.0 Protected Resource Metadata.
@@ -51,18 +58,22 @@ public class OAuth2ProtectedResourceConfig {
     @GetMapping(value = "/.well-known/oauth-protected-resource",
                 produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Map<String, Object>> protectedResourceMetadata() {
-        if (issuerUri == null || issuerUri.isBlank()) {
+        String issuer = resolveIssuerUri();
+        if (issuer == null || issuer.isBlank()) {
+            if (!"oauth2".equals(authConfigService.getEffectiveMode())) {
+                return ResponseEntity.notFound().build();
+            }
             log.error("OAuth2 issuer URI not configured — cannot serve protected resource metadata");
             return ResponseEntity.internalServerError().build();
         }
 
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("resource", "http://localhost:" + serverPort);
-        metadata.put("authorization_servers", List.of(issuerUri));
+        metadata.put("authorization_servers", List.of(issuer));
         metadata.put("scopes_supported", List.of("openid", "email", "profile"));
         metadata.put("bearer_methods_supported", List.of("header"));
 
-        log.debug("Serving OAuth2 protected resource metadata → AS: {}", issuerUri);
+        log.debug("Serving OAuth2 protected resource metadata → AS: {}", issuer);
         return ResponseEntity.ok(metadata);
     }
 
@@ -77,13 +88,17 @@ public class OAuth2ProtectedResourceConfig {
                 produces = MediaType.APPLICATION_JSON_VALUE)
     @SuppressWarnings("unchecked")
     public ResponseEntity<Map<String, Object>> authorizationServerMetadata() {
-        if (issuerUri == null || issuerUri.isBlank()) {
+        String issuer = resolveIssuerUri();
+        if (issuer == null || issuer.isBlank()) {
+            if (!"oauth2".equals(authConfigService.getEffectiveMode())) {
+                return ResponseEntity.notFound().build();
+            }
             log.error("OAuth2 issuer URI not configured");
             return ResponseEntity.internalServerError().build();
         }
 
         try {
-            String oidcUrl = issuerUri + "/.well-known/openid-configuration";
+            String oidcUrl = issuer + "/.well-known/openid-configuration";
             log.debug("Fetching IdP OIDC metadata from: {}", oidcUrl);
             Map<String, Object> idpMetadata = restTemplate.getForObject(oidcUrl, Map.class);
 
@@ -109,7 +124,8 @@ public class OAuth2ProtectedResourceConfig {
      */
     @GetMapping("/authorize")
     public ResponseEntity<Void> authorize(jakarta.servlet.http.HttpServletRequest request) {
-        if (issuerUri == null || issuerUri.isBlank()) {
+        String issuer = resolveIssuerUri();
+        if (issuer == null || issuer.isBlank()) {
             log.error("OAuth2 issuer URI not configured — cannot redirect to authorize");
             return ResponseEntity.internalServerError().build();
         }
@@ -122,7 +138,14 @@ public class OAuth2ProtectedResourceConfig {
             queryString = queryString.replaceAll("scope=[^&]*", "scope=openid+email+profile");
         }
 
-        String authEndpoint = issuerUri + "/protocol/openid-connect/auth";
+        // Use discovered authorization endpoint from DB config, or default Keycloak convention
+        String authEndpoint = null;
+        var dbConfig = authConfigService.getActiveDbConfig();
+        if (dbConfig.isPresent() && dbConfig.get().getAuthorizationEndpoint() != null) {
+            authEndpoint = dbConfig.get().getAuthorizationEndpoint();
+        } else {
+            authEndpoint = issuer + "/protocol/openid-connect/auth";
+        }
         String redirectUrl = queryString != null ? authEndpoint + "?" + queryString : authEndpoint;
 
         log.info("Redirecting OAuth2 authorize request to IdP: {}", authEndpoint);
@@ -142,13 +165,21 @@ public class OAuth2ProtectedResourceConfig {
             consumes = MediaType.APPLICATION_FORM_URLENCODED_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<String> token(jakarta.servlet.http.HttpServletRequest request) {
-        if (issuerUri == null || issuerUri.isBlank()) {
+        String issuer = resolveIssuerUri();
+        if (issuer == null || issuer.isBlank()) {
             log.error("OAuth2 issuer URI not configured — cannot proxy token request");
             return ResponseEntity.internalServerError().build();
         }
 
         try {
-            String tokenEndpoint = issuerUri + "/protocol/openid-connect/token";
+            // Use discovered token endpoint from DB config, or default Keycloak convention
+            String tokenEndpoint = null;
+            var dbConfig = authConfigService.getActiveDbConfig();
+            if (dbConfig.isPresent() && dbConfig.get().getTokenEndpoint() != null) {
+                tokenEndpoint = dbConfig.get().getTokenEndpoint();
+            } else {
+                tokenEndpoint = issuer + "/protocol/openid-connect/token";
+            }
             log.info("Proxying OAuth2 token exchange to IdP: {}", tokenEndpoint);
 
             // Read form parameters and forward them

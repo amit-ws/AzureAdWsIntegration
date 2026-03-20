@@ -137,6 +137,7 @@ ws:
     transport: http                    # "http" (default, production) or "stdio" (dev/Claude Desktop)
     auth:
       mode: ${AUTH_MODE:none}          # "oauth2" (production, JWT via OIDC) or "none" (dev/stdio)
+      config-poll-interval-ms: 60000   # Multi-instance DB sync interval for auth config changes
       token-classification:
         mode: ${TOKEN_CLASSIFICATION_MODE:jwt-signals}  # "introspect" (Tier 1+2+3), "jwt-signals" (Tier 2+3), "conservative" (all HUMAN_DELEGATED)
         cache-ttl: 3600                                  # Introspection cache TTL per session (seconds)
@@ -156,7 +157,7 @@ ws:
     server-config-encryption:
       key: ${WS_GATEWAY_SERVER_CONFIG_ENCRYPTION_KEY:}
     pdp:
-      anthropic-api-key: ${WS_GATEWAY_ANTHROPIC_API_KEY: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}   # Anthropic API key for LLM policy generation
+      anthropic-api-key: ${WS_GATEWAY_ANTHROPIC_API_KEY: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}   # Anthropic API key for LLM policy generation
 
 # ─── NOTE ────────────────────────────────────────────────────────────
 # The audit table 'mcp_audit_log' lives in schema 'ws_agentic_security'.
