@@ -1052,6 +1052,7 @@ public class HttpMcpAuditFilter implements Filter {
      * never happen in practice since every session is persisted during initialize.
      */
     private String resolveAgentName(String sessionId) {
+        if (sessionId == null) return "unknown";
         // 1. Fast in-memory lookup (active sessions)
         String name = sessionAgentNames.get(sessionId);
         if (name != null) {
