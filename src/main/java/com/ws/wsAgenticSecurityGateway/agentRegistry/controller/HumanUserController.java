@@ -105,6 +105,22 @@ public class HumanUserController {
                 .collect(Collectors.toList()));
     }
 
+    @PostMapping("/{id}/approve")
+    public ResponseEntity<Map<String, Object>> approveHuman(@PathVariable UUID id,
+                                                              HttpServletRequest request) {
+        try {
+            GatewayHumanUserEntity human = humanUserService.approveHumanUser(
+                    id, resolveAdminActor(request), resolveAdminIp(request));
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("status", "ok");
+            result.put("message", "Human user '" + human.getPreferredUsername() + "' approved");
+            result.put("userStatus", human.getStatus());
+            return ResponseEntity.ok(result);
+        } catch (NoSuchElementException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
     @PostMapping("/{id}/block")
     public ResponseEntity<Map<String, Object>> blockHuman(
             @PathVariable UUID id, @RequestBody(required = false) Map<String, String> body,

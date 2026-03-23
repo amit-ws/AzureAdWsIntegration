@@ -60,6 +60,33 @@ public interface GatewayAgentSessionRepository extends JpaRepository<GatewayAgen
             @Param("agentId") UUID agentId,
             @Param("excludeSessionId") String excludeSessionId);
 
+    /** Identity-scoped: find CONNECTED sessions for same agent + same human (exclude new session). */
+    @Query("SELECT s FROM GatewayAgentSessionEntity s " +
+            "WHERE s.agent.id = :agentId AND s.humanUserId = :humanUserId " +
+            "AND s.status = 'CONNECTED' AND s.sessionId != :excludeSessionId")
+    List<GatewayAgentSessionEntity> findActiveSessionsForAgentAndHumanUser(
+            @Param("agentId") UUID agentId,
+            @Param("humanUserId") UUID humanUserId,
+            @Param("excludeSessionId") String excludeSessionId);
+
+    /** Identity-scoped: find CONNECTED sessions for same agent + same NHI (exclude new session). */
+    @Query("SELECT s FROM GatewayAgentSessionEntity s " +
+            "WHERE s.agent.id = :agentId AND s.nhiId = :nhiId " +
+            "AND s.status = 'CONNECTED' AND s.sessionId != :excludeSessionId")
+    List<GatewayAgentSessionEntity> findActiveSessionsForAgentAndNhi(
+            @Param("agentId") UUID agentId,
+            @Param("nhiId") UUID nhiId,
+            @Param("excludeSessionId") String excludeSessionId);
+
+    /** Identity-scoped fallback: find CONNECTED sessions for same agent + same authIdentity (exclude new session). */
+    @Query("SELECT s FROM GatewayAgentSessionEntity s " +
+            "WHERE s.agent.id = :agentId AND s.authIdentity = :authIdentity " +
+            "AND s.status = 'CONNECTED' AND s.sessionId != :excludeSessionId")
+    List<GatewayAgentSessionEntity> findActiveSessionsForAgentAndAuthIdentity(
+            @Param("agentId") UUID agentId,
+            @Param("authIdentity") String authIdentity,
+            @Param("excludeSessionId") String excludeSessionId);
+
     /** Batch count of all sessions grouped by agent — for accurate totalSessions display. */
     @Query("SELECT s.agent.id, COUNT(s) FROM GatewayAgentSessionEntity s GROUP BY s.agent.id")
     List<Object[]> countSessionsByAgent();
@@ -81,6 +108,10 @@ public interface GatewayAgentSessionRepository extends JpaRepository<GatewayAgen
     @Query("SELECT s FROM GatewayAgentSessionEntity s JOIN FETCH s.agent WHERE s.nhiId = :nhiId ORDER BY s.connectedAt DESC")
     List<GatewayAgentSessionEntity> findByNhiIdWithAgent(@Param("nhiId") UUID nhiId);
 
+    /** Returns the agent's approval_status for a given session ID — single JOIN query, no lazy loading. */
+    @Query("SELECT a.approvalStatus FROM GatewayAgentSessionEntity s JOIN s.agent a WHERE s.sessionId = :sessionId")
+    Optional<String> findAgentApprovalStatusBySessionId(@Param("sessionId") String sessionId);
+
     /** Find all CONNECTED sessions for a specific human user (for proactive session termination on block). */
     @Query("SELECT s FROM GatewayAgentSessionEntity s LEFT JOIN FETCH s.agent WHERE s.humanUserId = :humanUserId AND s.status = 'CONNECTED'")
     List<GatewayAgentSessionEntity> findConnectedByHumanUserId(@Param("humanUserId") UUID humanUserId);
@@ -92,6 +123,14 @@ public interface GatewayAgentSessionRepository extends JpaRepository<GatewayAgen
     /** Find all CONNECTED sessions for a specific agent (for proactive session termination on block). */
     @Query("SELECT s FROM GatewayAgentSessionEntity s LEFT JOIN FETCH s.agent WHERE s.agent.id = :agentId AND s.status = 'CONNECTED'")
     List<GatewayAgentSessionEntity> findConnectedByAgentId(@Param("agentId") UUID agentId);
+
+    /**
+     * Find all CONNECTED sessions by authIdentity (JWT subject).
+     * Fallback for proactive session termination when humanUserId/nhiId columns are null
+     * (e.g., token misclassification during initialize).
+     */
+    @Query("SELECT s FROM GatewayAgentSessionEntity s LEFT JOIN FETCH s.agent WHERE s.authIdentity = :authIdentity AND s.status = 'CONNECTED'")
+    List<GatewayAgentSessionEntity> findConnectedByAuthIdentity(@Param("authIdentity") String authIdentity);
 
     /**
      * Layer 2 — Smart Idle Timeout: lightweight activity timestamp update.

@@ -98,10 +98,21 @@ public class HumanUserService {
         human.setBlockedReason(reason);
         human.setBlockedAt(LocalDateTime.now());
         humanUserRepository.save(human);
+        agentRegistryService.updateHumanStatusCache(human.getIdpSubject(), "BLOCKED");
 
         // ── Proactive session termination ──
+        // Path 1: Find sessions linked by humanUserId FK (HUMAN_DELEGATED tokens)
         List<GatewayAgentSessionEntity> activeSessions =
                 sessionRepository.findConnectedByHumanUserId(id);
+        // Path 2: Fallback — find sessions by authIdentity (JWT subject) when humanUserId is null
+        // This catches token misclassification: human discovered but session not linked via FK
+        if (activeSessions.isEmpty() && human.getIdpSubject() != null) {
+            activeSessions = sessionRepository.findConnectedByAuthIdentity(human.getIdpSubject());
+            if (!activeSessions.isEmpty()) {
+                log.warn("🔍 Found {} active session(s) via authIdentity fallback for human '{}' (idpSubject={})",
+                        activeSessions.size(), human.getPreferredUsername(), human.getIdpSubject());
+            }
+        }
         Map<String, String> affectedAgentMap = new LinkedHashMap<>(); // agentId → agentName
         for (GatewayAgentSessionEntity session : activeSessions) {
             String sessionId = session.getSessionId();
@@ -143,12 +154,34 @@ public class HumanUserService {
         human.setBlockedReason(null);
         human.setBlockedAt(null);
         humanUserRepository.save(human);
+        agentRegistryService.updateHumanStatusCache(human.getIdpSubject(), "ACTIVE");
 
         auditService.auditHumanUserUnblocked(
                 human.getId(), human.getPreferredUsername(), human.getIdpSubject(),
                 adminActor, adminIp);
 
         log.info("✅ Human user unblocked: {}", human.getPreferredUsername());
+        return human;
+    }
+
+    /**
+     * Approve a human user — sets status from PENDING → ACTIVE.
+     */
+    @Transactional
+    public GatewayHumanUserEntity approveHumanUser(UUID id, String adminActor, String adminIp) {
+        GatewayHumanUserEntity human = humanUserRepository.findById(id)
+                .orElseThrow(() -> new NoSuchElementException("Human user not found: " + id));
+        String previousStatus = human.getStatus();
+        human.setStatus("ACTIVE");
+        humanUserRepository.save(human);
+        agentRegistryService.updateHumanStatusCache(human.getIdpSubject(), "ACTIVE");
+
+        auditService.auditHumanUserApproved(
+                human.getId(), human.getPreferredUsername(), human.getIdpSubject(),
+                previousStatus, adminActor, adminIp);
+
+        log.info("✅ Human user APPROVED: {} (id={}, previousStatus={})",
+                human.getPreferredUsername(), id, previousStatus);
         return human;
     }
 

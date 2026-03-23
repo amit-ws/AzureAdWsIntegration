@@ -29,7 +29,6 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -101,6 +100,10 @@ public class HttpMcpAuditFilter implements Filter {
     /** Capability list methods that require response filtering. */
     private static final Set<String> LIST_METHODS = Set.of(
             "tools/list", "prompts/list", "resources/list", "resources/templates/list");
+
+    /** Execution methods that require APPROVED status for identity + agent. */
+    private static final Set<String> EXECUTION_METHODS = Set.of(
+            "tools/call", "prompts/get", "resources/read", "resources/templates/read");
 
     public HttpMcpAuditFilter(AgentRegistryService agentRegistryService,
             AgentCapabilityFilterService capabilityFilterService,
@@ -174,42 +177,102 @@ public class HttpMcpAuditFilter implements Filter {
             return;
         }
 
-        // ── Block requests from human users who have been blocked by admin ──
-        if (sessionId != null) {
-            Optional<String> humanBlockReason = agentRegistryService.getHumanBlockReason(sessionId);
-            if (humanBlockReason.isPresent()) {
-                String blockedAgentName = resolveAgentName(sessionId);
-                String humanUsername = agentRegistryService.getHumanUsername(sessionId);
-                String reason = humanBlockReason.get();
-                log.warn("🚫 Request rejected — human user '{}' behind session {} is BLOCKED: {}",
-                        humanUsername, sessionId, reason);
+        // ── Identity & Agent status enforcement ──────────────────────────
+        // Uses cache-backed lookups (O(1) ConcurrentHashMap, zero DB queries on hot path).
+        // BLOCKED checks run on ALL methods. PENDING checks only on EXECUTION methods.
+        boolean isExecutionMethod = EXECUTION_METHODS.contains(mcpMethod);
+        String reqJwtSubject = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_SUBJECT);
+
+        if (reqJwtSubject != null) {
+            // ── Human status check (cache-backed) ──
+            String humanStatus = agentRegistryService.getHumanStatus(reqJwtSubject);
+            if ("BLOCKED".equals(humanStatus)) {
+                String humanUsername = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_PREFERRED_USERNAME);
+                String displayUsername = humanUsername != null ? humanUsername : reqJwtSubject;
+                log.warn("🚫 Request rejected — human '{}' BLOCKED, session={}, method={}",
+                        displayUsername, sessionId, mcpMethod);
                 auditService.auditHumanConnectionRejected(sessionId, requestId,
-                        humanUsername, null, blockedAgentName, mcpMethod,
-                        "Human user '" + (humanUsername != null ? humanUsername : "unknown") + "' is BLOCKED: " + reason);
+                        displayUsername, reqJwtSubject, resolveAgentName(sessionId), mcpMethod,
+                        "Human user '" + displayUsername + "' is BLOCKED");
                 rejectBlocked(httpResponse, requestIdRaw, McpErrorCode.HUMAN_BLOCKED,
-                        "Your account '" + (humanUsername != null ? humanUsername : "unknown")
-                                + "' has been blocked by an administrator. Reason: " + reason
-                                + ". Contact your gateway administrator to request access restoration.");
+                        "Your account '" + displayUsername
+                                + "' has been blocked by an administrator."
+                                + " Contact your gateway administrator to request access restoration.");
+                return;
+            }
+            if (isExecutionMethod && "PENDING".equals(humanStatus)) {
+                String humanUsername = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_PREFERRED_USERNAME);
+                String displayUsername = humanUsername != null ? humanUsername : reqJwtSubject;
+                log.warn("🚫 Execution rejected — human '{}' PENDING approval, session={}, method={}",
+                        displayUsername, sessionId, mcpMethod);
+                auditService.auditHumanConnectionRejected(sessionId, requestId,
+                        displayUsername, reqJwtSubject, resolveAgentName(sessionId), mcpMethod,
+                        "Human user '" + displayUsername + "' is PENDING admin approval");
+                rejectBlocked(httpResponse, requestIdRaw, McpErrorCode.HUMAN_PENDING_APPROVAL,
+                        "Your account '" + displayUsername
+                                + "' is pending admin approval. An administrator must approve your identity"
+                                + " before you can execute operations through this gateway.");
+                return;
+            }
+
+            // ── NHI status check (cache-backed) ──
+            String nhiStatus = agentRegistryService.getNhiStatus(reqJwtSubject);
+            if ("BLOCKED".equals(nhiStatus)) {
+                String nhiClientId = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_CLIENT_ID);
+                String displayName = nhiClientId != null ? nhiClientId : reqJwtSubject;
+                log.warn("🚫 Request rejected — NHI '{}' BLOCKED, session={}, method={}",
+                        displayName, sessionId, mcpMethod);
+                auditService.auditNhiConnectionRejected(sessionId, requestId,
+                        displayName, nhiClientId, reqJwtSubject, resolveAgentName(sessionId), mcpMethod,
+                        "Service identity '" + displayName + "' is BLOCKED");
+                rejectBlocked(httpResponse, requestIdRaw, McpErrorCode.NHI_BLOCKED,
+                        "Service identity '" + displayName
+                                + "' has been blocked by an administrator."
+                                + " Contact your gateway administrator to request access restoration.");
+                return;
+            }
+            if (isExecutionMethod && "PENDING".equals(nhiStatus)) {
+                String nhiClientId = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_CLIENT_ID);
+                String displayName = nhiClientId != null ? nhiClientId : reqJwtSubject;
+                log.warn("🚫 Execution rejected — NHI '{}' PENDING approval, session={}, method={}",
+                        displayName, sessionId, mcpMethod);
+                auditService.auditNhiConnectionRejected(sessionId, requestId,
+                        displayName, nhiClientId, reqJwtSubject, resolveAgentName(sessionId), mcpMethod,
+                        "Service identity '" + displayName + "' is PENDING admin approval");
+                rejectBlocked(httpResponse, requestIdRaw, McpErrorCode.NHI_PENDING_APPROVAL,
+                        "Service identity '" + displayName
+                                + "' is pending admin approval. An administrator must approve this identity"
+                                + " before it can execute operations through this gateway.");
                 return;
             }
         }
 
-        // ── Block requests from NHIs that have been blocked by admin ──
+        // ── Agent status check (cache-backed: sessionToAgentId → agentStatusById) ──
         if (sessionId != null) {
-            Optional<String> nhiBlockReason = agentRegistryService.getNhiBlockReason(sessionId);
-            if (nhiBlockReason.isPresent()) {
-                String blockedAgentName = resolveAgentName(sessionId);
-                String nhiName = agentRegistryService.getNhiServiceName(sessionId);
-                String reason = nhiBlockReason.get();
-                log.warn("🚫 Request rejected — NHI '{}' behind session {} is BLOCKED: {}",
-                        nhiName, sessionId, reason);
-                auditService.auditNhiConnectionRejected(sessionId, requestId,
-                        nhiName, null, null, blockedAgentName, mcpMethod,
-                        "Service identity '" + (nhiName != null ? nhiName : "unknown") + "' is BLOCKED: " + reason);
-                rejectBlocked(httpResponse, requestIdRaw, McpErrorCode.NHI_BLOCKED,
-                        "Service identity '" + (nhiName != null ? nhiName : "unknown")
-                                + "' has been blocked by an administrator. Reason: " + reason
-                                + ". Contact your gateway administrator to request access restoration.");
+            String agentStatus = agentRegistryService.getAgentStatusForSession(sessionId);
+            if ("BLOCKED".equals(agentStatus)) {
+                String blockedAgentName = agentRegistryService.getAgentNameForSession(sessionId);
+                log.warn("🚫 Request rejected — agent '{}' BLOCKED, session={}, method={}",
+                        blockedAgentName, sessionId, mcpMethod);
+                auditService.auditAgentConnectionRejected(sessionId, requestId,
+                        blockedAgentName, null, mcpMethod, "HTTP",
+                        "Agent '" + blockedAgentName + "' is BLOCKED");
+                rejectBlocked(httpResponse, requestIdRaw, McpErrorCode.AGENT_BLOCKED,
+                        "Agent '" + blockedAgentName
+                                + "' is blocked by admin. Contact your gateway administrator.");
+                return;
+            }
+            if (isExecutionMethod && "PENDING".equals(agentStatus)) {
+                String pendingAgentName = agentRegistryService.getAgentNameForSession(sessionId);
+                log.warn("🚫 Execution rejected — agent '{}' PENDING approval, session={}, method={}",
+                        pendingAgentName, sessionId, mcpMethod);
+                auditService.auditAgentConnectionRejected(sessionId, requestId,
+                        pendingAgentName, null, mcpMethod, "HTTP",
+                        "Agent '" + pendingAgentName + "' is PENDING admin approval");
+                rejectBlocked(httpResponse, requestIdRaw, McpErrorCode.AGENT_PENDING_APPROVAL,
+                        "Agent '" + pendingAgentName
+                                + "' is pending admin approval. An administrator must approve this agent"
+                                + " before it can execute operations.");
                 return;
             }
         }
@@ -246,47 +309,24 @@ public class HttpMcpAuditFilter implements Filter {
             }
         }
 
-        // ── Pre-initialize approval gate (must run BEFORE SDK creates session) ───
+        // ── Pre-initialize identity gate (must run BEFORE SDK creates session) ───
+        // NOTE: Agent BLOCKED/PENDING is NOT checked here — we let the agent initialize
+        // so it gets registered (discoverAgent) and appears in the dashboard for admin to see.
+        // Agent status is enforced on EXECUTION methods (tools/call etc.) in the block above.
         if ("initialize".equals(mcpMethod) && requestJson != null) {
             JsonNode clientInfoNode = requestJson.path("params").path("clientInfo");
             String agentName = clientInfoNode.path("name").asText("unknown");
             String agentVersion = clientInfoNode.path("version").asText(null);
-
-            // Also check by JWT client_id (cryptographically verified identity)
             String preAuthClientId = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_CLIENT_ID);
 
-            // Probes are allowed through (handled separately in registration logic).
-            boolean blocked = false;
-            if (!isProbeAgent(agentName)) {
-                // Check by verified OAuth2 client_id first, then by self-reported name+version
-                if (preAuthClientId != null) {
-                    blocked = agentRegistryService.isAgentBlocked(preAuthClientId, null);
-                }
-                if (!blocked) {
-                    blocked = agentRegistryService.isAgentBlocked(agentName, agentVersion);
-                }
-            }
-            if (blocked) {
-                String displayName = preAuthClientId != null ? preAuthClientId : agentName;
-                log.warn("🚫 Pre-initialize rejection for BLOCKED agent: {} v{} (authClientId={})",
-                        agentName, agentVersion, preAuthClientId);
-                auditService.auditAgentConnectionRejected(
-                        null, requestId, displayName, agentVersion,
-                        "initialize", "HTTP",
-                        "Agent rejected during initialize because profile is BLOCKED.");
-                rejectBlocked(httpResponse, requestIdRaw, McpErrorCode.AGENT_BLOCKED,
-                        "Agent '" + displayName + "' is blocked by admin. Contact your gateway administrator.");
-                return;
-            }
-
-            // Check if the human user behind this token is blocked
+            // Check if the human user behind this token is blocked.
+            // NOT gated on tokenType — token misclassification must not bypass block enforcement.
+            // A HUMAN_DELEGATED token could be misclassified as AUTOMATED_AGENT and vice versa.
+            // The DB lookup by idpSubject is the authoritative check.
             String jwtSubject = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_SUBJECT);
-            String tokenType = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_TOKEN_TYPE);
-            if ("HUMAN_DELEGATED".equals(tokenType) && jwtSubject != null
-                    && agentRegistryService.isHumanBlockedBySubject(jwtSubject)) {
+            if (jwtSubject != null && agentRegistryService.isHumanBlockedBySubject(jwtSubject)) {
                 String humanUsername = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_PREFERRED_USERNAME);
                 String displayUsername = humanUsername != null ? humanUsername : jwtSubject;
-                // Look up blocked reason from DB
                 String blockReason = agentRegistryService.getHumanBlockReasonBySubject(jwtSubject);
                 log.warn("🚫 Pre-initialize rejection — human user BLOCKED: {} (sub={}) reason={}",
                         displayUsername, jwtSubject, blockReason);
@@ -301,9 +341,8 @@ public class HttpMcpAuditFilter implements Filter {
                 return;
             }
 
-            // Check if the NHI behind this token is blocked
-            if (GatewayOAuth2Filter.TOKEN_TYPE_AUTOMATED.equals(tokenType) && jwtSubject != null
-                    && agentRegistryService.isNhiBlockedBySubject(jwtSubject)) {
+            // Check if the NHI behind this token is blocked (same: not gated on tokenType)
+            if (jwtSubject != null && agentRegistryService.isNhiBlockedBySubject(jwtSubject)) {
                 String nhiClientId = preAuthClientId;
                 String blockReason = agentRegistryService.getNhiBlockReasonBySubject(jwtSubject);
                 log.warn("🚫 Pre-initialize rejection — NHI BLOCKED: sub={}, reason={}", jwtSubject, blockReason);
@@ -569,12 +608,14 @@ public class HttpMcpAuditFilter implements Filter {
                 sessionIdentityCache.put(sessionId, jwtSubject);
             }
 
-            // ── Layer 1: Active Session Replacement ──────────────────
-            int replaced = agentRegistryService.disconnectExistingSessionsForAgent(
-                    agent.getId(), sessionId);
+            // ── Layer 1: Identity-Scoped Active Session Replacement ──
+            // Only disconnects sessions for the SAME identity + same agent.
+            // Other identities' sessions with the same agent are untouched.
+            int replaced = agentRegistryService.disconnectExistingSessionsForIdentity(
+                    agent.getId(), humanUserId, nhiId, jwtSubject, sessionId);
             if (replaced > 0) {
-                log.info("♻️ Replaced {} stale session(s) for agent {} on reconnect",
-                        replaced, resolvedAgentName);
+                log.info("♻️ Replaced {} stale session(s) for identity (human={}, nhi={}) + agent {} on reconnect",
+                        replaced, humanUserId, nhiId, resolvedAgentName);
                 final String currentAgentName = resolvedAgentName;
                 registeredSessions.entrySet().removeIf(entry -> !entry.getKey().equals(sessionId) &&
                         currentAgentName.equals(sessionAgentNames.get(entry.getKey())));

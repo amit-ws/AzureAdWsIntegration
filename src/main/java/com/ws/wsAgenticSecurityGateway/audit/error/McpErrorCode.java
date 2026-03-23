@@ -34,7 +34,10 @@ public enum McpErrorCode {
     AGENT_BLOCKED(-33007, "Agent is blocked by admin"),
     CAPABILITY_NOT_ALLOWED(-33008, "Capability not permitted for this agent"),
     HUMAN_BLOCKED(-33009, "Human user is blocked by admin"),
-    NHI_BLOCKED(-33010, "Service identity is blocked by admin");
+    NHI_BLOCKED(-33010, "Service identity is blocked by admin"),
+    AGENT_PENDING_APPROVAL(-33011, "Agent is pending admin approval"),
+    HUMAN_PENDING_APPROVAL(-33013, "Human user is pending admin approval"),
+    NHI_PENDING_APPROVAL(-33014, "Service identity is pending admin approval");
 
     private final int code;
     private final String message;

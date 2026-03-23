@@ -98,10 +98,20 @@ public class NhiService {
         nhi.setBlockedReason(reason);
         nhi.setBlockedAt(LocalDateTime.now());
         nhiRepository.save(nhi);
+        agentRegistryService.updateNhiStatusCache(nhi.getIdpSubject(), "BLOCKED");
 
         // ── Proactive session termination ──
+        // Path 1: Find sessions linked by nhiId FK (AUTOMATED_AGENT tokens)
         List<GatewayAgentSessionEntity> activeSessions =
                 sessionRepository.findConnectedByNhiId(id);
+        // Path 2: Fallback — find sessions by authIdentity (JWT subject) when nhiId is null
+        if (activeSessions.isEmpty() && nhi.getIdpSubject() != null) {
+            activeSessions = sessionRepository.findConnectedByAuthIdentity(nhi.getIdpSubject());
+            if (!activeSessions.isEmpty()) {
+                log.warn("🔍 Found {} active session(s) via authIdentity fallback for NHI '{}' (idpSubject={})",
+                        activeSessions.size(), nhi.getServiceName(), nhi.getIdpSubject());
+            }
+        }
         Map<String, String> affectedAgentMap = new LinkedHashMap<>(); // agentId -> agentName
         for (GatewayAgentSessionEntity session : activeSessions) {
             String sessionId = session.getSessionId();
@@ -143,12 +153,34 @@ public class NhiService {
         nhi.setBlockedReason(null);
         nhi.setBlockedAt(null);
         nhiRepository.save(nhi);
+        agentRegistryService.updateNhiStatusCache(nhi.getIdpSubject(), "ACTIVE");
 
         auditService.auditNhiUnblocked(
                 nhi.getId(), nhi.getServiceName(), nhi.getClientId(), nhi.getIdpSubject(),
                 adminActor, adminIp);
 
         log.info("✅ NHI unblocked: {}", nhi.getServiceName());
+        return nhi;
+    }
+
+    /**
+     * Approve an NHI — sets status from PENDING → ACTIVE.
+     */
+    @Transactional
+    public GatewayNhiEntity approveNhi(UUID id, String adminActor, String adminIp) {
+        GatewayNhiEntity nhi = nhiRepository.findById(id)
+                .orElseThrow(() -> new NoSuchElementException("NHI not found: " + id));
+        String previousStatus = nhi.getStatus();
+        nhi.setStatus("ACTIVE");
+        nhiRepository.save(nhi);
+        agentRegistryService.updateNhiStatusCache(nhi.getIdpSubject(), "ACTIVE");
+
+        auditService.auditNhiApproved(
+                nhi.getId(), nhi.getServiceName(), nhi.getClientId(), nhi.getIdpSubject(),
+                previousStatus, adminActor, adminIp);
+
+        log.info("✅ NHI APPROVED: {} (id={}, previousStatus={})",
+                nhi.getServiceName(), id, previousStatus);
         return nhi;
     }
 

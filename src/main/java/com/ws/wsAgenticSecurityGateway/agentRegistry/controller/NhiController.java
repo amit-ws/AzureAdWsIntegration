@@ -105,6 +105,22 @@ public class NhiController {
                 .collect(Collectors.toList()));
     }
 
+    @PostMapping("/{id}/approve")
+    public ResponseEntity<Map<String, Object>> approveNhi(@PathVariable UUID id,
+                                                            HttpServletRequest request) {
+        try {
+            GatewayNhiEntity nhi = nhiService.approveNhi(
+                    id, resolveAdminActor(request), resolveAdminIp(request));
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("status", "ok");
+            result.put("message", "NHI '" + nhi.getServiceName() + "' approved");
+            result.put("nhiStatus", nhi.getStatus());
+            return ResponseEntity.ok(result);
+        } catch (NoSuchElementException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
     @PostMapping("/{id}/block")
     public ResponseEntity<Map<String, Object>> blockNhi(
             @PathVariable UUID id, @RequestBody(required = false) Map<String, String> body,

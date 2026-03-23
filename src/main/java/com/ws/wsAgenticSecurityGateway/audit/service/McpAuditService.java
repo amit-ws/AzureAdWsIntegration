@@ -1570,6 +1570,28 @@ public class McpAuditService {
                                 .build());
         }
 
+        /** Audit: admin approved a human user (PENDING → ACTIVE). */
+        @Async("mcpAuditExecutor")
+        public void auditHumanUserApproved(UUID humanUserId, String preferredUsername, String idpSubject,
+                        String previousStatus, String adminActor, String adminIp) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.HUMAN_USER_APPROVED)
+                                .module(AuditModule.AGENT_REGISTRY)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .mcpMethod("admin/human-users/approve")
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(Map.of(
+                                                "humanUserId", humanUserId != null ? humanUserId.toString() : "",
+                                                "preferredUsername", preferredUsername != null ? preferredUsername : "unknown",
+                                                "idpSubject", idpSubject != null ? idpSubject : "",
+                                                "previousStatus", previousStatus != null ? previousStatus : "",
+                                                "newStatus", "ACTIVE",
+                                                "adminActor", adminActor != null ? adminActor : "unknown",
+                                                "adminIp", adminIp != null ? adminIp : "unknown")))
+                                .build());
+        }
+
         /** Audit: admin blocked an NHI. */
         @Async("mcpAuditExecutor")
         public void auditNhiBlocked(UUID nhiId, String serviceName, String clientId, String idpSubject,
@@ -1614,6 +1636,29 @@ public class McpAuditService {
                                                 "serviceName", serviceName != null ? serviceName : "unknown",
                                                 "clientId", clientId != null ? clientId : "",
                                                 "idpSubject", idpSubject != null ? idpSubject : "",
+                                                "adminActor", adminActor != null ? adminActor : "unknown",
+                                                "adminIp", adminIp != null ? adminIp : "unknown")))
+                                .build());
+        }
+
+        /** Audit: admin approved an NHI (PENDING → ACTIVE). */
+        @Async("mcpAuditExecutor")
+        public void auditNhiApproved(UUID nhiId, String serviceName, String clientId, String idpSubject,
+                        String previousStatus, String adminActor, String adminIp) {
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.NHI_IDENTITY_APPROVED)
+                                .module(AuditModule.AGENT_REGISTRY)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .mcpMethod("admin/nhis/approve")
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(Map.of(
+                                                "nhiId", nhiId != null ? nhiId.toString() : "",
+                                                "serviceName", serviceName != null ? serviceName : "unknown",
+                                                "clientId", clientId != null ? clientId : "",
+                                                "idpSubject", idpSubject != null ? idpSubject : "",
+                                                "previousStatus", previousStatus != null ? previousStatus : "",
+                                                "newStatus", "ACTIVE",
                                                 "adminActor", adminActor != null ? adminActor : "unknown",
                                                 "adminIp", adminIp != null ? adminIp : "unknown")))
                                 .build());

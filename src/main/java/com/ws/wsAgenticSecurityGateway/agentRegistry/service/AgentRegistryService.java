@@ -69,6 +69,27 @@ public class AgentRegistryService {
      */
     private final ConcurrentHashMap<String, UUID> sessionToNhiId = new ConcurrentHashMap<>();
 
+    /**
+     * In-memory: sessionId → authIdentity (JWT subject).
+     * ALWAYS populated regardless of token type — used as fallback for human/NHI block checks
+     * when sessionToHumanUserId/sessionToNhiId are not populated (e.g., token misclassification).
+     */
+    private final ConcurrentHashMap<String, String> sessionToAuthIdentity = new ConcurrentHashMap<>();
+
+    // ── Status caches: zero-DB-query per-request enforcement ──────────
+    // Keyed by stable identifiers (not sessionId), survive disconnect/reconnect.
+    // Populated: (1) startup warm-up, (2) on discovery, (3) safety-net DB fallback.
+    // Invalidated: afterCommit on every admin mutation (approve/block/unblock).
+
+    /** jwtSubject → "PENDING"/"ACTIVE"/"BLOCKED" */
+    private final ConcurrentHashMap<String, String> humanStatusBySubject = new ConcurrentHashMap<>();
+
+    /** jwtSubject → "PENDING"/"ACTIVE"/"BLOCKED" */
+    private final ConcurrentHashMap<String, String> nhiStatusBySubject = new ConcurrentHashMap<>();
+
+    /** agentId → "PENDING"/"APPROVED"/"BLOCKED" */
+    private final ConcurrentHashMap<UUID, String> agentStatusById = new ConcurrentHashMap<>();
+
     public AgentRegistryService(GatewayAgentRepository agentRepository,
             GatewayAgentSessionRepository sessionRepository,
             GatewayHumanUserRepository humanUserRepository,
@@ -99,21 +120,40 @@ public class AgentRegistryService {
         sessionRepository.markAllDisconnected();
         log.info("   Cleaned up orphaned sessions from previous run");
 
-        // Warm agent cache
+        // Warm agent cache + agent status cache
         List<GatewayAgentEntity> agents = agentRepository.findAll();
         for (GatewayAgentEntity agent : agents) {
             String key = cacheKey(agent.getAgentName(), agent.getAgentVersion());
             agentCache.put(key, agent);
+            agentStatusById.put(agent.getId(), agent.getApprovalStatus());
+        }
+
+        // Warm human status cache
+        List<GatewayHumanUserEntity> humans = humanUserRepository.findAll();
+        for (GatewayHumanUserEntity h : humans) {
+            if (h.getIdpSubject() != null) {
+                humanStatusBySubject.put(h.getIdpSubject(), h.getStatus());
+            }
+        }
+
+        // Warm NHI status cache
+        List<GatewayNhiEntity> nhis = nhiRepository.findAll();
+        for (GatewayNhiEntity n : nhis) {
+            if (n.getIdpSubject() != null) {
+                nhiStatusBySubject.put(n.getIdpSubject(), n.getStatus());
+            }
         }
 
         log.info("   Loaded {} agent profiles into cache", agents.size());
+        log.info("   Warmed status caches: {} humans, {} NHIs, {} agents",
+                humanStatusBySubject.size(), nhiStatusBySubject.size(), agentStatusById.size());
         for (GatewayAgentEntity agent : agents) {
-            log.info("   - {} v{} ({}sessions, {}requests, {})",
+            log.info("   - {} v{} ({}sessions, {}requests, approval={})",
                     agent.getAgentName(),
                     agent.getAgentVersion() != null ? agent.getAgentVersion() : "?",
                     agent.getTotalSessions(),
                     agent.getTotalRequests(),
-                    agent.getStatus());
+                    agent.getApprovalStatus());
         }
 
         log.info("═══════════════════════════════════════════════════════════");
@@ -165,13 +205,8 @@ public class AgentRegistryService {
                         "Agent '" + name + "' v" + version
                                 + " is blocked by admin. Contact your gateway administrator.");
             }
-            // Re-approval policy: every new initialize cycle requires explicit approval.
-            // Keep BLOCKED untouched (handled above), reset APPROVED back to PENDING.
-            if ("APPROVED".equals(cached.getApprovalStatus())) {
-                cached.setApprovalStatus("PENDING");
-                log.info("🔄 Agent approval reset to PENDING on reconnect: {} v{} (id={})",
-                        name, version, cached.getId());
-            }
+            // Agent approval is stable: once APPROVED, stays APPROVED across reconnects.
+            // Only BLOCKED persists (handled above). PENDING stays PENDING until admin approves.
             // Update mutable fields
             cached.setProtocolVersion(protocolVersion);
             cached.setCapabilities(capabilities);
@@ -180,6 +215,7 @@ public class AgentRegistryService {
             if (tokenType != null) cached.setTokenType(tokenType);
             GatewayAgentEntity updated = agentRepository.saveAndFlush(cached);
             agentCache.put(key, updated);
+            agentStatusById.put(updated.getId(), updated.getApprovalStatus());
             log.info("🤖 Agent re-discovered: {} v{} (id={}, approval={}, authClientId={})",
                     name, version, updated.getId(), updated.getApprovalStatus(), authClientId);
             return updated;
@@ -199,12 +235,7 @@ public class AgentRegistryService {
                         "Agent '" + name + "' v" + version
                                 + " is blocked by admin. Contact your gateway administrator.");
             }
-            // Re-approval policy: every new initialize cycle requires explicit approval.
-            if ("APPROVED".equals(entity.getApprovalStatus())) {
-                entity.setApprovalStatus("PENDING");
-                log.info("🔄 Agent approval reset to PENDING on reconnect: {} v{} (id={})",
-                        name, version, entity.getId());
-            }
+            // Agent approval is stable: once APPROVED, stays APPROVED across reconnects.
             entity.setProtocolVersion(protocolVersion);
             entity.setCapabilities(capabilities);
             entity.setStatus("ACTIVE");
@@ -212,6 +243,7 @@ public class AgentRegistryService {
             if (tokenType != null) entity.setTokenType(tokenType);
             GatewayAgentEntity updated = agentRepository.saveAndFlush(entity);
             agentCache.put(key, updated);
+            agentStatusById.put(updated.getId(), updated.getApprovalStatus());
             log.info("🤖 Agent re-discovered (from DB): {} v{} (id={}, approval={}, authClientId={})",
                     name, version, updated.getId(), updated.getApprovalStatus(), authClientId);
             return updated;
@@ -233,6 +265,7 @@ public class AgentRegistryService {
 
         GatewayAgentEntity saved = agentRepository.saveAndFlush(newAgent);
         agentCache.put(key, saved);
+        agentStatusById.put(saved.getId(), "PENDING");
         log.info("🤖 NEW agent discovered (PENDING approval): {} v{} (id={})",
                 name, version, saved.getId());
         return saved;
@@ -332,8 +365,13 @@ public class AgentRegistryService {
             sessionToNhiId.put(sessionId, saved.getNhiId());
         }
 
-        log.info("📡 Agent session registered: {} → agent {} v{} (session={}, humanUser={})",
-                sessionId, agent.getAgentName(), agent.getAgentVersion(), saved.getId(), humanUserId);
+        // Map session → authIdentity (JWT subject) — ALWAYS populated for fallback block checks
+        if (authIdentity != null) {
+            sessionToAuthIdentity.put(sessionId, authIdentity);
+        }
+
+        log.info("📡 Agent session registered: {} → agent {} v{} (session={}, humanUser={}, authIdentity={})",
+                sessionId, agent.getAgentName(), agent.getAgentVersion(), saved.getId(), humanUserId, authIdentity);
         return saved;
     }
 
@@ -346,6 +384,7 @@ public class AgentRegistryService {
         sessionToAgentId.remove(sessionId);
         sessionToHumanUserId.remove(sessionId);
         sessionToNhiId.remove(sessionId);
+        sessionToAuthIdentity.remove(sessionId);
         log.info("📡 Agent session disconnected: {}", sessionId);
     }
 
@@ -366,6 +405,9 @@ public class AgentRegistryService {
      * @param excludeSessionId the new session to keep (just registered)
      * @return count of stale sessions that were disconnected
      */
+    /**
+     * @deprecated Use {@link #disconnectExistingSessionsForIdentity} for identity-scoped disconnect.
+     */
     @Transactional
     public int disconnectExistingSessionsForAgent(UUID agentId, String excludeSessionId) {
         List<GatewayAgentSessionEntity> staleSessions = sessionRepository.findActiveSessionsForAgentExcluding(agentId,
@@ -374,8 +416,49 @@ public class AgentRegistryService {
             String staleSessionId = stale.getSessionId();
             String agentName = stale.getAgent().getAgentName();
             disconnectSession(staleSessionId);
-            // Audit: session replaced on reconnect
             auditService.auditServerSessionDisconnectedSync(staleSessionId, agentName);
+        }
+        return staleSessions.size();
+    }
+
+    /**
+     * Identity-scoped session disconnect: only disconnects sessions for the SAME identity
+     * (human or NHI) + same agent. Other identities' sessions with the same agent are untouched.
+     *
+     * @param agentId          the agent's UUID
+     * @param humanUserId      the human's UUID (null if NHI or unknown)
+     * @param nhiId            the NHI's UUID (null if human or unknown)
+     * @param authIdentity     JWT subject (fallback when humanUserId/nhiId are null)
+     * @param excludeSessionId the new session to keep
+     * @return count of stale sessions disconnected
+     */
+    @Transactional
+    public int disconnectExistingSessionsForIdentity(UUID agentId, UUID humanUserId, UUID nhiId,
+                                                      String authIdentity, String excludeSessionId) {
+        List<GatewayAgentSessionEntity> staleSessions;
+        if (humanUserId != null) {
+            staleSessions = sessionRepository.findActiveSessionsForAgentAndHumanUser(
+                    agentId, humanUserId, excludeSessionId);
+        } else if (nhiId != null) {
+            staleSessions = sessionRepository.findActiveSessionsForAgentAndNhi(
+                    agentId, nhiId, excludeSessionId);
+        } else if (authIdentity != null) {
+            staleSessions = sessionRepository.findActiveSessionsForAgentAndAuthIdentity(
+                    agentId, authIdentity, excludeSessionId);
+        } else {
+            // No identity context — fall back to agent-wide (shouldn't happen in practice)
+            staleSessions = sessionRepository.findActiveSessionsForAgentExcluding(agentId, excludeSessionId);
+        }
+
+        for (GatewayAgentSessionEntity stale : staleSessions) {
+            String staleSessionId = stale.getSessionId();
+            disconnectSession(staleSessionId);
+            auditService.auditServerSessionDisconnectedSync(staleSessionId,
+                    stale.getAgent() != null ? stale.getAgent().getAgentName() : "unknown");
+        }
+        if (!staleSessions.isEmpty()) {
+            log.info("🔄 Disconnected {} stale session(s) for identity (human={}, nhi={}, auth={}) + agent={}",
+                    staleSessions.size(), humanUserId, nhiId, authIdentity, agentId);
         }
         return staleSessions.size();
     }
@@ -475,6 +558,106 @@ public class AgentRegistryService {
             }
         }
         return false;
+    }
+
+    /**
+     * Check if the agent behind a session is blocked — single JOIN query (session → agent → status).
+     * Independent of in-memory maps (survives disconnectSession() cleanup).
+     * Called by HttpMcpAuditFilter on every request as the authoritative agent block check.
+     */
+    @Transactional(readOnly = true)
+    public boolean isAgentBlockedForSession(String sessionId) {
+        if (sessionId == null) return false;
+        return sessionRepository.findAgentApprovalStatusBySessionId(sessionId)
+                .map("BLOCKED"::equals)
+                .orElse(false);
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // CACHE-AWARE STATUS LOOKUPS — O(1) per-request, DB fallback on miss
+    // ════════════════════════════════════════════════════════════════════
+
+    /**
+     * Get human user status from cache. Falls back to DB on cache miss.
+     * Returns null if no human found for this subject (not a human identity).
+     */
+    public String getHumanStatus(String jwtSubject) {
+        if (jwtSubject == null) return null;
+        String cached = humanStatusBySubject.get(jwtSubject);
+        if (cached != null) return cached;
+        // Safety-net DB fallback (cold cache or missed population)
+        return humanUserRepository.findByIdpSubject(jwtSubject)
+                .map(h -> {
+                    humanStatusBySubject.put(jwtSubject, h.getStatus());
+                    return h.getStatus();
+                })
+                .orElse(null);
+    }
+
+    /**
+     * Get NHI status from cache. Falls back to DB on cache miss.
+     * Returns null if no NHI found for this subject (not an NHI identity).
+     */
+    public String getNhiStatus(String jwtSubject) {
+        if (jwtSubject == null) return null;
+        String cached = nhiStatusBySubject.get(jwtSubject);
+        if (cached != null) return cached;
+        // Safety-net DB fallback
+        return nhiRepository.findByIdpSubject(jwtSubject)
+                .map(n -> {
+                    nhiStatusBySubject.put(jwtSubject, n.getStatus());
+                    return n.getStatus();
+                })
+                .orElse(null);
+    }
+
+    /**
+     * Get agent approval status for a session. O(1) from cache, DB JOIN fallback on miss.
+     * Returns null if session/agent not found.
+     */
+    public String getAgentStatusForSession(String sessionId) {
+        if (sessionId == null) return null;
+        // Primary: in-memory sessionToAgentId → agentStatusById (two O(1) lookups)
+        UUID agentId = sessionToAgentId.get(sessionId);
+        if (agentId != null) {
+            String status = agentStatusById.get(agentId);
+            if (status != null) return status;
+        }
+        // Fallback: DB JOIN query (edge case: race during disconnect, or cold cache)
+        return sessionRepository.findAgentApprovalStatusBySessionId(sessionId)
+                .orElse(null);
+    }
+
+    /**
+     * Get the agent name for a session (for error messages).
+     */
+    public String getAgentNameForSession(String sessionId) {
+        if (sessionId == null) return "unknown";
+        UUID agentId = sessionToAgentId.get(sessionId);
+        if (agentId != null) {
+            for (GatewayAgentEntity agent : agentCache.values()) {
+                if (agentId.equals(agent.getId())) {
+                    return agent.getAgentName();
+                }
+            }
+        }
+        return "unknown";
+    }
+
+    // ── Cache update methods (called by HumanUserService / NhiService after admin mutations) ──
+
+    /** Update human status cache after admin approve/block/unblock. */
+    public void updateHumanStatusCache(String idpSubject, String newStatus) {
+        if (idpSubject != null) {
+            humanStatusBySubject.put(idpSubject, newStatus);
+        }
+    }
+
+    /** Update NHI status cache after admin approve/block/unblock. */
+    public void updateNhiStatusCache(String idpSubject, String newStatus) {
+        if (idpSubject != null) {
+            nhiStatusBySubject.put(idpSubject, newStatus);
+        }
     }
 
     /**
@@ -649,9 +832,10 @@ public class AgentRegistryService {
         String previousApprovalStatus = agent.getApprovalStatus();
         agent.setApprovalStatus("APPROVED");
         GatewayAgentEntity updated = agentRepository.saveAndFlush(agent);
-        // Update cache
+        // Update caches
         String key = cacheKey(agent.getAgentName(), agent.getAgentVersion());
         agentCache.put(key, updated);
+        agentStatusById.put(agentId, "APPROVED");
         auditService.auditAgentApproved(
                 updated.getId(),
                 updated.getAgentName(),
@@ -678,9 +862,10 @@ public class AgentRegistryService {
         String previousApprovalStatus = agent.getApprovalStatus();
         agent.setApprovalStatus("BLOCKED");
         GatewayAgentEntity updated = agentRepository.saveAndFlush(agent);
-        // Update cache
+        // Update caches
         String key = cacheKey(agent.getAgentName(), agent.getAgentVersion());
         agentCache.put(key, updated);
+        agentStatusById.put(agentId, "BLOCKED");
 
         // ── Proactive session termination ──
         List<GatewayAgentSessionEntity> activeSessions =
@@ -822,13 +1007,14 @@ public class AgentRegistryService {
                 .lastSeenAt(now)
                 .totalSessions(0)
                 .totalRequests(0L)
-                .status("ACTIVE")
+                .status("PENDING")
                 .lastJwtClaims(rawJwtClaims)
                 .lastIpAddress(ipAddress)
                 .build();
 
         GatewayHumanUserEntity saved = humanUserRepository.saveAndFlush(newUser);
-        log.info("👤 NEW human user discovered: {} (sub={}, email={}, ip={})",
+        humanStatusBySubject.put(idpSubject, "PENDING");
+        log.info("👤 NEW human user discovered (PENDING approval): {} (sub={}, email={}, ip={})",
                 preferredUsername, idpSubject, email, ipAddress);
         return saved;
     }
@@ -854,42 +1040,56 @@ public class AgentRegistryService {
     }
 
     /**
-     * Check if the human user behind a session is blocked.
-     * O(1) — ConcurrentHashMap lookup + DB read (small table, typically < 100 rows).
-     *
-     * @param sessionId the agent's MCP session ID
-     * @return {@code true} if the human user is BLOCKED, {@code false} otherwise
-     */
-    public boolean isHumanBlocked(String sessionId) {
-        if (sessionId == null) return false;
-        UUID humanUserId = sessionToHumanUserId.get(sessionId);
-        if (humanUserId == null) return false;  // automated agent or unknown — not a human
-        return humanUserRepository.findById(humanUserId)
-                .map(h -> "BLOCKED".equals(h.getStatus()))
-                .orElse(false);
-    }
-
-    /**
      * Returns the blocked reason for a human user behind this session, or empty if not blocked.
-     * Combines the boolean check + reason retrieval in one DB call.
+     * Two-path lookup: (1) direct humanUserId map, (2) fallback via authIdentity/JWT subject.
      */
     public Optional<String> getHumanBlockReason(String sessionId) {
         if (sessionId == null) return Optional.empty();
+
+        // Path 1: Direct lookup via sessionToHumanUserId (HUMAN_DELEGATED tokens)
         UUID humanUserId = sessionToHumanUserId.get(sessionId);
-        if (humanUserId == null) return Optional.empty();
-        return humanUserRepository.findById(humanUserId)
-                .filter(h -> "BLOCKED".equals(h.getStatus()))
-                .map(h -> h.getBlockedReason() != null ? h.getBlockedReason() : "Blocked by admin");
+        if (humanUserId != null) {
+            return humanUserRepository.findById(humanUserId)
+                    .filter(h -> "BLOCKED".equals(h.getStatus()))
+                    .map(h -> h.getBlockedReason() != null ? h.getBlockedReason() : "Blocked by admin");
+        }
+
+        // Path 2: Fallback via authIdentity (JWT subject) — catches token misclassification
+        String authIdentity = sessionToAuthIdentity.get(sessionId);
+        if (authIdentity != null) {
+            Optional<String> reason = humanUserRepository.findByIdpSubject(authIdentity)
+                    .filter(h -> "BLOCKED".equals(h.getStatus()))
+                    .map(h -> h.getBlockedReason() != null ? h.getBlockedReason() : "Blocked by admin");
+            if (reason.isPresent()) {
+                log.warn("🔍 Human block reason found via authIdentity fallback: session={}, sub={}", sessionId, authIdentity);
+            }
+            return reason;
+        }
+
+        return Optional.empty();
     }
 
     /** Returns the human user's preferred username for this session (for error messages). */
     public String getHumanUsername(String sessionId) {
         if (sessionId == null) return null;
+
+        // Path 1: Direct lookup
         UUID humanUserId = sessionToHumanUserId.get(sessionId);
-        if (humanUserId == null) return null;
-        return humanUserRepository.findById(humanUserId)
-                .map(h -> h.getPreferredUsername())
-                .orElse(null);
+        if (humanUserId != null) {
+            return humanUserRepository.findById(humanUserId)
+                    .map(GatewayHumanUserEntity::getPreferredUsername)
+                    .orElse(null);
+        }
+
+        // Path 2: Fallback via authIdentity
+        String authIdentity = sessionToAuthIdentity.get(sessionId);
+        if (authIdentity != null) {
+            return humanUserRepository.findByIdpSubject(authIdentity)
+                    .map(GatewayHumanUserEntity::getPreferredUsername)
+                    .orElse(null);
+        }
+
+        return null;
     }
 
     /**
@@ -983,13 +1183,14 @@ public class AgentRegistryService {
                 .lastSeenAt(now)
                 .totalSessions(0)
                 .totalRequests(0L)
-                .status("ACTIVE")
+                .status("PENDING")
                 .lastJwtClaims(rawJwtClaims)
                 .lastIpAddress(ipAddress)
                 .build();
 
         GatewayNhiEntity saved = nhiRepository.saveAndFlush(newNhi);
-        log.info("NEW NHI discovered: {} (sub={}, clientId={}, ip={})",
+        nhiStatusBySubject.put(idpSubject, "PENDING");
+        log.info("🔧 NEW NHI discovered (PENDING approval): {} (sub={}, clientId={}, ip={})",
                 saved.getServiceName(), idpSubject, clientId, ipAddress);
         return saved;
     }
@@ -1015,42 +1216,56 @@ public class AgentRegistryService {
     }
 
     /**
-     * Check if the NHI behind a session is blocked.
-     * O(1) — ConcurrentHashMap lookup + DB read (small table).
-     *
-     * @param sessionId the agent's MCP session ID
-     * @return {@code true} if the NHI is BLOCKED, {@code false} otherwise
-     */
-    public boolean isNhiBlocked(String sessionId) {
-        if (sessionId == null) return false;
-        UUID nhiId = sessionToNhiId.get(sessionId);
-        if (nhiId == null) return false;  // human-delegated or unknown — not an NHI
-        return nhiRepository.findById(nhiId)
-                .map(n -> "BLOCKED".equals(n.getStatus()))
-                .orElse(false);
-    }
-
-    /**
      * Returns the blocked reason for an NHI behind this session, or empty if not blocked.
-     * Combines the boolean check + reason retrieval in one DB call.
+     * Two-path lookup: (1) direct nhiId map, (2) fallback via authIdentity/JWT subject.
      */
     public Optional<String> getNhiBlockReason(String sessionId) {
         if (sessionId == null) return Optional.empty();
+
+        // Path 1: Direct lookup via sessionToNhiId
         UUID nhiId = sessionToNhiId.get(sessionId);
-        if (nhiId == null) return Optional.empty();
-        return nhiRepository.findById(nhiId)
-                .filter(n -> "BLOCKED".equals(n.getStatus()))
-                .map(n -> n.getBlockedReason() != null ? n.getBlockedReason() : "Blocked by admin");
+        if (nhiId != null) {
+            return nhiRepository.findById(nhiId)
+                    .filter(n -> "BLOCKED".equals(n.getStatus()))
+                    .map(n -> n.getBlockedReason() != null ? n.getBlockedReason() : "Blocked by admin");
+        }
+
+        // Path 2: Fallback via authIdentity (JWT subject)
+        String authIdentity = sessionToAuthIdentity.get(sessionId);
+        if (authIdentity != null) {
+            Optional<String> reason = nhiRepository.findByIdpSubject(authIdentity)
+                    .filter(n -> "BLOCKED".equals(n.getStatus()))
+                    .map(n -> n.getBlockedReason() != null ? n.getBlockedReason() : "Blocked by admin");
+            if (reason.isPresent()) {
+                log.warn("🔍 NHI block reason found via authIdentity fallback: session={}, sub={}", sessionId, authIdentity);
+            }
+            return reason;
+        }
+
+        return Optional.empty();
     }
 
     /** Returns the NHI service name for this session (for error messages). */
     public String getNhiServiceName(String sessionId) {
         if (sessionId == null) return null;
+
+        // Path 1: Direct lookup
         UUID nhiId = sessionToNhiId.get(sessionId);
-        if (nhiId == null) return null;
-        return nhiRepository.findById(nhiId)
-                .map(n -> n.getServiceName())
-                .orElse(null);
+        if (nhiId != null) {
+            return nhiRepository.findById(nhiId)
+                    .map(GatewayNhiEntity::getServiceName)
+                    .orElse(null);
+        }
+
+        // Path 2: Fallback via authIdentity
+        String authIdentity = sessionToAuthIdentity.get(sessionId);
+        if (authIdentity != null) {
+            return nhiRepository.findByIdpSubject(authIdentity)
+                    .map(GatewayNhiEntity::getServiceName)
+                    .orElse(null);
+        }
+
+        return null;
     }
 
     /**
