@@ -3,7 +3,12 @@ package com.ws.wsAgenticSecurityGateway.pdp.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentSessionEntity;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayHumanUserEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayNhiEntity;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.service.HumanUserService;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.service.NhiService;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
@@ -58,6 +63,8 @@ public class PolicyLlmService {
     private final CedarPolicyEngine cedarEngine;
     private final CustomAttributeService customAttributeService;
     private final McpAuditService auditService;
+    private final HumanUserService humanUserService;
+    private final NhiService nhiService;
 
     @Value("${ws.gateway.pdp.anthropic-api-key:}")
     private String anthropicApiKey;
@@ -77,7 +84,9 @@ public class PolicyLlmService {
                              PolicyService policyService,
                              CedarPolicyEngine cedarEngine,
                              CustomAttributeService customAttributeService,
-                             McpAuditService auditService) {
+                             McpAuditService auditService,
+                             HumanUserService humanUserService,
+                             NhiService nhiService) {
         this.objectMapper = objectMapper;
         this.agentRegistryService = agentRegistryService;
         this.capabilityRegistryService = capabilityRegistryService;
@@ -85,6 +94,8 @@ public class PolicyLlmService {
         this.cedarEngine = cedarEngine;
         this.customAttributeService = customAttributeService;
         this.auditService = auditService;
+        this.humanUserService = humanUserService;
+        this.nhiService = nhiService;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
@@ -474,18 +485,41 @@ public class PolicyLlmService {
             if (agents == null || agents.isEmpty()) {
                 sb.append("No agents registered yet.\n\n");
             } else {
-                sb.append("| Agent Name | Version | Approval Status |\n");
-                sb.append("|------------|---------|----------------|\n");
+                sb.append("| Agent Name | Version | Auth Client ID | Token Type | Approval | Status | Sessions | Requests | First Seen | Last Seen |\n");
+                sb.append("|------------|---------|---------------|------------|----------|--------|----------|----------|------------|----------|\n");
                 for (GatewayAgentEntity agent : agents) {
                     sb.append("| `").append(agent.getAgentName()).append("` | ")
                             .append(agent.getAgentVersion() != null ? agent.getAgentVersion() : "-").append(" | ")
-                            .append(agent.getApprovalStatus()).append(" |\n");
+                            .append(agent.getAuthClientId() != null ? agent.getAuthClientId() : "-").append(" | ")
+                            .append(agent.getTokenType() != null ? agent.getTokenType() : "-").append(" | ")
+                            .append(agent.getApprovalStatus()).append(" | ")
+                            .append(agent.getStatus()).append(" | ")
+                            .append(agent.getTotalSessions() != null ? agent.getTotalSessions() : 0).append(" | ")
+                            .append(agent.getTotalRequests() != null ? agent.getTotalRequests() : 0).append(" | ")
+                            .append(agent.getFirstSeenAt() != null ? agent.getFirstSeenAt().toLocalDate() : "-").append(" | ")
+                            .append(agent.getLastSeenAt() != null ? agent.getLastSeenAt().toLocalDate() : "-").append(" |\n");
                 }
                 sb.append("\n");
             }
         } catch (Exception e) {
             sb.append("### Registered Agents\nUnable to fetch agent data.\n\n");
             log.debug("🤖 Could not fetch agents for LLM metadata: {}", e.getMessage());
+        }
+
+        // ── Human Users (OAuth2 delegated) ──
+        try {
+            appendHumanUserMetadata(sb);
+        } catch (Exception e) {
+            sb.append("### Human Users\nUnable to fetch human user data.\n\n");
+            log.debug("🤖 Could not fetch human users for LLM metadata: {}", e.getMessage());
+        }
+
+        // ── Non-Human Identities (NHIs — service accounts, bots) ──
+        try {
+            appendNhiMetadata(sb);
+        } catch (Exception e) {
+            sb.append("### Non-Human Identities\nUnable to fetch NHI data.\n\n");
+            log.debug("Could not fetch NHIs for LLM metadata: {}", e.getMessage());
         }
 
         // ── Connected Servers + Tools ──
@@ -582,6 +616,199 @@ public class PolicyLlmService {
         String metadata = sb.toString();
         metadataCache.put("liveMetadata", new CachedValue(metadata, System.currentTimeMillis()));
         return metadata;
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  HUMAN USER METADATA BUILDER
+    // ════════════════════════════════════════════════════════════════════
+
+    private void appendHumanUserMetadata(StringBuilder sb) {
+        List<GatewayHumanUserEntity> allHumans = humanUserService.findAll();
+        if (allHumans == null || allHumans.isEmpty()) {
+            sb.append("### Human Users\nNo human users discovered yet.\n\n");
+            return;
+        }
+
+        // ── Summary stats ──
+        long activeToday = humanUserService.countActiveHumansSince(
+                java.time.LocalDateTime.now().toLocalDate().atStartOfDay());
+        long blockedCount = humanUserService.countBlocked();
+        sb.append("### Human Users Overview\n");
+        sb.append("**Total:** ").append(allHumans.size())
+                .append(" | **Active today:** ").append(activeToday)
+                .append(" | **Blocked:** ").append(blockedCount).append("\n\n");
+
+        // ── Active Human Users (enriched table) ──
+        List<GatewayHumanUserEntity> activeHumans = allHumans.stream()
+                .filter(h -> "ACTIVE".equals(h.getStatus()))
+                .limit(50)
+                .toList();
+
+        if (!activeHumans.isEmpty()) {
+            sb.append("### Active Human Users\n");
+            sb.append("| Username | Full Name | Email | Verified | IdP Issuer | Realm Roles | Client Roles | Custom Claims | Requests | Sessions | First Seen | Last Seen |\n");
+            sb.append("|----------|-----------|-------|----------|-----------|-------------|-------------|---------------|----------|----------|------------|----------|\n");
+            for (GatewayHumanUserEntity h : activeHumans) {
+                String realmRoles = formatRoles(h.getRealmRoles());
+                String clientRoles = formatRoles(h.getClientRoles());
+                String customClaims = h.getCustomClaims() != null && !h.getCustomClaims().isEmpty()
+                        ? h.getCustomClaims().entrySet().stream()
+                        .map(e -> e.getKey() + "=" + e.getValue())
+                        .collect(Collectors.joining(", "))
+                        : "-";
+                String issuerHost = extractHost(h.getIdpIssuer());
+
+                sb.append("| `").append(h.getPreferredUsername() != null ? h.getPreferredUsername() : "-").append("` | ")
+                        .append(h.getFullName() != null ? h.getFullName() : "-").append(" | ")
+                        .append(h.getEmail() != null ? h.getEmail() : "-").append(" | ")
+                        .append(h.getEmailVerified() != null && h.getEmailVerified() ? "Yes" : "No").append(" | ")
+                        .append(issuerHost).append(" | ")
+                        .append(realmRoles).append(" | ")
+                        .append(clientRoles).append(" | ")
+                        .append(customClaims).append(" | ")
+                        .append(h.getTotalRequests() != null ? h.getTotalRequests() : 0).append(" | ")
+                        .append(h.getTotalSessions() != null ? h.getTotalSessions() : 0).append(" | ")
+                        .append(h.getFirstSeenAt() != null ? h.getFirstSeenAt().toLocalDate() : "-").append(" | ")
+                        .append(h.getLastSeenAt() != null ? h.getLastSeenAt().toLocalDate() : "-").append(" |\n");
+            }
+            sb.append("\n");
+        }
+
+        // ── Blocked Human Users ──
+        List<GatewayHumanUserEntity> blockedHumans = allHumans.stream()
+                .filter(h -> "BLOCKED".equals(h.getStatus()))
+                .toList();
+
+        if (!blockedHumans.isEmpty()) {
+            sb.append("### Blocked Human Users\n");
+            sb.append("| Username | Email | Blocked At | Reason |\n");
+            sb.append("|----------|-------|-----------|--------|\n");
+            for (GatewayHumanUserEntity h : blockedHumans) {
+                sb.append("| `").append(h.getPreferredUsername() != null ? h.getPreferredUsername() : "-").append("` | ")
+                        .append(h.getEmail() != null ? h.getEmail() : "-").append(" | ")
+                        .append(h.getBlockedAt() != null ? h.getBlockedAt().toString() : "-").append(" | ")
+                        .append(h.getBlockedReason() != null ? h.getBlockedReason() : "-").append(" |\n");
+            }
+            sb.append("\n");
+        }
+
+        // ── Human-Agent Relationships ──
+        sb.append("### Human-Agent Relationships\n");
+        sb.append("Shows which humans delegate to which AI agents.\n\n");
+        sb.append("| Human User | Agent | Token Type | Sessions | Last Session |\n");
+        sb.append("|-----------|-------|-----------|----------|-------------|\n");
+        int relationshipCount = 0;
+        for (GatewayHumanUserEntity h : activeHumans) {
+            if (relationshipCount >= 30) break;
+            try {
+                List<GatewayAgentSessionEntity> sessions = humanUserService.getHumanSessionsWithAgent(h.getId());
+                if (sessions == null || sessions.isEmpty()) continue;
+
+                // Group by agent name
+                Map<String, List<GatewayAgentSessionEntity>> byAgent = sessions.stream()
+                        .collect(Collectors.groupingBy(s -> s.getAgent().getAgentName()));
+
+                for (Map.Entry<String, List<GatewayAgentSessionEntity>> entry : byAgent.entrySet()) {
+                    if (relationshipCount >= 30) break;
+                    List<GatewayAgentSessionEntity> agentSessions = entry.getValue();
+                    GatewayAgentSessionEntity latest = agentSessions.get(0); // already ordered DESC
+                    sb.append("| `").append(h.getPreferredUsername() != null ? h.getPreferredUsername() : "-").append("` | ")
+                            .append(entry.getKey()).append(" | ")
+                            .append(latest.getTokenType() != null ? latest.getTokenType() : "-").append(" | ")
+                            .append(agentSessions.size()).append(" | ")
+                            .append(latest.getConnectedAt() != null ? latest.getConnectedAt().toLocalDate() : "-").append(" |\n");
+                    relationshipCount++;
+                }
+            } catch (Exception e) {
+                log.debug("Could not fetch sessions for human {}: {}", h.getId(), e.getMessage());
+            }
+        }
+        if (relationshipCount == 0) {
+            sb.append("| - | No human-agent sessions recorded yet | - | - | - |\n");
+        }
+        sb.append("\nHuman users authenticate via OAuth2/OIDC and interact through AI agents. Use agent-level policies to control access. Consider human roles when writing policies.\n\n");
+    }
+
+    private void appendNhiMetadata(StringBuilder sb) {
+        List<GatewayNhiEntity> allNhis = nhiService.findAll();
+        if (allNhis == null || allNhis.isEmpty()) {
+            sb.append("### Non-Human Identities (NHIs)\nNo NHIs discovered yet.\n\n");
+            return;
+        }
+
+        long activeToday = nhiService.countActiveSince(
+                java.time.LocalDateTime.now().toLocalDate().atStartOfDay());
+        long blockedCount = nhiService.countBlocked();
+        sb.append("### Non-Human Identities Overview\n");
+        sb.append("NHIs are service accounts, CI bots, and automated systems that authenticate via Client Credentials flow.\n\n");
+        sb.append("**Total:** ").append(allNhis.size())
+                .append(" | **Active today:** ").append(activeToday)
+                .append(" | **Blocked:** ").append(blockedCount).append("\n\n");
+
+        List<GatewayNhiEntity> activeNhis = allNhis.stream()
+                .filter(n -> "ACTIVE".equals(n.getStatus()))
+                .limit(50)
+                .toList();
+
+        if (!activeNhis.isEmpty()) {
+            sb.append("### Active NHIs\n");
+            sb.append("| Service Name | Client ID | IdP Issuer | Realm Roles | Client Roles | Custom Claims | Requests | Sessions | First Seen | Last Seen |\n");
+            sb.append("|-------------|-----------|-----------|-------------|-------------|---------------|----------|----------|------------|----------|\n");
+            for (GatewayNhiEntity n : activeNhis) {
+                String realmRoles = formatRoles(n.getRealmRoles());
+                String clientRoles = formatRoles(n.getClientRoles());
+                String customClaims = n.getCustomClaims() != null && !n.getCustomClaims().isEmpty()
+                        ? n.getCustomClaims().entrySet().stream()
+                        .map(e -> e.getKey() + "=" + e.getValue())
+                        .collect(Collectors.joining(", "))
+                        : "-";
+
+                sb.append("| `").append(n.getServiceName() != null ? n.getServiceName() : "-").append("` | ")
+                        .append(n.getClientId() != null ? n.getClientId() : "-").append(" | ")
+                        .append(extractHost(n.getIdpIssuer())).append(" | ")
+                        .append(realmRoles).append(" | ")
+                        .append(clientRoles).append(" | ")
+                        .append(customClaims).append(" | ")
+                        .append(n.getTotalRequests() != null ? n.getTotalRequests() : 0).append(" | ")
+                        .append(n.getTotalSessions() != null ? n.getTotalSessions() : 0).append(" | ")
+                        .append(n.getFirstSeenAt() != null ? n.getFirstSeenAt().toLocalDate() : "-").append(" | ")
+                        .append(n.getLastSeenAt() != null ? n.getLastSeenAt().toLocalDate() : "-").append(" |\n");
+            }
+            sb.append("\n");
+        }
+
+        List<GatewayNhiEntity> blockedNhis = allNhis.stream()
+                .filter(n -> "BLOCKED".equals(n.getStatus()))
+                .toList();
+        if (!blockedNhis.isEmpty()) {
+            sb.append("### Blocked NHIs\n");
+            sb.append("| Service Name | Client ID | Blocked At | Reason |\n");
+            sb.append("|-------------|-----------|-----------|--------|\n");
+            for (GatewayNhiEntity n : blockedNhis) {
+                sb.append("| `").append(n.getServiceName() != null ? n.getServiceName() : "-").append("` | ")
+                        .append(n.getClientId() != null ? n.getClientId() : "-").append(" | ")
+                        .append(n.getBlockedAt() != null ? n.getBlockedAt().toString() : "-").append(" | ")
+                        .append(n.getBlockedReason() != null ? n.getBlockedReason() : "-").append(" |\n");
+            }
+            sb.append("\n");
+        }
+        sb.append("NHIs authenticate via OAuth2 Client Credentials flow. They interact with MCP servers through agents, similar to human users but without human involvement.\n\n");
+    }
+
+    private String formatRoles(List<String> roles) {
+        if (roles == null || roles.isEmpty()) return "-";
+        return roles.stream()
+                .filter(r -> !r.startsWith("default-roles-"))
+                .collect(Collectors.joining(", "));
+    }
+
+    private String extractHost(String uri) {
+        if (uri == null || uri.isBlank()) return "-";
+        try {
+            return java.net.URI.create(uri).getHost();
+        } catch (Exception e) {
+            return uri.length() > 40 ? uri.substring(0, 40) + "..." : uri;
+        }
     }
 
     // ════════════════════════════════════════════════════════════════════

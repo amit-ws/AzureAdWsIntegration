@@ -7,6 +7,7 @@ import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayAgentSessionRepository;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
+import com.ws.wsAgenticSecurityGateway.capabilityRegistry.event.CapabilityProfileChangedEvent;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.event.CapabilityRegistryChangedEvent;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
@@ -46,7 +47,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>No {@code Thread.currentThread().join()} — the servlet container handles HTTP requests</li>
  *   <li>No {@code SessionManager} — the SDK manages per-agent sessions internally</li>
  *   <li>Multiple agents can connect simultaneously</li>
- *   <li>Southbound MCP connections persist across agent reconnects</li>
+ *   <li>WS Client MCP connections persist across agent reconnects</li>
  * </ul>
  *
  * <p>{@code @Order(2)} ensures this runs <strong>after</strong> the MCP Client
@@ -99,10 +100,13 @@ public class HttpMcpServerInitializer implements ApplicationRunner {
             log.info("═══════════════════════════════════════════════════════════");
 
             // ── Configure server capabilities ──────────────────────────
+            // Gateway is an aggregating proxy — always advertise all 3 capability types
+            // with listChanged=true, because any enterprise MCP server may bring tools,
+            // prompts, or resources that agents need to discover dynamically.
             McpSchema.ServerCapabilities capabilities = McpSchema.ServerCapabilities.builder()
-                    .tools(true)
-                    .resources(false, false)
-                    .prompts(true)
+                    .tools(true)                // listChanged=true → agents get notified on tool changes
+                    .resources(true, true)      // subscribe=true, listChanged=true → full resource support
+                    .prompts(true)              // listChanged=true → agents get notified on prompt changes
                     .build();
 
             // ── Build MCP server using HTTP Streamable transport ────────
@@ -194,14 +198,44 @@ public class HttpMcpServerInitializer implements ApplicationRunner {
     /**
      * Runtime capability refresh hook.
      *
-     * <p>The registry is updated when southbound servers connect/disconnect at runtime.
-     * This listener keeps the northbound MCP SDK registrations in sync so agents
+     * <p>The registry is updated when enterprise MCP servers connect/disconnect at runtime.
+     * This listener keeps the WS Server MCP SDK registrations in sync so agents
      * receive fresh {@code tools/list}, {@code prompts/list}, and {@code resources/list}
      * without restarting the gateway.
      */
     @EventListener
     public void onCapabilityRegistryChanged(CapabilityRegistryChangedEvent event) {
         refreshCapabilitiesFromRegistry(event.getReason(), event.getServerConfigName());
+    }
+
+    /**
+     * Workflow 2: Capability profile changed — notify agents to re-fetch tools/prompts/resources.
+     * Triggered when a profile is assigned, unassigned, updated, or deleted.
+     */
+    @EventListener
+    public void onCapabilityProfileChanged(CapabilityProfileChangedEvent event) {
+        if (server == null) {
+            log.debug("MCP server not initialized yet — skipping profile change notification");
+            return;
+        }
+
+        log.info("📢 Capability profile change [{}] profile='{}' affectedAgents={} — broadcasting notifications",
+                event.getReason(), event.getProfileName(), event.getAffectedAgentNames());
+
+        server.notifyToolsListChanged();
+        server.notifyPromptsListChanged();
+        server.notifyResourcesListChanged();
+
+        // Collect all connected agent names for audit (SDK broadcasts to all)
+        List<String> notifiedAgents = agentRegistryService.getConnectedSessions().stream()
+                .filter(s -> s.getAgent() != null)
+                .map(s -> s.getAgent().getAgentName())
+                .distinct()
+                .collect(java.util.stream.Collectors.toList());
+
+        auditService.auditProfileNotificationBroadcast(
+                event.getReason(), event.getProfileName(), event.getProfileId(),
+                event.getAffectedAgentNames(), notifiedAgents);
     }
 
     // ════════════════════════════════════════════════════════════════════
@@ -410,15 +444,32 @@ public class HttpMcpServerInitializer implements ApplicationRunner {
                 server.notifyResourcesListChanged();
             }
 
-            if (toolAdded + toolUpdated + toolRemoved
-                    + promptAdded + promptUpdated + promptRemoved
-                    + resourceAdded + resourceUpdated + resourceRemoved > 0) {
+            boolean toolsNotified = toolAdded + toolUpdated + toolRemoved > 0;
+            boolean promptsNotified = promptAdded + promptUpdated + promptRemoved > 0;
+            boolean resourcesNotified = resourceAdded + resourceUpdated + resourceRemoved > 0;
+
+            if (toolsNotified || promptsNotified || resourcesNotified) {
                 log.info(
                         "🔄 MCP capability refresh [{}:{}] tools(+{},~{},-{}), prompts(+{},~{},-{}), resources(+{},~{},-{})",
                         reason, serverConfigName,
                         toolAdded, toolUpdated, toolRemoved,
                         promptAdded, promptUpdated, promptRemoved,
                         resourceAdded, resourceUpdated, resourceRemoved);
+
+                // Collect all connected agent names for audit
+                List<String> notifiedAgents = agentRegistryService.getConnectedSessions().stream()
+                        .filter(s -> s.getAgent() != null)
+                        .map(s -> s.getAgent().getAgentName())
+                        .distinct()
+                        .collect(java.util.stream.Collectors.toList());
+
+                // Audit the notification broadcast (async, non-blocking)
+                auditService.auditNotificationBroadcast(reason, serverConfigName,
+                        toolAdded, toolUpdated, toolRemoved,
+                        promptAdded, promptUpdated, promptRemoved,
+                        resourceAdded, resourceUpdated, resourceRemoved,
+                        toolsNotified, promptsNotified, resourcesNotified,
+                        notifiedAgents);
             } else {
                 log.debug("MCP capability refresh [{}:{}] - no effective changes", reason, serverConfigName);
             }

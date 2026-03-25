@@ -1,9 +1,9 @@
 package com.ws.wsAgenticSecurityGateway.wsClient.controller;
 
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.service.HumanUserService;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditModule;
-import com.ws.wsAgenticSecurityGateway.audit.constants.AuditStatus;
-import com.ws.wsAgenticSecurityGateway.audit.repository.McpAuditLogRepository;
+import com.ws.wsAgenticSecurityGateway.audit.service.AuditQueryService;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
 import com.ws.wsAgenticSecurityGateway.orchestration.InFlightRequestRegistry;
 import com.ws.wsAgenticSecurityGateway.pdp.service.CustomAttributeService;
@@ -35,29 +35,32 @@ public class DashboardController {
 
     private final McpSessionManager sessionManager;
     private final CapabilityRegistryService registryService;
-    private final McpAuditLogRepository auditRepo;
+    private final AuditQueryService auditQueryService;
     private final InFlightRequestRegistry inFlightRegistry;
     private final AgentRegistryService agentRegistryService;
     private final PolicyService policyService;
     private final CustomAttributeService customAttributeService;
     private final PolicyLlmService policyLlmService;
+    private final HumanUserService humanUserService;
 
     public DashboardController(McpSessionManager sessionManager,
                                CapabilityRegistryService registryService,
-                               McpAuditLogRepository auditRepo,
+                               AuditQueryService auditQueryService,
                                InFlightRequestRegistry inFlightRegistry,
                                AgentRegistryService agentRegistryService,
                                PolicyService policyService,
                                CustomAttributeService customAttributeService,
-                               PolicyLlmService policyLlmService) {
+                               PolicyLlmService policyLlmService,
+                               HumanUserService humanUserService) {
         this.sessionManager = sessionManager;
         this.registryService = registryService;
-        this.auditRepo = auditRepo;
+        this.auditQueryService = auditQueryService;
         this.inFlightRegistry = inFlightRegistry;
         this.agentRegistryService = agentRegistryService;
         this.policyService = policyService;
         this.customAttributeService = customAttributeService;
         this.policyLlmService = policyLlmService;
+        this.humanUserService = humanUserService;
     }
 
     /**
@@ -88,17 +91,21 @@ public class DashboardController {
 
         // Recent audit activity (last 24 hours)
         LocalDateTime last24h = LocalDateTime.now().minusHours(24);
-        summary.put("recentEventCount", auditRepo.countByTimestampAfter(last24h));
+        summary.put("recentEventCount", auditQueryService.countRecentEvents(last24h));
         summary.put("recentErrorCount",
-                auditRepo.countByStatusAndTimestampAfter(AuditStatus.ERROR, last24h)
-                        + auditRepo.countByStatusAndTimestampAfter(AuditStatus.FAILURE, last24h));
+                auditQueryService.countRecentErrors(last24h));
 
         // In-flight count for sidebar badge
         summary.put("inFlightCount", inFlightRegistry.getActiveCount());
 
         // Agent registry stats
         summary.put("totalAgents", agentRegistryService.getAllAgents().size());
-        summary.put("connectedAgentSessions", agentRegistryService.getConnectedSessions().size());
+        int connectedSessions = agentRegistryService.getConnectedSessions().size();
+        summary.put("connectedAgentSessions", connectedSessions);
+        summary.put("activeSessions", connectedSessions);
+
+        // Human user stats
+        summary.put("totalHumanUsers", humanUserService.count());
 
         return ResponseEntity.ok(summary);
     }
@@ -194,7 +201,7 @@ public class DashboardController {
         // Per-server details with last activity
         Map<String, Timestamp> lastActivityMap = new HashMap<>();
         try {
-            List<Object[]> lastActivityRows = auditRepo.findLastActivityPerServer();
+            List<Object[]> lastActivityRows = auditQueryService.findLastActivityPerServer();
             for (Object[] row : lastActivityRows) {
                 String serverName = (String) row[0];
                 Timestamp lastActivity = (Timestamp) row[1];
@@ -226,11 +233,10 @@ public class DashboardController {
         health.put("totalPrompts", registryService.getPromptDescriptors().size());
 
         // ── Traffic metrics ──────────────────────────────────────────
-        long recentEvents = auditRepo.countByTimestampAfter(last24h);
-        long recentErrors = auditRepo.countByStatusAndTimestampAfter(AuditStatus.ERROR, last24h)
-                + auditRepo.countByStatusAndTimestampAfter(AuditStatus.FAILURE, last24h);
+        long recentEvents = auditQueryService.countRecentEvents(last24h);
+        long recentErrors = auditQueryService.countRecentErrors(last24h);
         double successRate = recentEvents > 0 ? Math.round((1.0 - (double) recentErrors / recentEvents) * 10000.0) / 100.0 : 100.0;
-        long last5minCount = auditRepo.countByTimestampAfter(last5min);
+        long last5minCount = auditQueryService.countRecentEvents(last5min);
         double requestsPerMinute = Math.round(last5minCount / 5.0 * 100.0) / 100.0;
 
         health.put("recentEventCount", recentEvents);
@@ -239,12 +245,12 @@ public class DashboardController {
         health.put("requestsPerMinute", requestsPerMinute);
 
         // ── Latency percentiles ──────────────────────────────────────
-        Double avgDuration = auditRepo.findAverageDurationMsSince(last24h);
+        Double avgDuration = auditQueryService.findAverageDurationSince(last24h);
         health.put("avgDurationMs", avgDuration != null ? Math.round(avgDuration * 100.0) / 100.0 : 0);
 
         Map<String, Object> latency = new LinkedHashMap<>();
         try {
-            List<Object[]> percentiles = auditRepo.findLatencyPercentilesSince(last24h);
+            List<Object[]> percentiles = auditQueryService.findLatencyPercentilesSince(last24h);
             if (percentiles != null && !percentiles.isEmpty()) {
                 Object[] row = percentiles.get(0);
                 latency.put("p50", row[0] != null ? Math.round(((Number) row[0]).doubleValue() * 100.0) / 100.0 : 0);
@@ -292,7 +298,7 @@ public class DashboardController {
         Map<String, Object> activity = new LinkedHashMap<>();
         LocalDateTime last24h = LocalDateTime.now().minusHours(24);
         activity.put("pdpEventsLast24h",
-                auditRepo.countByModuleAndTimestampAfter(AuditModule.PDP, last24h));
+                auditQueryService.countByModuleAndTimestampAfter(AuditModule.PDP, last24h));
         activity.put("llmAvailable", policyLlmService.isLlmAvailable());
         pdp.put("activity", activity);
 

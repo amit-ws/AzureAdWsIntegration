@@ -13,7 +13,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Persistence gateway for southbound MCP server session records.
+ * Persistence gateway for WS Client-side MCP server session records.
  */
 @Repository
 public interface GatewayMcpServerSessionRepository extends JpaRepository<GatewayMcpServerSessionEntity, UUID> {

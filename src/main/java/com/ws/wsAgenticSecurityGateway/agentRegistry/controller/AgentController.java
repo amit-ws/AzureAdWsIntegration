@@ -2,10 +2,13 @@ package com.ws.wsAgenticSecurityGateway.agentRegistry.controller;
 
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentSessionEntity;
-import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayAgentSessionRepository;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayHumanUserEntity;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayNhiEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.service.HumanUserService;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.service.NhiService;
 import com.ws.wsAgenticSecurityGateway.audit.entity.McpAuditLog;
-import com.ws.wsAgenticSecurityGateway.audit.repository.McpAuditLogRepository;
+import com.ws.wsAgenticSecurityGateway.audit.service.AuditQueryService;
 import lombok.extern.slf4j.Slf4j;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.data.domain.Page;
@@ -29,15 +32,18 @@ import java.util.stream.Collectors;
 public class AgentController {
 
     private final AgentRegistryService agentRegistryService;
-    private final GatewayAgentSessionRepository sessionRepository;
-    private final McpAuditLogRepository auditLogRepository;
+    private final AuditQueryService auditQueryService;
+    private final HumanUserService humanUserService;
+    private final NhiService nhiService;
 
     public AgentController(AgentRegistryService agentRegistryService,
-                           GatewayAgentSessionRepository sessionRepository,
-                           McpAuditLogRepository auditLogRepository) {
+                           AuditQueryService auditQueryService,
+                           HumanUserService humanUserService,
+                           NhiService nhiService) {
         this.agentRegistryService = agentRegistryService;
-        this.sessionRepository = sessionRepository;
-        this.auditLogRepository = auditLogRepository;
+        this.auditQueryService = auditQueryService;
+        this.humanUserService = humanUserService;
+        this.nhiService = nhiService;
     }
 
     /**
@@ -55,10 +61,7 @@ public class AgentController {
                         Collectors.counting()));
 
         // True total session counts from the sessions table (not the denormalized counter)
-        Map<UUID, Long> totalSessionsByAgent = new HashMap<>();
-        for (Object[] row : sessionRepository.countSessionsByAgent()) {
-            totalSessionsByAgent.put((UUID) row[0], (Long) row[1]);
-        }
+        Map<UUID, Long> totalSessionsByAgent = agentRegistryService.countSessionsByAgent();
 
         List<Map<String, Object>> result = new ArrayList<>();
         for (GatewayAgentEntity agent : agents) {
@@ -90,7 +93,7 @@ public class AgentController {
         return agentRegistryService.getAgent(id)
                 .map(agent -> {
                     // True total from sessions table (not the denormalized counter)
-                    long totalSessions = sessionRepository.countByAgentId(id);
+                    long totalSessions = agentRegistryService.countSessionsForAgent(id);
 
                     Map<String, Object> map = new LinkedHashMap<>();
                     map.put("id", agent.getId());
@@ -128,6 +131,23 @@ public class AgentController {
             map.put("requestCount", session.getRequestCount());
             map.put("lastRequestAt", session.getLastRequestAt());
             map.put("status", session.getStatus());
+            map.put("tokenType", session.getTokenType());
+            map.put("humanUserId", session.getHumanUserId());
+            map.put("nhiId", session.getNhiId());
+            map.put("ipAddress", session.getIpAddress());
+
+            // Resolve caller name for display
+            String calledByName = null;
+            String callerType = session.getTokenType();
+            if (session.getHumanUserId() != null) {
+                humanUserService.findById(session.getHumanUserId())
+                        .ifPresent(h -> map.put("calledByName", h.getPreferredUsername() != null
+                                ? h.getPreferredUsername() : h.getFullName()));
+            } else if (session.getNhiId() != null) {
+                nhiService.findById(session.getNhiId())
+                        .ifPresent(n -> map.put("calledByName", n.getServiceName() != null
+                                ? n.getServiceName() : n.getClientId()));
+            }
             result.add(map);
         }
 
@@ -204,7 +224,7 @@ public class AgentController {
 
         // Get session metadata — search all sessions (connected + disconnected)
         Map<String, Object> sessionInfo = new LinkedHashMap<>();
-        sessionRepository.findBySessionId(sessionId).ifPresentOrElse(
+        agentRegistryService.findSessionBySessionId(sessionId).ifPresentOrElse(
                 sessionEntity -> {
                     sessionInfo.put("sessionId", sessionEntity.getSessionId());
                     sessionInfo.put("agentName", sessionEntity.getAgent().getAgentName());
@@ -220,7 +240,7 @@ public class AgentController {
         );
 
         // Query audit logs for this session
-        Page<McpAuditLog> auditPage = auditLogRepository.findBySessionIdOrderByTimestampDesc(
+        Page<McpAuditLog> auditPage = auditQueryService.getSessionTimeline(
                 sessionId, PageRequest.of(page, size));
 
         List<Map<String, Object>> timeline = new ArrayList<>();
@@ -282,12 +302,15 @@ public class AgentController {
     public ResponseEntity<Map<String, Object>> blockAgent(@PathVariable UUID id,
                                                           HttpServletRequest request) {
         try {
-            GatewayAgentEntity agent = agentRegistryService.blockAgent(
+            AgentRegistryService.AgentBlockResult blockResult = agentRegistryService.blockAgent(
                     id, resolveAdminActor(request), resolveAdminIp(request));
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("status", "ok");
-            result.put("message", "Agent '" + agent.getAgentName() + "' blocked");
-            result.put("approvalStatus", agent.getApprovalStatus());
+            result.put("message", "Agent '" + blockResult.agent().getAgentName() + "' blocked");
+            result.put("approvalStatus", blockResult.agent().getApprovalStatus());
+            result.put("sessionsTerminated", blockResult.sessionsTerminated());
+            result.put("affectedHumanUsers", blockResult.affectedHumanUsers().size());
+            result.put("affectedNhis", blockResult.affectedNhis().size());
             return ResponseEntity.ok(result);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();

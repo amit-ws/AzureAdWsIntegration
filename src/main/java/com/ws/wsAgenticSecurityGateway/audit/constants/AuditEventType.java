@@ -6,9 +6,9 @@ package com.ws.wsAgenticSecurityGateway.audit.constants;
  * <p>
  * Grouped by the five activity areas:
  * <ul>
- * <li>{@code SERVER_*} — AI Client &lt;-&gt; WS Server (Northbound)</li>
+ * <li>{@code SERVER_*} — AI Client &lt;-&gt; WS Server (Agent-Facing)</li>
  * <li>{@code CLIENT_*} — WS Client &lt;-&gt; Enterprise MCP Server
- * (Southbound)</li>
+ * (Server-Facing)</li>
  * <li>{@code REGISTRY_*} — Capability Registry CRUD</li>
  * <li>{@code ORCHESTRATION_*} — Orchestration Layer</li>
  * <li>{@code PDP_*} — Policy Decision Point</li>
@@ -17,7 +17,12 @@ package com.ws.wsAgenticSecurityGateway.audit.constants;
  */
 public enum AuditEventType {
 
-    // ── Area 1 — AI Client <-> WS Server (Northbound) ────────────────
+    // ── Area 0 — Authentication Events ────────────────────────────────
+    OAUTH2_AUTH_SUCCESS,            // JWT validated, claims extracted
+    OAUTH2_AUTH_FAILURE,            // JWT validation failed (expired, bad sig, wrong issuer)
+    OAUTH2_TOKEN_CLASSIFICATION_OVERRIDE, // Tier 1 introspection overrode Tier 2 JWT signal classification
+
+    // ── Area 1 — AI Client <-> WS Server (Agent-Facing) ────────────────
     SERVER_SESSION_INITIALIZED,
     SERVER_SESSION_DISCONNECTED,
     SERVER_SESSION_IDLE_REAPED,
@@ -29,7 +34,7 @@ public enum AuditEventType {
     SERVER_RESOURCE_READ,
     SERVER_NOTIFICATION_RECEIVED,
 
-    // ── Area 2 — WS Client <-> Enterprise MCP Server (Southbound) ────
+    // ── Area 2 — WS Client <-> Enterprise MCP Server (Server-Facing) ────
     CLIENT_SESSION_INITIALIZED,
     CLIENT_SESSION_DISCONNECTED,
     CLIENT_HEALTH_CHECK_FAILED,
@@ -38,6 +43,7 @@ public enum AuditEventType {
     CLIENT_PROMPTS_LIST_FETCHED,
     CLIENT_TOOL_INVOCATION,
     CLIENT_RESOURCE_READ,
+    CLIENT_NOTIFICATION_RECEIVED,
 
     // ── Area 3 — Capability Registry CRUD ─────────────────────────────
     REGISTRY_CAPABILITY_REGISTERED,
@@ -45,6 +51,7 @@ public enum AuditEventType {
     REGISTRY_CAPABILITY_REMOVED,
     REGISTRY_BULK_LOAD,
     REGISTRY_SERVER_REFRESH,
+    REGISTRY_NOTIFICATION_BROADCAST,
 
     // ── Area 4 — Orchestration Layer ──────────────────────────────────
     ORCHESTRATION_TOOL_EXTRACTED,
@@ -83,6 +90,19 @@ public enum AuditEventType {
     AGENT_APPROVED,
     AGENT_BLOCKED,
     AGENT_CONNECTION_REJECTED,
+    SESSION_IDENTITY_MISMATCH,
+
+    // ── Area 7b — Identity Approval & Blocking Events ────────────────
+    HUMAN_USER_APPROVED,             // admin action: approve human user (PENDING → ACTIVE)
+    HUMAN_USER_BLOCKED,              // admin action: block human user
+    HUMAN_USER_UNBLOCKED,            // admin action: unblock human user
+    NHI_IDENTITY_APPROVED,           // admin action: approve NHI (PENDING → ACTIVE)
+    NHI_IDENTITY_BLOCKED,            // admin action: block NHI
+    NHI_IDENTITY_UNBLOCKED,          // admin action: unblock NHI
+    HUMAN_CONNECTION_REJECTED,       // runtime: blocked/pending human tried to execute
+    NHI_CONNECTION_REJECTED,         // runtime: blocked/pending NHI tried to execute
+    AGENT_PENDING_REJECTED,          // runtime: pending agent tried to execute
+    BLOCKED_SESSION_TERMINATED,      // proactive: admin block killed active session
 
     // ── Area 8 — Capability Access Profiles ─────────────────────────
     CAPABILITY_ACCESS_GRANTED,
@@ -92,6 +112,17 @@ public enum AuditEventType {
     CAPABILITY_PROFILE_DELETED,
     CAPABILITY_PROFILE_ASSIGNED,
     CAPABILITY_PROFILE_UNASSIGNED,
+
+    // ── Area 9 — Auth Configuration Management ──────────────────────
+    AUTH_CONFIG_CREATED,
+    AUTH_CONFIG_UPDATED,
+    AUTH_CONFIG_DELETED,
+    AUTH_MODE_CHANGED,
+    AUTH_CONFIG_VALIDATED,
+    AUTH_CONFIG_VALIDATION_FAILED,
+    AUTH_JWKS_REFRESHED,
+    AUTH_GRACE_PERIOD_STARTED,
+    AUTH_GRACE_PERIOD_ENDED,
 
     // ── System-level ──────────────────────────────────────────────────
     SYSTEM_STARTUP,

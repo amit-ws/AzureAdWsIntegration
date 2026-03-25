@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ws.wsAgenticSecurityGateway.audit.error.McpErrorCode;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
-import com.ws.wsAgenticSecurityGateway.wsClient.McpClientService;
+import com.ws.wsAgenticSecurityGateway.wsClient.service.McpClientService;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentCapabilityFilterService;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyEvaluationRequest;
@@ -154,20 +154,11 @@ public class ToolCallOrchestrator {
         // Monotonic event sequence counter for deterministic audit ordering within this correlation chain
         int seq = 0;
 
-        // ── Step 2c: Agent approval gate (O(1), in-memory) ──────────
-        // If admin has blocked this agent, reject immediately — no PDP involved,
-        // just a connection-level admin gate checked on every call.
-        if (agentRegistryService.isAgentBlocked(sessionId)) {
-            log.warn("🚫 [{}] BLOCKED agent attempted tool call: session={}, tool={}",
-                    correlationId, sessionId, publicName);
-            auditService.auditOrchestrationError(
-                    correlationId, sessionId, null, publicName,
-                    McpErrorCode.AGENT_BLOCKED,
-                    "Agent is blocked by admin. Contact your gateway administrator.",
-                    requestId, clientName,
-                    LocalDateTime.now(), ++seq);
-            return buildErrorResult(McpErrorCode.AGENT_BLOCKED, publicName);
-        }
+        // NOTE: Agent/Human/NHI block checks are enforced at the HTTP filter layer
+        // (HttpMcpAuditFilter) which runs BEFORE the request reaches the SDK/orchestrator.
+        // The filter uses authoritative DB status checks that survive disconnectSession() cleanup.
+        // The filter uses blockedSessionIds (O(1) HashSet) + fallback DB check via authIdentity.
+        // No need to duplicate DB queries on the hot path.
 
         // ── Step 2d: Capability access check (default deny) ──────────
         // If agent has no capability profiles → no access (default deny).
@@ -279,7 +270,7 @@ public class ToolCallOrchestrator {
         }
 
         // ── Step 5b: Pre-check — is the server connected? ────────────────
-        // Fail fast if the southbound server is disconnected instead of
+        // Fail fast if the enterprise MCP server is disconnected instead of
         // waiting for an HTTP timeout (~75s) during callTool().
         if (!mcpSessionManager.isConnected(serverName)) {
             log.error("❌ [{}] Server '{}' is not connected — rejecting immediately", correlationId, serverName);
@@ -619,21 +610,13 @@ public class ToolCallOrchestrator {
         }
 
         // ── (2) HTTP mode fallback: token from transport context ──────
-        try {
-            if (exchange != null && exchange.transportContext() != null) {
-                Object authToken = exchange.transportContext().get("authorization");
-                if (authToken != null && !authToken.toString().isBlank()) {
-                    Map<String, String> overrideHeaders = new HashMap<>();
-                    overrideHeaders.put("Authorization", authToken.toString());
-                    HttpMcpTransport.setRequestOverrideHeaders(overrideHeaders);
-                    log.info("🔑 [{}] HTTP agent token forwarded from transport context",
-                            correlationId);
-                    return true;
-                }
-            }
-        } catch (Exception e) {
-            log.debug("Could not resolve agent token from HTTP context: {}", e.getMessage());
-        }
+        // NOTE: In OAuth2 mode, the transport context "authorization" contains the
+        // agent's Keycloak JWT (used to authenticate to the gateway). This MUST NOT
+        // be forwarded to downstream servers — they have their own auth configured
+        // in the server config headers. Only forward if the agent explicitly provides
+        // a separate downstream token (e.g., via a custom "x-downstream-token" header).
+        // Agent token forwarding in HTTP mode is disabled to prevent leaking the
+        // gateway auth JWT to downstream servers.
 
         return false;
     }
@@ -737,20 +720,7 @@ public class ToolCallOrchestrator {
         agentRegistryService.recordRequest(sessionId);
         int seq = 0;
 
-        // Agent approval gate (O(1), in-memory)
-        if (agentRegistryService.isAgentBlocked(sessionId)) {
-            log.warn("🚫 [{}] BLOCKED agent attempted prompt call: session={}, prompt={}",
-                    correlationId, sessionId, publicName);
-            auditService.auditOrchestrationError(
-                    correlationId, sessionId, null, publicName,
-                    McpErrorCode.AGENT_BLOCKED,
-                    "Agent is blocked by admin. Contact your gateway administrator.",
-                    requestId, clientName,
-                    LocalDateTime.now(), ++seq);
-            throw new RuntimeException(String.format("[%d] %s",
-                    McpErrorCode.AGENT_BLOCKED.getCode(),
-                    McpErrorCode.AGENT_BLOCKED.getMessage()));
-        }
+        // NOTE: Agent/Human/NHI block checks enforced at HTTP filter layer (authoritative DB checks).
 
         // Capability access check (default deny)
         UUID promptAgentId = agentRegistryService.getAgentIdForSession(sessionId);
@@ -871,7 +841,7 @@ public class ToolCallOrchestrator {
                     McpErrorCode.SERVER_UNAVAILABLE.getMessage(), serverName));
         }
 
-        // Resolve client (southbound) session ID
+        // Resolve client (WS Client-side) session ID
         String pClientSessionId = null;
         try {
             McpSession pClientSession = mcpSessionManager.getSession(serverName);
@@ -1001,20 +971,7 @@ public class ToolCallOrchestrator {
         agentRegistryService.recordRequest(sessionId);
         int seq = 0;
 
-        // Agent approval gate (O(1), in-memory)
-        if (agentRegistryService.isAgentBlocked(sessionId)) {
-            log.warn("🚫 [{}] BLOCKED agent attempted resource read: session={}, resource={}",
-                    correlationId, sessionId, publicName);
-            auditService.auditOrchestrationError(
-                    correlationId, sessionId, null, publicName,
-                    McpErrorCode.AGENT_BLOCKED,
-                    "Agent is blocked by admin. Contact your gateway administrator.",
-                    requestId, clientName,
-                    LocalDateTime.now(), ++seq);
-            throw new RuntimeException(String.format("[%d] %s",
-                    McpErrorCode.AGENT_BLOCKED.getCode(),
-                    McpErrorCode.AGENT_BLOCKED.getMessage()));
-        }
+        // NOTE: Agent/Human/NHI block checks enforced at HTTP filter layer (authoritative DB checks).
 
         // Capability access check (default deny)
         UUID resourceAgentId = agentRegistryService.getAgentIdForSession(sessionId);
@@ -1135,7 +1092,7 @@ public class ToolCallOrchestrator {
                     McpErrorCode.SERVER_UNAVAILABLE.getMessage(), serverName));
         }
 
-        // Resolve client (southbound) session ID
+        // Resolve client (WS Client-side) session ID
         String rClientSessionId = null;
         try {
             McpSession rClientSession = mcpSessionManager.getSession(serverName);

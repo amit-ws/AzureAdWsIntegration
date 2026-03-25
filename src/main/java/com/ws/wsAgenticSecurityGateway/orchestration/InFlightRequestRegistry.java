@@ -70,7 +70,7 @@ public class InFlightRequestRegistry {
     }
 
     /**
-     * Update the client (southbound) session ID — Gateway ↔ MCP Server.
+     * Update the client (WS Client-side) session ID — Gateway ↔ MCP Server.
      * Set after registry lookup when serverName is resolved (step 5).
      */
     public void updateClientSession(String correlationId, String clientSessionId) {

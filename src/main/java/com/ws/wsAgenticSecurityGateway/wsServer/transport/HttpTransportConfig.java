@@ -4,10 +4,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentCapabilityFilterService;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
+import com.ws.wsAgenticSecurityGateway.authConfig.service.AuthConfigService;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
 import io.modelcontextprotocol.server.transport.HttpServletStreamableServerTransportProvider;
-import jakarta.servlet.Filter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -27,7 +27,7 @@ import org.springframework.context.annotation.Configuration;
  * the gateway over HTTP instead of stdio, decoupling agent lifecycle from
  * the gateway process and enabling:
  * <ul>
- *   <li>Persistent southbound MCP server connections across agent reconnects</li>
+ *   <li>Persistent WS Client MCP server connections across agent reconnects</li>
  *   <li>Multiple concurrent agent sessions</li>
  *   <li>Deployment as a standalone service (Docker, K8s, systemd)</li>
  * </ul>
@@ -42,11 +42,8 @@ import org.springframework.context.annotation.Configuration;
 @Slf4j
 public class HttpTransportConfig {
 
-    @Value("${ws.gateway.auth.enabled:false}")
-    private boolean authEnabled;
-
-    @Value("${ws.gateway.auth.api-key:}")
-    private String apiKey;
+    @Value("${ws.gateway.auth.mode:none}")
+    private String authMode;
 
     /**
      * Creates the SDK's HTTP Streamable transport provider.
@@ -91,28 +88,26 @@ public class HttpTransportConfig {
     }
 
     /**
-     * Auth filter for MCP requests. Only active when {@code ws.gateway.auth.enabled=true}.
+     * OAuth2 JWT claim extraction filter for MCP requests.
+     * Only active when {@code ws.gateway.auth.mode=oauth2}.
      *
-     * <p><strong>Design rationale:</strong> In production enterprise environments,
-     * agents and MCP servers already authenticate using existing strategies (OAuth2,
-     * JWT, SAML, mTLS). The gateway should be transparent — passing through the
-     * agent's existing credentials to southbound servers via the context extractor
-     * and token forwarding. A gateway-specific API key is only for standalone
-     * deployments without an existing auth ecosystem.
-     *
-     * <p>Next upgrade: integrate with enterprise auth (validate existing JWT/SAML
-     * tokens, extract agent identity from them, without requiring a separate key).
+     * <p>Runs AFTER Spring Security's JWT validation (which rejects invalid tokens
+     * with 401 before our code runs). This filter extracts JWT claims from the
+     * already-validated token and stores them as request attributes for downstream
+     * filters (HttpMcpAuditFilter) and the context extractor.
      */
     @Bean
-    @ConditionalOnProperty(name = "ws.gateway.auth.enabled", havingValue = "true")
-    public FilterRegistrationBean<Filter> mcpAuthFilterRegistration() {
-        FilterRegistrationBean<Filter> registration = new FilterRegistrationBean<>();
-        registration.setFilter(new GatewayMcpAuthFilter(apiKey));
+    public FilterRegistrationBean<GatewayOAuth2Filter> mcpOAuth2FilterRegistration(
+            McpAuditService auditService,
+            TokenClassificationService tokenClassificationService,
+            AuthConfigService authConfigService) {
+        FilterRegistrationBean<GatewayOAuth2Filter> registration = new FilterRegistrationBean<>();
+        registration.setFilter(new GatewayOAuth2Filter(auditService, tokenClassificationService, authConfigService));
         registration.addUrlPatterns("/mcp/*");
         registration.setOrder(1);
-        registration.setName("mcpAuthFilter");
+        registration.setName("mcpOAuth2Filter");
 
-        log.info("🔐 MCP auth filter registered for /mcp/* (API key validation enabled)");
+        log.info("🔐 MCP OAuth2 filter registered for /mcp/* (JWT claim extraction enabled)");
         return registration;
     }
 
@@ -129,11 +124,13 @@ public class HttpTransportConfig {
             AgentCapabilityFilterService capabilityFilterService,
             McpAuditService auditService,
             CapabilityRegistryService registryService,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            TokenClassificationService tokenClassificationService) {
 
         FilterRegistrationBean<HttpMcpAuditFilter> registration = new FilterRegistrationBean<>();
         registration.setFilter(new HttpMcpAuditFilter(
-                agentRegistryService, capabilityFilterService, auditService, registryService, objectMapper));
+                agentRegistryService, capabilityFilterService, auditService, registryService,
+                objectMapper, tokenClassificationService));
         registration.addUrlPatterns("/mcp/*");
         registration.setOrder(2);
         registration.setName("mcpAuditFilter");

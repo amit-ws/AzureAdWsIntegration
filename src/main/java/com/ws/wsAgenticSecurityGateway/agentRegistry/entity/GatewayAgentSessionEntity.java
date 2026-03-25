@@ -73,4 +73,20 @@ public class GatewayAgentSessionEntity {
     @Column(name = "status", nullable = false, length = 20)
     @Builder.Default
     private String status = "CONNECTED";
+
+    /** Token classification: "AUTOMATED_AGENT" or "HUMAN_DELEGATED". */
+    @Column(name = "token_type", length = 32)
+    private String tokenType;
+
+    /** FK to gateway_human_users — set when token_type is HUMAN_DELEGATED. */
+    @Column(name = "human_user_id")
+    private UUID humanUserId;
+
+    /** FK to gateway_nhi_registry — set when token_type is AUTOMATED_AGENT. */
+    @Column(name = "nhi_id")
+    private UUID nhiId;
+
+    /** Client IP address at session creation (X-Forwarded-For aware). */
+    @Column(name = "ip_address", length = 64)
+    private String ipAddress;
 }

@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Periodic health checker for southbound (Gateway → Enterprise MCP Server) connections.
+ * Periodic health checker for WS Client-side (Gateway → Enterprise MCP Server) connections.
  *
  * <p>Runs on a configurable schedule (default: every 120 seconds). For each active
  * in-memory session, it performs a passive health probe by checking
@@ -60,7 +60,7 @@ public class WsClientHealthCheckService {
             return;
         }
 
-        log.debug("Southbound health check: checking {} server(s)", sessions.size());
+        log.debug("WS Client-side health check: checking {} server(s)", sessions.size());
 
         for (Map.Entry<String, McpSession> entry : sessions.entrySet()) {
             String serverName = entry.getKey();

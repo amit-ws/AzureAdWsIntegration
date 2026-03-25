@@ -4,10 +4,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.event.BlockedSessionEvent;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayHumanUserEntity;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayNhiEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentCapabilityFilterService;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService.AgentBlockedException;
+import com.ws.wsAgenticSecurityGateway.audit.error.McpErrorCode;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
 import jakarta.servlet.*;
@@ -23,6 +27,8 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -66,6 +72,7 @@ public class HttpMcpAuditFilter implements Filter {
     private final McpAuditService auditService;
     private final CapabilityRegistryService registryService;
     private final ObjectMapper objectMapper;
+    private final TokenClassificationService tokenClassificationService;
 
     /**
      * Tracks which sessions have been registered (prevents duplicate registration).
@@ -84,6 +91,9 @@ public class HttpMcpAuditFilter implements Filter {
     /** Sessions explicitly rejected due to blocked agent policy. */
     private final Set<String> blockedSessionIds = ConcurrentHashMap.newKeySet();
 
+    /** Maps sessionId → founding JWT subject for session-identity binding. */
+    private final ConcurrentHashMap<String, String> sessionIdentityCache = new ConcurrentHashMap<>();
+
     /** Agent names from mcp-remote that are probes/tests, not real agents. */
     private static final Set<String> PROBE_NAMES = Set.of("mcp-remote-fallback-test");
 
@@ -91,16 +101,22 @@ public class HttpMcpAuditFilter implements Filter {
     private static final Set<String> LIST_METHODS = Set.of(
             "tools/list", "prompts/list", "resources/list", "resources/templates/list");
 
+    /** Execution methods that require APPROVED status for identity + agent. */
+    private static final Set<String> EXECUTION_METHODS = Set.of(
+            "tools/call", "prompts/get", "resources/read", "resources/templates/read");
+
     public HttpMcpAuditFilter(AgentRegistryService agentRegistryService,
             AgentCapabilityFilterService capabilityFilterService,
             McpAuditService auditService,
             CapabilityRegistryService registryService,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            TokenClassificationService tokenClassificationService) {
         this.agentRegistryService = agentRegistryService;
         this.capabilityFilterService = capabilityFilterService;
         this.auditService = auditService;
         this.registryService = registryService;
         this.objectMapper = objectMapper;
+        this.tokenClassificationService = tokenClassificationService;
     }
 
     @Override
@@ -156,30 +172,188 @@ public class HttpMcpAuditFilter implements Filter {
                     mcpMethod,
                     "HTTP",
                     "Blocked session attempted request; reconnect after admin approval.");
-            rejectBlockedRequest(httpResponse, requestIdRaw);
+            rejectBlocked(httpResponse, requestIdRaw, McpErrorCode.AGENT_BLOCKED,
+                    "Agent '" + (blockedAgentName != null ? blockedAgentName : "unknown") + "' is blocked by admin. Reconnect after approval.");
             return;
         }
 
-        // ── Pre-initialize approval gate (must run BEFORE SDK creates session) ───
+        // ── Identity & Agent status enforcement ──────────────────────────
+        // Uses cache-backed lookups (O(1) ConcurrentHashMap, zero DB queries on hot path).
+        // BLOCKED checks run on ALL methods. PENDING checks only on EXECUTION methods.
+        boolean isExecutionMethod = EXECUTION_METHODS.contains(mcpMethod);
+        String reqJwtSubject = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_SUBJECT);
+
+        if (reqJwtSubject != null) {
+            // ── Human status check (cache-backed) ──
+            String humanStatus = agentRegistryService.getHumanStatus(reqJwtSubject);
+            if ("BLOCKED".equals(humanStatus)) {
+                String humanUsername = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_PREFERRED_USERNAME);
+                String displayUsername = humanUsername != null ? humanUsername : reqJwtSubject;
+                log.warn("🚫 Request rejected — human '{}' BLOCKED, session={}, method={}",
+                        displayUsername, sessionId, mcpMethod);
+                auditService.auditHumanConnectionRejected(sessionId, requestId,
+                        displayUsername, reqJwtSubject, resolveAgentName(sessionId), mcpMethod,
+                        "Human user '" + displayUsername + "' is BLOCKED");
+                rejectBlocked(httpResponse, requestIdRaw, McpErrorCode.HUMAN_BLOCKED,
+                        "Your account '" + displayUsername
+                                + "' has been blocked by an administrator."
+                                + " Contact your gateway administrator to request access restoration.");
+                return;
+            }
+            if (isExecutionMethod && "PENDING".equals(humanStatus)) {
+                String humanUsername = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_PREFERRED_USERNAME);
+                String displayUsername = humanUsername != null ? humanUsername : reqJwtSubject;
+                log.warn("🚫 Execution rejected — human '{}' PENDING approval, session={}, method={}",
+                        displayUsername, sessionId, mcpMethod);
+                auditService.auditHumanConnectionRejected(sessionId, requestId,
+                        displayUsername, reqJwtSubject, resolveAgentName(sessionId), mcpMethod,
+                        "Human user '" + displayUsername + "' is PENDING admin approval");
+                rejectBlocked(httpResponse, requestIdRaw, McpErrorCode.HUMAN_PENDING_APPROVAL,
+                        "Your account '" + displayUsername
+                                + "' is pending admin approval. An administrator must approve your identity"
+                                + " before you can execute operations through this gateway.");
+                return;
+            }
+
+            // ── NHI status check (cache-backed) ──
+            String nhiStatus = agentRegistryService.getNhiStatus(reqJwtSubject);
+            if ("BLOCKED".equals(nhiStatus)) {
+                String nhiClientId = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_CLIENT_ID);
+                String displayName = nhiClientId != null ? nhiClientId : reqJwtSubject;
+                log.warn("🚫 Request rejected — NHI '{}' BLOCKED, session={}, method={}",
+                        displayName, sessionId, mcpMethod);
+                auditService.auditNhiConnectionRejected(sessionId, requestId,
+                        displayName, nhiClientId, reqJwtSubject, resolveAgentName(sessionId), mcpMethod,
+                        "Service identity '" + displayName + "' is BLOCKED");
+                rejectBlocked(httpResponse, requestIdRaw, McpErrorCode.NHI_BLOCKED,
+                        "Service identity '" + displayName
+                                + "' has been blocked by an administrator."
+                                + " Contact your gateway administrator to request access restoration.");
+                return;
+            }
+            if (isExecutionMethod && "PENDING".equals(nhiStatus)) {
+                String nhiClientId = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_CLIENT_ID);
+                String displayName = nhiClientId != null ? nhiClientId : reqJwtSubject;
+                log.warn("🚫 Execution rejected — NHI '{}' PENDING approval, session={}, method={}",
+                        displayName, sessionId, mcpMethod);
+                auditService.auditNhiConnectionRejected(sessionId, requestId,
+                        displayName, nhiClientId, reqJwtSubject, resolveAgentName(sessionId), mcpMethod,
+                        "Service identity '" + displayName + "' is PENDING admin approval");
+                rejectBlocked(httpResponse, requestIdRaw, McpErrorCode.NHI_PENDING_APPROVAL,
+                        "Service identity '" + displayName
+                                + "' is pending admin approval. An administrator must approve this identity"
+                                + " before it can execute operations through this gateway.");
+                return;
+            }
+        }
+
+        // ── Agent status check (cache-backed: sessionToAgentId → agentStatusById) ──
+        if (sessionId != null) {
+            String agentStatus = agentRegistryService.getAgentStatusForSession(sessionId);
+            if ("BLOCKED".equals(agentStatus)) {
+                String blockedAgentName = agentRegistryService.getAgentNameForSession(sessionId);
+                log.warn("🚫 Request rejected — agent '{}' BLOCKED, session={}, method={}",
+                        blockedAgentName, sessionId, mcpMethod);
+                auditService.auditAgentConnectionRejected(sessionId, requestId,
+                        blockedAgentName, null, mcpMethod, "HTTP",
+                        "Agent '" + blockedAgentName + "' is BLOCKED");
+                rejectBlocked(httpResponse, requestIdRaw, McpErrorCode.AGENT_BLOCKED,
+                        "Agent '" + blockedAgentName
+                                + "' is blocked by admin. Contact your gateway administrator.");
+                return;
+            }
+            if (isExecutionMethod && "PENDING".equals(agentStatus)) {
+                String pendingAgentName = agentRegistryService.getAgentNameForSession(sessionId);
+                log.warn("🚫 Execution rejected — agent '{}' PENDING approval, session={}, method={}",
+                        pendingAgentName, sessionId, mcpMethod);
+                auditService.auditAgentConnectionRejected(sessionId, requestId,
+                        pendingAgentName, null, mcpMethod, "HTTP",
+                        "Agent '" + pendingAgentName + "' is PENDING admin approval");
+                rejectBlocked(httpResponse, requestIdRaw, McpErrorCode.AGENT_PENDING_APPROVAL,
+                        "Agent '" + pendingAgentName
+                                + "' is pending admin approval. An administrator must approve this agent"
+                                + " before it can execute operations.");
+                return;
+            }
+        }
+
+        // ── Session-identity binding: reject identity switch mid-session ──
+        if (sessionId != null && !"initialize".equals(mcpMethod)) {
+            String jwtSubject = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_SUBJECT);
+            String foundingSub = sessionIdentityCache.get(sessionId);
+            if (foundingSub != null && jwtSubject != null && !foundingSub.equals(jwtSubject)) {
+                String mismatchAgentName = resolveAgentName(sessionId);
+                String currentClientId = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_CLIENT_ID);
+                String currentUsername = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_PREFERRED_USERNAME);
+                String currentEmail = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_EMAIL);
+                String currentTokenType = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_TOKEN_TYPE);
+                String currentIssuer = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_ISSUER);
+                String xForwardedFor = wrappedRequest.getHeader("X-Forwarded-For");
+                String remoteAddr = xForwardedFor != null ? xForwardedFor.split(",")[0].trim() : wrappedRequest.getRemoteAddr();
+                String userAgent = wrappedRequest.getHeader("User-Agent");
+                @SuppressWarnings("unchecked")
+                java.util.List<String> currentRoles = (java.util.List<String>) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_ALL_ROLES);
+
+                log.warn("SESSION IDENTITY MISMATCH on session {}: founding={}, intruder={}, ip={}, clientId={}, tokenType={}",
+                        sessionId, foundingSub, jwtSubject, remoteAddr, currentClientId, currentTokenType);
+                auditService.auditSessionIdentityMismatch(
+                        sessionId, mismatchAgentName, foundingSub, jwtSubject,
+                        currentClientId, currentUsername, currentEmail, currentTokenType,
+                        currentIssuer, currentRoles, remoteAddr, userAgent, requestId);
+                response.setContentType("application/json");
+                ((HttpServletResponse) response).setStatus(200);
+                response.getWriter().write(
+                        "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"Session bound to different identity — reconnect required\"},\"id\":"
+                                + requestIdRaw + "}");
+                return;
+            }
+        }
+
+        // ── Pre-initialize identity gate (must run BEFORE SDK creates session) ───
+        // NOTE: Agent BLOCKED/PENDING is NOT checked here — we let the agent initialize
+        // so it gets registered (discoverAgent) and appears in the dashboard for admin to see.
+        // Agent status is enforced on EXECUTION methods (tools/call etc.) in the block above.
         if ("initialize".equals(mcpMethod) && requestJson != null) {
             JsonNode clientInfoNode = requestJson.path("params").path("clientInfo");
             String agentName = clientInfoNode.path("name").asText("unknown");
             String agentVersion = clientInfoNode.path("version").asText(null);
+            String preAuthClientId = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_CLIENT_ID);
 
-            // Probes are allowed through (handled separately in registration logic).
-            if (!isProbeAgent(agentName)
-                    && agentRegistryService.isAgentBlocked(agentName, agentVersion)) {
-                log.warn("🚫 Pre-initialize rejection for BLOCKED agent: {} v{}",
-                        agentName, agentVersion);
-                auditService.auditAgentConnectionRejected(
-                        null,
-                        requestId,
-                        agentName,
-                        agentVersion,
+            // Check if the human user behind this token is blocked.
+            // NOT gated on tokenType — token misclassification must not bypass block enforcement.
+            // A HUMAN_DELEGATED token could be misclassified as AUTOMATED_AGENT and vice versa.
+            // The DB lookup by idpSubject is the authoritative check.
+            String jwtSubject = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_SUBJECT);
+            if (jwtSubject != null && agentRegistryService.isHumanBlockedBySubject(jwtSubject)) {
+                String humanUsername = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_PREFERRED_USERNAME);
+                String displayUsername = humanUsername != null ? humanUsername : jwtSubject;
+                String blockReason = agentRegistryService.getHumanBlockReasonBySubject(jwtSubject);
+                log.warn("🚫 Pre-initialize rejection — human user BLOCKED: {} (sub={}) reason={}",
+                        displayUsername, jwtSubject, blockReason);
+                auditService.auditHumanConnectionRejected(null, requestId,
+                        displayUsername, jwtSubject,
+                        preAuthClientId != null ? preAuthClientId : agentName,
                         "initialize",
-                        "HTTP",
-                        "Agent rejected during initialize because profile is BLOCKED.");
-                rejectBlockedInitialize(httpResponse, requestIdRaw);
+                        "Human user '" + displayUsername + "' is BLOCKED: " + blockReason);
+                rejectBlocked(httpResponse, requestIdRaw, McpErrorCode.HUMAN_BLOCKED,
+                        "Your account '" + displayUsername + "' has been blocked by an administrator. Reason: "
+                                + blockReason + ". Contact your gateway administrator to request access restoration.");
+                return;
+            }
+
+            // Check if the NHI behind this token is blocked (same: not gated on tokenType)
+            if (jwtSubject != null && agentRegistryService.isNhiBlockedBySubject(jwtSubject)) {
+                String nhiClientId = preAuthClientId;
+                String blockReason = agentRegistryService.getNhiBlockReasonBySubject(jwtSubject);
+                log.warn("🚫 Pre-initialize rejection — NHI BLOCKED: sub={}, reason={}", jwtSubject, blockReason);
+                auditService.auditNhiConnectionRejected(null, requestId,
+                        nhiClientId, nhiClientId, jwtSubject,
+                        agentName, "initialize",
+                        "Service identity (sub=" + jwtSubject + ") is BLOCKED: " + blockReason);
+                rejectBlocked(httpResponse, requestIdRaw, McpErrorCode.NHI_BLOCKED,
+                        "Service identity '" + (nhiClientId != null ? nhiClientId : jwtSubject)
+                                + "' has been blocked by an administrator. Reason: " + blockReason
+                                + ". Contact your gateway administrator to request access restoration.");
                 return;
             }
         }
@@ -246,7 +420,7 @@ public class HttpMcpAuditFilter implements Filter {
                 return;
 
             switch (mcpMethod) {
-                case "initialize" -> handleInitialize(json, sessionId, requestId);
+                case "initialize" -> handleInitialize(json, sessionId, requestId, wrappedRequest);
                 case "tools/list" -> handleToolsList(sessionId, requestId, durationMs);
                 case "prompts/list" -> handlePromptsList(sessionId, requestId, durationMs);
                 case "resources/list" -> handleResourcesList(sessionId, requestId, durationMs);
@@ -269,20 +443,46 @@ public class HttpMcpAuditFilter implements Filter {
     // INITIALIZE — agent registration + audit
     // ════════════════════════════════════════════════════════════════════
 
-    private void handleInitialize(JsonNode json, String sessionId, String requestId) {
+    @SuppressWarnings("unchecked")
+    private void handleInitialize(JsonNode json, String sessionId, String requestId,
+                                  HttpServletRequest httpRequest) {
         // Track ALL sessions (including probes) for stale session detection
         knownSessionIds.add(sessionId);
 
+        // ── Extract JWT attributes (set by GatewayOAuth2Filter at Order 1) ───
+        String authClientId = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_CLIENT_ID);
+        String jwtSubject = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_SUBJECT);
+        String tokenType = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_TOKEN_TYPE);
+        String authMethod = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_AUTH_METHOD);
+        String preferredUsername = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_PREFERRED_USERNAME);
+        String userEmail = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_EMAIL);
+        String userFullName = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_FULL_NAME);
+        String userGivenName = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_GIVEN_NAME);
+        String userFamilyName = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_FAMILY_NAME);
+        Boolean emailVerified = (Boolean) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_EMAIL_VERIFIED);
+        String idpIssuer = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_ISSUER);
+        List<String> realmRoles = (List<String>) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_REALM_ROLES);
+        List<String> clientRoles = (List<String>) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_CLIENT_ROLES);
+        @SuppressWarnings("unchecked")
+        List<String> allRoles = (List<String>) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_ALL_ROLES);
+        Map<String, Object> customClaims = (Map<String, Object>) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_CUSTOM_CLAIMS);
+        Map<String, Object> rawJwtClaims = (Map<String, Object>) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_RAW_CLAIMS);
+
+        // ── Extract client IP (X-Forwarded-For aware for proxied deployments) ──
+        String xForwardedFor = httpRequest.getHeader("X-Forwarded-For");
+        String clientIp = xForwardedFor != null ? xForwardedFor.split(",")[0].trim() : httpRequest.getRemoteAddr();
+
         // Extract agent name early — BEFORE any early returns — so every session
-        // in knownSessionIds also has an entry in sessionAgentNames. Without this,
-        // subsequent requests (tools/list, notifications) on duplicate or probe
-        // sessions resolve to "unresolved" because the name was never stored.
+        // in knownSessionIds also has an entry in sessionAgentNames.
         String earlyAgentName = "unknown";
         try {
             earlyAgentName = json.path("params").path("clientInfo").path("name").asText("unknown");
         } catch (Exception ignored) {
         }
-        sessionAgentNames.put(sessionId, earlyAgentName);
+        // Use self-reported MCP clientInfo name as display name (e.g., "Anthropic/Toolbox")
+        // authClientId (e.g., "claude-desktop") is stored separately in agentClientId for verified identity
+        String resolvedAgentName = earlyAgentName;
+        sessionAgentNames.put(sessionId, resolvedAgentName);
 
         if (registeredSessions.containsKey(sessionId))
             return;
@@ -308,27 +508,121 @@ public class HttpMcpAuditFilter implements Filter {
                 return;
             }
 
-            // Agent Registry — discover (upsert) and register session
+            // ── Tier 1: Token Introspection (once per session) ─────────
+            // If mode=introspect and introspection returns a different classification
+            // than the JWT signal chain (Tier 2), the introspection result wins.
+            String accessToken = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_ACCESS_TOKEN);
+            String jwtSignal = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_CLASSIFICATION_SIGNAL);
+
+            if (accessToken != null && tokenType != null) {
+                TokenClassificationService.ClassificationResult introspectionResult =
+                        tokenClassificationService.classifyViaIntrospection(accessToken);
+
+                if (introspectionResult != null && !introspectionResult.tokenType().equals(tokenType)) {
+                    log.info("🔄 Tier 1 introspection overrides Tier 2: {} ({}) → {} ({})",
+                            tokenType, jwtSignal, introspectionResult.tokenType(), introspectionResult.matchedSignal());
+                    auditService.auditTokenClassificationOverride(
+                            sessionId, resolvedAgentName,
+                            tokenType, jwtSignal,
+                            introspectionResult.tokenType(), introspectionResult.matchedSignal(),
+                            requestId);
+                    tokenType = introspectionResult.tokenType();
+                }
+
+                // Cache final classification for this session
+                TokenClassificationService.ClassificationResult finalResult =
+                        introspectionResult != null ? introspectionResult :
+                        new TokenClassificationService.ClassificationResult(tokenType, jwtSignal);
+                tokenClassificationService.cacheClassification(sessionId, finalResult);
+            }
+
+            // Agent Registry — discover (upsert) with OAuth2 identity context
             GatewayAgentEntity agent = agentRegistryService.discoverAgent(
                     agentName, agentVersion, protocolVersion,
-                    capabilities.isMissingNode() || capabilities.isEmpty() ? null : capabilities);
-            agentRegistryService.registerSession(agent.getId(), sessionId, "HTTP", null);
+                    capabilities.isMissingNode() || capabilities.isEmpty() ? null : capabilities,
+                    authClientId, tokenType);
 
-            // ── Layer 1: Active Session Replacement ──────────────────
-            // Disconnect stale sessions for this agent (zombie cleanup on reconnect).
-            // This handles: close/reopen, delete/reconfig, network interruption +
-            // reconnect.
-            int replaced = agentRegistryService.disconnectExistingSessionsForAgent(
-                    agent.getId(), sessionId);
+            // ── Human user discovery (for HUMAN_DELEGATED tokens) ────
+            UUID humanUserId = null;
+            if (GatewayOAuth2Filter.TOKEN_TYPE_HUMAN.equals(tokenType) && jwtSubject != null) {
+                GatewayHumanUserEntity humanUser = agentRegistryService.discoverHumanUser(
+                        jwtSubject, preferredUsername, userEmail,
+                        userFullName, userGivenName, userFamilyName,
+                        idpIssuer, emailVerified,
+                        realmRoles, clientRoles, customClaims, rawJwtClaims, clientIp);
+                humanUserId = humanUser.getId();
+                agentRegistryService.incrementHumanSessionCount(humanUserId);
+                log.info("👤 Human-delegated session: user={} linked to agent={}",
+                        preferredUsername, authClientId != null ? authClientId : agentName);
+            }
+
+            // ── NHI discovery (for AUTOMATED_AGENT tokens) ────
+            UUID nhiId = null;
+            if (GatewayOAuth2Filter.TOKEN_TYPE_AUTOMATED.equals(tokenType) && jwtSubject != null) {
+                GatewayNhiEntity nhi = agentRegistryService.discoverNhi(
+                        jwtSubject, authClientId, idpIssuer,
+                        realmRoles, clientRoles, customClaims, rawJwtClaims, clientIp);
+                if (nhi != null) {
+                    nhiId = nhi.getId();
+                    agentRegistryService.incrementNhiSessionCount(nhiId);
+                    log.info("🤖 Automated-agent session: NHI={} (sub={}) linked to agent={}",
+                            nhi.getServiceName(), jwtSubject,
+                            authClientId != null ? authClientId : agentName);
+
+                    // Check if this NHI is blocked
+                    if ("BLOCKED".equals(nhi.getStatus())) {
+                        log.warn("🚫 NHI is BLOCKED: {} (sub={})", nhi.getServiceName(), jwtSubject);
+                        blockedSessionIds.add(sessionId);
+                        auditService.auditAgentConnectionRejected(
+                                sessionId, requestId,
+                                authClientId != null ? authClientId : agentName,
+                                agentVersion, "initialize", "HTTP",
+                                "Non-Human Identity '" + nhi.getServiceName() + "' is BLOCKED by admin.");
+                    }
+                }
+            }
+
+            // Register session with full OAuth2 context (human + NHI identity)
+            agentRegistryService.registerSession(
+                    agent.getId(), sessionId,
+                    authMethod != null ? authMethod : "HTTP",
+                    jwtSubject,
+                    tokenType, humanUserId, nhiId, clientIp);
+
+            // Register identity context for audit enrichment — every future audit log for this session
+            // will automatically carry tokenType, userIdentity, humanUserId, nhiId, auth fields
+            auditService.registerSessionIdentity(sessionId,
+                    new McpAuditService.AuditIdentityContext(
+                            tokenType,
+                            preferredUsername,
+                            humanUserId != null ? humanUserId.toString() : null,
+                            authMethod != null ? authMethod : "HTTP",
+                            jwtSubject,
+                            authClientId,
+                            allRoles,
+                            nhiId != null ? nhiId.toString() : null,
+                            clientIp));
+
+            // ── Session-identity binding: store founding JWT subject ────
+            if (jwtSubject != null) {
+                sessionIdentityCache.put(sessionId, jwtSubject);
+            }
+
+            // ── Layer 1: Identity-Scoped Active Session Replacement ──
+            // Only disconnects sessions for the SAME identity + same agent.
+            // Other identities' sessions with the same agent are untouched.
+            int replaced = agentRegistryService.disconnectExistingSessionsForIdentity(
+                    agent.getId(), humanUserId, nhiId, jwtSubject, sessionId);
             if (replaced > 0) {
-                log.info("♻️ Replaced {} stale session(s) for agent {} on reconnect",
-                        replaced, agentName);
-                final String currentAgentName = agentName;
-                // Clean up in-memory tracking maps for replaced sessions
+                log.info("♻️ Replaced {} stale session(s) for identity (human={}, nhi={}) + agent {} on reconnect",
+                        replaced, humanUserId, nhiId, resolvedAgentName);
+                final String currentAgentName = resolvedAgentName;
                 registeredSessions.entrySet().removeIf(entry -> !entry.getKey().equals(sessionId) &&
                         currentAgentName.equals(sessionAgentNames.get(entry.getKey())));
                 knownSessionIds.removeIf(id -> !id.equals(sessionId) &&
                         currentAgentName.equals(sessionAgentNames.get(id)));
+                sessionIdentityCache.entrySet().removeIf(entry -> !entry.getKey().equals(sessionId) &&
+                        currentAgentName.equals(sessionAgentNames.get(entry.getKey())));
                 sessionAgentNames.entrySet().removeIf(entry -> !entry.getKey().equals(sessionId) &&
                         currentAgentName.equals(entry.getValue()));
             }
@@ -337,16 +631,19 @@ public class HttpMcpAuditFilter implements Filter {
             auditService.auditServerSessionInitialized(
                     sessionId, protocolVersion,
                     agentName + (agentVersion != null ? " v" + agentVersion : ""),
-                    capabilities, requestId, agentName);
+                    capabilities, requestId, resolvedAgentName);
 
             log.info("════════════════════════════════════════════════");
             log.info("   HTTP AGENT SESSION REGISTERED");
             log.info("════════════════════════════════════════════════");
-            log.info("   Session:  {}", sessionId);
-            log.info("   Agent:    {} v{}", agentName, agentVersion);
-            log.info("   Protocol: {}", protocolVersion);
+            log.info("   Session:    {}", sessionId);
+            log.info("   Agent:      {} v{}", agentName, agentVersion);
+            log.info("   AuthClient: {}", authClientId != null ? authClientId : "(none — mode=none)");
+            log.info("   TokenType:  {}", tokenType != null ? tokenType : "(none)");
+            log.info("   Human:      {}", preferredUsername != null ? preferredUsername : "(automated)");
+            log.info("   Protocol:   {}", protocolVersion);
             if (replaced > 0) {
-                log.info("   Replaced: {} stale session(s)", replaced);
+                log.info("   Replaced:   {} stale session(s)", replaced);
             }
             log.info("════════════════════════════════════════════════");
 
@@ -357,7 +654,7 @@ public class HttpMcpAuditFilter implements Filter {
             auditService.auditAgentConnectionRejected(
                     sessionId,
                     requestId,
-                    agentName,
+                    authClientId != null ? authClientId : agentName,
                     agentVersion,
                     "initialize",
                     "HTTP",
@@ -581,22 +878,46 @@ public class HttpMcpAuditFilter implements Filter {
                         + (requestId != null ? requestId : "null") + "}");
     }
 
-    private void rejectBlockedInitialize(HttpServletResponse response, String requestIdRaw)
-            throws IOException {
+    /**
+     * Generic blocked rejection — returns HTTP 200 + JSON-RPC error with identity-specific
+     * error code and human-readable message that agents can surface to end users.
+     */
+    private void rejectBlocked(HttpServletResponse response, String requestIdRaw,
+                               McpErrorCode errorCode, String message) throws IOException {
         response.setStatus(HttpServletResponse.SC_OK);
         response.setContentType("application/json");
         response.getWriter().write(
-                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-33007,\"message\":\"Agent is blocked by admin. Contact your gateway administrator.\"},\"id\":"
+                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":" + errorCode.getCode()
+                        + ",\"message\":\"" + escapeJson(message) + "\"},\"id\":"
                         + requestIdRaw + "}");
     }
 
-    private void rejectBlockedRequest(HttpServletResponse response, String requestIdRaw)
-            throws IOException {
-        response.setStatus(HttpServletResponse.SC_OK);
-        response.setContentType("application/json");
-        response.getWriter().write(
-                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-33007,\"message\":\"Agent is blocked by admin. Reconnect after approval.\"},\"id\":"
-                        + requestIdRaw + "}");
+    /** Escape JSON special characters to prevent injection from reason strings. */
+    private static String escapeJson(String value) {
+        if (value == null) return "";
+        return value.replace("\\", "\\\\").replace("\"", "\\\"")
+                .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
+    }
+
+    /**
+     * Public method for proactive session flagging — called via Spring events
+     * when admin blocks an identity mid-session.
+     */
+    public void addBlockedSessionId(String sessionId) {
+        if (sessionId != null) {
+            blockedSessionIds.add(sessionId);
+        }
+    }
+
+    /**
+     * Spring event listener — fired by services when admin blocks a human/NHI/agent.
+     * Flags the session for immediate rejection on next request without circular dependency.
+     */
+    @org.springframework.context.event.EventListener
+    public void onBlockedSessionEvent(BlockedSessionEvent event) {
+        addBlockedSessionId(event.sessionId());
+        log.info("🚫 Session flagged for blocked {} '{}': {}",
+                event.identityType(), event.identityName(), event.sessionId());
     }
 
     private JsonNode parseRequestJson(byte[] body) {
@@ -695,11 +1016,16 @@ public class HttpMcpAuditFilter implements Filter {
                 // Update Agent Registry DB state
                 agentRegistryService.disconnectSession(sessionId);
 
+                // Clean up audit identity cache for this session
+                auditService.evictSessionIdentity(sessionId);
+
                 // Clean up tracking maps
                 registeredSessions.remove(sessionId);
                 knownSessionIds.remove(sessionId);
                 blockedSessionIds.remove(sessionId);
                 sessionAgentNames.remove(sessionId);
+                sessionIdentityCache.remove(sessionId);
+                tokenClassificationService.evictSession(sessionId);
 
                 log.info("HTTP session disconnected: {} (agent={})", sessionId, agentName);
             } catch (Exception e) {
@@ -726,6 +1052,7 @@ public class HttpMcpAuditFilter implements Filter {
      * never happen in practice since every session is persisted during initialize.
      */
     private String resolveAgentName(String sessionId) {
+        if (sessionId == null) return "unknown";
         // 1. Fast in-memory lookup (active sessions)
         String name = sessionAgentNames.get(sessionId);
         if (name != null) {

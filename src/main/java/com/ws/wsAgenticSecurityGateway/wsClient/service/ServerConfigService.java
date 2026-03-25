@@ -359,7 +359,12 @@ public class ServerConfigService {
         Map<String, String> decrypted = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : storedHeaders.entrySet()) {
             try {
-                decrypted.put(entry.getKey(), cryptoService.decryptIfEncrypted(entry.getValue()));
+                String decryptedValue = cryptoService.decryptIfEncrypted(entry.getValue());
+                log.debug("🔑 Header '{}': stored={}... decrypted={}...",
+                        entry.getKey(),
+                        entry.getValue().substring(0, Math.min(20, entry.getValue().length())),
+                        decryptedValue.substring(0, Math.min(20, decryptedValue.length())));
+                decrypted.put(entry.getKey(), decryptedValue);
             } catch (Exception e) {
                 throw new IllegalStateException(
                         "Failed to decrypt header '" + entry.getKey() + "' for server config runtime use", e);
