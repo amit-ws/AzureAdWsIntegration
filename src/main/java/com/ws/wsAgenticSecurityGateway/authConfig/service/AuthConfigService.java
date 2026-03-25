@@ -397,8 +397,23 @@ public class AuthConfigService {
     /** Validate IdP connectivity by testing the JWKS endpoint. */
     public AuthConfigValidationResponse validateIdpConnectivity(String issuerUri, String jwksUri,
                                                                   String adminIdentity, String sourceIp) {
-        // Resolve JWKS URI: explicit or discovered
+        // Resolve JWKS URI: use explicit value only if its host matches the issuer host.
+        // A stale JWKS URI (from a previous issuer) must not be used — always re-discover.
         String effectiveJwksUri = jwksUri;
+        if (effectiveJwksUri != null && !effectiveJwksUri.isBlank()) {
+            try {
+                String issuerHost = URI.create(issuerUri).getHost();
+                String jwksHost = URI.create(effectiveJwksUri).getHost();
+                if (issuerHost != null && !issuerHost.equalsIgnoreCase(jwksHost)) {
+                    log.info("JWKS URI host '{}' does not match issuer host '{}' — re-discovering",
+                            jwksHost, issuerHost);
+                    effectiveJwksUri = null; // force re-discovery below
+                }
+            } catch (Exception e) {
+                log.warn("Failed to parse JWKS/issuer URI for host comparison — re-discovering: {}", e.getMessage());
+                effectiveJwksUri = null;
+            }
+        }
         if (effectiveJwksUri == null || effectiveJwksUri.isBlank()) {
             AuthConfigDiscoveryResponse discovery = discoverOidcEndpoints(issuerUri);
             effectiveJwksUri = discovery.getJwksUri();
