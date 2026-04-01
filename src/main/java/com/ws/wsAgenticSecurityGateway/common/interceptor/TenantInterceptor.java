@@ -8,13 +8,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
-/**
- * Extracts the {@code X-WS-Tenant} header from admin REST API requests
- * and stores it in {@link TenantContext} for the duration of the request.
- *
- * <p>Registered for {@code /api/admin/**} paths only — MCP {@code /mcp}
- * traffic resolves its tenant from the session's auth config instead.
- */
 @Component
 public class TenantInterceptor implements HandlerInterceptor {
 
@@ -24,7 +17,6 @@ public class TenantInterceptor implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
             throws Exception {
-        // OPTIONS (CORS preflight) — let through without tenant
         if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
             return true;
         }

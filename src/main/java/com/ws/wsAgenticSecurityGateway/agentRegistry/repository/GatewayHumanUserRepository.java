@@ -33,13 +33,10 @@ public interface GatewayHumanUserRepository extends JpaRepository<GatewayHumanUs
     @Query("SELECT COUNT(h) FROM GatewayHumanUserEntity h WHERE h.status = 'BLOCKED'")
     long countBlocked();
 
-    /** Atomic request count increment — called async on every orchestration for human-delegated sessions. */
     @Modifying
     @Query("UPDATE GatewayHumanUserEntity h SET h.totalRequests = h.totalRequests + 1, " +
             "h.lastSeenAt = CURRENT_TIMESTAMP WHERE h.id = :humanUserId")
     void incrementRequestCount(@Param("humanUserId") UUID humanUserId);
-
-    // ── Tenant-scoped queries ───────────────────────────────────────────
 
     Optional<GatewayHumanUserEntity> findByIdpSubjectAndWsTenantName(String idpSubject, String wsTenantName);
 

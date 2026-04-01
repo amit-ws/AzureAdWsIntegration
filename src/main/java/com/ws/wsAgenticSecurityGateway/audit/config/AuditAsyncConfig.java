@@ -8,12 +8,6 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.concurrent.Executor;
 
-/**
- * Async configuration dedicated to the MCP Audit Logging module.
- *
- * <p>All {@code @Async("mcpAuditExecutor")} methods execute on this
- * thread pool, ensuring audit persistence never blocks the hot path.
- */
 @Configuration
 @EnableAsync
 @Slf4j

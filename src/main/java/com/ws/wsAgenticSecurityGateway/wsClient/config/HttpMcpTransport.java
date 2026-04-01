@@ -17,27 +17,9 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 
-/**
- * HTTP-based MCP transport - sends initialize message as first POST,
- * which returns SSE stream for all subsequent server messages.
- *
- * <p>Supports per-request header overrides via {@link #setRequestOverrideHeaders(Map)}.
- * When the orchestrator detects an agent-provided token, it sets override headers
- * on the current thread before calling {@code McpSyncClient.callTool()}.
- * The override is applied in {@link #sendMessage(McpSchema.JSONRPCMessage)} and
- * must be cleaned up by the caller via {@link #clearRequestOverrideHeaders()}.
- */
 @Slf4j
 public class HttpMcpTransport implements McpClientTransport {
 
-    /**
-     * ThreadLocal for per-request header overrides. When set, these headers
-     * replace the config-based headers for the current HTTP request only.
-     * The calling code (ToolCallOrchestrator) MUST clear this in a finally block.
-     *
-     * <p>ThreadLocal is safe here because handleToolCall() is synchronous —
-     * the same thread flows from orchestrator → callTool() → sendMessage().
-     */
     private static final ThreadLocal<Map<String, String>> requestOverrideHeaders = new ThreadLocal<>();
 
     private final String baseUrl;
@@ -58,13 +40,13 @@ public class HttpMcpTransport implements McpClientTransport {
         this.connected = new AtomicBoolean(false);
         this.timeout = timeout;
 
-        log.info("🌐 HTTP MCP Transport created for: {}", baseUrl);
+ log.info("HTTP MCP Transport created for: {}", baseUrl);
     }
 
     @Override
     public Mono<Void> connect(Function<Mono<McpSchema.JSONRPCMessage>, Mono<McpSchema.JSONRPCMessage>> handler) {
         this.messageHandler = handler;
-        log.info("🔌 HTTP transport ready");
+ log.info("HTTP transport ready");
         return Mono.empty();
     }
 
@@ -73,7 +55,7 @@ public class HttpMcpTransport implements McpClientTransport {
         return Mono.fromRunnable(() -> {
             try {
                 String json = mapper.writeValueAsString(message);
-                log.info("📤 Sending: {}", json);
+ log.info("Sending: {}", json);
 
                 URL url = new URL(baseUrl);
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -85,19 +67,17 @@ public class HttpMcpTransport implements McpClientTransport {
                 conn.setRequestProperty("Content-Type", "application/json");
                 conn.setRequestProperty("Cache-Control", "no-cache");
 
-                // ── Apply headers: agent override (if set) takes priority over config ──
                 Map<String, String> overrides = requestOverrideHeaders.get();
                 if (overrides != null && !overrides.isEmpty()) {
                     overrides.forEach(conn::setRequestProperty);
-                    log.debug("🔑 Using agent-provided token override ({} headers)", overrides.size());
+ log.debug("Using agent-provided token override ({} headers)", overrides.size());
                 } else if (headers != null) {
                     headers.forEach(conn::setRequestProperty);
                 }
 
                 conn.setConnectTimeout(timeout * 1000);
-                conn.setReadTimeout(0); // Infinite for SSE
+                conn.setReadTimeout(0);
 
-                // Send message
                 try (OutputStream os = conn.getOutputStream()) {
                     os.write(json.getBytes(StandardCharsets.UTF_8));
                     os.flush();
@@ -114,39 +94,29 @@ public class HttpMcpTransport implements McpClientTransport {
                     throw new RuntimeException(error);
                 }
 
-                // Check if SSE response
                 String ct = conn.getHeaderField("Content-Type");
                 if (ct != null && ct.contains("text/event-stream")) {
-                    log.info("✅ Got SSE stream");
+ log.info("Got SSE stream");
                     connected.set(true);
-                    // Important: every SSE HTTP response stream can carry the response for
-                    // the current request. Always attach a reader, even when already connected.
-                    // If we skip this when `connected=true`, request responses can be missed
-                    // and the MCP SDK call times out waiting for the JSON-RPC result.
                     sseConnection = conn;
                     startSseReader(conn);
                 } else {
-                    // Regular JSON
                     try (var is = conn.getInputStream()) {
                         String resp = new String(is.readAllBytes(), StandardCharsets.UTF_8);
                         if (!resp.trim().isEmpty()) {
-                            log.info("📥 JSON response: {}", resp);
+ log.info("JSON response: {}", resp);
                             processMessage(resp);
                         }
                     }
-                    // Non-SSE MCP servers/flows still indicate healthy connectivity
-                    // when request/response succeeds over HTTP.
                     connected.set(true);
                     conn.disconnect();
                 }
 
             } catch (Exception e) {
                 connected.set(false);
-                log.error("❌ Send failed: {}", e.getMessage());
+ log.error("Send failed: {}", e.getMessage());
                 throw new RuntimeException(e);
             } finally {
-                // Safety net: ensure per-request auth override never leaks across
-                // unrelated operations (e.g., admin reconnect on a reused thread).
                 requestOverrideHeaders.remove();
             }
         });
@@ -157,7 +127,7 @@ public class HttpMcpTransport implements McpClientTransport {
             try (BufferedReader r = new BufferedReader(
                     new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
 
-                log.info("📡 SSE reader started");
+ log.info("SSE reader started");
                 String line;
                 StringBuilder data = new StringBuilder();
 
@@ -168,23 +138,20 @@ public class HttpMcpTransport implements McpClientTransport {
                         String msg = data.toString().trim();
                         data.setLength(0);
                         if (!msg.isEmpty()) {
-                            log.info("📥 SSE: {}", msg);
+ log.info("SSE: {}", msg);
                             processMessage(msg);
                         }
                     }
                 }
 
-                // Some MCP servers legitimately close SSE after a response or short idle period.
-                // Do not flip connectivity to false on normal stream end unless we're explicitly
-                // shutting down this transport.
-                log.info("📡 SSE ended (closed={})", closed);
+ log.info("SSE ended (closed={})", closed);
                 if (closed) {
                     connected.set(false);
                 }
 
             } catch (Exception e) {
                 if (!closed) {
-                    log.error("❌ SSE error: {}", e.getMessage());
+ log.error("SSE error: {}", e.getMessage());
                     connected.set(false);
                 }
             }
@@ -207,7 +174,7 @@ public class HttpMcpTransport implements McpClientTransport {
                         .subscribe();
             }
         } catch (Exception e) {
-            log.error("❌ Process failed: {}", e.getMessage());
+ log.error("Process failed: {}", e.getMessage());
         }
     }
 
@@ -246,37 +213,14 @@ public class HttpMcpTransport implements McpClientTransport {
         return connected.get();
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  PER-REQUEST HEADER OVERRIDE (Agent Token Support)
-    // ════════════════════════════════════════════════════════════════════
-
-    /**
-     * Set override headers for the current thread's next HTTP request.
-     * When set, these headers REPLACE the config-based headers entirely.
-     *
-     * <p>The caller MUST call {@link #clearRequestOverrideHeaders()} in a
-     * finally block after the tool call completes.
-     *
-     * @param overrideHeaders the headers to use instead of config headers
-     */
     public static void setRequestOverrideHeaders(Map<String, String> overrideHeaders) {
         requestOverrideHeaders.set(overrideHeaders);
     }
 
-    /**
-     * Clear the per-request header override for the current thread.
-     * Must be called in a finally block after every tool call that set overrides.
-     */
     public static void clearRequestOverrideHeaders() {
         requestOverrideHeaders.remove();
     }
 
-    /**
-     * Get the config-based headers for this transport.
-     * Used by the orchestrator to merge non-auth config headers with agent tokens.
-     *
-     * @return the config-based headers (may be null)
-     */
     public Map<String, String> getConfigHeaders() {
         return headers;
     }

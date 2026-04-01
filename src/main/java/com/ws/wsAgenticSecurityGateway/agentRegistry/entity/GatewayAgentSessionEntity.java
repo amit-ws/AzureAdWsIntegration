@@ -10,13 +10,6 @@ import org.hibernate.annotations.CreationTimestamp;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-/**
- * Represents an individual agent session (connection) in the agent registry.
- *
- * <p>Each row tracks a single MCP session from an AI agent to the gateway,
- * including auth context, request counts, and connection timestamps.
- * Multiple sessions can belong to the same {@link GatewayAgentEntity}.
- */
 @Entity
 @Table(name = "gateway_agent_session", schema = "ws_agentic_security",
         indexes = {
@@ -37,59 +30,46 @@ public class GatewayAgentSessionEntity {
     @Column(name = "ws_tenant_name", nullable = false)
     private String wsTenantName;
 
-    /** The parent agent profile this session belongs to. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "agent_id", nullable = false)
     private GatewayAgentEntity agent;
 
-    /** The MCP session UUID (Agent ↔ Gateway). */
     @Column(name = "session_id", nullable = false, length = 128)
     private String sessionId;
 
-    /** Authentication method used: JWT, API_KEY, or null. */
     @Column(name = "auth_method", length = 20)
     private String authMethod;
 
-    /** Authentication identity: JWT subject or API key name. */
     @Column(name = "auth_identity", length = 256)
     private String authIdentity;
 
-    /** When this session was established. */
     @CreationTimestamp
     @Column(name = "connected_at", nullable = false, updatable = false)
     private LocalDateTime connectedAt;
 
-    /** When this session was terminated (null if still connected). */
     @Column(name = "disconnected_at")
     private LocalDateTime disconnectedAt;
 
-    /** Number of tool/prompt/resource requests in this session. */
     @Column(name = "request_count")
     @Builder.Default
     private Integer requestCount = 0;
 
-    /** Timestamp of the last request in this session. */
     @Column(name = "last_request_at")
     private LocalDateTime lastRequestAt;
 
-    /** Session status: CONNECTED or DISCONNECTED. */
     @Column(name = "status", nullable = false, length = 20)
     @Builder.Default
     private String status = "CONNECTED";
 
-    /** Token classification: "AUTOMATED_AGENT" or "HUMAN_DELEGATED". */
     @Column(name = "token_type", length = 32)
     private String tokenType;
 
-    /** FK to gateway_human_users — set when token_type is HUMAN_DELEGATED. */
     @Column(name = "human_user_id")
     private UUID humanUserId;
 
-    /** FK to gateway_nhi_registry — set when token_type is AUTOMATED_AGENT. */
     @Column(name = "nhi_id")
     private UUID nhiId;
 
-    /** Client IP address at session creation (X-Forwarded-For aware). */
     @Column(name = "ip_address", length = 64)
     private String ipAddress;
 }

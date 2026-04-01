@@ -13,13 +13,6 @@ import org.hibernate.annotations.UpdateTimestamp;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-/**
- * Represents a registered enterprise MCP server in the capability registry.
- *
- * <p>Each server record corresponds to a single entry in the MCP client
- * configuration (e.g. "github", "jira") and groups all capabilities
- * (tools, resources, prompts) discovered from that server.
- */
 @Entity
 @Table(name = "mcp_server", schema = "ws_agentic_security",
         uniqueConstraints = {
@@ -43,28 +36,22 @@ public class McpServerEntity {
     @Column(name = "ws_tenant_name", nullable = false)
     private String wsTenantName;
 
-    /** Config-level name of the server (e.g. "github", "jira"). Unique. */
     @Column(name = "server_config_name", nullable = false, length = 128)
     private String serverConfigName;
 
-    /** Display name reported by the server during initialization. */
     @Column(name = "display_name", length = 256)
     private String displayName;
 
-    /** Server version reported during initialization. */
     @Column(name = "version", length = 256)
     private String version;
 
-    /** MCP protocol version negotiated during handshake. */
     @Column(name = "protocol_version", length = 20)
     private String protocolVersion;
 
-    /** Server status — ACTIVE when connected, INACTIVE when disconnected. */
     @Column(name = "status", nullable = false, length = 20)
     @Builder.Default
     private String status = "ACTIVE";
 
-    /** Full server capabilities as reported during initialization (JSONB). */
     @Convert(converter = JsonNodeColumnConverter.class)
     @Column(name = "capabilities", columnDefinition = "JSONB")
     private JsonNode capabilities;

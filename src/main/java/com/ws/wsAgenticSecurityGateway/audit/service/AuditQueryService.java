@@ -19,14 +19,6 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
-/**
- * Service layer for audit log READ operations.
- *
- * <p>Owns {@link McpAuditLogRepository} and {@link PdpAuditLogRepository}
- * for read-only queries. Write operations remain in {@link McpAuditService}.
- *
- * <p>Consumers: AuditController, AgentController, DashboardController, HumanUserService.
- */
 @Service
 @Slf4j
 public class AuditQueryService {
@@ -39,10 +31,6 @@ public class AuditQueryService {
         this.auditRepo = auditRepo;
         this.pdpAuditRepo = pdpAuditRepo;
     }
-
-    // ════════════════════════════════════════════════════════════════════
-    //  PAGINATED FILTERED QUERY
-    // ════════════════════════════════════════════════════════════════════
 
     public Page<McpAuditLog> queryLogs(AuditModule module, AuditEventType eventType,
                                         AuditStatus status, AuditSeverity severity,
@@ -61,10 +49,6 @@ public class AuditQueryService {
         return auditRepo.findAll(spec, pageRequest);
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  SINGLE RECORD + CORRELATION CHAIN
-    // ════════════════════════════════════════════════════════════════════
-
     public Optional<McpAuditLog> findById(UUID id) {
         return auditRepo.findById(id)
                 .filter(entry -> {
@@ -73,9 +57,6 @@ public class AuditQueryService {
                 });
     }
 
-    /**
-     * Build full invocation chain by merging MCP + PDP audit logs.
-     */
     public List<McpAuditLog> getCorrelationChain(String correlationId) {
         List<McpAuditLog> records = new ArrayList<>(auditRepo.findByCorrelationId(correlationId));
 
@@ -100,10 +81,6 @@ public class AuditQueryService {
         return records;
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  STATS
-    // ════════════════════════════════════════════════════════════════════
-
     public Map<String, Object> getStats(LocalDateTime since) {
         String tenant = TenantContext.get();
         Map<String, Object> stats = new LinkedHashMap<>();
@@ -115,8 +92,6 @@ public class AuditQueryService {
         Map<String, Long> bySeverity = new LinkedHashMap<>();
 
         if (tenant != null) {
-            // Use countByTimestampAfterAndWsTenantName with a very old date as proxy for "count all"
-            // There's no countByWsTenantName, so we use the spec-based query approach
             long totalEvents = auditRepo.countByTimestampAfterAndWsTenantName(
                     LocalDateTime.of(2000, 1, 1, 0, 0), tenant);
             errorCount = auditRepo.countByStatusAndWsTenantName(AuditStatus.ERROR, tenant)
@@ -220,10 +195,6 @@ public class AuditQueryService {
         return filters;
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  DASHBOARD QUERIES
-    // ════════════════════════════════════════════════════════════════════
-
     public long countRecentEvents(LocalDateTime since) {
         String tenant = TenantContext.get();
         if (tenant != null) {
@@ -274,10 +245,6 @@ public class AuditQueryService {
         return auditRepo.countByModuleAndTimestampAfter(module, since);
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  SESSION TIMELINE (for AgentController)
-    // ════════════════════════════════════════════════════════════════════
-
     public Page<McpAuditLog> getSessionTimeline(String sessionId, PageRequest pageRequest) {
         String tenant = TenantContext.get();
         if (tenant != null) {
@@ -285,10 +252,6 @@ public class AuditQueryService {
         }
         return auditRepo.findBySessionIdOrderByTimestampDesc(sessionId, pageRequest);
     }
-
-    // ════════════════════════════════════════════════════════════════════
-    //  INTERNAL HELPERS
-    // ════════════════════════════════════════════════════════════════════
 
     McpAuditLog toChainEntry(PdpAuditLog pdp) {
         return McpAuditLog.builder()

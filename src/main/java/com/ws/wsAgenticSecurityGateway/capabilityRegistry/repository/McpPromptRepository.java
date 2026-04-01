@@ -10,9 +10,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-/**
- * Repository for {@link McpPromptEntity} — prompts discovered from enterprise MCP servers.
- */
 @Repository
 public interface McpPromptRepository extends JpaRepository<McpPromptEntity, UUID> {
 
@@ -23,8 +20,6 @@ public interface McpPromptRepository extends JpaRepository<McpPromptEntity, UUID
     @Modifying
     @Transactional
     void deleteByServerId(UUID serverId);
-
-    // ── Tenant-scoped queries ───────────────────────────────────────────
 
     List<McpPromptEntity> findByServerIdAndWsTenantName(UUID serverId, String wsTenantName);
 

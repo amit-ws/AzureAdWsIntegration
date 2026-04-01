@@ -17,12 +17,6 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDateTime;
 import java.util.*;
 
-/**
- * REST controller for the Admin Dashboard audit log page.
- *
- * <p>Provides paginated, filtered audit log queries plus summary
- * statistics and timeline data for the dashboard UI.
- */
 @RestController
 @RequestMapping("/api/admin/audit")
 @Slf4j
@@ -34,10 +28,6 @@ public class AuditController {
         this.auditQueryService = auditQueryService;
     }
 
-    /**
-     * GET /api/admin/audit/logs
-     * Paginated, multi-field filtered audit log query.
-     */
     @GetMapping("/logs")
     public ResponseEntity<Page<McpAuditLog>> getLogs(
             @RequestParam(required = false) String module,
@@ -59,17 +49,14 @@ public class AuditController {
             @RequestParam(defaultValue = "25") int size,
             @RequestParam(defaultValue = "timestamp,desc") String sort) {
 
-        log.info("📋 GET /api/admin/audit/logs - page={}, size={}, filters=[module={}, eventType={}, status={}, serverName={}]",
+ log.info("GET /api/admin/audit/logs - page={}, size={}, filters=[module={}, eventType={}, status={}, serverName={}]",
                 page, size, module, eventType, status, serverName);
 
-        // Cap page size
         size = Math.min(size, 100);
 
-        // Parse sort
         Sort sortObj = parseSort(sort);
         PageRequest pageRequest = PageRequest.of(page, size, sortObj);
 
-        // Parse enum filters (tolerant — invalid values become null)
         AuditModule moduleEnum = parseEnum(AuditModule.class, module);
         AuditEventType eventTypeEnum = parseEnum(AuditEventType.class, eventType);
         AuditStatus statusEnum = parseEnum(AuditStatus.class, status);
@@ -83,67 +70,45 @@ public class AuditController {
         return ResponseEntity.ok(results);
     }
 
-    /**
-     * GET /api/admin/audit/logs/{id}
-     * Single audit record with full JSONB payloads.
-     */
     @GetMapping("/logs/{id}")
     public ResponseEntity<McpAuditLog> getLogById(@PathVariable UUID id) {
-        log.info("📋 GET /api/admin/audit/logs/{}", id);
+ log.info("GET /api/admin/audit/logs/{}", id);
         return auditQueryService.findById(id)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    /**
-     * GET /api/admin/audit/logs/correlation/{correlationId}
-     * All records sharing a correlation ID (full invocation chain).
-     */
     @GetMapping("/logs/correlation/{correlationId}")
     public ResponseEntity<List<McpAuditLog>> getByCorrelationId(@PathVariable String correlationId) {
-        log.info("📋 GET /api/admin/audit/logs/correlation/{}", correlationId);
+ log.info("GET /api/admin/audit/logs/correlation/{}", correlationId);
         List<McpAuditLog> records = auditQueryService.getCorrelationChain(correlationId);
         return ResponseEntity.ok(records);
     }
 
-    /**
-     * GET /api/admin/audit/stats
-     * Summary statistics for the audit dashboard header.
-     */
     @GetMapping("/stats")
     public ResponseEntity<Map<String, Object>> getStats(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime since) {
 
-        log.info("📊 GET /api/admin/audit/stats");
+ log.info("GET /api/admin/audit/stats");
         Map<String, Object> stats = auditQueryService.getStats(since);
         return ResponseEntity.ok(stats);
     }
 
-    /**
-     * GET /api/admin/audit/stats/timeline
-     * Event counts bucketed by hour for the timeline chart.
-     */
     @GetMapping("/stats/timeline")
     public ResponseEntity<List<Map<String, Object>>> getTimeline(
             @RequestParam(defaultValue = "24") int hours) {
 
-        log.info("📊 GET /api/admin/audit/stats/timeline?hours={}", hours);
+ log.info("GET /api/admin/audit/stats/timeline?hours={}", hours);
         List<Map<String, Object>> timeline = auditQueryService.getTimeline(hours);
         return ResponseEntity.ok(timeline);
     }
 
-    /**
-     * GET /api/admin/audit/filters
-     * Available filter values for populating UI dropdowns.
-     */
     @GetMapping("/filters")
     public ResponseEntity<Map<String, Object>> getFilterValues() {
-        log.info("📋 GET /api/admin/audit/filters");
+ log.info("GET /api/admin/audit/filters");
         Map<String, Object> filters = auditQueryService.getFilterValues();
         return ResponseEntity.ok(filters);
     }
-
-    // ── Helpers ─────────────────────────────────────────────────────────
 
     private Sort parseSort(String sortParam) {
         try {

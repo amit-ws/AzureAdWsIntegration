@@ -13,26 +13,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.*;
 import java.util.regex.Pattern;
 
-/**
- * Custom Attribute lifecycle management and runtime resolution.
- *
- * <h3>Two responsibilities</h3>
- * <ol>
- *   <li><b>Admin CRUD</b> — register, update, toggle, delete custom attributes via REST API</li>
- *   <li><b>Runtime resolution</b> — at policy evaluation time, resolve all enabled attributes
- *       from their configured sources (STATIC, HEADER, AGENT_FIELD) and return as a flat map
- *       that merges into {@code contextAttrs} in the Cedar engine</li>
- * </ol>
- *
- * <h3>Caching</h3>
- * <p>Attribute definitions are cached for 30 seconds to avoid per-request DB queries.
- * Any mutation (create/update/delete/toggle) invalidates the cache immediately.
- */
 @Service
 @Slf4j
 public class CustomAttributeService {
 
-    private static final long CACHE_TTL_MS = 30_000; // 30 seconds
+    private static final long CACHE_TTL_MS = 30_000;
     private static final Pattern VALID_ATTR_NAME = Pattern.compile("^[a-zA-Z][a-zA-Z0-9_]*$");
     private static final Set<String> VALID_DATA_TYPES = Set.of("STRING", "INTEGER", "BOOLEAN");
     private static final Set<String> VALID_VALUE_SOURCES = Set.of("STATIC", "HEADER", "AGENT_FIELD");
@@ -45,7 +30,6 @@ public class CustomAttributeService {
     private final AgentRegistryService agentRegistryService;
     private final McpAuditService auditService;
 
-    // ── Cache ──────────────────────────────────────────────────────────────
     private volatile List<GatewayCustomAttributeEntity> cachedAttributes;
     private volatile long cacheTimestamp = 0;
 
@@ -57,35 +41,22 @@ public class CustomAttributeService {
         this.auditService = auditService;
     }
 
-    // ════════════════════════════════════════════════════════════════════════
-    //  CRUD
-    // ════════════════════════════════════════════════════════════════════════
-
-    /** List all custom attributes for the current tenant. */
     public List<GatewayCustomAttributeEntity> getAll() {
         return repository.findAllByWsTenantName(TenantContext.get());
     }
 
-    /** Get a specific attribute by ID. */
     public Optional<GatewayCustomAttributeEntity> getById(UUID id) {
         return repository.findById(id);
     }
 
-    /** Get a specific attribute by name. */
     public Optional<GatewayCustomAttributeEntity> getByName(String attributeName) {
         return repository.findByAttributeNameAndWsTenantName(attributeName, TenantContext.get());
     }
 
-    /** Get all enabled attributes (for LLM metadata / runtime resolution). */
     public List<GatewayCustomAttributeEntity> getEnabledAttributes() {
         return getCachedAttributes();
     }
 
-    /**
-     * Create a new custom attribute.
-     *
-     * @return the created entity, or null if validation fails (error in second element)
-     */
     @Transactional
     public AttributeResult create(GatewayCustomAttributeEntity attr) {
         String error = validate(attr, false);
@@ -93,7 +64,6 @@ public class CustomAttributeService {
             return AttributeResult.error(error);
         }
 
-        // Normalize
         attr.setDataType(attr.getDataType().toUpperCase());
         attr.setValueSource(attr.getValueSource().toUpperCase());
         if (attr.getEnabled() == null) {
@@ -110,9 +80,6 @@ public class CustomAttributeService {
         return AttributeResult.success(saved);
     }
 
-    /**
-     * Update an existing custom attribute.
-     */
     @Transactional
     public AttributeResult update(UUID id, GatewayCustomAttributeEntity updates) {
         Optional<GatewayCustomAttributeEntity> existing = repository.findById(id);
@@ -122,7 +89,6 @@ public class CustomAttributeService {
 
         GatewayCustomAttributeEntity attr = existing.get();
 
-        // Patch non-null fields
         if (updates.getDisplayName() != null) attr.setDisplayName(updates.getDisplayName());
         if (updates.getDescription() != null) attr.setDescription(updates.getDescription());
         if (updates.getDefaultValue() != null) attr.setDefaultValue(updates.getDefaultValue());
@@ -147,7 +113,6 @@ public class CustomAttributeService {
             attr.setSourceKey(updates.getSourceKey());
         }
 
-        // Re-validate
         String error = validateSourceKey(attr);
         if (error != null) {
             return AttributeResult.error(error);
@@ -160,9 +125,6 @@ public class CustomAttributeService {
         return AttributeResult.success(saved);
     }
 
-    /**
-     * Delete a custom attribute.
-     */
     @Transactional
     public boolean delete(UUID id) {
         Optional<GatewayCustomAttributeEntity> existing = repository.findById(id);
@@ -177,9 +139,6 @@ public class CustomAttributeService {
         return true;
     }
 
-    /**
-     * Toggle enabled/disabled state.
-     */
     @Transactional
     public Optional<GatewayCustomAttributeEntity> toggleEnabled(UUID id) {
         return repository.findById(id).map(attr -> {
@@ -193,7 +152,6 @@ public class CustomAttributeService {
         });
     }
 
-    /** Stats for dashboard. */
     public Map<String, Object> getStats() {
         String tenant = TenantContext.get();
         Map<String, Object> stats = new LinkedHashMap<>();
@@ -207,28 +165,6 @@ public class CustomAttributeService {
         return stats;
     }
 
-    // ════════════════════════════════════════════════════════════════════════
-    //  RUNTIME RESOLUTION (called per policy evaluation)
-    // ════════════════════════════════════════════════════════════════════════
-
-    /**
-     * Resolve all enabled custom attributes for the current request.
-     *
-     * <p>For each registered attribute, resolves its value from the configured source:
-     * <ul>
-     *   <li>{@code STATIC} → returns the default value</li>
-     *   <li>{@code HEADER} → looks up the header in the transport context / HTTP headers</li>
-     *   <li>{@code AGENT_FIELD} → looks up the field on the agent's DB record</li>
-     * </ul>
-     *
-     * <p>If a source returns null, the defaultValue is used as fallback.
-     * Values are coerced to the declared data type (INTEGER, BOOLEAN, or STRING).
-     *
-     * @param httpHeaders   all HTTP headers from the request (case-insensitive lookup)
-     * @param transportContext known transport context entries (clientIp, agentName, etc.)
-     * @param agentName     the requesting agent's name (for AGENT_FIELD lookups)
-     * @return flat map of attribute names → resolved values, ready for contextAttrs merge
-     */
     public Map<String, Object> resolveAttributes(Map<String, String> httpHeaders,
                                                    Map<String, Object> transportContext,
                                                    String agentName) {
@@ -252,10 +188,6 @@ public class CustomAttributeService {
         return resolved;
     }
 
-    // ════════════════════════════════════════════════════════════════════════
-    //  PRIVATE — resolution helpers
-    // ════════════════════════════════════════════════════════════════════════
-
     private Object resolveValue(GatewayCustomAttributeEntity attr,
                                  Map<String, String> httpHeaders,
                                  Map<String, Object> transportContext,
@@ -269,11 +201,9 @@ public class CustomAttributeService {
                 String key = attr.getSourceKey();
                 if (key == null) break;
 
-                // 1. Try HTTP headers (case-insensitive)
                 if (httpHeaders != null) {
                     value = httpHeaders.get(key);
                     if (value == null) {
-                        // Case-insensitive fallback
                         for (Map.Entry<String, String> entry : httpHeaders.entrySet()) {
                             if (entry.getKey().equalsIgnoreCase(key)) {
                                 value = entry.getValue();
@@ -283,7 +213,6 @@ public class CustomAttributeService {
                     }
                 }
 
-                // 2. Fallback to transport context (for keys put there explicitly)
                 if (value == null && transportContext != null) {
                     Object tcVal = transportContext.get(key);
                     if (tcVal != null) {
@@ -297,7 +226,6 @@ public class CustomAttributeService {
             }
         }
 
-        // Fall back to default value if source returned nothing
         if (value == null && attr.getDefaultValue() != null) {
             value = attr.getDefaultValue();
         }
@@ -334,9 +262,6 @@ public class CustomAttributeService {
         }
     }
 
-    /**
-     * Coerce a raw value to the declared data type.
-     */
     private Object coerce(Object value, String dataType) {
         if (value == null) return null;
         String str = String.valueOf(value);
@@ -350,13 +275,9 @@ public class CustomAttributeService {
                 }
             }
             case "BOOLEAN" -> Boolean.parseBoolean(str);
-            default -> str; // STRING
+            default -> str;
         };
     }
-
-    // ════════════════════════════════════════════════════════════════════════
-    //  PRIVATE — cache
-    // ════════════════════════════════════════════════════════════════════════
 
     private List<GatewayCustomAttributeEntity> getCachedAttributes() {
         long now = System.currentTimeMillis();
@@ -364,7 +285,6 @@ public class CustomAttributeService {
             return cachedAttributes;
         }
         synchronized (this) {
-            // Double-check
             if (cachedAttributes != null && (System.currentTimeMillis() - cacheTimestamp) < CACHE_TTL_MS) {
                 return cachedAttributes;
             }
@@ -378,10 +298,6 @@ public class CustomAttributeService {
         cachedAttributes = null;
         cacheTimestamp = 0;
     }
-
-    // ════════════════════════════════════════════════════════════════════════
-    //  PRIVATE — validation
-    // ════════════════════════════════════════════════════════════════════════
 
     private String validate(GatewayCustomAttributeEntity attr, boolean isUpdate) {
         if (attr.getAttributeName() == null || attr.getAttributeName().isBlank()) {
@@ -427,10 +343,6 @@ public class CustomAttributeService {
         }
         return null;
     }
-
-    // ════════════════════════════════════════════════════════════════════════
-    //  RESULT RECORD
-    // ════════════════════════════════════════════════════════════════════════
 
     public record AttributeResult(boolean success, GatewayCustomAttributeEntity attribute, String error) {
         public static AttributeResult success(GatewayCustomAttributeEntity attr) {

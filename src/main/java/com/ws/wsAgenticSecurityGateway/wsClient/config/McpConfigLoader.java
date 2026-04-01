@@ -12,10 +12,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
-/**
- * Service responsible for loading and parsing MCP configuration from JSON file.
- * Handles file location, validation, and deserialization.
- */
 @Component
 @Slf4j
 public class McpConfigLoader {
@@ -32,22 +28,11 @@ public class McpConfigLoader {
         this.objectMapper = new ObjectMapper();
     }
 
-    /**
-     * Load MCP configuration from the configured file location.
-     * Search order:
-     * 1. Classpath (src/main/resources)
-     * 2. Configured directory (default: ~/.config/mcp)
-     * 3. Current working directory
-     *
-     * @return McpConfigFile object with all server configurations
-     * @throws IOException if file cannot be read or parsed
-     */
     public McpConfigFile loadConfig() throws IOException {
 
-        // First, try to load from classpath using InputStream
         var classpathResource = getClass().getClassLoader().getResource(configFileName);
         if (classpathResource != null) {
-            log.info("📂 Loading MCP config from classpath: {}", configFileName);
+ log.info("Loading MCP config from classpath: {}", configFileName);
             try (var inputStream = getClass().getClassLoader().getResourceAsStream(configFileName)) {
                 if (inputStream != null) {
                     String content = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
@@ -58,22 +43,20 @@ public class McpConfigLoader {
             }
         }
 
-        // If not in classpath, try file system
         File configFile = findConfigFile();
 
         if (configFile == null || !configFile.exists()) {
-            log.error("❌ MCP config file not found. Searched locations:");
-            log.error("   1. Classpath: {}", configFileName);
+ log.error("MCP config file not found. Searched locations:");
+            log.error("1. Classpath: {}", configFileName);
             if (configDirectory != null && !configDirectory.isEmpty()) {
-                log.error("   2. Directory: {}/{}", configDirectory, configFileName);
+                log.error("2. Directory: {}/{}", configDirectory, configFileName);
             }
-            log.error("   3. Current dir: ./{}", configFileName);
+            log.error("3. Current dir: ./{}", configFileName);
             throw new IOException("MCP configuration file not found: " + configFileName);
         }
 
-        log.info("📂 Loading MCP config from: {}", configFile.getAbsolutePath());
+ log.info("Loading MCP config from: {}", configFile.getAbsolutePath());
 
-        // Validate file is readable
         if (!configFile.canRead()) {
             throw new IOException("Cannot read config file: " + configFile.getAbsolutePath());
         }
@@ -82,59 +65,45 @@ public class McpConfigLoader {
         return parseConfig(content, configFile.getAbsolutePath());
     }
 
-    /**
-     * Parse configuration content
-     */
     private McpConfigFile parseConfig(String content, String source) throws IOException {
         log.debug("Config file content length: {} bytes", content.length());
 
         try {
             McpConfigFile config = objectMapper.readValue(content, McpConfigFile.class);
 
-            // Validate
             config.validate();
 
-            log.info("✅ Successfully loaded {} MCP server configurations from {}",
+ log.info("Successfully loaded {} MCP server configurations from {}",
                     config.getMcpServers().size(), source);
 
-            // Log server names
             config.getMcpServers().keySet().forEach(name ->
-                    log.info("   - {}", name)
+                    log.info("- {}", name)
             );
 
-            // Log inputs (if any)
             if (config.getInputs() != null && !config.getInputs().isEmpty()) {
-                log.info("📝 Found {} input variables", config.getInputs().size());
+ log.info("Found {} input variables", config.getInputs().size());
                 config.getInputs().keySet().forEach(key ->
-                        log.debug("   - {}", key)
+                        log.debug("- {}", key)
                 );
             }
 
             return config;
 
         } catch (IOException e) {
-            log.error("❌ Failed to parse MCP config file: {}", e.getMessage());
+ log.error("Failed to parse MCP config file: {}", e.getMessage());
             throw new IOException("Invalid MCP configuration format: " + e.getMessage(), e);
         }
     }
 
-    /**
-     * Create variable resolver from config
-     */
     public ConfigVariableResolver createResolver(McpConfigFile config) {
         return new ConfigVariableResolver(config.getInputs());
     }
 
-    /**
-     * Find the configuration file in various locations
-     */
     private File findConfigFile() {
-        // 1. Try classpath (resources folder)
         try {
             var resource = getClass().getClassLoader().getResource(configFileName);
             if (resource != null) {
                 log.debug("Found config in classpath: {}", resource.getPath());
-                // For resources inside JAR or classpath, we need to handle differently
                 if (resource.getProtocol().equals("file")) {
                     File file = new File(resource.toURI());
                     if (file.exists()) {
@@ -142,15 +111,13 @@ public class McpConfigLoader {
                         return file;
                     }
                 }
-                // If in JAR or not accessible as File, we'll load it differently in loadConfig()
                 log.debug("Config found in classpath but not as file, will use input stream");
-                return null; // Signal to use input stream approach
+                return null;
             }
         } catch (Exception e) {
             log.debug("Config not in classpath: {}", e.getMessage());
         }
 
-        // 2. Try configured directory (if specified)
         if (configDirectory != null && !configDirectory.isEmpty()) {
             Path configDirPath = Paths.get(configDirectory.replace("${user.home}",
                     System.getProperty("user.home")));
@@ -161,7 +128,6 @@ public class McpConfigLoader {
             }
         }
 
-        // 3. Try current directory
         File currentDirFile = new File(configFileName);
         if (currentDirFile.exists()) {
             log.debug("Found config in current directory: {}", currentDirFile.getAbsolutePath());
@@ -171,11 +137,8 @@ public class McpConfigLoader {
         return null;
     }
 
-    /**
-     * Reload configuration (for future file watching implementation)
-     */
     public McpConfigFile reloadConfig() throws IOException {
-        log.info("🔄 Reloading MCP configuration...");
+ log.info("Reloading MCP configuration...");
         return loadConfig();
     }
 }

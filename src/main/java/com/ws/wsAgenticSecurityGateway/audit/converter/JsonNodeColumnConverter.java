@@ -6,10 +6,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.AttributeConverter;
 import jakarta.persistence.Converter;
 
-/**
- * JPA converter for JSONB columns.
- * Converts {@link JsonNode} &lt;-&gt; {@code String} for PostgreSQL JSONB storage.
- */
 @Converter
 public class JsonNodeColumnConverter implements AttributeConverter<JsonNode, String> {
 

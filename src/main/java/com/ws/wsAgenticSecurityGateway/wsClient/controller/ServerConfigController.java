@@ -14,14 +14,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 
-/**
- * REST controller for MCP server configuration management.
- *
- * <p>Replaces the file-based {@code ConfigController} with DB-driven config.
- * Provides full CRUD plus connection lifecycle operations.
- *
- * <p>Base path: {@code /api/admin/mcp-servers}
- */
 @RestController
 @RequestMapping("/api/admin/mcp-servers")
 @Slf4j
@@ -33,14 +25,6 @@ public class ServerConfigController {
         this.serverConfigService = serverConfigService;
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  CRUD
-    // ════════════════════════════════════════════════════════════════════
-
-    /**
-     * POST /api/admin/mcp-servers — Create a new server configuration.
-     * Auto-connects if enabled + autoConnect.
-     */
     @PostMapping
     public ResponseEntity<?> createServerConfig(@Valid @RequestBody ServerConfigRequest request) {
         log.info("POST /api/admin/mcp-servers — creating '{}'", request.getServerName());
@@ -55,18 +39,12 @@ public class ServerConfigController {
         }
     }
 
-    /**
-     * GET /api/admin/mcp-servers — List all server configurations with connection status.
-     */
     @GetMapping
     public ResponseEntity<List<ServerConfigResponse>> listServerConfigs() {
         List<ServerConfigResponse> configs = serverConfigService.listServerConfigs();
         return ResponseEntity.ok(configs);
     }
 
-    /**
-     * GET /api/admin/mcp-servers/{name} — Get a specific server configuration.
-     */
     @GetMapping("/{name}")
     public ResponseEntity<?> getServerConfig(@PathVariable String name) {
         try {
@@ -77,10 +55,6 @@ public class ServerConfigController {
         }
     }
 
-    /**
-     * PUT /api/admin/mcp-servers/{name} — Update a server configuration.
-     * If connected, disconnects first, updates, then reconnects.
-     */
     @PutMapping("/{name}")
     public ResponseEntity<?> updateServerConfig(@PathVariable String name,
                                                 @Valid @RequestBody ServerConfigRequest request) {
@@ -98,10 +72,6 @@ public class ServerConfigController {
         }
     }
 
-    /**
-     * DELETE /api/admin/mcp-servers/{name} — Delete a server configuration.
-     * Disconnects first if connected.
-     */
     @DeleteMapping("/{name}")
     public ResponseEntity<?> deleteServerConfig(@PathVariable String name) {
         log.info("DELETE /api/admin/mcp-servers/{}", name);
@@ -119,13 +89,6 @@ public class ServerConfigController {
         }
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  CONNECTION LIFECYCLE
-    // ════════════════════════════════════════════════════════════════════
-
-    /**
-     * POST /api/admin/mcp-servers/{name}/connect — Connect to a configured server.
-     */
     @PostMapping("/{name}/connect")
     public ResponseEntity<?> connectServer(@PathVariable String name) {
         log.info("POST /api/admin/mcp-servers/{}/connect", name);
@@ -145,9 +108,6 @@ public class ServerConfigController {
         }
     }
 
-    /**
-     * POST /api/admin/mcp-servers/{name}/disconnect — Disconnect a server.
-     */
     @PostMapping("/{name}/disconnect")
     public ResponseEntity<?> disconnectServer(@PathVariable String name) {
         log.info("POST /api/admin/mcp-servers/{}/disconnect", name);
@@ -167,9 +127,6 @@ public class ServerConfigController {
         }
     }
 
-    /**
-     * POST /api/admin/mcp-servers/{name}/reconnect — Reconnect a server.
-     */
     @PostMapping("/{name}/reconnect")
     public ResponseEntity<?> reconnectServer(@PathVariable String name) {
         log.info("POST /api/admin/mcp-servers/{}/reconnect", name);
@@ -188,8 +145,6 @@ public class ServerConfigController {
             return ResponseEntity.internalServerError().body(errorMap(e.getMessage()));
         }
     }
-
-    // ── Helpers ──────────────────────────────────────────────────────────
 
     private Map<String, Object> errorMap(String message) {
         Map<String, Object> error = new LinkedHashMap<>();

@@ -31,21 +31,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
-/**
- * LLM-powered Cedar policy generation service.
- *
- * <p>Converts natural-language admin prompts into Cedar policy code using
- * the Anthropic Claude API (Messages endpoint).
- *
- * <h3>Features</h3>
- * <ul>
- *   <li><b>Live metadata injection</b> — system prompt includes actual agents, servers, tools</li>
- *   <li><b>Structured schema</b> — operators, sources, grammar shared with LLM</li>
- *   <li><b>Multi-turn conversation</b> — iterative refinement via conversation history</li>
- *   <li><b>Auto-validation</b> — validates generated Cedar before returning</li>
- *   <li><b>Audit logging</b> — every chat request/response tracked via McpAuditService</li>
- * </ul>
- */
 @Service
 @Slf4j
 public class PolicyLlmService {
@@ -53,7 +38,7 @@ public class PolicyLlmService {
     private static final String ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
     private static final String MODEL = "claude-sonnet-4-20250514";
     private static final int MAX_TOKENS = 2048;
-    private static final long METADATA_CACHE_TTL_MS = 60_000; // 60 seconds
+    private static final long METADATA_CACHE_TTL_MS = 60_000;
 
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
@@ -69,7 +54,6 @@ public class PolicyLlmService {
     @Value("${ws.gateway.pdp.anthropic-api-key:}")
     private String anthropicApiKey;
 
-    // ── Metadata cache ──────────────────────────────────────────────────
     private final Map<String, CachedValue> metadataCache = new ConcurrentHashMap<>();
 
     private record CachedValue(String data, long timestamp) {
@@ -101,24 +85,10 @@ public class PolicyLlmService {
                 .build();
     }
 
-    /**
-     * Check if LLM mode is available (API key configured).
-     */
     public boolean isLlmAvailable() {
         return anthropicApiKey != null && !anthropicApiKey.isBlank();
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  PUBLIC API
-    // ════════════════════════════════════════════════════════════════════
-
-    /**
-     * Generate a Cedar policy from a natural-language admin prompt.
-     * Supports both single-shot and multi-turn conversation modes.
-     *
-     * @param request the chat request (prompt or messages)
-     * @return generated policy response with Cedar code, or follow-up question
-     */
     public PolicyChatResponse generatePolicy(PolicyChatRequest request) {
         String effectivePrompt = request.getEffectivePrompt();
         if (effectivePrompt == null || effectivePrompt.isBlank()) {
@@ -129,7 +99,7 @@ public class PolicyLlmService {
         auditService.auditPdpLlmChatRequested(effectivePrompt, messageCount);
 
         if (!isLlmAvailable()) {
-            log.warn("🤖 LLM not configured — cannot generate policy");
+ log.warn("LLM not configured — cannot generate policy");
             PolicyChatResponse errorResponse = PolicyChatResponse.error(
                     "LLM policy generation is not configured. Set the Anthropic API key "
                     + "in application.yml (ws.gateway.pdp.anthropic-api-key) to enable "
@@ -140,20 +110,20 @@ public class PolicyLlmService {
 
         long start = System.currentTimeMillis();
         try {
-            log.info("🤖 Calling Anthropic API for policy generation: {}", effectivePrompt);
+ log.info("Calling Anthropic API for policy generation: {}", effectivePrompt);
             PolicyChatResponse response = callAnthropicApi(request);
             long durationMs = System.currentTimeMillis() - start;
             String responseText = response.getPolicyText() != null
                     ? response.getPolicyText()
                     : response.getFollowUpQuestion();
-            log.info("🤖 Anthropic API completed in {}ms — conversationComplete={}, hasPolicy={}, hasFollowUp={}",
+ log.info("Anthropic API completed in {}ms — conversationComplete={}, hasPolicy={}, hasFollowUp={}",
                     durationMs, response.isConversationComplete(),
                     response.getPolicyText() != null, response.getFollowUpQuestion() != null);
             auditService.auditPdpLlmChatCompleted(effectivePrompt, responseText, durationMs, response.isSuccess());
             return response;
         } catch (Exception e) {
             long durationMs = System.currentTimeMillis() - start;
-            log.error("🤖 Anthropic API call failed: {}", e.getMessage(), e);
+ log.error("Anthropic API call failed: {}", e.getMessage(), e);
             auditService.auditPdpLlmChatCompleted(effectivePrompt, e.getMessage(), durationMs, false);
             return PolicyChatResponse.error(
                     "LLM API call failed: " + e.getMessage()
@@ -161,22 +131,14 @@ public class PolicyLlmService {
         }
     }
 
-    /**
-     * Single-shot convenience method (backward compatible).
-     */
     public PolicyChatResponse generatePolicy(String prompt) {
         PolicyChatRequest request = PolicyChatRequest.builder().prompt(prompt).build();
         return generatePolicy(request);
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  ANTHROPIC API INTEGRATION
-    // ════════════════════════════════════════════════════════════════════
-
     private PolicyChatResponse callAnthropicApi(PolicyChatRequest chatRequest) throws Exception {
         String systemPrompt = buildSystemPrompt();
 
-        // Build messages array — multi-turn or single-shot
         List<Map<String, String>> messages;
         if (chatRequest.isMultiTurn()) {
             messages = chatRequest.getMessages().stream()
@@ -207,7 +169,7 @@ public class PolicyLlmService {
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
         if (response.statusCode() != 200) {
-            log.error("🤖 Anthropic API returned {}: {}", response.statusCode(), response.body());
+ log.error("Anthropic API returned {}: {}", response.statusCode(), response.body());
             return PolicyChatResponse.error("Anthropic API error: HTTP " + response.statusCode());
         }
 
@@ -221,10 +183,8 @@ public class PolicyLlmService {
             if (content.isArray() && !content.isEmpty()) {
                 String text = content.get(0).path("text").asText("");
 
-                // Check if LLM is asking a follow-up question (no Cedar block)
                 String policyText = extractCedarBlock(text);
                 if (policyText == null || policyText.isBlank()) {
-                    // No Cedar block → LLM is asking for more info
                     return PolicyChatResponse.builder()
                             .success(true)
                             .conversationComplete(false)
@@ -233,22 +193,19 @@ public class PolicyLlmService {
                             .build();
                 }
 
-                // Cedar block found → policy generated
                 String policyName = extractField(text, "POLICY_NAME:");
                 String description = extractField(text, "DESCRIPTION:");
                 String effect = extractField(text, "EFFECT:");
                 String explanation = extractField(text, "EXPLANATION:");
 
-                // Auto-validate the generated Cedar
                 String validationError = cedarEngine.validatePolicy(policyText);
                 if (validationError != null) {
-                    log.warn("🤖 LLM generated invalid Cedar: {}", validationError);
+ log.warn("LLM generated invalid Cedar: {}", validationError);
                 }
 
-                // Check for semantic warnings (valid syntax but likely incorrect intent)
                 String semanticWarning = cedarEngine.getSemanticWarnings(policyText);
                 if (semanticWarning != null) {
-                    log.warn("🤖 LLM generated Cedar with semantic warning: {}", semanticWarning);
+ log.warn("LLM generated Cedar with semantic warning: {}", semanticWarning);
                 }
 
                 return PolicyChatResponse.builder()
@@ -268,29 +225,15 @@ public class PolicyLlmService {
             return PolicyChatResponse.error("Empty response from Anthropic API");
 
         } catch (Exception e) {
-            log.error("🤖 Failed to parse Anthropic response: {}", e.getMessage());
+ log.error("Failed to parse Anthropic response: {}", e.getMessage());
             return PolicyChatResponse.error("Failed to parse LLM response: " + e.getMessage());
         }
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  SYSTEM PROMPT (schema + live metadata)
-    // ════════════════════════════════════════════════════════════════════
-
-    /**
-     * Build the complete system prompt: static schema + live metadata.
-     *
-     * <p>The static schema teaches the LLM exactly what our Cedar engine supports.
-     * The live metadata tells it what agents, servers, and tools actually exist.
-     */
     private String buildSystemPrompt() {
         return buildStaticSchema() + "\n\n" + buildLiveMetadataSection();
     }
 
-    /**
-     * Static schema — the structured grammar and rules our engine supports.
-     * This never changes at runtime.
-     */
     private String buildStaticSchema() {
         return """
                 You are a policy generation assistant for the WS Agentic Security Gateway.
@@ -465,10 +408,6 @@ public class PolicyLlmService {
                 """;
     }
 
-    /**
-     * Build live metadata section from actual system state.
-     * Cached for 60 seconds to avoid per-request DB/registry overhead.
-     */
     private String buildLiveMetadataSection() {
         CachedValue cached = metadataCache.get("liveMetadata");
         if (cached != null && !cached.isExpired()) {
@@ -478,7 +417,6 @@ public class PolicyLlmService {
         StringBuilder sb = new StringBuilder();
         sb.append("## Live System Metadata (current state of the gateway)\n\n");
 
-        // ── Registered Agents ──
         try {
             List<GatewayAgentEntity> agents = agentRegistryService.getAllAgents();
             sb.append("### Registered Agents\n");
@@ -503,18 +441,16 @@ public class PolicyLlmService {
             }
         } catch (Exception e) {
             sb.append("### Registered Agents\nUnable to fetch agent data.\n\n");
-            log.debug("🤖 Could not fetch agents for LLM metadata: {}", e.getMessage());
+ log.debug("Could not fetch agents for LLM metadata: {}", e.getMessage());
         }
 
-        // ── Human Users (OAuth2 delegated) ──
         try {
             appendHumanUserMetadata(sb);
         } catch (Exception e) {
             sb.append("### Human Users\nUnable to fetch human user data.\n\n");
-            log.debug("🤖 Could not fetch human users for LLM metadata: {}", e.getMessage());
+ log.debug("Could not fetch human users for LLM metadata: {}", e.getMessage());
         }
 
-        // ── Non-Human Identities (NHIs — service accounts, bots) ──
         try {
             appendNhiMetadata(sb);
         } catch (Exception e) {
@@ -522,7 +458,6 @@ public class PolicyLlmService {
             log.debug("Could not fetch NHIs for LLM metadata: {}", e.getMessage());
         }
 
-        // ── Connected Servers + Tools ──
         try {
             Set<String> servers = capabilityRegistryService.getRegisteredServerNames();
             sb.append("### Connected Servers\n");
@@ -569,10 +504,9 @@ public class PolicyLlmService {
             }
         } catch (Exception e) {
             sb.append("### Connected Servers\nUnable to fetch server data.\n\n");
-            log.debug("🤖 Could not fetch capabilities for LLM metadata: {}", e.getMessage());
+ log.debug("Could not fetch capabilities for LLM metadata: {}", e.getMessage());
         }
 
-        // ── Existing Policies ──
         try {
             List<GatewayPolicyEntity> policies = policyService.getAllPolicies();
             sb.append("### Existing Policies (").append(policies.size()).append(" total)\n");
@@ -589,10 +523,9 @@ public class PolicyLlmService {
             sb.append("\n");
         } catch (Exception e) {
             sb.append("### Existing Policies\nUnable to fetch policy data.\n\n");
-            log.debug("🤖 Could not fetch policies for LLM metadata: {}", e.getMessage());
+ log.debug("Could not fetch policies for LLM metadata: {}", e.getMessage());
         }
 
-        // ── Custom Attributes (admin-registered for ABAC) ──
         try {
             List<GatewayCustomAttributeEntity> customAttrs = customAttributeService.getEnabledAttributes();
             if (customAttrs != null && !customAttrs.isEmpty()) {
@@ -610,17 +543,13 @@ public class PolicyLlmService {
                         .append("` with the appropriate operator for their data type.\n\n");
             }
         } catch (Exception e) {
-            log.debug("🤖 Could not fetch custom attributes for LLM metadata: {}", e.getMessage());
+ log.debug("Could not fetch custom attributes for LLM metadata: {}", e.getMessage());
         }
 
         String metadata = sb.toString();
         metadataCache.put("liveMetadata", new CachedValue(metadata, System.currentTimeMillis()));
         return metadata;
     }
-
-    // ════════════════════════════════════════════════════════════════════
-    //  HUMAN USER METADATA BUILDER
-    // ════════════════════════════════════════════════════════════════════
 
     private void appendHumanUserMetadata(StringBuilder sb) {
         List<GatewayHumanUserEntity> allHumans = humanUserService.findAll();
@@ -629,7 +558,6 @@ public class PolicyLlmService {
             return;
         }
 
-        // ── Summary stats ──
         long activeToday = humanUserService.countActiveHumansSince(
                 java.time.LocalDateTime.now().toLocalDate().atStartOfDay());
         long blockedCount = humanUserService.countBlocked();
@@ -638,7 +566,6 @@ public class PolicyLlmService {
                 .append(" | **Active today:** ").append(activeToday)
                 .append(" | **Blocked:** ").append(blockedCount).append("\n\n");
 
-        // ── Active Human Users (enriched table) ──
         List<GatewayHumanUserEntity> activeHumans = allHumans.stream()
                 .filter(h -> "ACTIVE".equals(h.getStatus()))
                 .limit(50)
@@ -674,7 +601,6 @@ public class PolicyLlmService {
             sb.append("\n");
         }
 
-        // ── Blocked Human Users ──
         List<GatewayHumanUserEntity> blockedHumans = allHumans.stream()
                 .filter(h -> "BLOCKED".equals(h.getStatus()))
                 .toList();
@@ -692,7 +618,6 @@ public class PolicyLlmService {
             sb.append("\n");
         }
 
-        // ── Human-Agent Relationships ──
         sb.append("### Human-Agent Relationships\n");
         sb.append("Shows which humans delegate to which AI agents.\n\n");
         sb.append("| Human User | Agent | Token Type | Sessions | Last Session |\n");
@@ -704,14 +629,13 @@ public class PolicyLlmService {
                 List<GatewayAgentSessionEntity> sessions = humanUserService.getHumanSessionsWithAgent(h.getId());
                 if (sessions == null || sessions.isEmpty()) continue;
 
-                // Group by agent name
                 Map<String, List<GatewayAgentSessionEntity>> byAgent = sessions.stream()
                         .collect(Collectors.groupingBy(s -> s.getAgent().getAgentName()));
 
                 for (Map.Entry<String, List<GatewayAgentSessionEntity>> entry : byAgent.entrySet()) {
                     if (relationshipCount >= 30) break;
                     List<GatewayAgentSessionEntity> agentSessions = entry.getValue();
-                    GatewayAgentSessionEntity latest = agentSessions.get(0); // already ordered DESC
+                    GatewayAgentSessionEntity latest = agentSessions.get(0);
                     sb.append("| `").append(h.getPreferredUsername() != null ? h.getPreferredUsername() : "-").append("` | ")
                             .append(entry.getKey()).append(" | ")
                             .append(latest.getTokenType() != null ? latest.getTokenType() : "-").append(" | ")
@@ -810,10 +734,6 @@ public class PolicyLlmService {
             return uri.length() > 40 ? uri.substring(0, 40) + "..." : uri;
         }
     }
-
-    // ════════════════════════════════════════════════════════════════════
-    //  PARSING HELPERS
-    // ════════════════════════════════════════════════════════════════════
 
     private String extractCedarBlock(String text) {
         int start = text.indexOf("```cedar");

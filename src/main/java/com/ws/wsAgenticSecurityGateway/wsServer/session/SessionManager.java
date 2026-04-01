@@ -16,7 +16,6 @@ public class SessionManager {
     private final McpAuditService auditService;
     private ClientSession currentSession;
 
-    /** Agent registry service — injected via setter from McpServerApplication. */
     @Getter @Setter
     private AgentRegistryService agentRegistryService;
 
@@ -28,7 +27,7 @@ public class SessionManager {
         ClientSession session = new ClientSession(auditService, agentRegistryService);
         sessions.put(session.getSessionId(), session);
         this.currentSession = session;
-        log.info("✨ Created session: {}", session.getSessionId());
+ log.info("Created session: {}", session.getSessionId());
         return session;
     }
 
@@ -39,10 +38,6 @@ public class SessionManager {
         return currentSession;
     }
 
-    /**
-     * Full cleanup: in-memory maps + DB status update.
-     * Called from {@link com.ws.wsAgenticSecurityGateway.wsServer.transport.StdioServerTransport#closeGracefully()}.
-     */
     public void removeSession(String sessionId) {
         sessions.remove(sessionId);
         if (currentSession != null && sessionId.equals(currentSession.getSessionId())) {
@@ -58,10 +53,6 @@ public class SessionManager {
         log.info("Session removed (full cleanup): {}", sessionId);
     }
 
-    /**
-     * Memory-only cleanup — does NOT touch DB.
-     * Called by the session reaper (which handles DB updates separately).
-     */
     public void removeSessionFromMemory(String sessionId) {
         sessions.remove(sessionId);
         if (currentSession != null && sessionId.equals(currentSession.getSessionId())) {
@@ -70,9 +61,6 @@ public class SessionManager {
         log.info("Session removed from memory: {}", sessionId);
     }
 
-    /**
-     * Snapshot of all tracked sessions. Used by the session reaper.
-     */
     public Map<String, ClientSession> getAllSessions() {
         return Map.copyOf(sessions);
     }

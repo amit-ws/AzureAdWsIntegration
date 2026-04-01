@@ -9,19 +9,12 @@ import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * Response DTO for MCP server configuration — enriched with live connection status.
- *
- * <p>Header values containing auth/token/secret/key/password/bearer are masked
- * for security. The original values are never exposed via the API.
- */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
 public class ServerConfigResponse {
 
-    // ── Config fields ───────────────────────────────────────────────────
     private UUID id;
     private String serverName;
     private String type;
@@ -34,7 +27,6 @@ public class ServerConfigResponse {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
-    // ── Live connection status (enriched) ────────────────────────────────
     private boolean connected;
     private String connectionSessionId;
     private LocalDateTime connectedAt;

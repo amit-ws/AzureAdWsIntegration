@@ -11,13 +11,6 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
-/**
- * Per-agent usage analytics service.
- *
- * <p>Aggregates audit log data for a specific agent by collecting all
- * session IDs belonging to that agent, then querying the audit log
- * repository with those session IDs as a filter.
- */
 @Service
 @Slf4j
 public class AgentAnalyticsService {
@@ -34,13 +27,6 @@ public class AgentAnalyticsService {
         this.auditLogRepository = auditLogRepository;
     }
 
-    /**
-     * Compute per-agent analytics for a time window.
-     *
-     * @param agentId agent UUID
-     * @param hours   lookback window in hours (default 24)
-     * @return analytics map ready for JSON serialization
-     */
     public Map<String, Object> getAgentAnalytics(UUID agentId, int hours) {
         Optional<GatewayAgentEntity> agentOpt = agentRegistryService.getAgent(agentId);
         if (agentOpt.isEmpty()) {
@@ -48,7 +34,6 @@ public class AgentAnalyticsService {
         }
         GatewayAgentEntity agent = agentOpt.get();
 
-        // Collect all session IDs for this agent
         List<GatewayAgentSessionEntity> sessions =
                 sessionRepository.findByAgentIdOrderByConnectedAtDesc(agentId);
         List<String> sessionIds = sessions.stream()
@@ -79,11 +64,9 @@ public class AgentAnalyticsService {
 
         LocalDateTime since = LocalDateTime.now().minusHours(hours);
 
-        // Total requests
         long totalRequests = auditLogRepository.countBySessionIdsAndTimestampAfter(sessionIds, since);
         result.put("totalRequests", totalRequests);
 
-        // Status breakdown (SUCCESS, ERROR, FAILURE, etc.)
         List<Object[]> statusGroups = auditLogRepository.countByStatusGroupedForSessions(sessionIds, since);
         long successCount = 0;
         long errorCount = 0;
@@ -100,7 +83,6 @@ public class AgentAnalyticsService {
         result.put("errorCount", errorCount);
         result.put("errorRate", totalRequests > 0 ? (errorCount * 100.0 / totalRequests) : 0.0);
 
-        // Latency percentiles
         try {
             List<Object[]> percentiles = auditLogRepository.latencyPercentilesForSessions(sessionIds, since);
             if (!percentiles.isEmpty() && percentiles.get(0) != null) {
@@ -108,7 +90,6 @@ public class AgentAnalyticsService {
                 result.put("p50LatencyMs", p[0] != null ? ((Number) p[0]).doubleValue() : null);
                 result.put("p95LatencyMs", p[1] != null ? ((Number) p[1]).doubleValue() : null);
                 result.put("p99LatencyMs", p[2] != null ? ((Number) p[2]).doubleValue() : null);
-                // avg = simple average from p50 approximation is fine, but let's compute from total
                 Double avg = (p[0] != null && p[2] != null)
                         ? (((Number) p[0]).doubleValue() + ((Number) p[2]).doubleValue()) / 2.0
                         : null;
@@ -127,7 +108,6 @@ public class AgentAnalyticsService {
             result.put("avgLatencyMs", null);
         }
 
-        // Requests by hour
         try {
             List<Object[]> hourlyData = auditLogRepository.countByHourForSessions(sessionIds, since);
             List<Map<String, Object>> hourlyList = new ArrayList<>();
@@ -143,7 +123,6 @@ public class AgentAnalyticsService {
             result.put("requestsByHour", List.of());
         }
 
-        // Tool usage breakdown
         try {
             List<Object[]> toolData = auditLogRepository.toolUsageForSessions(sessionIds, since);
             List<Map<String, Object>> toolList = new ArrayList<>();
@@ -161,7 +140,6 @@ public class AgentAnalyticsService {
             result.put("toolUsage", List.of());
         }
 
-        // Server usage breakdown
         try {
             List<Object[]> serverData = auditLogRepository.serverUsageForSessions(sessionIds, since);
             List<Map<String, Object>> serverList = new ArrayList<>();
@@ -178,7 +156,6 @@ public class AgentAnalyticsService {
             result.put("serverUsage", List.of());
         }
 
-        // Error breakdown
         try {
             List<Object[]> errorData = auditLogRepository.errorBreakdownForSessions(sessionIds, since);
             List<Map<String, Object>> errorList = new ArrayList<>();

@@ -12,15 +12,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
-/**
- * Handles graceful shutdown of ALL sessions — both WS Server-side (agent) and WS Client-side (MCP server).
- *
- * <p>Uses {@link ContextClosedEvent} instead of {@code @PreDestroy} so that
- * the EntityManager, transaction manager, and async executor are still alive
- * when we perform DB updates, audit logging, and close connections.
- *
- * <p>{@code @Order(0)} ensures this runs before other shutdown listeners.
- */
 @Component
 @Slf4j
 public class GatewayShutdownHook {
@@ -41,9 +32,8 @@ public class GatewayShutdownHook {
     @Order(0)
     @Transactional
     public void onShutdown(ContextClosedEvent event) {
-        log.info("🛑 Gateway shutting down — cleaning up all sessions...");
+ log.info("Gateway shutting down — cleaning up all sessions...");
 
-        // 1. WS Server-side: audit + mark all agent sessions DISCONNECTED
         try {
             List<GatewayAgentSessionEntity> agentSessions = agentSessionRepository.findByStatus("CONNECTED");
             for (GatewayAgentSessionEntity session : agentSessions) {
@@ -51,17 +41,16 @@ public class GatewayShutdownHook {
                     auditService.auditServerSessionDisconnectedSync(
                             session.getSessionId(), session.getAgent().getAgentName());
                 } catch (Exception e) {
-                    log.error("⚠️  Failed shutdown audit for agent session '{}': {}",
+ log.error("⚠ Failed shutdown audit for agent session '{}': {}",
                             session.getSessionId(), e.getMessage());
                 }
             }
             agentSessionRepository.markAllDisconnected();
-            log.info("💾 {} agent session(s) marked DISCONNECTED in DB", agentSessions.size());
+ log.info("{} agent session(s) marked DISCONNECTED in DB", agentSessions.size());
         } catch (Exception e) {
-            log.error("⚠️  Failed to mark agent sessions DISCONNECTED: {}", e.getMessage());
+ log.error("⚠ Failed to mark agent sessions DISCONNECTED: {}", e.getMessage());
         }
 
-        // 2. WS Client-side: audit + mark all MCP server sessions DISCONNECTED + close clients
         sessionManager.shutdown();
     }
 }

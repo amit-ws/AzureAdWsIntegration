@@ -7,10 +7,6 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
-/**
- * Response from OIDC endpoint auto-discovery.
- * Populated by fetching the IdP's .well-known/openid-configuration.
- */
 @Data
 @Builder
 @NoArgsConstructor

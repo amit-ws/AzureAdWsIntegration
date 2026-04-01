@@ -8,9 +8,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-/**
- * Persistence gateway for Cedar policies.
- */
 @Repository
 public interface GatewayPolicyRepository extends JpaRepository<GatewayPolicyEntity, UUID> {
 
@@ -29,8 +26,6 @@ public interface GatewayPolicyRepository extends JpaRepository<GatewayPolicyEnti
     long countByEnabledTrue();
 
     long countByEffect(String effect);
-
-    // ── Tenant-scoped queries ───────────────────────────────────────────
 
     List<GatewayPolicyEntity> findByEnabledTrueAndWsTenantNameOrderByPriorityAsc(String wsTenantName);
 

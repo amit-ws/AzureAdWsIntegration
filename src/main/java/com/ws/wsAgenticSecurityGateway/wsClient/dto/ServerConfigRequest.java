@@ -10,12 +10,6 @@ import lombok.NoArgsConstructor;
 
 import java.util.Map;
 
-/**
- * Request DTO for creating/updating an MCP server configuration.
- *
- * <p>Header values may contain {@code ${env:VAR_NAME}} patterns that are
- * resolved at connect time from system environment variables.
- */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -36,10 +30,8 @@ public class ServerConfigRequest {
     @Pattern(regexp = "^https?://.*", message = "URL must start with http:// or https://")
     private String url;
 
-    /** HTTP headers. Values may contain ${env:VAR_NAME} patterns. */
     private Map<String, String> headers;
 
-    /** Provider-specific config (e.g. jiraUrl, confluenceUrl). */
     private Map<String, Object> serverConfig;
 
     @Builder.Default

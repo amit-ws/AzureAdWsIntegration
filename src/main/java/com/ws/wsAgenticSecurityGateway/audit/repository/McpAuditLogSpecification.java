@@ -9,23 +9,11 @@ import org.springframework.data.jpa.domain.Specification;
 
 import java.time.LocalDateTime;
 
-/**
- * Dynamic specification builder for {@link McpAuditLog} queries.
- *
- * <p>Composes optional filter predicates via AND-composition, enabling
- * a single REST endpoint to handle any combination of filters without
- * a combinatorial explosion of repository finder methods.
- */
 public class McpAuditLogSpecification {
 
     private McpAuditLogSpecification() {
-        // static utility
     }
 
-    /**
-     * Build a composed specification from optional filter parameters.
-     * Any {@code null} parameter is silently skipped.
-     */
     public static Specification<McpAuditLog> build(
             AuditModule module,
             AuditEventType eventType,
@@ -47,10 +35,6 @@ public class McpAuditLogSpecification {
                 searchText, fromDate, toDate, null);
     }
 
-    /**
-     * Build a composed specification from optional filter parameters, with tenant scoping.
-     * Any {@code null} parameter is silently skipped.
-     */
     public static Specification<McpAuditLog> build(
             AuditModule module,
             AuditEventType eventType,

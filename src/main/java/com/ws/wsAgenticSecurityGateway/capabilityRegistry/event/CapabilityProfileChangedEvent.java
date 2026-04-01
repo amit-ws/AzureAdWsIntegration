@@ -3,17 +3,12 @@ package com.ws.wsAgenticSecurityGateway.capabilityRegistry.event;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * Application event emitted when a capability profile is assigned, unassigned,
- * updated, or deleted — indicating that connected agents should be notified
- * to re-fetch their tool/prompt/resource lists.
- */
 public class CapabilityProfileChangedEvent {
 
-    private final String reason;          // PROFILE_ASSIGNED, PROFILE_UNASSIGNED, PROFILE_UPDATED, PROFILE_DELETED
+    private final String reason;
     private final String profileName;
     private final UUID profileId;
-    private final List<String> affectedAgentNames;  // agents whose effective access changed
+    private final List<String> affectedAgentNames;
 
     public CapabilityProfileChangedEvent(String reason, String profileName, UUID profileId,
                                           List<String> affectedAgentNames) {

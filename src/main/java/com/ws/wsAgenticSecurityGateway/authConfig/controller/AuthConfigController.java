@@ -13,14 +13,6 @@ import org.springframework.web.bind.annotation.*;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/**
- * REST API for managing the gateway's authentication configuration.
- *
- * <p>Single-tenant: one auth config row in the DB. Supports CRUD, OIDC auto-discovery,
- * IdP connectivity validation, and JWKS force-refresh.
- *
- * <p>All operations capture full forensic audit trail (adminIdentity + IP address).
- */
 @RestController
 @RequestMapping("/api/admin/auth-config")
 @Slf4j
@@ -32,19 +24,11 @@ public class AuthConfigController {
         this.authConfigService = authConfigService;
     }
 
-    /**
-     * GET /api/admin/auth-config — Returns the effective auth config.
-     * Resolution: DB config (if exists) → env vars → defaults (mode=none).
-     */
     @GetMapping
     public ResponseEntity<AuthConfigResponse> getAuthConfig() {
         return ResponseEntity.ok(authConfigService.getEffectiveConfig());
     }
 
-    /**
-     * POST /api/admin/auth-config — Create the initial auth config.
-     * Fails if a config already exists (use PUT to update).
-     */
     @PostMapping
     public ResponseEntity<?> createAuthConfig(@Valid @RequestBody AuthConfigRequest request,
                                                HttpServletRequest httpRequest) {
@@ -62,10 +46,6 @@ public class AuthConfigController {
         }
     }
 
-    /**
-     * PUT /api/admin/auth-config — Update existing auth config.
-     * Triggers runtime hot-swap of JwtDecoder if issuer/mode changes.
-     */
     @PutMapping
     public ResponseEntity<?> updateAuthConfig(@Valid @RequestBody AuthConfigRequest request,
                                                HttpServletRequest httpRequest) {
@@ -86,9 +66,6 @@ public class AuthConfigController {
         }
     }
 
-    /**
-     * DELETE /api/admin/auth-config — Remove DB config, revert to env vars or defaults.
-     */
     @DeleteMapping
     public ResponseEntity<?> deleteAuthConfig(HttpServletRequest httpRequest) {
         try {
@@ -105,10 +82,6 @@ public class AuthConfigController {
         }
     }
 
-    /**
-     * POST /api/admin/auth-config/validate — Test IdP connectivity.
-     * Checks that JWKS endpoint is reachable and returns valid keys.
-     */
     @PostMapping("/validate")
     public ResponseEntity<AuthConfigValidationResponse> validateConfig(
             @RequestBody Map<String, String> body, HttpServletRequest httpRequest) {
@@ -124,10 +97,6 @@ public class AuthConfigController {
         return ResponseEntity.ok(result);
     }
 
-    /**
-     * POST /api/admin/auth-config/discover — Auto-discover OIDC endpoints from issuer URI.
-     * Fetches .well-known/openid-configuration and extracts all endpoints.
-     */
     @PostMapping("/discover")
     public ResponseEntity<AuthConfigDiscoveryResponse> discoverEndpoints(
             @RequestBody Map<String, String> body) {
@@ -139,10 +108,6 @@ public class AuthConfigController {
         return ResponseEntity.ok(result);
     }
 
-    /**
-     * POST /api/admin/auth-config/refresh-jwks — Force JWKS key refresh.
-     * Rebuilds the active JwtDecoder with fresh keys from the JWKS endpoint.
-     */
     @PostMapping("/refresh-jwks")
     public ResponseEntity<Map<String, String>> refreshJwks(HttpServletRequest httpRequest) {
         String adminIdentity = resolveAdminIdentity(httpRequest);
@@ -151,17 +116,11 @@ public class AuthConfigController {
         return ResponseEntity.ok(Map.of("status", "refreshed", "message", "JWKS keys refreshed successfully"));
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  HELPERS
-    // ════════════════════════════════════════════════════════════════════
-
     private String resolveAdminIdentity(HttpServletRequest request) {
-        // Try JWT claims (if admin is authenticated via OAuth2)
         Object subject = request.getAttribute("jwt.subject");
         Object username = request.getAttribute("jwt.preferred_username");
         if (username != null) return username.toString();
         if (subject != null) return subject.toString();
-        // Fallback to remote addr
         return "admin@" + resolveClientIp(request);
     }
 

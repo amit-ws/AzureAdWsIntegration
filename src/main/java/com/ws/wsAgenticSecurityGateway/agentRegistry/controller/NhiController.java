@@ -11,18 +11,6 @@ import org.springframework.web.bind.annotation.*;
 import java.util.*;
 import java.util.stream.Collectors;
 
-/**
- * REST controller for Non-Human Identity (NHI) management and enterprise analytics.
- *
- * <p>Provides:
- * <ul>
- *   <li>Core CRUD — list, detail, search, block/unblock</li>
- *   <li>Session Lineage — "Which NHI authorized which AI actions?"</li>
- *   <li>Who's Active Now — real-time NHI activity for SOC teams</li>
- *   <li>Risk Assessment — behavioral anomaly scoring</li>
- *   <li>Usage Analytics — per-NHI consumption breakdown</li>
- * </ul>
- */
 @RestController
 @RequestMapping("/api/admin/nhis")
 @Slf4j
@@ -33,10 +21,6 @@ public class NhiController {
     public NhiController(NhiService nhiService) {
         this.nhiService = nhiService;
     }
-
-    // ════════════════════════════════════════════════════════════════════
-    //  CORE CRUD
-    // ════════════════════════════════════════════════════════════════════
 
     @GetMapping
     public ResponseEntity<List<Map<String, Object>>> listNhis() {
@@ -178,10 +162,6 @@ public class NhiController {
         return request.getRemoteAddr();
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  NHI-AGENT SESSION LINEAGE
-    // ════════════════════════════════════════════════════════════════════
-
     @GetMapping("/{id}/lineage")
     public ResponseEntity<Map<String, Object>> getSessionLineage(@PathVariable UUID id) {
         Optional<GatewayNhiEntity> opt = nhiService.findById(id);
@@ -194,18 +174,10 @@ public class NhiController {
         return ResponseEntity.ok(lineage);
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  WHO'S ACTIVE NOW
-    // ════════════════════════════════════════════════════════════════════
-
     @GetMapping("/active-now")
     public ResponseEntity<Map<String, Object>> getActiveNow() {
         return ResponseEntity.ok(nhiService.getActiveNow());
     }
-
-    // ════════════════════════════════════════════════════════════════════
-    //  NHI RISK ASSESSMENT
-    // ════════════════════════════════════════════════════════════════════
 
     @GetMapping("/{id}/risk-assessment")
     public ResponseEntity<Map<String, Object>> getRiskAssessment(
@@ -222,10 +194,6 @@ public class NhiController {
         return ResponseEntity.ok(assessment);
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  USAGE ANALYTICS PER NHI
-    // ════════════════════════════════════════════════════════════════════
-
     @GetMapping("/{id}/analytics")
     public ResponseEntity<Map<String, Object>> getAnalytics(
             @PathVariable UUID id,
@@ -240,10 +208,6 @@ public class NhiController {
 
         return ResponseEntity.ok(analytics);
     }
-
-    // ════════════════════════════════════════════════════════════════════
-    //  HELPERS
-    // ════════════════════════════════════════════════════════════════════
 
     private Map<String, Object> toListView(GatewayNhiEntity n) {
         Map<String, Object> map = new LinkedHashMap<>();

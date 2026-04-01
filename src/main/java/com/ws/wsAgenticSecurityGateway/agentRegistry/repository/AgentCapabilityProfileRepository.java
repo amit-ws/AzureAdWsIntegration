@@ -15,8 +15,6 @@ public interface AgentCapabilityProfileRepository extends JpaRepository<AgentCap
 
     List<AgentCapabilityProfile> findByIsTemplateTrue();
 
-    // ── Tenant-scoped queries ───────────────────────────────────────────
-
     Optional<AgentCapabilityProfile> findByNameAndWsTenantName(String name, String wsTenantName);
 
     List<AgentCapabilityProfile> findByIsTemplateTrueAndWsTenantName(String wsTenantName);

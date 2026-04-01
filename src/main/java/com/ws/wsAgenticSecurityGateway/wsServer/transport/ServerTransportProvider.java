@@ -25,42 +25,26 @@ public class ServerTransportProvider implements McpServerTransportProvider {
 
     @Override
     public void setSessionFactory(McpServerSession.Factory sessionFactory) {
-        log.info("✓ Session factory set - creating session and starting connection");
+ log.info("Session factory set - creating session and starting connection");
 
         try {
-            // Create the session
             this.session = sessionFactory.create(stdioTransport);
 
             log.info("Session created.....");
 
-            // Start the transport with proper handler that uses session.handle()
-            //
-            // IMPORTANT: We inject the agent's JSON-RPC request id into Reactor Context
-            // via .contextWrite(). This is the same pattern used by the SDK's HTTP transports
-            // (HttpServletSseServerTransportProvider). The SDK reads this in
-            // McpServerSession.handle() via Mono.deferContextual() and passes it to
-            // handlers through McpSyncServerExchange.transportContext().
-            //
-            // This replaces the broken ThreadLocal approach (JsonRpcRequestContext)
-            // which failed because the SDK dispatches handlers on a different thread.
             stdioTransport.connect(messageMonoIn ->
                     messageMonoIn.flatMap(message -> {
                         log.debug("Processing message through session");
 
-                        // Look up the JSON-RPC id that the transport extracted from the raw message
                         Object jsonRpcId = stdioTransport.removeRequestId(message);
 
-                        // Build transport context with the request id (same as SDK HTTP transports)
                         McpTransportContext transportContext = (jsonRpcId != null)
                                 ? McpTransportContext.create(Map.of("jsonRpcRequestId", jsonRpcId))
                                 : McpTransportContext.EMPTY;
 
-                        // session.handle() processes the message and sends response via transport.
-                        // .contextWrite() injects our transport context into the Reactor chain
-                        // so the SDK can propagate it to the handler exchange (thread-safe).
                         return session.handle(message)
                                 .contextWrite(ctx -> ctx.put(McpTransportContext.KEY, transportContext))
-                                .then(Mono.empty()); // Return empty Mono<JSONRPCMessage>
+                                .then(Mono.empty());
                     })
             ).subscribe(
                     v -> log.info("Transport connected and listening....."),

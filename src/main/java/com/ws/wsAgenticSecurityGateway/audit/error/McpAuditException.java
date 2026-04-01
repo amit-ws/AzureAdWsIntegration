@@ -2,12 +2,6 @@ package com.ws.wsAgenticSecurityGateway.audit.error;
 
 import lombok.Getter;
 
-/**
- * Exception carrying MCP-compliant error information for audit records.
- *
- * <p>When caught, the error code, message, and optional data payload
- * are persisted verbatim into the audit log.
- */
 @Getter
 public class McpAuditException extends RuntimeException {
 

@@ -10,9 +10,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/**
- * Input DTO for creating/updating auth configuration.
- */
 @Data
 @Builder
 @NoArgsConstructor

@@ -21,24 +21,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Manages multiple HTTP-based MCP server connections.
- * Handles connection lifecycle, tool caching, and session state.
- */
 @Component
 @Slf4j
 public class McpSessionManager {
 
-    // Thread-safe map to store all active sessions
     private final Map<String, McpSession> sessions = new ConcurrentHashMap<>();
 
-    // Flag to skip audit/registry during shutdown (beans may be destroyed)
     private volatile boolean shuttingDown = false;
 
-    // Audit service — all audit calls are @Async, never blocks
     private final McpAuditService auditService;
 
-    // Capability Registry — persists discovered capabilities from enterprise servers
     private final CapabilityRegistryService registryService;
 
     private final ObjectMapper objectMapper;
@@ -57,26 +49,17 @@ public class McpSessionManager {
         this.objectMapper = new ObjectMapper();
     }
 
-    /**
-     * Connect to an HTTP-based MCP server
-     *
-     * @param serverName Unique name for this server (from config key)
-     * @param config Server configuration (url, headers, etc.)
-     * @throws Exception if connection fails
-     */
     public synchronized void connect(String serverName, McpServerConfig config) throws Exception {
-        // Ensure no agent token override header leaks into admin/startup connect flow.
         HttpMcpTransport.clearRequestOverrideHeaders();
 
         if (sessions.containsKey(serverName)) {
-            log.warn("⚠️  Server '{}' is already connected. Disconnecting first...", serverName);
+ log.warn("⚠ Server '{}' is already connected. Disconnecting first...", serverName);
             disconnect(serverName);
         }
 
-        log.info("🔌 Connecting to MCP server '{}'...", serverName);
+ log.info("Connecting to MCP server '{}'...", serverName);
         long startTime = System.currentTimeMillis();
 
-        // Validate config
         try {
             config.validate();
         } catch (Exception e) {
@@ -87,43 +70,37 @@ public class McpSessionManager {
         }
 
         try {
-            // Headers arrive pre-resolved from ServerConfigService
             Map<String, String> headers = config.getHeaders();
 
-            // Create HTTP transport
-            log.info("🌐 Creating HTTP transport for: {}", config.getUrl());
+ log.info("Creating HTTP transport for: {}", config.getUrl());
             HttpMcpTransport httpTransport = new HttpMcpTransport(
                     config.getUrl(),
                     headers,
                     config.getTimeout()
             );
 
-            // Wrap in MCP transport interface
             McpClientTransport mcpTransport = httpTransport;
 
-            // Define client capabilities
             McpSchema.ClientCapabilities capabilities = new McpSchema.ClientCapabilities(
-                    Map.of(),  // No experimental features
-                    null,      // No roots
-                    null,      // No sampling
-                    null       // No custom capabilities
+                    Map.of(),
+                    null,
+                    null,
+                    null
             );
 
-            // Build sync client with notification handlers for server-facing tool/prompt/resource changes
-            log.info("🔄 Building MCP client for '{}'...", serverName);
+ log.info("Building MCP client for '{}'...", serverName);
             McpSyncClient client = McpClient.sync(mcpTransport)
                     .clientInfo(new McpSchema.Implementation(
                             "ws-agentic-gateway", "1.0.0"))
                     .capabilities(capabilities)
                     .toolsChangeConsumer(updatedTools -> {
-                        log.info("📢 WS Client-side notification: tools/list_changed from '{}' — re-fetching capabilities", serverName);
+ log.info("WS Client-side notification: tools/list_changed from '{}' — re-fetching capabilities", serverName);
                         handleSouthboundCapabilityChange(serverName);
                     })
                     .build();
 
-            log.info("🔄 Initializing MCP client for '{}'...", serverName);
+ log.info("Initializing MCP client for '{}'...", serverName);
 
-            // Initialize connection (handshake)
             client.initialize();
 
             if (!client.isInitialized()) {
@@ -133,25 +110,20 @@ public class McpSessionManager {
                 throw new RuntimeException("Client initialization failed for server: " + serverName);
             }
 
-            // Create session
             McpSession session = new McpSession(serverName, client, httpTransport);
 
-            // Cache server metadata
             session.setServerInfo(client.getServerInfo());
             session.setCapabilities(client.getServerCapabilities());
 
-            log.info("✅ Server '{}' connected successfully", serverName);
-            log.info("   Server: {} v{}",
+ log.info("Server '{}' connected successfully", serverName);
+            log.info("Server: {} v{}",
                     client.getServerInfo().name(),
                     client.getServerInfo().version());
 
-            // Fetch and cache tools, resources, prompts
             fetchAndCacheTools(serverName, session);
 
-            // Store session
             sessions.put(serverName, session);
 
-            // ── Register discovered capabilities in the registry ───────
             try {
                 JsonNode capsJson = null;
                 if (client.getServerCapabilities() != null) {
@@ -168,21 +140,19 @@ public class McpSessionManager {
                         serverName,
                         client.getServerInfo() != null ? client.getServerInfo().name() : serverName,
                         client.getServerInfo() != null ? client.getServerInfo().version() : null,
-                        null,  // protocolVersion — not exposed by McpSyncClient
+                        null,
                         capsJson,
                         session.getTools(),
                         session.getResources(),
                         session.getPrompts()
                 );
-                log.info("🗂️  Server '{}' capabilities registered in registry", serverName);
+ log.info("Server '{}' capabilities registered in registry", serverName);
                 eventPublisher.publishEvent(new CapabilityRegistryChangedEvent("SERVER_CONNECTED", serverName));
             } catch (Exception regEx) {
-                log.error("⚠️  Failed to register server '{}' in registry: {}",
+ log.error("⚠ Failed to register server '{}' in registry: {}",
                         serverName, regEx.getMessage(), regEx);
-                // Don't throw — connection is still valid even if registry fails
             }
 
-            // ── Persist WS Client-side session to DB ──────────────────────
             try {
                 GatewayMcpServerSessionEntity entity = GatewayMcpServerSessionEntity.builder()
                         .serverName(serverName)
@@ -196,23 +166,20 @@ public class McpSessionManager {
                         .status("CONNECTED")
                         .build();
                 serverSessionRepository.save(entity);
-                log.info("💾 WS Client-side session persisted for server '{}'", serverName);
+ log.info("WS Client-side session persisted for server '{}'", serverName);
             } catch (Exception dbEx) {
-                log.error("⚠️  Failed to persist WS Client-side session for '{}': {}",
+ log.error("⚠ Failed to persist WS Client-side session for '{}': {}",
                         serverName, dbEx.getMessage());
-                // Don't throw — connection is still valid even if DB persistence fails
             }
 
             long duration = System.currentTimeMillis() - startTime;
 
-            // Build server info map for audit
             Map<String, Object> serverInfoMap = new HashMap<>();
             if (client.getServerInfo() != null) {
                 serverInfoMap.put("name", client.getServerInfo().name());
                 serverInfoMap.put("version", client.getServerInfo().version());
             }
 
-            // Build capabilities map for audit
             Map<String, Object> capsMap = new HashMap<>();
             if (client.getServerCapabilities() != null) {
                 capsMap.put("tools", client.getServerCapabilities().tools() != null);
@@ -221,100 +188,81 @@ public class McpSessionManager {
                 capsMap.put("logging", client.getServerCapabilities().logging() != null);
             }
 
-            // Async audit — session initialization success
             auditService.auditClientSessionInitialized(
                     session.getSessionId(), serverName, null, serverInfoMap, capsMap, duration);
 
-            log.info("🎉 Server '{}' ready with {} tools",
+ log.info("Server '{}' ready with {} tools",
                     serverName, session.getToolCount());
 
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - startTime;
             auditService.auditClientSessionInitFailed(null, serverName, e.getMessage(), duration);
-            log.error("❌ Failed to connect to server '{}': {}", serverName, e.getMessage(), e);
+ log.error("Failed to connect to server '{}': {}", serverName, e.getMessage(), e);
             throw new RuntimeException("Failed to connect to MCP server '" + serverName + "': " + e.getMessage(), e);
         } finally {
-            // Double-safety cleanup for the current connect execution thread.
             HttpMcpTransport.clearRequestOverrideHeaders();
         }
     }
 
-    /**
-     * Fetch tools from server and cache in session
-     */
     private void fetchAndCacheTools(String serverName, McpSession session) {
         try {
             McpSyncClient client = session.getClient();
 
-            // Check if server supports tools
             if (session.getCapabilities() != null &&
                     session.getCapabilities().tools() != null) {
 
-                log.info("🔧 Fetching tools for server '{}'...", serverName);
+ log.info("Fetching tools for server '{}'...", serverName);
                 long toolsStart = System.currentTimeMillis();
                 List<McpSchema.Tool> tools = client.listTools().tools();
                 session.setTools(tools);
                 long toolsDuration = System.currentTimeMillis() - toolsStart;
 
-                log.info("   Found {} tools:", tools.size());
+                log.info("Found {} tools:", tools.size());
                 tools.forEach(tool ->
-                        log.info("      - {} : {}", tool.name(),
+                        log.info("- {} : {}", tool.name(),
                                 tool.description() != null ? tool.description() : "No description")
                 );
 
-                // Audit — tools list fetched
                 List<String> toolNames = tools.stream().map(McpSchema.Tool::name).toList();
                 auditService.auditClientToolsListFetched(session.getSessionId(), serverName, tools.size(), toolNames, toolsDuration);
             } else {
-                log.info("ℹ️  Server '{}' does not support tools capability", serverName);
+ log.info("ℹ Server '{}' does not support tools capability", serverName);
             }
 
-            // Optionally fetch resources
             if (session.getCapabilities() != null &&
                     session.getCapabilities().resources() != null) {
 
-                log.info("📦 Fetching resources for server '{}'...", serverName);
+ log.info("Fetching resources for server '{}'...", serverName);
                 long resStart = System.currentTimeMillis();
                 List<McpSchema.Resource> resources = client.listResources().resources();
                 session.setResources(resources);
                 long resDuration = System.currentTimeMillis() - resStart;
-                log.info("   Found {} resources", resources.size());
+                log.info("Found {} resources", resources.size());
 
-                // Audit — resources list fetched
                 List<String> resourceUris = resources.stream().map(McpSchema.Resource::uri).toList();
                 auditService.auditClientResourcesListFetched(session.getSessionId(), serverName, resources.size(), resourceUris, resDuration);
             }
 
-            // Optionally fetch prompts
             if (session.getCapabilities() != null &&
                     session.getCapabilities().prompts() != null) {
 
-                log.info("💬 Fetching prompts for server '{}'...", serverName);
+ log.info("Fetching prompts for server '{}'...", serverName);
                 long promptStart = System.currentTimeMillis();
                 List<McpSchema.Prompt> prompts = client.listPrompts().prompts();
                 session.setPrompts(prompts);
                 long promptDuration = System.currentTimeMillis() - promptStart;
-                log.info("   Found {} prompts", prompts.size());
+                log.info("Found {} prompts", prompts.size());
 
-                // Audit — prompts list fetched
                 List<String> promptNames = prompts.stream().map(McpSchema.Prompt::name).toList();
                 auditService.auditClientPromptsListFetched(session.getSessionId(), serverName, prompts.size(), promptNames, promptDuration);
             }
 
         } catch (Exception e) {
-            log.error("⚠️  Failed to fetch capabilities for '{}': {}", serverName, e.getMessage());
+ log.error("⚠ Failed to fetch capabilities for '{}': {}", serverName, e.getMessage());
             auditService.auditClientToolsListFailed(session.getSessionId(), serverName, e.getMessage(), 0);
-            // Don't throw - connection is still valid even if fetching fails
         }
     }
 
-    /**
-     * Handle enterprise MCP server capability change notification.
-     *
-     * <p>When a connected MCP server sends {@code notifications/tools/list_changed},
-     * this method re-fetches all capabilities, updates the registry, and fires
-     * a {@link CapabilityRegistryChangedEvent} so connected agents are notified.
-     */
     private void handleSouthboundCapabilityChange(String serverName) {
         McpSession session = sessions.get(serverName);
         if (session == null) {
@@ -322,15 +270,12 @@ public class McpSessionManager {
             return;
         }
 
-        // Audit: enterprise MCP server sent us a notification
         auditService.auditClientNotificationReceived(
                 session.getSessionId(), serverName, "notifications/tools/list_changed");
 
         try {
-            // Re-fetch tools, prompts, resources from the server
             fetchAndCacheTools(serverName, session);
 
-            // Re-register in capability registry (upserts — handles adds, updates, removes)
             JsonNode capsJson = null;
             if (session.getCapabilities() != null) {
                 capsJson = objectMapper.valueToTree(Map.of(
@@ -353,21 +298,17 @@ public class McpSessionManager {
                     session.getPrompts()
             );
 
-            log.info("🔄 Server '{}' capabilities refreshed after WS Client-side notification", serverName);
+ log.info("Server '{}' capabilities refreshed after WS Client-side notification", serverName);
 
-            // Fire event → HttpMcpServerInitializer refreshes WS Server-side + notifies agents
             eventPublisher.publishEvent(
                     new CapabilityRegistryChangedEvent("SOUTHBOUND_TOOLS_CHANGED", serverName));
 
         } catch (Exception e) {
-            log.error("⚠️  Failed to handle WS Client-side capability change for '{}': {}",
+ log.error("⚠ Failed to handle WS Client-side capability change for '{}': {}",
                     serverName, e.getMessage(), e);
         }
     }
 
-    /**
-     * Get a specific session by server name
-     */
     public McpSession getSession(String serverName) {
         McpSession session = sessions.get(serverName);
         if (session == null) {
@@ -376,43 +317,18 @@ public class McpSessionManager {
         return session;
     }
 
-    /**
-     * Get client for a specific server
-     */
     public McpSyncClient getClient(String serverName) {
         return getSession(serverName).getClient();
     }
 
-    /**
-     * Get all active sessions
-     */
     public Map<String, McpSession> getAllSessions() {
         return Map.copyOf(sessions);
     }
 
-    /**
-     * Get all server names
-     */
     public List<String> getServerNames() {
         return List.copyOf(sessions.keySet());
     }
 
-    /**
-     * Check if server is connected for orchestration fast-fail decisions.
-     *
-     * <p>Connected means:
-     * <ol>
-     *   <li>In-memory WS Client-side session exists</li>
-     *   <li>DB has CONNECTED status for the same server (admin source of truth)</li>
-     *   <li>HTTP transport SSE channel is currently connected</li>
-     * </ol>
-     *
-     * <p>This avoids two bad outcomes:
-     * <ul>
-     *   <li>False rejects (session exists but DB was stale)</li>
-     *   <li>Long hangs (DB says CONNECTED but transport is actually down)</li>
-     * </ul>
-     */
     public boolean isConnected(String serverName) {
         McpSession session = sessions.get(serverName);
         if (session == null) {
@@ -420,7 +336,6 @@ public class McpSessionManager {
             return false;
         }
 
-        // DB is source of truth for admin-driven connect/disconnect state.
         boolean dbConnected = serverSessionRepository
                 .findByServerNameAndStatus(serverName, "CONNECTED")
                 .isPresent();
@@ -436,7 +351,6 @@ public class McpSessionManager {
             return false;
         }
 
-        // Informational only; transport + DB gate above is authoritative for routing.
         if (!session.isActive()) {
             log.warn("Connectivity check note for '{}': session='{}' transportConnected=true but clientInitialized=false",
                     serverName, session.getSessionId());
@@ -445,100 +359,84 @@ public class McpSessionManager {
         return true;
     }
 
-    /**
-     * Disconnect a specific server (normal runtime disconnect)
-     */
     @Transactional
     public synchronized void disconnect(String serverName) {
         McpSession session = sessions.remove(serverName);
         if (session != null) {
-            log.info("🔌 Disconnecting server '{}'...", serverName);
+ log.info("Disconnecting server '{}'...", serverName);
             try {
                 session.close();
-                log.info("✅ Server '{}' disconnected successfully", serverName);
+ log.info("Server '{}' disconnected successfully", serverName);
             } catch (Exception e) {
-                log.error("⚠️  Error during disconnect for '{}': {}", serverName, e.getMessage());
+ log.error("⚠ Error during disconnect for '{}': {}", serverName, e.getMessage());
             }
 
-            // During shutdown, skip audit + registry — beans may already be destroyed
             if (!shuttingDown) {
                 try {
                     auditService.auditClientSessionDisconnectedSync(session.getSessionId(), serverName);
                 } catch (Exception e) {
-                    log.error("⚠️  Failed audit for '{}': {}", serverName, e.getMessage());
+ log.error("⚠ Failed audit for '{}': {}", serverName, e.getMessage());
                 }
 
-                // Mark WS Client-side session as disconnected in DB
                 try {
                     int updated = serverSessionRepository.markDisconnected(serverName);
                     if (updated > 0) {
-                        log.info("💾 WS Client-side session marked DISCONNECTED for '{}' (rows={})",
+ log.info("WS Client-side session marked DISCONNECTED for '{}' (rows={})",
                                 serverName, updated);
                     } else {
-                        log.warn("⚠️  No CONNECTED WS Client-side DB session row found to disconnect for '{}'",
+ log.warn("⚠ No CONNECTED WS Client-side DB session row found to disconnect for '{}'",
                                 serverName);
                     }
                 } catch (Exception dbEx) {
-                    log.error("⚠️  Failed to mark WS Client-side session DISCONNECTED for '{}': {}",
+ log.error("⚠ Failed to mark WS Client-side session DISCONNECTED for '{}': {}",
                             serverName, dbEx.getMessage(), dbEx);
                 }
 
-                // Remove capabilities from registry
                 try {
                     registryService.removeServer(session.getSessionId(), serverName);
                     eventPublisher.publishEvent(new CapabilityRegistryChangedEvent("SERVER_DISCONNECTED", serverName));
                 } catch (Exception e) {
-                    log.error("⚠️  Failed to remove server '{}' from registry: {}",
+ log.error("⚠ Failed to remove server '{}' from registry: {}",
                             serverName, e.getMessage());
                 }
             }
         } else {
-            log.warn("⚠️  Server '{}' was not connected", serverName);
+ log.warn("⚠ Server '{}' was not connected", serverName);
         }
     }
 
-    /**
-     * Graceful shutdown — called by {@link GatewayShutdownHook} which runs
-     * BEFORE Spring destroys beans, so EntityManager and transactions still work.
-     */
     @Transactional
     public synchronized void shutdown() {
-        log.info("🛑 Gateway shutting down — disconnecting all WS Client-side MCP servers...");
+ log.info("Gateway shutting down — disconnecting all WS Client-side MCP servers...");
         shuttingDown = true;
 
-        // 1. Bulk-update DB: mark ALL connected sessions as DISCONNECTED in one query
         try {
             serverSessionRepository.markAllDisconnected();
-            log.info("💾 All WS Client-side sessions marked DISCONNECTED in DB");
+ log.info("All WS Client-side sessions marked DISCONNECTED in DB");
         } catch (Exception e) {
-            log.error("⚠️  Failed to mark sessions DISCONNECTED in DB: {}", e.getMessage());
+ log.error("⚠ Failed to mark sessions DISCONNECTED in DB: {}", e.getMessage());
         }
 
-        // 2. Audit + close each MCP client connection
         for (String serverName : List.copyOf(sessions.keySet())) {
             McpSession session = sessions.remove(serverName);
             if (session != null) {
-                // Audit log — sync call, beans are still alive at ContextClosedEvent
                 try {
                     auditService.auditClientSessionDisconnectedSync(session.getSessionId(), serverName);
                 } catch (Exception e) {
-                    log.error("⚠️  Failed shutdown audit for '{}': {}", serverName, e.getMessage());
+ log.error("⚠ Failed shutdown audit for '{}': {}", serverName, e.getMessage());
                 }
                 try {
                     session.close();
-                    log.info("✅ Server '{}' disconnected", serverName);
+ log.info("Server '{}' disconnected", serverName);
                 } catch (Exception e) {
-                    log.error("⚠️  Error closing '{}': {}", serverName, e.getMessage());
+ log.error("⚠ Error closing '{}': {}", serverName, e.getMessage());
                 }
             }
         }
         sessions.clear();
-        log.info("✅ All WS Client-side sessions disconnected gracefully");
+ log.info("All WS Client-side sessions disconnected gracefully");
     }
 
-    /**
-     * Get connection status summary
-     */
     public Map<String, Object> getStatusSummary() {
         return Map.of(
                 "totalServers", sessions.size(),
@@ -549,10 +447,6 @@ public class McpSessionManager {
         );
     }
 
-    /**
-     * Startup cleanup — mark all orphaned CONNECTED WS Client-side sessions as DISCONNECTED.
-     * Called explicitly from {@code McpClientInitializer.run()} BEFORE creating new connections.
-     */
     @Transactional
     public void cleanupOrphanedSessions() {
         try {
@@ -562,12 +456,12 @@ public class McpSessionManager {
                     auditService.auditClientSessionDisconnectedSync(session.getSessionId(), session.getServerName());
                 }
                 serverSessionRepository.markAllDisconnected();
-                log.info("🧹 Startup cleanup: marked {} orphaned WS Client-side session(s) as DISCONNECTED", orphaned.size());
+ log.info("Startup cleanup: marked {} orphaned WS Client-side session(s) as DISCONNECTED", orphaned.size());
             } else {
-                log.info("🧹 Startup cleanup: no orphaned WS Client-side sessions found");
+ log.info("Startup cleanup: no orphaned WS Client-side sessions found");
             }
         } catch (Exception e) {
-            log.error("⚠️  Failed to cleanup orphaned WS Client-side sessions: {}", e.getMessage());
+ log.error("⚠ Failed to cleanup orphaned WS Client-side sessions: {}", e.getMessage());
         }
     }
 }

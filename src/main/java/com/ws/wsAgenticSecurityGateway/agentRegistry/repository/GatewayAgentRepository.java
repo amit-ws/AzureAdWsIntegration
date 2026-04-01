@@ -22,19 +22,15 @@ public interface GatewayAgentRepository extends JpaRepository<GatewayAgentEntity
 
     List<GatewayAgentEntity> findByApprovalStatus(String approvalStatus);
 
-    /** Atomic increment — avoids read-modify-write race on concurrent connections. */
     @Modifying
     @Query("UPDATE GatewayAgentEntity a SET a.totalSessions = a.totalSessions + 1, " +
             "a.lastSeenAt = CURRENT_TIMESTAMP WHERE a.id = :agentId")
     void incrementSessionCount(@Param("agentId") UUID agentId);
 
-    /** Atomic increment — called async from the orchestration hot path. */
     @Modifying
     @Query("UPDATE GatewayAgentEntity a SET a.totalRequests = a.totalRequests + 1, " +
             "a.lastSeenAt = CURRENT_TIMESTAMP WHERE a.id = :agentId")
     void incrementRequestCount(@Param("agentId") UUID agentId);
-
-    // ── Tenant-scoped queries ───────────────────────────────────────────
 
     Optional<GatewayAgentEntity> findByAgentNameAndAgentVersionAndWsTenantName(String agentName, String agentVersion, String wsTenantName);
 

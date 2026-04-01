@@ -12,9 +12,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-/**
- * Persistence gateway for WS Client-side MCP server session records.
- */
 @Repository
 public interface GatewayMcpServerSessionRepository extends JpaRepository<GatewayMcpServerSessionEntity, UUID> {
 
@@ -24,28 +21,24 @@ public interface GatewayMcpServerSessionRepository extends JpaRepository<Gateway
 
     List<GatewayMcpServerSessionEntity> findByStatus(String status);
 
-    /** Mark a specific server's CONNECTED session as DISCONNECTED. */
     @Modifying
     @Transactional
     @Query("UPDATE GatewayMcpServerSessionEntity s SET s.status = 'DISCONNECTED', " +
             "s.disconnectedAt = CURRENT_TIMESTAMP WHERE s.serverName = :serverName AND s.status = 'CONNECTED'")
     int markDisconnected(@Param("serverName") String serverName);
 
-    /** Cleanup on startup — mark all orphaned CONNECTED sessions as DISCONNECTED. */
     @Modifying
     @Transactional
     @Query("UPDATE GatewayMcpServerSessionEntity s SET s.status = 'DISCONNECTED', " +
             "s.disconnectedAt = CURRENT_TIMESTAMP WHERE s.status = 'CONNECTED'")
     int markAllDisconnected();
 
-    /** Atomic request count increment — called on every orchestration forwarding. */
     @Modifying
     @Transactional
     @Query("UPDATE GatewayMcpServerSessionEntity s SET s.totalRequests = s.totalRequests + 1, " +
             "s.lastActivityAt = CURRENT_TIMESTAMP WHERE s.sessionId = :sessionId")
     int incrementRequestCount(@Param("sessionId") String sessionId);
 
-    /** Update health check status for a server. */
     @Modifying
     @Transactional
     @Query("UPDATE GatewayMcpServerSessionEntity s SET s.lastHealthCheckAt = CURRENT_TIMESTAMP, " +
@@ -54,8 +47,6 @@ public interface GatewayMcpServerSessionRepository extends JpaRepository<Gateway
     int updateHealthCheck(@Param("serverName") String serverName,
                           @Param("status") String status,
                           @Param("failures") int failures);
-
-    // ── Tenant-scoped queries ───────────────────────────────────────────
 
     Optional<GatewayMcpServerSessionEntity> findByServerNameAndStatusAndWsTenantName(String serverName, String status, String wsTenantName);
 

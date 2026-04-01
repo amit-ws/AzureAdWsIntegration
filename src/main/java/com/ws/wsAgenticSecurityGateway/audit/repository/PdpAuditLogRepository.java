@@ -12,9 +12,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * Persistence gateway for {@link PdpAuditLog} records.
- */
 @Repository
 public interface PdpAuditLogRepository extends JpaRepository<PdpAuditLog, UUID> {
 
@@ -41,8 +38,6 @@ public interface PdpAuditLogRepository extends JpaRepository<PdpAuditLog, UUID> 
     long countByPdpDecision(String pdpDecision);
 
     long countByPdpDecisionAndTimestampBetween(String pdpDecision, LocalDateTime from, LocalDateTime to);
-
-    // ── Tenant-scoped queries ───────────────────────────────────────────
 
     List<PdpAuditLog> findByCorrelationIdAndWsTenantName(String correlationId, String wsTenantName);
 

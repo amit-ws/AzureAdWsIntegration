@@ -39,14 +39,6 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 
-/**
- * Core service for DB-driven authentication configuration.
- *
- * <p>Resolution order: DB config (if exists and enabled) > environment variables > defaults (mode=none).
- *
- * <p>Supports runtime hot-swapping of JwtDecoder via {@link DelegatingJwtDecoder},
- * OIDC auto-discovery, IdP connectivity validation, and multi-instance DB polling.
- */
 @Service
 @Slf4j
 public class AuthConfigService {
@@ -62,7 +54,6 @@ public class AuthConfigService {
     private final RestTemplate trustAllRestTemplate;
     private final AgentRegistryService agentRegistryService;
 
-    // Env var fallbacks
     @Value("${ws.gateway.auth.mode:none}")
     private String envAuthMode;
     @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri:}")
@@ -70,11 +61,9 @@ public class AuthConfigService {
     @Value("${spring.security.oauth2.resourceserver.jwt.jwk-set-uri:}")
     private String envJwksUri;
 
-    // Cached effective mode for hot-path reads (avoids DB hit per request)
     private final AtomicReference<String> cachedEffectiveMode = new AtomicReference<>("none");
     private final AtomicReference<LocalDateTime> cachedUpdatedAt = new AtomicReference<>();
 
-    // DelegatingJwtDecoder reference (set after bean creation to avoid circular dependency)
     private volatile DelegatingJwtDecoder delegatingJwtDecoder;
 
     public AuthConfigService(GatewayAuthConfigRepository repository,
@@ -91,19 +80,13 @@ public class AuthConfigService {
         this.trustAllRestTemplate = buildTrustAllRestTemplate();
     }
 
-    /** Called by GatewaySecurityConfig to wire the DelegatingJwtDecoder after construction. */
     public void setDelegatingJwtDecoder(DelegatingJwtDecoder decoder) {
         this.delegatingJwtDecoder = decoder;
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  STARTUP INITIALIZATION
-    // ════════════════════════════════════════════════════════════════════
-
     @EventListener(ApplicationReadyEvent.class)
     @Transactional(readOnly = true)
     public void initializeOnStartup() {
-        // 1. Try DB
         Optional<GatewayAuthConfigEntity> dbConfig = repository.findFirstByEnabledTrueOrderByCreatedAtAsc();
         if (dbConfig.isPresent()) {
             GatewayAuthConfigEntity config = dbConfig.get();
@@ -115,7 +98,6 @@ public class AuthConfigService {
             return;
         }
 
-        // 2. Try env vars
         if (envAuthMode != null && !envAuthMode.isBlank() && !"none".equals(envAuthMode)) {
             cachedEffectiveMode.set(envAuthMode);
             applyDecoderFromEnvVars();
@@ -123,24 +105,16 @@ public class AuthConfigService {
             return;
         }
 
-        // 3. Default: none
         cachedEffectiveMode.set("none");
         log.info("No auth config found — defaulting to mode=none (open access)");
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  EFFECTIVE CONFIG (hot-path, cached)
-    // ════════════════════════════════════════════════════════════════════
-
-    /** Returns the current effective auth mode. Cached for hot-path reads. */
     public String getEffectiveMode() {
         return cachedEffectiveMode.get();
     }
 
-    /** Returns the full effective config as a response DTO (DB → env → defaults). */
     @Transactional(readOnly = true)
     public AuthConfigResponse getEffectiveConfig() {
-        // 1. Try DB (tenant-scoped)
         String tenant = TenantContext.get();
         Optional<GatewayAuthConfigEntity> dbConfig = tenant != null
                 ? repository.findFirstByEnabledTrueAndWsTenantNameOrderByCreatedAtAsc(tenant)
@@ -149,7 +123,6 @@ public class AuthConfigService {
             return toResponse(dbConfig.get(), "database");
         }
 
-        // 2. Try env vars
         if (envAuthMode != null && !envAuthMode.isBlank() && !"none".equals(envAuthMode)) {
             return AuthConfigResponse.builder()
                     .authMode(envAuthMode)
@@ -163,7 +136,6 @@ public class AuthConfigService {
                     .build();
         }
 
-        // 3. Default
         return AuthConfigResponse.builder()
                 .authMode("none")
                 .effectiveMode("none")
@@ -173,14 +145,9 @@ public class AuthConfigService {
                 .build();
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  CRUD
-    // ════════════════════════════════════════════════════════════════════
-
     @Transactional
     public AuthConfigResponse createAuthConfig(AuthConfigRequest request,
                                                 String adminIdentity, String sourceIp) {
-        // Prevent multiple rows per tenant
         String tenant = TenantContext.get();
         Optional<GatewayAuthConfigEntity> existingConfig = repository.findFirstByEnabledTrueAndWsTenantNameOrderByCreatedAtAsc(tenant);
         if (existingConfig.isPresent()) {
@@ -213,12 +180,10 @@ public class AuthConfigService {
         entity = repository.save(entity);
         log.info("Auth config CREATED: mode={}, issuer={}", entity.getAuthMode(), entity.getIssuerUri());
 
-        // Apply runtime changes
         cachedEffectiveMode.set(entity.getAuthMode());
         cachedUpdatedAt.set(entity.getUpdatedAt());
         applyDecoderFromConfig(entity);
 
-        // Audit
         auditService.auditAuthConfigCreated(entity.getAuthMode(), entity.getIssuerUri(),
                 entity.getIdpDisplayName(), entity.getTokenClassificationMode(),
                 adminIdentity, sourceIp);
@@ -232,7 +197,6 @@ public class AuthConfigService {
         GatewayAuthConfigEntity existing = repository.findFirstByWsTenantNameOrderByCreatedAtAsc(TenantContext.get())
                 .orElseThrow(() -> new IllegalStateException("No auth config exists — create first"));
 
-        // Track changes for audit
         Map<String, Object> changedFields = new LinkedHashMap<>();
         String oldMode = existing.getAuthMode();
         String oldIssuer = existing.getIssuerUri();
@@ -253,7 +217,6 @@ public class AuthConfigService {
             changedFields.put("tokenClassificationMode", Map.of("old", str(existing.getTokenClassificationMode()), "new", str(request.getTokenClassificationMode())));
         }
 
-        // Apply updates
         existing.setAuthMode(request.getAuthMode());
         String updatedDisplayName = request.getIdpDisplayName() != null && !request.getIdpDisplayName().isBlank()
                 ? request.getIdpDisplayName()
@@ -272,7 +235,6 @@ public class AuthConfigService {
         existing.setGracePeriodMinutes(request.getGracePeriodMinutes());
         if (request.getEnabled() != null) existing.setEnabled(request.getEnabled());
 
-        // Handle secret: if masked placeholder, keep existing; if new value, encrypt
         if (request.getIntrospectionClientSecret() != null
                 && !SECRET_MASK.equals(request.getIntrospectionClientSecret())) {
             existing.setIntrospectionClientSecret(encryptSecret(request.getIntrospectionClientSecret()));
@@ -283,7 +245,6 @@ public class AuthConfigService {
         log.info("Auth config UPDATED: mode={}, issuer={}, changedFields={}",
                 existing.getAuthMode(), existing.getIssuerUri(), changedFields.keySet());
 
-        // Apply runtime changes
         cachedEffectiveMode.set(existing.getAuthMode());
         cachedUpdatedAt.set(existing.getUpdatedAt());
 
@@ -292,17 +253,14 @@ public class AuthConfigService {
         boolean modeChanged = !Objects.equals(oldMode, existing.getAuthMode());
 
         if (modeChanged) {
-            // Mode switch — no grace period, immediate effect
             applyDecoderFromConfig(existing);
             int activeSessions = agentRegistryService.getConnectedSessions().size();
             auditService.auditAuthModeChanged(oldMode, existing.getAuthMode(),
                     activeSessions, adminIdentity, sourceIp);
         } else if (issuerChanged && "oauth2".equals(existing.getAuthMode())) {
-            // Issuer changed — swap with grace period
             swapDecoderWithGracePeriod(existing, oldIssuer);
         }
 
-        // Audit
         if (!changedFields.isEmpty()) {
             auditService.auditAuthConfigUpdated(changedFields, adminIdentity, sourceIp);
         }
@@ -321,7 +279,6 @@ public class AuthConfigService {
         repository.delete(existing);
         log.info("Auth config DELETED — reverting to env vars or defaults");
 
-        // Revert to env vars or none
         if (envAuthMode != null && !envAuthMode.isBlank() && !"none".equals(envAuthMode)) {
             cachedEffectiveMode.set(envAuthMode);
             applyDecoderFromEnvVars();
@@ -333,7 +290,6 @@ public class AuthConfigService {
         }
         cachedUpdatedAt.set(null);
 
-        // Audit
         auditService.auditAuthConfigDeleted(oldMode, oldIssuer, adminIdentity, sourceIp);
         if (!"none".equals(oldMode)) {
             int activeSessions = agentRegistryService.getConnectedSessions().size();
@@ -342,11 +298,6 @@ public class AuthConfigService {
         }
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  OIDC DISCOVERY & VALIDATION
-    // ════════════════════════════════════════════════════════════════════
-
-    /** Auto-discover OIDC endpoints from issuer URI. */
     public AuthConfigDiscoveryResponse discoverOidcEndpoints(String issuerUri) {
         try {
             String discoveryUrl = issuerUri.endsWith("/")
@@ -371,7 +322,6 @@ public class AuthConfigService {
 
             JsonNode doc = objectMapper.readTree(response.body());
 
-            // Extract scopes if available
             String scopes = "openid,email,profile";
             if (doc.has("scopes_supported")) {
                 List<String> scopeList = new ArrayList<>();
@@ -401,11 +351,8 @@ public class AuthConfigService {
         }
     }
 
-    /** Validate IdP connectivity by testing the JWKS endpoint. */
     public AuthConfigValidationResponse validateIdpConnectivity(String issuerUri, String jwksUri,
                                                                   String adminIdentity, String sourceIp) {
-        // Resolve JWKS URI: use explicit value only if its host matches the issuer host.
-        // A stale JWKS URI (from a previous issuer) must not be used — always re-discover.
         String effectiveJwksUri = jwksUri;
         if (effectiveJwksUri != null && !effectiveJwksUri.isBlank()) {
             try {
@@ -414,7 +361,7 @@ public class AuthConfigService {
                 if (issuerHost != null && !issuerHost.equalsIgnoreCase(jwksHost)) {
                     log.info("JWKS URI host '{}' does not match issuer host '{}' — re-discovering",
                             jwksHost, issuerHost);
-                    effectiveJwksUri = null; // force re-discovery below
+                    effectiveJwksUri = null;
                 }
             } catch (Exception e) {
                 log.warn("Failed to parse JWKS/issuer URI for host comparison — re-discovering: {}", e.getMessage());
@@ -459,7 +406,6 @@ public class AuthConfigService {
                         .build();
             }
 
-            // Count keys
             JsonNode jwks = objectMapper.readTree(response.body());
             int keyCount = jwks.has("keys") ? jwks.get("keys").size() : 0;
 
@@ -489,7 +435,6 @@ public class AuthConfigService {
         }
     }
 
-    /** Force a JWKS refresh by rebuilding the active decoder. */
     @Transactional(readOnly = true)
     public void refreshJwks(String adminIdentity, String sourceIp) {
         Optional<GatewayAuthConfigEntity> dbConfig = repository.findFirstByEnabledTrueOrderByCreatedAtAsc();
@@ -502,17 +447,12 @@ public class AuthConfigService {
         }
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  MULTI-INSTANCE POLLING
-    // ════════════════════════════════════════════════════════════════════
-
     @Scheduled(fixedDelayString = "${ws.gateway.auth.config-poll-interval-ms:60000}")
     @Transactional(readOnly = true)
     public void pollForConfigChanges() {
         try {
             Optional<GatewayAuthConfigEntity> dbConfig = repository.findFirstByOrderByCreatedAtAsc();
             if (dbConfig.isEmpty()) {
-                // DB row deleted — check if we need to revert
                 if (cachedUpdatedAt.get() != null) {
                     log.info("Auth config DB row removed — reverting to env vars or defaults");
                     cachedUpdatedAt.set(null);
@@ -543,17 +483,11 @@ public class AuthConfigService {
         }
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  DB CONFIG ACCESSORS (for OAuth2ProtectedResourceConfig, etc.)
-    // ════════════════════════════════════════════════════════════════════
-
-    /** Returns the active DB entity, or empty if none exists. */
     @Transactional(readOnly = true)
     public Optional<GatewayAuthConfigEntity> getActiveDbConfig() {
         return repository.findFirstByEnabledTrueOrderByCreatedAtAsc();
     }
 
-    /** Returns the effective issuer URI (DB → env → null). */
     public String getEffectiveIssuerUri() {
         Optional<GatewayAuthConfigEntity> dbConfig = repository.findFirstByEnabledTrueOrderByCreatedAtAsc();
         if (dbConfig.isPresent() && dbConfig.get().getIssuerUri() != null) {
@@ -562,7 +496,6 @@ public class AuthConfigService {
         return envIssuerUri != null && !envIssuerUri.isBlank() ? envIssuerUri : null;
     }
 
-    /** Returns the effective JWKS URI. */
     public String getEffectiveJwksUri() {
         Optional<GatewayAuthConfigEntity> dbConfig = repository.findFirstByEnabledTrueOrderByCreatedAtAsc();
         if (dbConfig.isPresent() && dbConfig.get().getJwksUri() != null) {
@@ -570,10 +503,6 @@ public class AuthConfigService {
         }
         return envJwksUri != null && !envJwksUri.isBlank() ? envJwksUri : null;
     }
-
-    // ════════════════════════════════════════════════════════════════════
-    //  DECODER MANAGEMENT (internal)
-    // ════════════════════════════════════════════════════════════════════
 
     private void applyDecoderFromConfig(GatewayAuthConfigEntity config) {
         if (delegatingJwtDecoder == null) return;
@@ -584,7 +513,6 @@ public class AuthConfigService {
         try {
             String jwksUri = config.getJwksUri();
             if (jwksUri == null || jwksUri.isBlank()) {
-                // Discover JWKS from issuer
                 AuthConfigDiscoveryResponse discovery = discoverOidcEndpoints(config.getIssuerUri());
                 jwksUri = discovery.getJwksUri();
             }
@@ -652,10 +580,6 @@ public class AuthConfigService {
         };
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  HELPERS
-    // ════════════════════════════════════════════════════════════════════
-
     private AuthConfigResponse toResponse(GatewayAuthConfigEntity entity, String configSource) {
         return AuthConfigResponse.builder()
                 .id(entity.getId())
@@ -694,7 +618,6 @@ public class AuthConfigService {
         return value != null ? value : "";
     }
 
-    /** Auto-detect IdP type from issuer URI. Stored in DB so it's consistent across API, audit, and LLM metadata. */
     private String detectIdpType(String issuerUri) {
         if (issuerUri == null || issuerUri.isBlank()) return "Unknown IdP";
         String uri = issuerUri.toLowerCase();
@@ -708,7 +631,6 @@ public class AuthConfigService {
         return "OIDC Provider";
     }
 
-    /** Converts raw Java exceptions into human-readable error messages for admins. */
     private String resolveConnectionError(Exception e, String url) {
         Throwable root = e;
         while (root.getCause() != null) root = root.getCause();
@@ -717,7 +639,6 @@ public class AuthConfigService {
         String rootMsg = root.getMessage();
 
         if (root instanceof java.nio.channels.UnresolvedAddressException) {
-            // Extract host from URL
             String host = url;
             try { host = java.net.URI.create(url).getHost(); } catch (Exception ignored) {}
             return "DNS resolution failed — cannot resolve hostname '" + host + "'. Check if the URL is correct and the IdP is reachable from the gateway's network.";
@@ -744,11 +665,6 @@ public class AuthConfigService {
         return node.has(field) && !node.get(field).isNull() ? node.get(field).asText() : null;
     }
 
-    /**
-     * Builds a RestTemplate that trusts all certificates and custom hostnames.
-     * Used by NimbusJwtDecoder for JWKS fetching — replaces the default RestTemplate
-     * which may fail with Cloudflare tunnels, self-signed certs, and internal CAs.
-     */
     private static RestTemplate buildTrustAllRestTemplate() {
         try {
             TrustManager[] trustAll = new TrustManager[]{
@@ -781,11 +697,6 @@ public class AuthConfigService {
         }
     }
 
-    /**
-     * Builds an HttpClient that trusts all certificates.
-     * Required for Cloudflare tunnels, self-signed certs, and internal CAs
-     * used during IdP discovery and validation.
-     */
     private static HttpClient buildTrustingHttpClient() {
         try {
             TrustManager[] trustAll = new TrustManager[]{
@@ -802,7 +713,6 @@ public class AuthConfigService {
                     .sslContext(sslContext)
                     .build();
         } catch (Exception e) {
-            // Fallback to default client if SSL setup fails
             return HttpClient.newBuilder()
                     .connectTimeout(HTTP_TIMEOUT)
                     .build();

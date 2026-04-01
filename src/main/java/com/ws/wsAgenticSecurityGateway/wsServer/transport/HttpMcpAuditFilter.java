@@ -33,37 +33,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Full MCP audit filter for HTTP Streamable transport mode.
- *
- * <p>
- * The MCP SDK ({@code HttpServletStreamableServerTransportProvider}) handles
- * {@code initialize}, {@code tools/list}, {@code prompts/list},
- * {@code resources/list},
- * and session DELETE internally with <em>no lifecycle hooks or callbacks</em>.
- * This filter intercepts ALL MCP requests at the HTTP layer to provide full
- * audit parity with stdio mode.
- *
- * <p>
- * <strong>How it works:</strong>
- * <ol>
- * <li>Wraps POST requests in {@link ContentCachingRequestWrapper} to re-read
- * the body
- * after the SDK processes it</li>
- * <li>Lets the SDK handle the request normally via
- * {@code chain.doFilter()}</li>
- * <li>After SDK processing, parses the cached request body to determine the
- * JSON-RPC
- * method and dispatches to the appropriate audit handler</li>
- * <li>Intercepts DELETE requests for session disconnect audit</li>
- * </ol>
- *
- * <p>
- * <strong>Probe filtering:</strong> The {@code mcp-remote} npm bridge creates
- * test/internal sessions ({@code mcp-remote-fallback-test},
- * {@code local-agent-mode-*})
- * that are NOT real agents. These are filtered from agent registration.
- */
 @Slf4j
 public class HttpMcpAuditFilter implements Filter {
 
@@ -74,37 +43,23 @@ public class HttpMcpAuditFilter implements Filter {
     private final ObjectMapper objectMapper;
     private final TokenClassificationService tokenClassificationService;
 
-    /**
-     * Tracks which sessions have been registered (prevents duplicate registration).
-     */
     private final ConcurrentHashMap<String, Boolean> registeredSessions = new ConcurrentHashMap<>();
 
-    /**
-     * Tracks ALL session IDs created by the SDK (including probes) — used for stale
-     * session detection.
-     */
     private final Set<String> knownSessionIds = ConcurrentHashMap.newKeySet();
 
-    /** Maps sessionId → agentName for use in list/disconnect audit calls. */
     private final ConcurrentHashMap<String, String> sessionAgentNames = new ConcurrentHashMap<>();
 
-    /** Sessions explicitly rejected due to blocked agent policy. */
     private final Set<String> blockedSessionIds = ConcurrentHashMap.newKeySet();
 
-    /** Maps sessionId → founding JWT subject for session-identity binding. */
     private final ConcurrentHashMap<String, String> sessionIdentityCache = new ConcurrentHashMap<>();
 
-    /** Maps sessionId → wsTenantName for tenant resolution on MCP requests. */
     private final ConcurrentHashMap<String, String> sessionToTenant = new ConcurrentHashMap<>();
 
-    /** Agent names from mcp-remote that are probes/tests, not real agents. */
     private static final Set<String> PROBE_NAMES = Set.of("mcp-remote-fallback-test");
 
-    /** Capability list methods that require response filtering. */
     private static final Set<String> LIST_METHODS = Set.of(
             "tools/list", "prompts/list", "resources/list", "resources/templates/list");
 
-    /** Execution methods that require APPROVED status for identity + agent. */
     private static final Set<String> EXECUTION_METHODS = Set.of(
             "tools/call", "prompts/get", "resources/read", "resources/templates/read");
 
@@ -122,10 +77,6 @@ public class HttpMcpAuditFilter implements Filter {
         this.tokenClassificationService = tokenClassificationService;
     }
 
-    /**
-     * Resolve the tenant name for a given session ID.
-     * Used by orchestration and audit to pass tenant context on MCP-path requests.
-     */
     public String resolveTenant(String sessionId) {
         return sessionToTenant.getOrDefault(sessionId, "unknown");
     }
@@ -138,17 +89,11 @@ public class HttpMcpAuditFilter implements Filter {
         HttpServletResponse httpResponse = (HttpServletResponse) response;
         String httpMethod = httpRequest.getMethod();
 
-        // ── Handle DELETE (session disconnect) ──────────────────────
         if ("DELETE".equalsIgnoreCase(httpMethod)) {
             handleDelete(httpRequest, httpResponse, chain);
             return;
         }
 
-        // ── Session validation: reject stale/unknown sessions ──────
-        // If Mcp-Session-Id header is present but not in our tracked sessions,
-        // the session is stale (e.g., from before a gateway restart).
-        // Return HTTP 200 + JSON-RPC error so the agent receives a proper
-        // error response instead of hanging until timeout.
         String existingSessionId = httpRequest.getHeader("Mcp-Session-Id");
         if (existingSessionId != null && !knownSessionIds.contains(existingSessionId)) {
             log.warn("Rejecting request with stale session ID: {} — gateway was restarted, agent must reconnect",
@@ -157,13 +102,11 @@ public class HttpMcpAuditFilter implements Filter {
             return;
         }
 
-        // ── Only process POST requests (JSON-RPC messages) ─────────
         if (!"POST".equalsIgnoreCase(httpMethod)) {
             chain.doFilter(request, response);
             return;
         }
 
-        // ── Wrap request with cached body so we can inspect before AND after SDK ───
         CachedBodyHttpServletRequest wrappedRequest = new CachedBodyHttpServletRequest(httpRequest);
 
         JsonNode requestJson = parseRequestJson(wrappedRequest.getCachedBody());
@@ -171,7 +114,6 @@ public class HttpMcpAuditFilter implements Filter {
         String requestId = extractRequestId(requestJson);
         String mcpMethod = requestJson != null ? requestJson.path("method").asText("") : "";
 
-        // ── Block requests from sessions flagged as blocked ──────────
         String sessionId = wrappedRequest.getHeader("Mcp-Session-Id");
         if (sessionId != null && blockedSessionIds.contains(sessionId)) {
             String blockedAgentName = resolveAgentName(sessionId);
@@ -188,19 +130,15 @@ public class HttpMcpAuditFilter implements Filter {
             return;
         }
 
-        // ── Identity & Agent status enforcement ──────────────────────────
-        // Uses cache-backed lookups (O(1) ConcurrentHashMap, zero DB queries on hot path).
-        // BLOCKED checks run on ALL methods. PENDING checks only on EXECUTION methods.
         boolean isExecutionMethod = EXECUTION_METHODS.contains(mcpMethod);
         String reqJwtSubject = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_SUBJECT);
 
         if (reqJwtSubject != null) {
-            // ── Human status check (cache-backed) ──
             String humanStatus = agentRegistryService.getHumanStatus(reqJwtSubject);
             if ("BLOCKED".equals(humanStatus)) {
                 String humanUsername = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_PREFERRED_USERNAME);
                 String displayUsername = humanUsername != null ? humanUsername : reqJwtSubject;
-                log.warn("🚫 Request rejected — human '{}' BLOCKED, session={}, method={}",
+                log.warn("Request rejected — human '{}' BLOCKED, session={}, method={}",
                         displayUsername, sessionId, mcpMethod);
                 auditService.auditHumanConnectionRejected(sessionId, requestId,
                         displayUsername, reqJwtSubject, resolveAgentName(sessionId), mcpMethod,
@@ -214,7 +152,7 @@ public class HttpMcpAuditFilter implements Filter {
             if (isExecutionMethod && "PENDING".equals(humanStatus)) {
                 String humanUsername = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_PREFERRED_USERNAME);
                 String displayUsername = humanUsername != null ? humanUsername : reqJwtSubject;
-                log.warn("🚫 Execution rejected — human '{}' PENDING approval, session={}, method={}",
+                log.warn("Execution rejected — human '{}' PENDING approval, session={}, method={}",
                         displayUsername, sessionId, mcpMethod);
                 auditService.auditHumanConnectionRejected(sessionId, requestId,
                         displayUsername, reqJwtSubject, resolveAgentName(sessionId), mcpMethod,
@@ -226,12 +164,11 @@ public class HttpMcpAuditFilter implements Filter {
                 return;
             }
 
-            // ── NHI status check (cache-backed) ──
             String nhiStatus = agentRegistryService.getNhiStatus(reqJwtSubject);
             if ("BLOCKED".equals(nhiStatus)) {
                 String nhiClientId = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_CLIENT_ID);
                 String displayName = nhiClientId != null ? nhiClientId : reqJwtSubject;
-                log.warn("🚫 Request rejected — NHI '{}' BLOCKED, session={}, method={}",
+                log.warn("Request rejected — NHI '{}' BLOCKED, session={}, method={}",
                         displayName, sessionId, mcpMethod);
                 auditService.auditNhiConnectionRejected(sessionId, requestId,
                         displayName, nhiClientId, reqJwtSubject, resolveAgentName(sessionId), mcpMethod,
@@ -245,7 +182,7 @@ public class HttpMcpAuditFilter implements Filter {
             if (isExecutionMethod && "PENDING".equals(nhiStatus)) {
                 String nhiClientId = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_CLIENT_ID);
                 String displayName = nhiClientId != null ? nhiClientId : reqJwtSubject;
-                log.warn("🚫 Execution rejected — NHI '{}' PENDING approval, session={}, method={}",
+                log.warn("Execution rejected — NHI '{}' PENDING approval, session={}, method={}",
                         displayName, sessionId, mcpMethod);
                 auditService.auditNhiConnectionRejected(sessionId, requestId,
                         displayName, nhiClientId, reqJwtSubject, resolveAgentName(sessionId), mcpMethod,
@@ -258,12 +195,11 @@ public class HttpMcpAuditFilter implements Filter {
             }
         }
 
-        // ── Agent status check (cache-backed: sessionToAgentId → agentStatusById) ──
         if (sessionId != null) {
             String agentStatus = agentRegistryService.getAgentStatusForSession(sessionId);
             if ("BLOCKED".equals(agentStatus)) {
                 String blockedAgentName = agentRegistryService.getAgentNameForSession(sessionId);
-                log.warn("🚫 Request rejected — agent '{}' BLOCKED, session={}, method={}",
+                log.warn("Request rejected — agent '{}' BLOCKED, session={}, method={}",
                         blockedAgentName, sessionId, mcpMethod);
                 auditService.auditAgentConnectionRejected(sessionId, requestId,
                         blockedAgentName, null, mcpMethod, "HTTP",
@@ -275,7 +211,7 @@ public class HttpMcpAuditFilter implements Filter {
             }
             if (isExecutionMethod && "PENDING".equals(agentStatus)) {
                 String pendingAgentName = agentRegistryService.getAgentNameForSession(sessionId);
-                log.warn("🚫 Execution rejected — agent '{}' PENDING approval, session={}, method={}",
+                log.warn("Execution rejected — agent '{}' PENDING approval, session={}, method={}",
                         pendingAgentName, sessionId, mcpMethod);
                 auditService.auditAgentConnectionRejected(sessionId, requestId,
                         pendingAgentName, null, mcpMethod, "HTTP",
@@ -288,7 +224,6 @@ public class HttpMcpAuditFilter implements Filter {
             }
         }
 
-        // ── Session-identity binding: reject identity switch mid-session ──
         if (sessionId != null && !"initialize".equals(mcpMethod)) {
             String jwtSubject = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_SUBJECT);
             String foundingSub = sessionIdentityCache.get(sessionId);
@@ -320,26 +255,18 @@ public class HttpMcpAuditFilter implements Filter {
             }
         }
 
-        // ── Pre-initialize identity gate (must run BEFORE SDK creates session) ───
-        // NOTE: Agent BLOCKED/PENDING is NOT checked here — we let the agent initialize
-        // so it gets registered (discoverAgent) and appears in the dashboard for admin to see.
-        // Agent status is enforced on EXECUTION methods (tools/call etc.) in the block above.
         if ("initialize".equals(mcpMethod) && requestJson != null) {
             JsonNode clientInfoNode = requestJson.path("params").path("clientInfo");
             String agentName = clientInfoNode.path("name").asText("unknown");
             String agentVersion = clientInfoNode.path("version").asText(null);
             String preAuthClientId = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_CLIENT_ID);
 
-            // Check if the human user behind this token is blocked.
-            // NOT gated on tokenType — token misclassification must not bypass block enforcement.
-            // A HUMAN_DELEGATED token could be misclassified as AUTOMATED_AGENT and vice versa.
-            // The DB lookup by idpSubject is the authoritative check.
             String jwtSubject = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_SUBJECT);
             if (jwtSubject != null && agentRegistryService.isHumanBlockedBySubject(jwtSubject)) {
                 String humanUsername = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_PREFERRED_USERNAME);
                 String displayUsername = humanUsername != null ? humanUsername : jwtSubject;
                 String blockReason = agentRegistryService.getHumanBlockReasonBySubject(jwtSubject);
-                log.warn("🚫 Pre-initialize rejection — human user BLOCKED: {} (sub={}) reason={}",
+                log.warn("Pre-initialize rejection — human user BLOCKED: {} (sub={}) reason={}",
                         displayUsername, jwtSubject, blockReason);
                 auditService.auditHumanConnectionRejected(null, requestId,
                         displayUsername, jwtSubject,
@@ -352,11 +279,10 @@ public class HttpMcpAuditFilter implements Filter {
                 return;
             }
 
-            // Check if the NHI behind this token is blocked (same: not gated on tokenType)
             if (jwtSubject != null && agentRegistryService.isNhiBlockedBySubject(jwtSubject)) {
                 String nhiClientId = preAuthClientId;
                 String blockReason = agentRegistryService.getNhiBlockReasonBySubject(jwtSubject);
-                log.warn("🚫 Pre-initialize rejection — NHI BLOCKED: sub={}, reason={}", jwtSubject, blockReason);
+                log.warn("Pre-initialize rejection — NHI BLOCKED: sub={}, reason={}", jwtSubject, blockReason);
                 auditService.auditNhiConnectionRejected(null, requestId,
                         nhiClientId, nhiClientId, jwtSubject,
                         agentName, "initialize",
@@ -371,44 +297,31 @@ public class HttpMcpAuditFilter implements Filter {
 
         long startTime = System.currentTimeMillis();
 
-        // ── Capability filtering: wrap response for list methods ────
-        // For tools/list, prompts/list, resources/list — intercept the response
-        // to filter capabilities based on the agent's assigned profiles.
         boolean shouldFilterResponse = LIST_METHODS.contains(mcpMethod) && sessionId != null;
         UUID filterAgentId = null;
         if (shouldFilterResponse) {
             filterAgentId = capabilityFilterService.resolveAgentId(sessionId);
-            // Only filter if the agent exists in the registry
             shouldFilterResponse = (filterAgentId != null);
         }
 
         if (shouldFilterResponse) {
             ContentCachingResponseWrapper responseWrapper = new ContentCachingResponseWrapper(httpResponse);
 
-            // Let SDK handle and cache the response
             chain.doFilter(wrappedRequest, responseWrapper);
 
             long durationMs = System.currentTimeMillis() - startTime;
 
-            // Filter the cached response body
             filterListResponse(responseWrapper, httpResponse, filterAgentId, mcpMethod);
 
-            // After filtering — audit
             afterSdkProcessing(wrappedRequest, httpResponse, durationMs);
         } else {
-            // No filtering needed — pass through normally
             chain.doFilter(wrappedRequest, httpResponse);
 
             long durationMs = System.currentTimeMillis() - startTime;
 
-            // After SDK processing — audit based on method
             afterSdkProcessing(wrappedRequest, httpResponse, durationMs);
         }
     }
-
-    // ════════════════════════════════════════════════════════════════════
-    // POST-PROCESSING — parse cached request body and dispatch audit
-    // ════════════════════════════════════════════════════════════════════
 
     private void afterSdkProcessing(CachedBodyHttpServletRequest wrappedRequest,
             HttpServletResponse httpResponse,
@@ -422,7 +335,6 @@ public class HttpMcpAuditFilter implements Filter {
             String mcpMethod = json.path("method").asText("");
             String requestId = json.has("id") ? json.get("id").asText() : null;
 
-            // Session ID: from response header (initialize creates it) or request header
             String sessionId = httpResponse.getHeader("Mcp-Session-Id");
             if (sessionId == null) {
                 sessionId = wrappedRequest.getHeader("Mcp-Session-Id");
@@ -436,10 +348,8 @@ public class HttpMcpAuditFilter implements Filter {
                 case "prompts/list" -> handlePromptsList(sessionId, requestId, durationMs);
                 case "resources/list" -> handleResourcesList(sessionId, requestId, durationMs);
                 case "notifications/initialized" -> {
-                    // SDK internal handshake — no audit needed
                 }
                 default -> {
-                    // Other notifications (no id field = notification per JSON-RPC)
                     if (requestId == null && !mcpMethod.isEmpty()) {
                         handleNotification(sessionId, mcpMethod, json.path("params"));
                     }
@@ -450,24 +360,17 @@ public class HttpMcpAuditFilter implements Filter {
         }
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    // INITIALIZE — agent registration + audit
-    // ════════════════════════════════════════════════════════════════════
-
     @SuppressWarnings("unchecked")
     private void handleInitialize(JsonNode json, String sessionId, String requestId,
                                   HttpServletRequest httpRequest) {
-        // Track ALL sessions (including probes) for stale session detection
         knownSessionIds.add(sessionId);
 
-        // ── Resolve tenant for this session ──
         String wsTenantName = httpRequest.getHeader("X-WS-Tenant");
         if (wsTenantName == null || wsTenantName.isBlank()) {
             wsTenantName = "default";
         }
         sessionToTenant.put(sessionId, wsTenantName);
 
-        // ── Extract JWT attributes (set by GatewayOAuth2Filter at Order 1) ───
         String authClientId = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_CLIENT_ID);
         String jwtSubject = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_SUBJECT);
         String tokenType = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_TOKEN_TYPE);
@@ -486,19 +389,14 @@ public class HttpMcpAuditFilter implements Filter {
         Map<String, Object> customClaims = (Map<String, Object>) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_CUSTOM_CLAIMS);
         Map<String, Object> rawJwtClaims = (Map<String, Object>) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_RAW_CLAIMS);
 
-        // ── Extract client IP (X-Forwarded-For aware for proxied deployments) ──
         String xForwardedFor = httpRequest.getHeader("X-Forwarded-For");
         String clientIp = xForwardedFor != null ? xForwardedFor.split(",")[0].trim() : httpRequest.getRemoteAddr();
 
-        // Extract agent name early — BEFORE any early returns — so every session
-        // in knownSessionIds also has an entry in sessionAgentNames.
         String earlyAgentName = "unknown";
         try {
             earlyAgentName = json.path("params").path("clientInfo").path("name").asText("unknown");
         } catch (Exception ignored) {
         }
-        // Use self-reported MCP clientInfo name as display name (e.g., "Anthropic/Toolbox")
-        // authClientId (e.g., "claude-desktop") is stored separately in agentClientId for verified identity
         String resolvedAgentName = earlyAgentName;
         sessionAgentNames.put(sessionId, resolvedAgentName);
 
@@ -519,16 +417,12 @@ public class HttpMcpAuditFilter implements Filter {
             protocolVersion = params.path("protocolVersion").asText(null);
             JsonNode capabilities = params.path("capabilities");
 
-            // ── Probe filtering ──────────────────────────────────────
             if (isProbeAgent(agentName)) {
                 log.debug("Skipping probe/test agent registration: {} (session={})", agentName, sessionId);
                 registeredSessions.remove(sessionId);
                 return;
             }
 
-            // ── Tier 1: Token Introspection (once per session) ─────────
-            // If mode=introspect and introspection returns a different classification
-            // than the JWT signal chain (Tier 2), the introspection result wins.
             String accessToken = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_ACCESS_TOKEN);
             String jwtSignal = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_CLASSIFICATION_SIGNAL);
 
@@ -537,7 +431,7 @@ public class HttpMcpAuditFilter implements Filter {
                         tokenClassificationService.classifyViaIntrospection(accessToken);
 
                 if (introspectionResult != null && !introspectionResult.tokenType().equals(tokenType)) {
-                    log.info("🔄 Tier 1 introspection overrides Tier 2: {} ({}) → {} ({})",
+                    log.info("Tier 1 introspection overrides Tier 2: {} ({}) -> {} ({})",
                             tokenType, jwtSignal, introspectionResult.tokenType(), introspectionResult.matchedSignal());
                     auditService.auditTokenClassificationOverride(
                             sessionId, resolvedAgentName,
@@ -547,20 +441,17 @@ public class HttpMcpAuditFilter implements Filter {
                     tokenType = introspectionResult.tokenType();
                 }
 
-                // Cache final classification for this session
                 TokenClassificationService.ClassificationResult finalResult =
                         introspectionResult != null ? introspectionResult :
                         new TokenClassificationService.ClassificationResult(tokenType, jwtSignal);
                 tokenClassificationService.cacheClassification(sessionId, finalResult);
             }
 
-            // Agent Registry — discover (upsert) with OAuth2 identity context
             GatewayAgentEntity agent = agentRegistryService.discoverAgent(
                     agentName, agentVersion, protocolVersion,
                     capabilities.isMissingNode() || capabilities.isEmpty() ? null : capabilities,
                     authClientId, tokenType, wsTenantName);
 
-            // ── Human user discovery (for HUMAN_DELEGATED tokens) ────
             UUID humanUserId = null;
             if (GatewayOAuth2Filter.TOKEN_TYPE_HUMAN.equals(tokenType) && jwtSubject != null) {
                 GatewayHumanUserEntity humanUser = agentRegistryService.discoverHumanUser(
@@ -571,11 +462,10 @@ public class HttpMcpAuditFilter implements Filter {
                         wsTenantName);
                 humanUserId = humanUser.getId();
                 agentRegistryService.incrementHumanSessionCount(humanUserId);
-                log.info("👤 Human-delegated session: user={} linked to agent={}",
+                log.info("Human-delegated session: user={} linked to agent={}",
                         preferredUsername, authClientId != null ? authClientId : agentName);
             }
 
-            // ── NHI discovery (for AUTOMATED_AGENT tokens) ────
             UUID nhiId = null;
             if (GatewayOAuth2Filter.TOKEN_TYPE_AUTOMATED.equals(tokenType) && jwtSubject != null) {
                 GatewayNhiEntity nhi = agentRegistryService.discoverNhi(
@@ -585,13 +475,12 @@ public class HttpMcpAuditFilter implements Filter {
                 if (nhi != null) {
                     nhiId = nhi.getId();
                     agentRegistryService.incrementNhiSessionCount(nhiId);
-                    log.info("🤖 Automated-agent session: NHI={} (sub={}) linked to agent={}",
+                    log.info("Automated-agent session: NHI={} (sub={}) linked to agent={}",
                             nhi.getServiceName(), jwtSubject,
                             authClientId != null ? authClientId : agentName);
 
-                    // Check if this NHI is blocked
                     if ("BLOCKED".equals(nhi.getStatus())) {
-                        log.warn("🚫 NHI is BLOCKED: {} (sub={})", nhi.getServiceName(), jwtSubject);
+                        log.warn("NHI is BLOCKED: {} (sub={})", nhi.getServiceName(), jwtSubject);
                         blockedSessionIds.add(sessionId);
                         auditService.auditAgentConnectionRejected(
                                 sessionId, requestId,
@@ -602,7 +491,6 @@ public class HttpMcpAuditFilter implements Filter {
                 }
             }
 
-            // Register session with full OAuth2 context (human + NHI identity)
             agentRegistryService.registerSession(
                     agent.getId(), sessionId,
                     authMethod != null ? authMethod : "HTTP",
@@ -610,8 +498,6 @@ public class HttpMcpAuditFilter implements Filter {
                     tokenType, humanUserId, nhiId, clientIp,
                     wsTenantName);
 
-            // Register identity context for audit enrichment — every future audit log for this session
-            // will automatically carry tokenType, userIdentity, humanUserId, nhiId, auth fields, tenant
             auditService.registerSessionIdentity(sessionId,
                     new McpAuditService.AuditIdentityContext(
                             tokenType,
@@ -625,18 +511,14 @@ public class HttpMcpAuditFilter implements Filter {
                             clientIp,
                             wsTenantName));
 
-            // ── Session-identity binding: store founding JWT subject ────
             if (jwtSubject != null) {
                 sessionIdentityCache.put(sessionId, jwtSubject);
             }
 
-            // ── Layer 1: Identity-Scoped Active Session Replacement ──
-            // Only disconnects sessions for the SAME identity + same agent.
-            // Other identities' sessions with the same agent are untouched.
             int replaced = agentRegistryService.disconnectExistingSessionsForIdentity(
                     agent.getId(), humanUserId, nhiId, jwtSubject, sessionId);
             if (replaced > 0) {
-                log.info("♻️ Replaced {} stale session(s) for identity (human={}, nhi={}) + agent {} on reconnect",
+                log.info("Replaced {} stale session(s) for identity (human={}, nhi={}) + agent {} on reconnect",
                         replaced, humanUserId, nhiId, resolvedAgentName);
                 final String currentAgentName = resolvedAgentName;
                 registeredSessions.entrySet().removeIf(entry -> !entry.getKey().equals(sessionId) &&
@@ -649,25 +531,21 @@ public class HttpMcpAuditFilter implements Filter {
                         currentAgentName.equals(entry.getValue()));
             }
 
-            // Audit — session initialization
             auditService.auditServerSessionInitialized(
                     sessionId, protocolVersion,
                     agentName + (agentVersion != null ? " v" + agentVersion : ""),
                     capabilities, requestId, resolvedAgentName);
 
-            log.info("════════════════════════════════════════════════");
-            log.info("   HTTP AGENT SESSION REGISTERED");
-            log.info("════════════════════════════════════════════════");
-            log.info("   Session:    {}", sessionId);
-            log.info("   Agent:      {} v{}", agentName, agentVersion);
-            log.info("   AuthClient: {}", authClientId != null ? authClientId : "(none — mode=none)");
-            log.info("   TokenType:  {}", tokenType != null ? tokenType : "(none)");
-            log.info("   Human:      {}", preferredUsername != null ? preferredUsername : "(automated)");
-            log.info("   Protocol:   {}", protocolVersion);
+            log.info("HTTP AGENT SESSION REGISTERED");
+            log.info("Session:    {}", sessionId);
+            log.info("Agent:      {} v{}", agentName, agentVersion);
+            log.info("AuthClient: {}", authClientId != null ? authClientId : "(none — mode=none)");
+            log.info("TokenType:  {}", tokenType != null ? tokenType : "(none)");
+            log.info("Human:      {}", preferredUsername != null ? preferredUsername : "(automated)");
+            log.info("Protocol:   {}", protocolVersion);
             if (replaced > 0) {
-                log.info("   Replaced:   {} stale session(s)", replaced);
+                log.info("Replaced:   {} stale session(s)", replaced);
             }
-            log.info("════════════════════════════════════════════════");
 
         } catch (AgentBlockedException blocked) {
             blockedSessionIds.add(sessionId);
@@ -681,7 +559,7 @@ public class HttpMcpAuditFilter implements Filter {
                     "initialize",
                     "HTTP",
                     blocked.getMessage());
-            log.warn("🚫 Session {} flagged as blocked after initialize: {}", sessionId, blocked.getMessage());
+            log.warn("Session {} flagged as blocked after initialize: {}", sessionId, blocked.getMessage());
         } catch (Exception e) {
             log.error("Failed to register HTTP agent session {}: {}", sessionId, e.getMessage(), e);
             registeredSessions.remove(sessionId);
@@ -689,10 +567,6 @@ public class HttpMcpAuditFilter implements Filter {
         }
     }
 
-    /**
-     * Returns true if the agent name belongs to a probe/test connection
-     * created by the mcp-remote npm bridge, not a real AI agent.
-     */
     private boolean isProbeAgent(String agentName) {
         if (agentName == null)
             return false;
@@ -705,17 +579,6 @@ public class HttpMcpAuditFilter implements Filter {
         return false;
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    // CAPABILITY FILTERING — intercept list responses for per-agent access
-    // ════════════════════════════════════════════════════════════════════
-
-    /**
-     * Filter the SDK's list response to only include capabilities the agent is
-     * allowed to see based on their assigned capability profiles.
-     *
-     * <p>Reads the cached response body, parses the JSON-RPC result, filters the
-     * capabilities array, and writes the modified response to the original response.
-     */
     private void filterListResponse(ContentCachingResponseWrapper responseWrapper,
                                       HttpServletResponse originalResponse,
                                       UUID agentId,
@@ -727,7 +590,6 @@ public class HttpMcpAuditFilter implements Filter {
                 return;
             }
 
-            // Determine capability type from the method
             String capabilityType;
             String resultArrayField;
             switch (mcpMethod) {
@@ -747,15 +609,12 @@ public class HttpMcpAuditFilter implements Filter {
 
             Set<String> allowedNames = capabilityFilterService.getAllowedCapabilities(agentId, capabilityType);
 
-            // HTTP Streamable transport returns SSE format (id:xxx\ndata:{json}\n\n),
-            // not raw JSON. Detect and extract the JSON payload accordingly.
             String bodyStr = new String(responseBody, StandardCharsets.UTF_8);
             String trimmed = bodyStr.trim();
             String jsonPayload;
             String sseIdLine = null;
 
             if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
-                // SSE format — extract id: and data: lines
                 String dataPayload = null;
                 for (String line : trimmed.split("\n")) {
                     String l = line.trim();
@@ -774,13 +633,10 @@ public class HttpMcpAuditFilter implements Filter {
                 jsonPayload = trimmed;
             }
 
-            // Parse the JSON-RPC response
             JsonNode responseJson = objectMapper.readTree(jsonPayload);
 
-            // Navigate to result -> tools/prompts/resources array
             JsonNode resultNode = responseJson.path("result");
             if (resultNode.isMissingNode() || !resultNode.has(resultArrayField)) {
-                // Not a valid list response — pass through unchanged
                 responseWrapper.copyBodyToResponse();
                 return;
             }
@@ -795,10 +651,8 @@ public class HttpMcpAuditFilter implements Filter {
                 }
             }
 
-            // Replace the array in the result
             ((ObjectNode) resultNode).set(resultArrayField, filteredArray);
 
-            // Write the modified response — reconstruct SSE format if needed
             byte[] filteredBody;
             if (sseIdLine != null) {
                 String sseOutput = sseIdLine + "\ndata:" + objectMapper.writeValueAsString(responseJson) + "\n\n";
@@ -810,13 +664,12 @@ public class HttpMcpAuditFilter implements Filter {
             originalResponse.getOutputStream().write(filteredBody);
             originalResponse.getOutputStream().flush();
 
-            log.debug("Filtered {}: {} → {} items for agent {}",
+            log.debug("Filtered {}: {} -> {} items for agent {}",
                     mcpMethod, itemsArray.size(), filteredArray.size(), agentId);
 
         } catch (Exception e) {
             log.error("Error filtering {} response for agent {}: {}",
                     mcpMethod, agentId, e.getMessage(), e);
-            // On error, pass through the original response unchanged
             try {
                 responseWrapper.copyBodyToResponse();
             } catch (IOException ioe) {
@@ -824,10 +677,6 @@ public class HttpMcpAuditFilter implements Filter {
             }
         }
     }
-
-    // ════════════════════════════════════════════════════════════════════
-    // LIST OPERATIONS — audit using CapabilityRegistryService for counts
-    // ════════════════════════════════════════════════════════════════════
 
     private void handleToolsList(String sessionId, String requestId, long durationMs) {
         String agentName = resolveAgentName(sessionId);
@@ -851,29 +700,14 @@ public class HttpMcpAuditFilter implements Filter {
                 durationMs);
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    // NOTIFICATIONS
-    // ════════════════════════════════════════════════════════════════════
-
     private void handleNotification(String sessionId, String method, JsonNode params) {
         String agentName = resolveAgentName(sessionId);
         auditService.auditServerNotificationReceived(sessionId, method, params, agentName);
         log.debug("Audited HTTP notification: session={}, method={}", sessionId, method);
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    // STALE SESSION — return JSON-RPC error on HTTP 200
-    // ════════════════════════════════════════════════════════════════════
-
-    /**
-     * Rejects a request with a stale/unknown session ID by returning a proper
-     * JSON-RPC error on HTTP 200. This ensures the MCP client receives the error
-     * as a response to its pending request instead of hanging until timeout.
-     */
     private void rejectStaleSession(HttpServletRequest request, HttpServletResponse response, String existingSessionId)
             throws IOException {
-        // Parse request body to extract the full JSON for auditing and the JSON-RPC
-        // "id" for a proper error response
         String errorMessage = "Session expired. Gateway was restarted. Please reconnect the AI agent.";
         String requestId = null;
         JsonNode requestJson = null;
@@ -882,14 +716,13 @@ public class HttpMcpAuditFilter implements Filter {
             if (body.length > 0) {
                 requestJson = objectMapper.readTree(body);
                 if (requestJson.has("id")) {
-                    requestId = requestJson.get("id").toString(); // raw value (could be number or string)
+                    requestId = requestJson.get("id").toString();
                 }
             }
         } catch (Exception e) {
             log.debug("Could not parse request body for stale session rejection: {}", e.getMessage());
         }
 
-        // Perform the audit log
         String agentName = agentRegistryService.getAgentNameBySessionId(existingSessionId);
         auditService.auditServerRequestRejected(existingSessionId, agentName, requestJson, errorMessage);
 
@@ -900,10 +733,6 @@ public class HttpMcpAuditFilter implements Filter {
                         + (requestId != null ? requestId : "null") + "}");
     }
 
-    /**
-     * Generic blocked rejection — returns HTTP 200 + JSON-RPC error with identity-specific
-     * error code and human-readable message that agents can surface to end users.
-     */
     private void rejectBlocked(HttpServletResponse response, String requestIdRaw,
                                McpErrorCode errorCode, String message) throws IOException {
         response.setStatus(HttpServletResponse.SC_OK);
@@ -914,31 +743,22 @@ public class HttpMcpAuditFilter implements Filter {
                         + requestIdRaw + "}");
     }
 
-    /** Escape JSON special characters to prevent injection from reason strings. */
     private static String escapeJson(String value) {
         if (value == null) return "";
         return value.replace("\\", "\\\\").replace("\"", "\\\"")
                 .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
     }
 
-    /**
-     * Public method for proactive session flagging — called via Spring events
-     * when admin blocks an identity mid-session.
-     */
     public void addBlockedSessionId(String sessionId) {
         if (sessionId != null) {
             blockedSessionIds.add(sessionId);
         }
     }
 
-    /**
-     * Spring event listener — fired by services when admin blocks a human/NHI/agent.
-     * Flags the session for immediate rejection on next request without circular dependency.
-     */
     @org.springframework.context.event.EventListener
     public void onBlockedSessionEvent(BlockedSessionEvent event) {
         addBlockedSessionId(event.sessionId());
-        log.info("🚫 Session flagged for blocked {} '{}': {}",
+        log.info("Session flagged for blocked {} '{}': {}",
                 event.identityType(), event.identityName(), event.sessionId());
     }
 
@@ -968,9 +788,6 @@ public class HttpMcpAuditFilter implements Filter {
         return null;
     }
 
-    /**
-     * HTTP request wrapper with re-readable cached body.
-     */
     private static class CachedBodyHttpServletRequest extends HttpServletRequestWrapper {
         private final byte[] cachedBody;
 
@@ -1004,7 +821,6 @@ public class HttpMcpAuditFilter implements Filter {
 
                 @Override
                 public void setReadListener(ReadListener readListener) {
-                    // No async read support needed for this wrapper.
                 }
             };
         }
@@ -1015,33 +831,23 @@ public class HttpMcpAuditFilter implements Filter {
         }
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    // DELETE — session disconnect
-    // ════════════════════════════════════════════════════════════════════
-
     private void handleDelete(HttpServletRequest request,
             HttpServletResponse response,
             FilterChain chain) throws IOException, ServletException {
         String sessionId = request.getHeader("Mcp-Session-Id");
 
-        // Let SDK process the DELETE first
         chain.doFilter(request, response);
 
-        // After SDK processing, audit if this was a tracked session
         if (sessionId != null && registeredSessions.containsKey(sessionId)) {
             try {
                 String agentName = resolveAgentName(sessionId);
 
-                // Audit disconnect (synchronous — ensure it persists)
                 auditService.auditServerSessionDisconnectedSync(sessionId, agentName);
 
-                // Update Agent Registry DB state
                 agentRegistryService.disconnectSession(sessionId);
 
-                // Clean up audit identity cache for this session
                 auditService.evictSessionIdentity(sessionId);
 
-                // Clean up tracking maps
                 registeredSessions.remove(sessionId);
                 knownSessionIds.remove(sessionId);
                 blockedSessionIds.remove(sessionId);
@@ -1057,35 +863,15 @@ public class HttpMcpAuditFilter implements Filter {
         }
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    // AGENT NAME RESOLUTION — in-memory → DB fallback (never "unknown")
-    // ════════════════════════════════════════════════════════════════════
-
-    /**
-     * Resolves the agent name for a given session ID.
-     *
-     * <p>Lookup chain:
-     * <ol>
-     *   <li>In-memory {@code sessionAgentNames} map (fast, covers active sessions)</li>
-     *   <li>{@link AgentRegistryService#getAgentNameBySessionId} (DB fallback for
-     *       reaped/disconnected sessions)</li>
-     * </ol>
-     *
-     * <p>Falls back to {@code "unresolved"} only if both lookups fail — this should
-     * never happen in practice since every session is persisted during initialize.
-     */
     private String resolveAgentName(String sessionId) {
         if (sessionId == null) return "unknown";
-        // 1. Fast in-memory lookup (active sessions)
         String name = sessionAgentNames.get(sessionId);
         if (name != null) {
             return name;
         }
 
-        // 2. DB fallback (reaped/disconnected sessions still have persisted records)
         String dbName = agentRegistryService.getAgentNameBySessionId(sessionId);
         if (dbName != null && !"unknown".equals(dbName)) {
-            // Cache it for subsequent calls in same session
             sessionAgentNames.putIfAbsent(sessionId, dbName);
             return dbName;
         }

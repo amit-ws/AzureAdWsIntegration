@@ -6,13 +6,6 @@ import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
-/**
- * CORS + tenant-interceptor configuration for the WS Agentic Security Gateway.
- *
- * <p>Allows the separate dashboard frontend application to call
- * the gateway's REST APIs from a different origin, and extracts the
- * {@code X-WS-Tenant} header on admin API requests.
- */
 @Configuration
 public class CorsConfig implements WebMvcConfigurer {
 

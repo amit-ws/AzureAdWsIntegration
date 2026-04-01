@@ -10,13 +10,6 @@ import org.hibernate.annotations.CreationTimestamp;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-/**
- * Persistent record of a resource discovered from an enterprise MCP server.
- *
- * <p>The {@code publicName} is the namespaced identifier exposed to AI agents
- * (e.g. {@code github.repo_readme}). The {@code resourceUri} is the original
- * URI as reported by the enterprise server.
- */
 @Entity
 @Table(name = "mcp_resource", schema = "ws_agentic_security",
         uniqueConstraints = {
@@ -41,28 +34,22 @@ public class McpResourceEntity {
     @Column(name = "ws_tenant_name", nullable = false)
     private String wsTenantName;
 
-    /** Owning server reference. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "server_id", nullable = false)
     private McpServerEntity server;
 
-    /** Original resource URI as reported by the enterprise MCP server. */
     @Column(name = "resource_uri", nullable = false, length = 1024)
     private String resourceUri;
 
-    /** Namespaced public name: {@code <serverConfigName>.<resourceName>}. Unique. */
     @Column(name = "public_name", nullable = false, length = 512)
     private String publicName;
 
-    /** Human-readable name of the resource. */
     @Column(name = "name", length = 256)
     private String name;
 
-    /** Human-readable description of the resource. */
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 
-    /** MIME type of the resource content. */
     @Column(name = "mime_type", length = 128)
     private String mimeType;
 
