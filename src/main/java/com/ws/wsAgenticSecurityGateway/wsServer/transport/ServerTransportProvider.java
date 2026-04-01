@@ -25,7 +25,7 @@ public class ServerTransportProvider implements McpServerTransportProvider {
 
     @Override
     public void setSessionFactory(McpServerSession.Factory sessionFactory) {
- log.info("Session factory set - creating session and starting connection");
+        log.info("Session factory set - creating session and starting connection");
 
         try {
             this.session = sessionFactory.create(stdioTransport);

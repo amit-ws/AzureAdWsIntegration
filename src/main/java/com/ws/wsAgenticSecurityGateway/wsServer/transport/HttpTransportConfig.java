@@ -39,7 +39,7 @@ public class HttpTransportConfig {
                         .contextExtractor(contextExtractor)
                         .build();
 
- log.info("MCP HTTP Streamable transport provider created (endpoint: /mcp)");
+        log.info("MCP HTTP Streamable transport provider created (endpoint: /mcp)");
         return transport;
     }
 
@@ -52,7 +52,7 @@ public class HttpTransportConfig {
         registration.setName("mcpStreamableServlet");
         registration.setLoadOnStartup(1);
 
- log.info("MCP servlet registered at /mcp/*");
+        log.info("MCP servlet registered at /mcp/*");
         return registration;
     }
 
@@ -67,7 +67,7 @@ public class HttpTransportConfig {
         registration.setOrder(1);
         registration.setName("mcpOAuth2Filter");
 
- log.info("MCP OAuth2 filter registered for /mcp/* (JWT claim extraction enabled)");
+        log.info("MCP OAuth2 filter registered for /mcp/* (JWT claim extraction enabled)");
         return registration;
     }
 
@@ -88,7 +88,7 @@ public class HttpTransportConfig {
         registration.setOrder(2);
         registration.setName("mcpAuditFilter");
 
- log.info("MCP audit filter registered for /mcp/*");
+        log.info("MCP audit filter registered for /mcp/*");
         return registration;
     }
 }
