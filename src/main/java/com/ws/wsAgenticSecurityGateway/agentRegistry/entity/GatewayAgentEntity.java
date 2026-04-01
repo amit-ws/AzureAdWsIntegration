@@ -24,7 +24,7 @@ import java.util.UUID;
 @Table(name = "gateway_agent", schema = "ws_agentic_security",
         uniqueConstraints = {
                 @UniqueConstraint(name = "uq_agent_name_version",
-                        columnNames = {"agent_name", "agent_version"})
+                        columnNames = {"agent_name", "agent_version", "ws_tenant_name"})
         },
         indexes = {
                 @Index(name = "idx_gateway_agent_name", columnList = "agent_name"),
@@ -40,6 +40,9 @@ public class GatewayAgentEntity {
     @Id
     @GeneratedValue(generator = "UUID")
     private UUID id;
+
+    @Column(name = "ws_tenant_name", nullable = false)
+    private String wsTenantName;
 
     /** Agent software name from MCP clientInfo (e.g., "claude-desktop", "cursor"). */
     @Column(name = "agent_name", nullable = false, length = 256)

@@ -25,8 +25,12 @@ import java.util.UUID;
  */
 @Entity
 @Table(name = "gateway_server_config", schema = "ws_agentic_security",
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uq_server_config_name",
+                        columnNames = {"server_name", "ws_tenant_name"})
+        },
         indexes = {
-                @Index(name = "idx_server_config_name", columnList = "server_name", unique = true),
+                @Index(name = "idx_server_config_name", columnList = "server_name"),
                 @Index(name = "idx_server_config_enabled", columnList = "enabled")
         })
 @Data
@@ -39,8 +43,11 @@ public class GatewayServerConfigEntity {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    @Column(name = "ws_tenant_name", nullable = false)
+    private String wsTenantName;
+
     /** Unique config-level name (e.g. "github", "atlassian"). Used as key everywhere. */
-    @Column(name = "server_name", nullable = false, unique = true, length = 128)
+    @Column(name = "server_name", nullable = false, length = 128)
     private String serverName;
 
     /** Server type — currently only "http" supported. */

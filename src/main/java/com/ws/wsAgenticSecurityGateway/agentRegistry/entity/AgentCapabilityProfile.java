@@ -25,6 +25,10 @@ import java.util.UUID;
  */
 @Entity
 @Table(name = "agent_capability_profile", schema = "ws_agentic_security",
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uq_cap_profile_name",
+                        columnNames = {"name", "ws_tenant_name"})
+        },
         indexes = {
                 @Index(name = "idx_cap_profile_name", columnList = "name")
         })
@@ -38,8 +42,11 @@ public class AgentCapabilityProfile {
     @GeneratedValue(generator = "UUID")
     private UUID id;
 
+    @Column(name = "ws_tenant_name", nullable = false)
+    private String wsTenantName;
+
     /** Human-readable profile name (e.g., "OCR Processing", "Read Only"). */
-    @Column(name = "name", nullable = false, unique = true, length = 128)
+    @Column(name = "name", nullable = false, length = 128)
     private String name;
 
     /** Optional description of what this profile grants. */

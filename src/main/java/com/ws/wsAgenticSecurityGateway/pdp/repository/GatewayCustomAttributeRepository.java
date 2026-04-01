@@ -28,4 +28,18 @@ public interface GatewayCustomAttributeRepository extends JpaRepository<GatewayC
 
     /** Count enabled attributes. */
     long countByEnabledTrue();
+
+    // ── Tenant-scoped queries ───────────────────────────────────────────
+
+    List<GatewayCustomAttributeEntity> findByEnabledTrueAndWsTenantNameOrderByAttributeNameAsc(String wsTenantName);
+
+    Optional<GatewayCustomAttributeEntity> findByAttributeNameAndWsTenantName(String attributeName, String wsTenantName);
+
+    boolean existsByAttributeNameAndWsTenantName(String attributeName, String wsTenantName);
+
+    List<GatewayCustomAttributeEntity> findByValueSourceAndWsTenantName(String valueSource, String wsTenantName);
+
+    long countByEnabledTrueAndWsTenantName(String wsTenantName);
+
+    List<GatewayCustomAttributeEntity> findAllByWsTenantName(String wsTenantName);
 }

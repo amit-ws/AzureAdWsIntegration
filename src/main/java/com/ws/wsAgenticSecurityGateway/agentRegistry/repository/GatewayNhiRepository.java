@@ -45,4 +45,30 @@ public interface GatewayNhiRepository extends JpaRepository<GatewayNhiEntity, UU
     @Query("UPDATE GatewayNhiEntity n SET n.totalRequests = n.totalRequests + 1, " +
             "n.lastSeenAt = CURRENT_TIMESTAMP WHERE n.id = :nhiId")
     void incrementRequestCount(@Param("nhiId") UUID nhiId);
+
+    // ── Tenant-scoped queries ───────────────────────────────────────────
+
+    Optional<GatewayNhiEntity> findByIdpSubjectAndWsTenantName(String idpSubject, String wsTenantName);
+
+    Optional<GatewayNhiEntity> findByClientIdAndWsTenantName(String clientId, String wsTenantName);
+
+    List<GatewayNhiEntity> findByStatusAndWsTenantName(String status, String wsTenantName);
+
+    List<GatewayNhiEntity> findByWsTenantNameAndServiceNameContainingIgnoreCaseOrWsTenantNameAndClientIdContainingIgnoreCase(
+            String wsTenantName1, String serviceName, String wsTenantName2, String clientId);
+
+    @Query("SELECT COUNT(n) FROM GatewayNhiEntity n WHERE n.lastSeenAt > :since AND n.wsTenantName = :wsTenantName")
+    long countActiveSinceByTenant(@Param("since") LocalDateTime since, @Param("wsTenantName") String wsTenantName);
+
+    @Query("SELECT COUNT(n) FROM GatewayNhiEntity n WHERE n.status = 'BLOCKED' AND n.wsTenantName = :wsTenantName")
+    long countBlockedByTenant(@Param("wsTenantName") String wsTenantName);
+
+    List<GatewayNhiEntity> findAllByWsTenantName(String wsTenantName);
+
+    long countByWsTenantName(String wsTenantName);
+
+    @Query("SELECT n FROM GatewayNhiEntity n WHERE n.wsTenantName = :tenant " +
+            "AND (LOWER(n.serviceName) LIKE LOWER(CONCAT('%', :q, '%')) " +
+            "OR LOWER(n.clientId) LIKE LOWER(CONCAT('%', :q, '%')))")
+    List<GatewayNhiEntity> searchByTenant(@Param("q") String query, @Param("tenant") String tenant);
 }

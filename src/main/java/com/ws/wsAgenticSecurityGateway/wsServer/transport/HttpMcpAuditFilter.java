@@ -94,6 +94,9 @@ public class HttpMcpAuditFilter implements Filter {
     /** Maps sessionId → founding JWT subject for session-identity binding. */
     private final ConcurrentHashMap<String, String> sessionIdentityCache = new ConcurrentHashMap<>();
 
+    /** Maps sessionId → wsTenantName for tenant resolution on MCP requests. */
+    private final ConcurrentHashMap<String, String> sessionToTenant = new ConcurrentHashMap<>();
+
     /** Agent names from mcp-remote that are probes/tests, not real agents. */
     private static final Set<String> PROBE_NAMES = Set.of("mcp-remote-fallback-test");
 
@@ -117,6 +120,14 @@ public class HttpMcpAuditFilter implements Filter {
         this.registryService = registryService;
         this.objectMapper = objectMapper;
         this.tokenClassificationService = tokenClassificationService;
+    }
+
+    /**
+     * Resolve the tenant name for a given session ID.
+     * Used by orchestration and audit to pass tenant context on MCP-path requests.
+     */
+    public String resolveTenant(String sessionId) {
+        return sessionToTenant.getOrDefault(sessionId, "unknown");
     }
 
     @Override
@@ -449,6 +460,13 @@ public class HttpMcpAuditFilter implements Filter {
         // Track ALL sessions (including probes) for stale session detection
         knownSessionIds.add(sessionId);
 
+        // ── Resolve tenant for this session ──
+        String wsTenantName = httpRequest.getHeader("X-WS-Tenant");
+        if (wsTenantName == null || wsTenantName.isBlank()) {
+            wsTenantName = "default";
+        }
+        sessionToTenant.put(sessionId, wsTenantName);
+
         // ── Extract JWT attributes (set by GatewayOAuth2Filter at Order 1) ───
         String authClientId = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_CLIENT_ID);
         String jwtSubject = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_SUBJECT);
@@ -540,7 +558,7 @@ public class HttpMcpAuditFilter implements Filter {
             GatewayAgentEntity agent = agentRegistryService.discoverAgent(
                     agentName, agentVersion, protocolVersion,
                     capabilities.isMissingNode() || capabilities.isEmpty() ? null : capabilities,
-                    authClientId, tokenType);
+                    authClientId, tokenType, wsTenantName);
 
             // ── Human user discovery (for HUMAN_DELEGATED tokens) ────
             UUID humanUserId = null;
@@ -549,7 +567,8 @@ public class HttpMcpAuditFilter implements Filter {
                         jwtSubject, preferredUsername, userEmail,
                         userFullName, userGivenName, userFamilyName,
                         idpIssuer, emailVerified,
-                        realmRoles, clientRoles, customClaims, rawJwtClaims, clientIp);
+                        realmRoles, clientRoles, customClaims, rawJwtClaims, clientIp,
+                        wsTenantName);
                 humanUserId = humanUser.getId();
                 agentRegistryService.incrementHumanSessionCount(humanUserId);
                 log.info("👤 Human-delegated session: user={} linked to agent={}",
@@ -561,7 +580,8 @@ public class HttpMcpAuditFilter implements Filter {
             if (GatewayOAuth2Filter.TOKEN_TYPE_AUTOMATED.equals(tokenType) && jwtSubject != null) {
                 GatewayNhiEntity nhi = agentRegistryService.discoverNhi(
                         jwtSubject, authClientId, idpIssuer,
-                        realmRoles, clientRoles, customClaims, rawJwtClaims, clientIp);
+                        realmRoles, clientRoles, customClaims, rawJwtClaims, clientIp,
+                        wsTenantName);
                 if (nhi != null) {
                     nhiId = nhi.getId();
                     agentRegistryService.incrementNhiSessionCount(nhiId);
@@ -587,10 +607,11 @@ public class HttpMcpAuditFilter implements Filter {
                     agent.getId(), sessionId,
                     authMethod != null ? authMethod : "HTTP",
                     jwtSubject,
-                    tokenType, humanUserId, nhiId, clientIp);
+                    tokenType, humanUserId, nhiId, clientIp,
+                    wsTenantName);
 
             // Register identity context for audit enrichment — every future audit log for this session
-            // will automatically carry tokenType, userIdentity, humanUserId, nhiId, auth fields
+            // will automatically carry tokenType, userIdentity, humanUserId, nhiId, auth fields, tenant
             auditService.registerSessionIdentity(sessionId,
                     new McpAuditService.AuditIdentityContext(
                             tokenType,
@@ -601,7 +622,8 @@ public class HttpMcpAuditFilter implements Filter {
                             authClientId,
                             allRoles,
                             nhiId != null ? nhiId.toString() : null,
-                            clientIp));
+                            clientIp,
+                            wsTenantName));
 
             // ── Session-identity binding: store founding JWT subject ────
             if (jwtSubject != null) {
@@ -1025,6 +1047,7 @@ public class HttpMcpAuditFilter implements Filter {
                 blockedSessionIds.remove(sessionId);
                 sessionAgentNames.remove(sessionId);
                 sessionIdentityCache.remove(sessionId);
+                sessionToTenant.remove(sessionId);
                 tokenClassificationService.evictSession(sessionId);
 
                 log.info("HTTP session disconnected: {} (agent={})", sessionId, agentName);

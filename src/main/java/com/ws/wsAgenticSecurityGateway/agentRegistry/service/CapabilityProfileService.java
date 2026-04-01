@@ -9,6 +9,7 @@ import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.AgentCapabilityP
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayAgentRepository;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.event.CapabilityProfileChangedEvent;
+import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
 import org.springframework.context.ApplicationEventPublisher;
@@ -60,15 +61,17 @@ public class CapabilityProfileService {
     // ════════════════════════════════════════════════════════════════════
 
     public List<AgentCapabilityProfile> findAllProfiles() {
-        return profileRepository.findAll();
+        return profileRepository.findAllByWsTenantName(TenantContext.get());
     }
 
     public List<AgentCapabilityProfile> findTemplates() {
-        return profileRepository.findByIsTemplateTrue();
+        return profileRepository.findByIsTemplateTrueAndWsTenantName(TenantContext.get());
     }
 
     public Optional<AgentCapabilityProfile> findProfileById(UUID id) {
-        return profileRepository.findById(id);
+        return profileRepository.findById(id)
+                .filter(entity -> entity.getWsTenantName() != null
+                        && entity.getWsTenantName().equals(TenantContext.get()));
     }
 
     @Transactional
@@ -79,6 +82,7 @@ public class CapabilityProfileService {
                 .name(name)
                 .description(description)
                 .isTemplate(isTemplate != null ? isTemplate : false)
+                .wsTenantName(TenantContext.get())
                 .build();
 
         if (rulesData != null) {
@@ -96,12 +100,12 @@ public class CapabilityProfileService {
     }
 
     public boolean existsByName(String name) {
-        return profileRepository.findByName(name).isPresent();
+        return profileRepository.findByNameAndWsTenantName(name, TenantContext.get()).isPresent();
     }
 
     @Transactional
     public AgentCapabilityProfile updateProfile(UUID id, Map<String, Object> request) {
-        AgentCapabilityProfile profile = profileRepository.findById(id)
+        AgentCapabilityProfile profile = findProfileById(id)
                 .orElseThrow(() -> new NoSuchElementException("Profile not found: " + id));
 
         List<String> changed = new ArrayList<>();
@@ -149,7 +153,7 @@ public class CapabilityProfileService {
 
     @Transactional
     public void deleteProfile(UUID id) {
-        AgentCapabilityProfile profile = profileRepository.findById(id)
+        AgentCapabilityProfile profile = findProfileById(id)
                 .orElseThrow(() -> new NoSuchElementException("Profile not found: " + id));
 
         List<AgentCapabilityProfileAssignment> assignments = assignmentRepository.findByProfileId(id);
@@ -182,7 +186,7 @@ public class CapabilityProfileService {
 
     @Transactional
     public void assignProfile(UUID profileId, UUID agentId) {
-        AgentCapabilityProfile profile = profileRepository.findById(profileId)
+        AgentCapabilityProfile profile = findProfileById(profileId)
                 .orElseThrow(() -> new NoSuchElementException("Profile not found: " + profileId));
 
         if (assignmentRepository.findByAgentIdAndProfileId(agentId, profileId).isPresent()) {

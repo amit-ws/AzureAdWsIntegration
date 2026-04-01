@@ -3,6 +3,7 @@ package com.ws.wsAgenticSecurityGateway.pdp.service;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
+import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import com.ws.wsAgenticSecurityGateway.pdp.entity.GatewayCustomAttributeEntity;
 import com.ws.wsAgenticSecurityGateway.pdp.repository.GatewayCustomAttributeRepository;
 import lombok.extern.slf4j.Slf4j;
@@ -60,9 +61,9 @@ public class CustomAttributeService {
     //  CRUD
     // ════════════════════════════════════════════════════════════════════════
 
-    /** List all custom attributes. */
+    /** List all custom attributes for the current tenant. */
     public List<GatewayCustomAttributeEntity> getAll() {
-        return repository.findAll();
+        return repository.findAllByWsTenantName(TenantContext.get());
     }
 
     /** Get a specific attribute by ID. */
@@ -72,7 +73,7 @@ public class CustomAttributeService {
 
     /** Get a specific attribute by name. */
     public Optional<GatewayCustomAttributeEntity> getByName(String attributeName) {
-        return repository.findByAttributeName(attributeName);
+        return repository.findByAttributeNameAndWsTenantName(attributeName, TenantContext.get());
     }
 
     /** Get all enabled attributes (for LLM metadata / runtime resolution). */
@@ -98,6 +99,7 @@ public class CustomAttributeService {
         if (attr.getEnabled() == null) {
             attr.setEnabled(true);
         }
+        attr.setWsTenantName(TenantContext.get());
 
         GatewayCustomAttributeEntity saved = repository.save(attr);
         invalidateCache();
@@ -193,9 +195,15 @@ public class CustomAttributeService {
 
     /** Stats for dashboard. */
     public Map<String, Object> getStats() {
+        String tenant = TenantContext.get();
         Map<String, Object> stats = new LinkedHashMap<>();
-        stats.put("totalAttributes", repository.count());
-        stats.put("enabledAttributes", repository.countByEnabledTrue());
+        if (tenant != null) {
+            stats.put("totalAttributes", repository.findAllByWsTenantName(tenant).size());
+            stats.put("enabledAttributes", repository.countByEnabledTrueAndWsTenantName(tenant));
+        } else {
+            stats.put("totalAttributes", repository.count());
+            stats.put("enabledAttributes", repository.countByEnabledTrue());
+        }
         return stats;
     }
 
@@ -382,7 +390,7 @@ public class CustomAttributeService {
         if (!VALID_ATTR_NAME.matcher(attr.getAttributeName()).matches()) {
             return "attributeName must be alphanumeric with underscores, starting with a letter (e.g., 'riskScore', 'department_code')";
         }
-        if (!isUpdate && repository.existsByAttributeName(attr.getAttributeName())) {
+        if (!isUpdate && repository.existsByAttributeNameAndWsTenantName(attr.getAttributeName(), TenantContext.get())) {
             return "Attribute '" + attr.getAttributeName() + "' already exists";
         }
         if (attr.getDataType() == null || !VALID_DATA_TYPES.contains(attr.getDataType().toUpperCase())) {

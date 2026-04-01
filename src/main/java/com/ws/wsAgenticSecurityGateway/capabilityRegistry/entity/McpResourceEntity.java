@@ -19,8 +19,12 @@ import java.util.UUID;
  */
 @Entity
 @Table(name = "mcp_resource", schema = "ws_agentic_security",
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uq_mcp_resource_public_name",
+                        columnNames = {"public_name", "ws_tenant_name"})
+        },
         indexes = {
-                @Index(name = "idx_mcp_resource_public_name", columnList = "public_name", unique = true),
+                @Index(name = "idx_mcp_resource_public_name", columnList = "public_name"),
                 @Index(name = "idx_mcp_resource_server_id", columnList = "server_id"),
                 @Index(name = "idx_mcp_resource_uri", columnList = "resource_uri")
         })
@@ -34,6 +38,9 @@ public class McpResourceEntity {
     @GeneratedValue(generator = "UUID")
     private UUID id;
 
+    @Column(name = "ws_tenant_name", nullable = false)
+    private String wsTenantName;
+
     /** Owning server reference. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "server_id", nullable = false)
@@ -44,7 +51,7 @@ public class McpResourceEntity {
     private String resourceUri;
 
     /** Namespaced public name: {@code <serverConfigName>.<resourceName>}. Unique. */
-    @Column(name = "public_name", nullable = false, unique = true, length = 512)
+    @Column(name = "public_name", nullable = false, length = 512)
     private String publicName;
 
     /** Human-readable name of the resource. */

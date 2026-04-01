@@ -22,8 +22,12 @@ import java.util.UUID;
  */
 @Entity
 @Table(name = "mcp_server", schema = "ws_agentic_security",
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uq_mcp_server_config_name",
+                        columnNames = {"server_config_name", "ws_tenant_name"})
+        },
         indexes = {
-                @Index(name = "idx_mcp_server_config_name", columnList = "server_config_name", unique = true),
+                @Index(name = "idx_mcp_server_config_name", columnList = "server_config_name"),
                 @Index(name = "idx_mcp_server_status", columnList = "status")
         })
 @Data
@@ -36,8 +40,11 @@ public class McpServerEntity {
     @GeneratedValue(generator = "UUID")
     private UUID id;
 
+    @Column(name = "ws_tenant_name", nullable = false)
+    private String wsTenantName;
+
     /** Config-level name of the server (e.g. "github", "jira"). Unique. */
-    @Column(name = "server_config_name", nullable = false, unique = true, length = 128)
+    @Column(name = "server_config_name", nullable = false, length = 128)
     private String serverConfigName;
 
     /** Display name reported by the server during initialization. */

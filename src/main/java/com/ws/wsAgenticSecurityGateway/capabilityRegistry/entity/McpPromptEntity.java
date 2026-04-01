@@ -21,8 +21,12 @@ import java.util.UUID;
  */
 @Entity
 @Table(name = "mcp_prompt", schema = "ws_agentic_security",
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uq_mcp_prompt_public_name",
+                        columnNames = {"public_name", "ws_tenant_name"})
+        },
         indexes = {
-                @Index(name = "idx_mcp_prompt_public_name", columnList = "public_name", unique = true),
+                @Index(name = "idx_mcp_prompt_public_name", columnList = "public_name"),
                 @Index(name = "idx_mcp_prompt_server_id", columnList = "server_id"),
                 @Index(name = "idx_mcp_prompt_name", columnList = "prompt_name")
         })
@@ -36,6 +40,9 @@ public class McpPromptEntity {
     @GeneratedValue(generator = "UUID")
     private UUID id;
 
+    @Column(name = "ws_tenant_name", nullable = false)
+    private String wsTenantName;
+
     /** Owning server reference. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "server_id", nullable = false)
@@ -46,7 +53,7 @@ public class McpPromptEntity {
     private String promptName;
 
     /** Namespaced public name: {@code <serverConfigName>.<promptName>}. Unique. */
-    @Column(name = "public_name", nullable = false, unique = true, length = 512)
+    @Column(name = "public_name", nullable = false, length = 512)
     private String publicName;
 
     /** Human-readable description of the prompt. */

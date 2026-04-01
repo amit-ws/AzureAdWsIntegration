@@ -31,6 +31,9 @@ public class GatewayAuthConfigEntity {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    @Column(name = "ws_tenant_name", nullable = false)
+    private String wsTenantName;
+
     /** Auth mode: "oauth2" or "none". */
     @Column(name = "auth_mode", nullable = false, length = 20)
     @Builder.Default

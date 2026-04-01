@@ -10,6 +10,7 @@ import com.ws.wsAgenticSecurityGateway.wsClient.dto.ServerConfigRequest;
 import com.ws.wsAgenticSecurityGateway.wsClient.dto.ServerConfigResponse;
 import com.ws.wsAgenticSecurityGateway.wsClient.entity.GatewayServerConfigEntity;
 import com.ws.wsAgenticSecurityGateway.wsClient.repository.GatewayServerConfigRepository;
+import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -67,7 +68,8 @@ public class ServerConfigService {
     @Transactional
     public ServerConfigResponse createServerConfig(ServerConfigRequest request) {
         // Validate uniqueness
-        if (configRepository.existsByServerName(request.getServerName())) {
+        String tenant = TenantContext.get();
+        if (configRepository.existsByServerNameAndWsTenantName(request.getServerName(), tenant)) {
             throw new IllegalArgumentException(
                     "Server config '" + request.getServerName() + "' already exists");
         }
@@ -82,6 +84,7 @@ public class ServerConfigService {
                 .timeoutSeconds(request.getTimeoutSeconds() != null ? request.getTimeoutSeconds() : 30)
                 .enabled(request.getEnabled() != null ? request.getEnabled() : true)
                 .autoConnect(request.getAutoConnect() != null ? request.getAutoConnect() : true)
+                .wsTenantName(tenant)
                 .build();
 
         entity = configRepository.save(entity);
@@ -110,7 +113,7 @@ public class ServerConfigService {
      */
     @Transactional(readOnly = true)
     public List<ServerConfigResponse> listServerConfigs() {
-        List<GatewayServerConfigEntity> entities = configRepository.findAllByOrderByServerNameAsc();
+        List<GatewayServerConfigEntity> entities = configRepository.findAllByWsTenantNameOrderByServerNameAsc(TenantContext.get());
         List<ServerConfigResponse> responses = new ArrayList<>();
         for (GatewayServerConfigEntity entity : entities) {
             responses.add(toResponse(entity));
@@ -123,7 +126,7 @@ public class ServerConfigService {
      */
     @Transactional(readOnly = true)
     public ServerConfigResponse getServerConfig(String serverName) {
-        GatewayServerConfigEntity entity = configRepository.findByServerName(serverName)
+        GatewayServerConfigEntity entity = configRepository.findByServerNameAndWsTenantName(serverName, TenantContext.get())
                 .orElseThrow(() -> new NoSuchElementException(
                         "Server config '" + serverName + "' not found"));
         return toResponse(entity);
@@ -135,7 +138,7 @@ public class ServerConfigService {
      */
     @Transactional
     public ServerConfigResponse updateServerConfig(String serverName, ServerConfigRequest request) {
-        GatewayServerConfigEntity entity = configRepository.findByServerName(serverName)
+        GatewayServerConfigEntity entity = configRepository.findByServerNameAndWsTenantName(serverName, TenantContext.get())
                 .orElseThrow(() -> new NoSuchElementException(
                         "Server config '" + serverName + "' not found"));
 
@@ -189,7 +192,7 @@ public class ServerConfigService {
      */
     @Transactional
     public void deleteServerConfig(String serverName) {
-        GatewayServerConfigEntity entity = configRepository.findByServerName(serverName)
+        GatewayServerConfigEntity entity = configRepository.findByServerNameAndWsTenantName(serverName, TenantContext.get())
                 .orElseThrow(() -> new NoSuchElementException(
                         "Server config '" + serverName + "' not found"));
 
@@ -218,7 +221,7 @@ public class ServerConfigService {
      * Connect a server by name. Must be enabled.
      */
     public void connectServer(String serverName) {
-        GatewayServerConfigEntity entity = configRepository.findByServerName(serverName)
+        GatewayServerConfigEntity entity = configRepository.findByServerNameAndWsTenantName(serverName, TenantContext.get())
                 .orElseThrow(() -> new NoSuchElementException(
                         "Server config '" + serverName + "' not found"));
 
@@ -234,7 +237,7 @@ public class ServerConfigService {
      */
     public void disconnectServer(String serverName) {
         // Verify config exists
-        configRepository.findByServerName(serverName)
+        configRepository.findByServerNameAndWsTenantName(serverName, TenantContext.get())
                 .orElseThrow(() -> new NoSuchElementException(
                         "Server config '" + serverName + "' not found"));
 
@@ -249,7 +252,7 @@ public class ServerConfigService {
      * Reconnect a server — disconnect then connect again.
      */
     public void reconnectServer(String serverName) {
-        GatewayServerConfigEntity entity = configRepository.findByServerName(serverName)
+        GatewayServerConfigEntity entity = configRepository.findByServerNameAndWsTenantName(serverName, TenantContext.get())
                 .orElseThrow(() -> new NoSuchElementException(
                         "Server config '" + serverName + "' not found"));
 

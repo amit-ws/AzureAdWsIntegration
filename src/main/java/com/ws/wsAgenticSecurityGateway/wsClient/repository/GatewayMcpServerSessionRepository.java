@@ -54,4 +54,34 @@ public interface GatewayMcpServerSessionRepository extends JpaRepository<Gateway
     int updateHealthCheck(@Param("serverName") String serverName,
                           @Param("status") String status,
                           @Param("failures") int failures);
+
+    // ── Tenant-scoped queries ───────────────────────────────────────────
+
+    Optional<GatewayMcpServerSessionEntity> findByServerNameAndStatusAndWsTenantName(String serverName, String status, String wsTenantName);
+
+    Optional<GatewayMcpServerSessionEntity> findBySessionIdAndWsTenantName(String sessionId, String wsTenantName);
+
+    List<GatewayMcpServerSessionEntity> findByStatusAndWsTenantName(String status, String wsTenantName);
+
+    @Modifying
+    @Transactional
+    @Query("UPDATE GatewayMcpServerSessionEntity s SET s.status = 'DISCONNECTED', " +
+            "s.disconnectedAt = CURRENT_TIMESTAMP WHERE s.serverName = :serverName AND s.status = 'CONNECTED' AND s.wsTenantName = :wsTenantName")
+    int markDisconnectedByTenant(@Param("serverName") String serverName, @Param("wsTenantName") String wsTenantName);
+
+    @Modifying
+    @Transactional
+    @Query("UPDATE GatewayMcpServerSessionEntity s SET s.status = 'DISCONNECTED', " +
+            "s.disconnectedAt = CURRENT_TIMESTAMP WHERE s.status = 'CONNECTED' AND s.wsTenantName = :wsTenantName")
+    int markAllDisconnectedByTenant(@Param("wsTenantName") String wsTenantName);
+
+    @Modifying
+    @Transactional
+    @Query("UPDATE GatewayMcpServerSessionEntity s SET s.lastHealthCheckAt = CURRENT_TIMESTAMP, " +
+            "s.healthCheckStatus = :status, " +
+            "s.consecutiveFailures = :failures WHERE s.serverName = :serverName AND s.status = 'CONNECTED' AND s.wsTenantName = :wsTenantName")
+    int updateHealthCheckByTenant(@Param("serverName") String serverName,
+                                  @Param("status") String status,
+                                  @Param("failures") int failures,
+                                  @Param("wsTenantName") String wsTenantName);
 }

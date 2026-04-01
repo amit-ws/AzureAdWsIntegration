@@ -21,4 +21,12 @@ public interface GatewayAuthConfigRepository extends JpaRepository<GatewayAuthCo
 
     /** Prevents multiple config rows — checks if any row exists besides the given ID. */
     boolean existsByIdNot(UUID id);
+
+    // ── Tenant-scoped queries ───────────────────────────────────────────
+
+    Optional<GatewayAuthConfigEntity> findFirstByWsTenantNameOrderByCreatedAtAsc(String wsTenantName);
+
+    Optional<GatewayAuthConfigEntity> findFirstByEnabledTrueAndWsTenantNameOrderByCreatedAtAsc(String wsTenantName);
+
+    boolean existsByIdNotAndWsTenantName(UUID id, String wsTenantName);
 }

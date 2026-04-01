@@ -34,6 +34,9 @@ public class GatewayAgentSessionEntity {
     @GeneratedValue(generator = "UUID")
     private UUID id;
 
+    @Column(name = "ws_tenant_name", nullable = false)
+    private String wsTenantName;
+
     /** The parent agent profile this session belongs to. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "agent_id", nullable = false)

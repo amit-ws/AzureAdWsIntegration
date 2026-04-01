@@ -73,24 +73,34 @@ public class McpAuditService {
                 String agentClientId,   // OAuth2 azp claim
                 List<String> agentRoles, // merged roles
                 String nhiId,           // UUID string from gateway_nhi_registry (null for human-delegated)
-                String sourceIp         // Client IP address (X-Forwarded-For aware)
+                String sourceIp,        // Client IP address (X-Forwarded-For aware)
+                String wsTenantName     // Tenant name for multi-tenant isolation
         ) {
-                /** Backwards-compatible constructor (without nhiId and sourceIp). */
+                /** Backwards-compatible constructor (without nhiId, sourceIp, wsTenantName). */
                 public AuditIdentityContext(
                         String tokenType, String userIdentity, String humanUserId,
                         String authMethod, String authIdentity, String agentClientId,
                         List<String> agentRoles) {
                     this(tokenType, userIdentity, humanUserId, authMethod, authIdentity,
-                         agentClientId, agentRoles, null, null);
+                         agentClientId, agentRoles, null, null, null);
                 }
 
-                /** Constructor with nhiId but without sourceIp. */
+                /** Constructor with nhiId but without sourceIp/wsTenantName. */
                 public AuditIdentityContext(
                         String tokenType, String userIdentity, String humanUserId,
                         String authMethod, String authIdentity, String agentClientId,
                         List<String> agentRoles, String nhiId) {
                     this(tokenType, userIdentity, humanUserId, authMethod, authIdentity,
-                         agentClientId, agentRoles, nhiId, null);
+                         agentClientId, agentRoles, nhiId, null, null);
+                }
+
+                /** Constructor with nhiId and sourceIp but without wsTenantName. */
+                public AuditIdentityContext(
+                        String tokenType, String userIdentity, String humanUserId,
+                        String authMethod, String authIdentity, String agentClientId,
+                        List<String> agentRoles, String nhiId, String sourceIp) {
+                    this(tokenType, userIdentity, humanUserId, authMethod, authIdentity,
+                         agentClientId, agentRoles, nhiId, sourceIp, null);
                 }
         }
 
@@ -2068,6 +2078,9 @@ public class McpAuditService {
                                         if (auditLog.getAgentClientId() == null) auditLog.setAgentClientId(ctx.agentClientId());
                                         if (auditLog.getAgentRoles() == null) auditLog.setAgentRoles(ctx.agentRoles());
                                         if (auditLog.getSourceIp() == null) auditLog.setSourceIp(ctx.sourceIp());
+                                        if (auditLog.getWsTenantName() == null && ctx.wsTenantName() != null) {
+                                                auditLog.setWsTenantName(ctx.wsTenantName());
+                                        }
                                 }
                         }
 

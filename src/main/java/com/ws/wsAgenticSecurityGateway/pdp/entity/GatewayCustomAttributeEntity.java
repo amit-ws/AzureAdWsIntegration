@@ -32,7 +32,7 @@ import java.util.UUID;
 @Table(name = "gateway_custom_attribute", schema = "ws_agentic_security",
         uniqueConstraints = {
                 @UniqueConstraint(name = "uq_custom_attr_name",
-                        columnNames = {"attribute_name"})
+                        columnNames = {"attribute_name", "ws_tenant_name"})
         },
         indexes = {
                 @Index(name = "idx_custom_attr_enabled", columnList = "enabled"),
@@ -47,6 +47,9 @@ public class GatewayCustomAttributeEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
     private UUID id;
+
+    @Column(name = "ws_tenant_name", nullable = false)
+    private String wsTenantName;
 
     /** Attribute name used in Cedar policies (e.g., "riskScore" → context.riskScore). */
     @Column(name = "attribute_name", length = 128, nullable = false)

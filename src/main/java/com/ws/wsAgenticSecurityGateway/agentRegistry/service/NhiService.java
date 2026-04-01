@@ -10,6 +10,7 @@ import com.ws.wsAgenticSecurityGateway.audit.constants.AuditStatus;
 import com.ws.wsAgenticSecurityGateway.audit.entity.McpAuditLog;
 import com.ws.wsAgenticSecurityGateway.audit.repository.McpAuditLogRepository;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
+import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -62,24 +63,25 @@ public class NhiService {
     // ════════════════════════════════════════════════════════════════════
 
     public List<GatewayNhiEntity> findAll() {
-        return nhiRepository.findAll();
+        return nhiRepository.findAllByWsTenantName(TenantContext.get());
     }
 
     public Optional<GatewayNhiEntity> findById(UUID id) {
-        return nhiRepository.findById(id);
+        return nhiRepository.findById(id)
+                .filter(entity -> entity.getWsTenantName() != null
+                        && entity.getWsTenantName().equals(TenantContext.get()));
     }
 
     public boolean existsById(UUID id) {
-        return nhiRepository.existsById(id);
+        return findById(id).isPresent();
     }
 
     public long count() {
-        return nhiRepository.count();
+        return nhiRepository.countByWsTenantName(TenantContext.get());
     }
 
     public List<GatewayNhiEntity> search(String query) {
-        return nhiRepository
-                .findByServiceNameContainingIgnoreCaseOrClientIdContainingIgnoreCase(query, query);
+        return nhiRepository.searchByTenant(query, TenantContext.get());
     }
 
     /**
@@ -193,20 +195,21 @@ public class NhiService {
     // ════════════════════════════════════════════════════════════════════
 
     public long countActiveSince(LocalDateTime since) {
-        return nhiRepository.countActiveSince(since);
+        return nhiRepository.countActiveSinceByTenant(since, TenantContext.get());
     }
 
     public long countBlocked() {
-        return nhiRepository.countBlocked();
+        return nhiRepository.countBlockedByTenant(TenantContext.get());
     }
 
     public Map<String, Object> getSummary() {
-        long total = nhiRepository.count();
-        long blocked = nhiRepository.countBlocked();
-        long activeToday = nhiRepository.countActiveSince(
-                LocalDateTime.now().minusHours(24));
+        String tenant = TenantContext.get();
+        long total = nhiRepository.countByWsTenantName(tenant);
+        long blocked = nhiRepository.countBlockedByTenant(tenant);
+        long activeToday = nhiRepository.countActiveSinceByTenant(
+                LocalDateTime.now().minusHours(24), tenant);
 
-        List<GatewayAgentSessionEntity> connected = sessionRepository.findByStatus("CONNECTED");
+        List<GatewayAgentSessionEntity> connected = sessionRepository.findByStatusAndWsTenantName("CONNECTED", tenant);
         long activeNow = connected.stream()
                 .map(GatewayAgentSessionEntity::getNhiId)
                 .filter(Objects::nonNull)
@@ -264,7 +267,7 @@ public class NhiService {
     // ════════════════════════════════════════════════════════════════════
 
     public Map<String, Object> getActiveNow() {
-        List<GatewayAgentSessionEntity> connected = sessionRepository.findByStatus("CONNECTED");
+        List<GatewayAgentSessionEntity> connected = sessionRepository.findByStatusAndWsTenantName("CONNECTED", TenantContext.get());
 
         Map<UUID, List<GatewayAgentSessionEntity>> byNhi = connected.stream()
                 .filter(s -> s.getNhiId() != null)

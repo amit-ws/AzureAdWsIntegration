@@ -23,4 +23,14 @@ public interface GatewayServerConfigRepository extends JpaRepository<GatewayServ
 
     /** Admin list — ordered alphabetically. */
     List<GatewayServerConfigEntity> findAllByOrderByServerNameAsc();
+
+    // ── Tenant-scoped queries ───────────────────────────────────────────
+
+    Optional<GatewayServerConfigEntity> findByServerNameAndWsTenantName(String serverName, String wsTenantName);
+
+    boolean existsByServerNameAndWsTenantName(String serverName, String wsTenantName);
+
+    List<GatewayServerConfigEntity> findByEnabledTrueAndAutoConnectTrueAndWsTenantName(String wsTenantName);
+
+    List<GatewayServerConfigEntity> findAllByWsTenantNameOrderByServerNameAsc(String wsTenantName);
 }

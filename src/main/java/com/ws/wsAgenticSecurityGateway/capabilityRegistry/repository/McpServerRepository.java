@@ -17,4 +17,12 @@ public interface McpServerRepository extends JpaRepository<McpServerEntity, UUID
     Optional<McpServerEntity> findByServerConfigName(String serverConfigName);
 
     List<McpServerEntity> findByStatus(String status);
+
+    // ── Tenant-scoped queries ───────────────────────────────────────────
+
+    Optional<McpServerEntity> findByServerConfigNameAndWsTenantName(String serverConfigName, String wsTenantName);
+
+    List<McpServerEntity> findByStatusAndWsTenantName(String status, String wsTenantName);
+
+    List<McpServerEntity> findAllByWsTenantName(String wsTenantName);
 }

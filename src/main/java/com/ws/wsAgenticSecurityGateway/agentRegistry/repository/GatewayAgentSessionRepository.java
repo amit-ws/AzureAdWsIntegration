@@ -141,4 +141,90 @@ public interface GatewayAgentSessionRepository extends JpaRepository<GatewayAgen
     @Query("UPDATE GatewayAgentSessionEntity s SET s.lastRequestAt = CURRENT_TIMESTAMP " +
             "WHERE s.sessionId = :sessionId AND s.status = 'CONNECTED'")
     void updateLastRequestAt(@Param("sessionId") String sessionId);
+
+    // ── Tenant-scoped queries ───────────────────────────────────────────
+
+    List<GatewayAgentSessionEntity> findByAgentIdAndWsTenantNameOrderByConnectedAtDesc(UUID agentId, String wsTenantName);
+
+    Optional<GatewayAgentSessionEntity> findBySessionIdAndWsTenantName(String sessionId, String wsTenantName);
+
+    List<GatewayAgentSessionEntity> findByStatusAndWsTenantName(String status, String wsTenantName);
+
+    @Query("SELECT s FROM GatewayAgentSessionEntity s JOIN FETCH s.agent " +
+            "WHERE s.status = 'CONNECTED' " +
+            "AND COALESCE(s.lastRequestAt, s.connectedAt) < :cutoff " +
+            "AND s.wsTenantName = :wsTenantName")
+    List<GatewayAgentSessionEntity> findStaleConnectedSessionsByTenant(
+            @Param("cutoff") LocalDateTime cutoff,
+            @Param("wsTenantName") String wsTenantName);
+
+    @Query("SELECT s FROM GatewayAgentSessionEntity s " +
+            "WHERE s.agent.id = :agentId AND s.status = 'CONNECTED' " +
+            "AND s.sessionId != :excludeSessionId AND s.wsTenantName = :wsTenantName")
+    List<GatewayAgentSessionEntity> findActiveSessionsForAgentExcludingByTenant(
+            @Param("agentId") UUID agentId,
+            @Param("excludeSessionId") String excludeSessionId,
+            @Param("wsTenantName") String wsTenantName);
+
+    @Query("SELECT s FROM GatewayAgentSessionEntity s " +
+            "WHERE s.agent.id = :agentId AND s.humanUserId = :humanUserId " +
+            "AND s.status = 'CONNECTED' AND s.sessionId != :excludeSessionId AND s.wsTenantName = :wsTenantName")
+    List<GatewayAgentSessionEntity> findActiveSessionsForAgentAndHumanUserByTenant(
+            @Param("agentId") UUID agentId,
+            @Param("humanUserId") UUID humanUserId,
+            @Param("excludeSessionId") String excludeSessionId,
+            @Param("wsTenantName") String wsTenantName);
+
+    @Query("SELECT s FROM GatewayAgentSessionEntity s " +
+            "WHERE s.agent.id = :agentId AND s.nhiId = :nhiId " +
+            "AND s.status = 'CONNECTED' AND s.sessionId != :excludeSessionId AND s.wsTenantName = :wsTenantName")
+    List<GatewayAgentSessionEntity> findActiveSessionsForAgentAndNhiByTenant(
+            @Param("agentId") UUID agentId,
+            @Param("nhiId") UUID nhiId,
+            @Param("excludeSessionId") String excludeSessionId,
+            @Param("wsTenantName") String wsTenantName);
+
+    @Query("SELECT s FROM GatewayAgentSessionEntity s " +
+            "WHERE s.agent.id = :agentId AND s.authIdentity = :authIdentity " +
+            "AND s.status = 'CONNECTED' AND s.sessionId != :excludeSessionId AND s.wsTenantName = :wsTenantName")
+    List<GatewayAgentSessionEntity> findActiveSessionsForAgentAndAuthIdentityByTenant(
+            @Param("agentId") UUID agentId,
+            @Param("authIdentity") String authIdentity,
+            @Param("excludeSessionId") String excludeSessionId,
+            @Param("wsTenantName") String wsTenantName);
+
+    @Query("SELECT s.agent.id, COUNT(s) FROM GatewayAgentSessionEntity s WHERE s.wsTenantName = :wsTenantName GROUP BY s.agent.id")
+    List<Object[]> countSessionsByAgentByTenant(@Param("wsTenantName") String wsTenantName);
+
+    long countByAgentIdAndWsTenantName(UUID agentId, String wsTenantName);
+
+    List<GatewayAgentSessionEntity> findByHumanUserIdAndWsTenantNameOrderByConnectedAtDesc(UUID humanUserId, String wsTenantName);
+
+    @Query("SELECT s FROM GatewayAgentSessionEntity s JOIN FETCH s.agent WHERE s.humanUserId = :humanUserId AND s.wsTenantName = :wsTenantName ORDER BY s.connectedAt DESC")
+    List<GatewayAgentSessionEntity> findByHumanUserIdWithAgentByTenant(@Param("humanUserId") UUID humanUserId, @Param("wsTenantName") String wsTenantName);
+
+    List<GatewayAgentSessionEntity> findByNhiIdAndWsTenantNameOrderByConnectedAtDesc(UUID nhiId, String wsTenantName);
+
+    @Query("SELECT s FROM GatewayAgentSessionEntity s JOIN FETCH s.agent WHERE s.nhiId = :nhiId AND s.wsTenantName = :wsTenantName ORDER BY s.connectedAt DESC")
+    List<GatewayAgentSessionEntity> findByNhiIdWithAgentByTenant(@Param("nhiId") UUID nhiId, @Param("wsTenantName") String wsTenantName);
+
+    @Query("SELECT a.approvalStatus FROM GatewayAgentSessionEntity s JOIN s.agent a WHERE s.sessionId = :sessionId AND s.wsTenantName = :wsTenantName")
+    Optional<String> findAgentApprovalStatusBySessionIdAndTenant(@Param("sessionId") String sessionId, @Param("wsTenantName") String wsTenantName);
+
+    @Query("SELECT s FROM GatewayAgentSessionEntity s LEFT JOIN FETCH s.agent WHERE s.humanUserId = :humanUserId AND s.status = 'CONNECTED' AND s.wsTenantName = :wsTenantName")
+    List<GatewayAgentSessionEntity> findConnectedByHumanUserIdAndTenant(@Param("humanUserId") UUID humanUserId, @Param("wsTenantName") String wsTenantName);
+
+    @Query("SELECT s FROM GatewayAgentSessionEntity s LEFT JOIN FETCH s.agent WHERE s.nhiId = :nhiId AND s.status = 'CONNECTED' AND s.wsTenantName = :wsTenantName")
+    List<GatewayAgentSessionEntity> findConnectedByNhiIdAndTenant(@Param("nhiId") UUID nhiId, @Param("wsTenantName") String wsTenantName);
+
+    @Query("SELECT s FROM GatewayAgentSessionEntity s LEFT JOIN FETCH s.agent WHERE s.agent.id = :agentId AND s.status = 'CONNECTED' AND s.wsTenantName = :wsTenantName")
+    List<GatewayAgentSessionEntity> findConnectedByAgentIdAndTenant(@Param("agentId") UUID agentId, @Param("wsTenantName") String wsTenantName);
+
+    @Query("SELECT s FROM GatewayAgentSessionEntity s LEFT JOIN FETCH s.agent WHERE s.authIdentity = :authIdentity AND s.status = 'CONNECTED' AND s.wsTenantName = :wsTenantName")
+    List<GatewayAgentSessionEntity> findConnectedByAuthIdentityAndTenant(@Param("authIdentity") String authIdentity, @Param("wsTenantName") String wsTenantName);
+
+    @Modifying
+    @Query("UPDATE GatewayAgentSessionEntity s SET s.status = 'DISCONNECTED', " +
+            "s.disconnectedAt = CURRENT_TIMESTAMP WHERE s.status = 'CONNECTED' AND s.wsTenantName = :wsTenantName")
+    void markAllDisconnectedByTenant(@Param("wsTenantName") String wsTenantName);
 }

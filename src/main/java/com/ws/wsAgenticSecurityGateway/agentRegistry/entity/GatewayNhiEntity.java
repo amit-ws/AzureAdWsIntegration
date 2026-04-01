@@ -31,7 +31,7 @@ import java.util.UUID;
 @Entity
 @Table(name = "gateway_nhi_registry", schema = "ws_agentic_security",
         uniqueConstraints = @UniqueConstraint(name = "uq_nhi_idp_subject",
-                columnNames = {"idp_subject"}),
+                columnNames = {"idp_subject", "ws_tenant_name"}),
         indexes = {
                 @Index(name = "idx_nhi_service_name", columnList = "service_name"),
                 @Index(name = "idx_nhi_client_id", columnList = "client_id"),
@@ -46,6 +46,9 @@ public class GatewayNhiEntity {
     @Id
     @GeneratedValue(generator = "UUID")
     private UUID id;
+
+    @Column(name = "ws_tenant_name", nullable = false)
+    private String wsTenantName;
 
     // ── Core Identity (from JWT) ────────────────────────────────────────
 

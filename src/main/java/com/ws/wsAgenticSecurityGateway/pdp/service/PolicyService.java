@@ -1,6 +1,7 @@
 package com.ws.wsAgenticSecurityGateway.pdp.service;
 
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
+import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyDto;
 import com.ws.wsAgenticSecurityGateway.pdp.entity.GatewayPolicyEntity;
 import com.ws.wsAgenticSecurityGateway.pdp.repository.GatewayPolicyRepository;
@@ -60,7 +61,7 @@ public class PolicyService {
     // ════════════════════════════════════════════════════════════════════
 
     public List<GatewayPolicyEntity> getAllPolicies() {
-        return repository.findAll();
+        return repository.findAllByWsTenantName(TenantContext.get());
     }
 
     public Optional<GatewayPolicyEntity> getById(UUID id) {
@@ -68,7 +69,7 @@ public class PolicyService {
     }
 
     public Optional<GatewayPolicyEntity> getByName(String name) {
-        return repository.findByPolicyName(name);
+        return repository.findByPolicyNameAndWsTenantName(name, TenantContext.get());
     }
 
     /**
@@ -85,7 +86,8 @@ public class PolicyService {
         }
 
         // Check for duplicate name
-        if (repository.findByPolicyName(dto.getPolicyName()).isPresent()) {
+        String tenant = TenantContext.get();
+        if (repository.findByPolicyNameAndWsTenantName(dto.getPolicyName(), tenant).isPresent()) {
             return PolicyCreationResult.error("Policy with name '" + dto.getPolicyName() + "' already exists");
         }
 
@@ -109,6 +111,7 @@ public class PolicyService {
                 .source(dto.getSource() != null ? dto.getSource() : "MANUAL")
                 .originalPrompt(dto.getOriginalPrompt())
                 .createdBy(dto.getCreatedBy() != null ? dto.getCreatedBy() : "admin")
+                .wsTenantName(tenant)
                 .build();
 
         GatewayPolicyEntity saved = repository.save(entity);
@@ -199,7 +202,13 @@ public class PolicyService {
      * Force reload all policies into the Cedar engine.
      */
     public int reloadEngine() {
-        List<GatewayPolicyEntity> enabledPolicies = repository.findByEnabledTrueOrderByPriorityAsc();
+        String tenant = TenantContext.get();
+        List<GatewayPolicyEntity> enabledPolicies;
+        if (tenant != null) {
+            enabledPolicies = repository.findByEnabledTrueAndWsTenantNameOrderByPriorityAsc(tenant);
+        } else {
+            enabledPolicies = repository.findByEnabledTrueOrderByPriorityAsc();
+        }
         int count = cedarEngine.reloadPolicies(enabledPolicies);
         auditService.auditPdpEngineReloaded(Math.max(count, 0));
         return count;
@@ -209,11 +218,19 @@ public class PolicyService {
      * Get policy statistics for the dashboard.
      */
     public Map<String, Object> getStats() {
+        String tenant = TenantContext.get();
         Map<String, Object> stats = new LinkedHashMap<>();
-        stats.put("totalPolicies", repository.count());
-        stats.put("enabledPolicies", repository.countByEnabledTrue());
-        stats.put("permitPolicies", repository.countByEffect("PERMIT"));
-        stats.put("forbidPolicies", repository.countByEffect("FORBID"));
+        if (tenant != null) {
+            stats.put("totalPolicies", repository.findAllByWsTenantName(tenant).size());
+            stats.put("enabledPolicies", repository.countByEnabledTrueAndWsTenantName(tenant));
+            stats.put("permitPolicies", repository.countByEffectAndWsTenantName("PERMIT", tenant));
+            stats.put("forbidPolicies", repository.countByEffectAndWsTenantName("FORBID", tenant));
+        } else {
+            stats.put("totalPolicies", repository.count());
+            stats.put("enabledPolicies", repository.countByEnabledTrue());
+            stats.put("permitPolicies", repository.countByEffect("PERMIT"));
+            stats.put("forbidPolicies", repository.countByEffect("FORBID"));
+        }
         stats.put("engineLoaded", cedarEngine.hasPolicies());
         return stats;
     }

@@ -11,6 +11,7 @@ import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayHumanUser
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayNhiRepository;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.event.BlockedSessionEvent;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
+import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
@@ -178,20 +179,22 @@ public class AgentRegistryService {
     public GatewayAgentEntity discoverAgent(String name, String version,
             String protocolVersion,
             JsonNode capabilities) {
-        return discoverAgent(name, version, protocolVersion, capabilities, null, null);
+        return discoverAgent(name, version, protocolVersion, capabilities, null, null, null);
     }
 
     /**
      * Discover (or update) an agent profile with OAuth2 identity context.
      *
-     * @param authClientId OAuth2 client_id (azp claim) — verified identity from JWT, or null
-     * @param tokenType    "AUTOMATED_AGENT" or "HUMAN_DELEGATED", or null
+     * @param authClientId   OAuth2 client_id (azp claim) — verified identity from JWT, or null
+     * @param tokenType      "AUTOMATED_AGENT" or "HUMAN_DELEGATED", or null
+     * @param wsTenantName   tenant name (from MCP path, NOT TenantContext)
      */
     @Transactional
     public GatewayAgentEntity discoverAgent(String name, String version,
             String protocolVersion,
             JsonNode capabilities,
-            String authClientId, String tokenType) {
+            String authClientId, String tokenType,
+            String wsTenantName) {
         String key = cacheKey(name, version);
 
         // Check cache first
@@ -261,6 +264,7 @@ public class AgentRegistryService {
                 .tokenType(tokenType)
                 .totalSessions(0)
                 .totalRequests(0L)
+                .wsTenantName(wsTenantName)
                 .build();
 
         GatewayAgentEntity saved = agentRepository.saveAndFlush(newAgent);
@@ -283,7 +287,7 @@ public class AgentRegistryService {
     public GatewayAgentSessionEntity registerSession(UUID agentId, String sessionId,
             String authMethod,
             String authIdentity) {
-        return registerSession(agentId, sessionId, authMethod, authIdentity, null, null);
+        return registerSession(agentId, sessionId, authMethod, authIdentity, null, null, null);
     }
 
     /**
@@ -296,7 +300,7 @@ public class AgentRegistryService {
     public GatewayAgentSessionEntity registerSession(UUID agentId, String sessionId,
             String authMethod, String authIdentity,
             String tokenType, UUID humanUserId) {
-        return registerSession(agentId, sessionId, authMethod, authIdentity, tokenType, humanUserId, null);
+        return registerSession(agentId, sessionId, authMethod, authIdentity, tokenType, humanUserId, null, null, null);
     }
 
     /**
@@ -306,21 +310,23 @@ public class AgentRegistryService {
     public GatewayAgentSessionEntity registerSession(UUID agentId, String sessionId,
             String authMethod, String authIdentity,
             String tokenType, UUID humanUserId, UUID nhiId) {
-        return registerSession(agentId, sessionId, authMethod, authIdentity, tokenType, humanUserId, nhiId, null);
+        return registerSession(agentId, sessionId, authMethod, authIdentity, tokenType, humanUserId, nhiId, null, null);
     }
 
     /**
      * Register a new agent session with full identity context + client IP address.
      *
-     * @param tokenType   "AUTOMATED_AGENT" or "HUMAN_DELEGATED", or null
-     * @param humanUserId FK to gateway_human_users (set when HUMAN_DELEGATED), or null
-     * @param nhiId       FK to gateway_nhi_registry (set when AUTOMATED_AGENT), or null
-     * @param ipAddress   Client IP address (X-Forwarded-For aware), or null
+     * @param tokenType      "AUTOMATED_AGENT" or "HUMAN_DELEGATED", or null
+     * @param humanUserId    FK to gateway_human_users (set when HUMAN_DELEGATED), or null
+     * @param nhiId          FK to gateway_nhi_registry (set when AUTOMATED_AGENT), or null
+     * @param ipAddress      Client IP address (X-Forwarded-For aware), or null
+     * @param wsTenantName   tenant name (from MCP path), or null
      */
     @Transactional
     public GatewayAgentSessionEntity registerSession(UUID agentId, String sessionId,
             String authMethod, String authIdentity,
-            String tokenType, UUID humanUserId, UUID nhiId, String ipAddress) {
+            String tokenType, UUID humanUserId, UUID nhiId, String ipAddress,
+            String wsTenantName) {
         GatewayAgentEntity agent = agentRepository.findById(agentId).orElse(null);
         if (agent == null) {
             log.warn("Cannot register session — agent not found: {}", agentId);
@@ -338,6 +344,7 @@ public class AgentRegistryService {
                 .ipAddress(ipAddress)
                 .requestCount(0)
                 .status("CONNECTED")
+                .wsTenantName(wsTenantName)
                 .build();
 
         GatewayAgentSessionEntity saved = sessionRepository.saveAndFlush(session);
@@ -726,28 +733,38 @@ public class AgentRegistryService {
     // READ METHODS — For REST API and Dashboard
     // ════════════════════════════════════════════════════════════════════
 
-    /** Return all discovered agents (all statuses). */
+    /** Return all discovered agents (all statuses) for the current tenant. */
     public List<GatewayAgentEntity> getAllAgents() {
-        return agentRepository.findAll();
+        return agentRepository.findAllByWsTenantName(TenantContext.get());
     }
 
-    /** Return a specific agent by ID. */
+    /** Return a specific agent by ID (tenant-verified). */
     public Optional<GatewayAgentEntity> getAgent(UUID id) {
-        return agentRepository.findById(id);
+        return agentRepository.findById(id)
+                .filter(entity -> entity.getWsTenantName() != null
+                        && entity.getWsTenantName().equals(TenantContext.get()));
     }
 
     /** Return agents matching the given name (may have multiple versions). */
     public List<GatewayAgentEntity> findAgentsByName(String agentName) {
-        return agentRepository.findByAgentName(agentName);
+        return agentRepository.findByAgentNameAndWsTenantName(agentName, TenantContext.get());
     }
 
     /** Return session history for a specific agent, newest first. */
     public List<GatewayAgentSessionEntity> getAgentSessions(UUID agentId) {
+        String tenant = TenantContext.get();
+        if (tenant != null) {
+            return sessionRepository.findByAgentIdAndWsTenantNameOrderByConnectedAtDesc(agentId, tenant);
+        }
         return sessionRepository.findByAgentIdOrderByConnectedAtDesc(agentId);
     }
 
-    /** Return all currently connected sessions across all agents. */
+    /** Return all currently connected sessions across all agents for the current tenant. */
     public List<GatewayAgentSessionEntity> getConnectedSessions() {
+        String tenant = TenantContext.get();
+        if (tenant != null) {
+            return sessionRepository.findByStatusAndWsTenantName("CONNECTED", tenant);
+        }
         return sessionRepository.findByStatus("CONNECTED");
     }
 
@@ -799,7 +816,10 @@ public class AgentRegistryService {
 
     /** Batch session counts grouped by agent — for agent list totals. */
     public Map<UUID, Long> countSessionsByAgent() {
-        List<Object[]> raw = sessionRepository.countSessionsByAgent();
+        String tenant = TenantContext.get();
+        List<Object[]> raw = tenant != null
+                ? sessionRepository.countSessionsByAgentByTenant(tenant)
+                : sessionRepository.countSessionsByAgent();
         Map<UUID, Long> result = new HashMap<>();
         for (Object[] row : raw) {
             result.put((UUID) row[0], (Long) row[1]);
@@ -809,11 +829,19 @@ public class AgentRegistryService {
 
     /** Total sessions for a specific agent. */
     public long countSessionsForAgent(UUID agentId) {
+        String tenant = TenantContext.get();
+        if (tenant != null) {
+            return sessionRepository.countByAgentIdAndWsTenantName(agentId, tenant);
+        }
         return sessionRepository.countByAgentId(agentId);
     }
 
-    /** Find a session by its MCP session ID. */
+    /** Find a session by its MCP session ID (tenant-verified). */
     public Optional<GatewayAgentSessionEntity> findSessionBySessionId(String sessionId) {
+        String tenant = TenantContext.get();
+        if (tenant != null) {
+            return sessionRepository.findBySessionIdAndWsTenantName(sessionId, tenant);
+        }
         return sessionRepository.findBySessionId(sessionId);
     }
 
@@ -963,7 +991,7 @@ public class AgentRegistryService {
             java.util.List<String> realmRoles, java.util.List<String> clientRoles,
             java.util.Map<String, Object> customClaims,
             java.util.Map<String, Object> rawJwtClaims,
-            String ipAddress) {
+            String ipAddress, String wsTenantName) {
 
         Optional<GatewayHumanUserEntity> existing = humanUserRepository.findByIdpSubject(idpSubject);
         LocalDateTime now = LocalDateTime.now();
@@ -1010,6 +1038,7 @@ public class AgentRegistryService {
                 .status("PENDING")
                 .lastJwtClaims(rawJwtClaims)
                 .lastIpAddress(ipAddress)
+                .wsTenantName(wsTenantName)
                 .build();
 
         GatewayHumanUserEntity saved = humanUserRepository.saveAndFlush(newUser);
@@ -1147,7 +1176,7 @@ public class AgentRegistryService {
             java.util.List<String> realmRoles, java.util.List<String> clientRoles,
             java.util.Map<String, Object> customClaims,
             java.util.Map<String, Object> rawJwtClaims,
-            String ipAddress) {
+            String ipAddress, String wsTenantName) {
 
         Optional<GatewayNhiEntity> existing = nhiRepository.findByIdpSubject(idpSubject);
         LocalDateTime now = LocalDateTime.now();
@@ -1186,6 +1215,7 @@ public class AgentRegistryService {
                 .status("PENDING")
                 .lastJwtClaims(rawJwtClaims)
                 .lastIpAddress(ipAddress)
+                .wsTenantName(wsTenantName)
                 .build();
 
         GatewayNhiEntity saved = nhiRepository.saveAndFlush(newNhi);

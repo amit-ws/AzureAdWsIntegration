@@ -24,7 +24,7 @@ import java.util.UUID;
 @Table(name = "gateway_policy", schema = "ws_agentic_security",
         uniqueConstraints = {
                 @UniqueConstraint(name = "uq_policy_name",
-                        columnNames = {"policy_name"})
+                        columnNames = {"policy_name", "ws_tenant_name"})
         },
         indexes = {
                 @Index(name = "idx_policy_enabled", columnList = "enabled"),
@@ -40,6 +40,9 @@ public class GatewayPolicyEntity {
     @Id
     @GeneratedValue(generator = "UUID")
     private UUID id;
+
+    @Column(name = "ws_tenant_name", nullable = false)
+    private String wsTenantName;
 
     /** Human-readable policy name (unique). */
     @Column(name = "policy_name", nullable = false, length = 256)

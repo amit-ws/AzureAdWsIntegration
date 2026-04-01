@@ -21,7 +21,7 @@ import java.util.UUID;
 @Table(name = "agent_capability_profile_assignment", schema = "ws_agentic_security",
         uniqueConstraints = {
                 @UniqueConstraint(name = "uq_agent_profile",
-                        columnNames = {"agent_id", "profile_id"})
+                        columnNames = {"agent_id", "profile_id", "ws_tenant_name"})
         },
         indexes = {
                 @Index(name = "idx_cap_assign_agent", columnList = "agent_id"),
@@ -36,6 +36,9 @@ public class AgentCapabilityProfileAssignment {
     @Id
     @GeneratedValue(generator = "UUID")
     private UUID id;
+
+    @Column(name = "ws_tenant_name", nullable = false)
+    private String wsTenantName;
 
     /** The agent this profile is assigned to. */
     @Column(name = "agent_id", nullable = false)

@@ -29,4 +29,24 @@ public interface GatewayPolicyRepository extends JpaRepository<GatewayPolicyEnti
     long countByEnabledTrue();
 
     long countByEffect(String effect);
+
+    // ── Tenant-scoped queries ───────────────────────────────────────────
+
+    List<GatewayPolicyEntity> findByEnabledTrueAndWsTenantNameOrderByPriorityAsc(String wsTenantName);
+
+    Optional<GatewayPolicyEntity> findByPolicyNameAndWsTenantName(String policyName, String wsTenantName);
+
+    Optional<GatewayPolicyEntity> findByCedarPolicyIdAndWsTenantName(String cedarPolicyId, String wsTenantName);
+
+    List<GatewayPolicyEntity> findByEffectAndWsTenantName(String effect, String wsTenantName);
+
+    List<GatewayPolicyEntity> findByTagsContainingAndWsTenantName(String tag, String wsTenantName);
+
+    List<GatewayPolicyEntity> findBySourceAndWsTenantName(String source, String wsTenantName);
+
+    long countByEnabledTrueAndWsTenantName(String wsTenantName);
+
+    long countByEffectAndWsTenantName(String effect, String wsTenantName);
+
+    List<GatewayPolicyEntity> findAllByWsTenantName(String wsTenantName);
 }

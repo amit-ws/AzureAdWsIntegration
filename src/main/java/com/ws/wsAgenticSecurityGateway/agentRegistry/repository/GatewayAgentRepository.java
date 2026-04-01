@@ -33,4 +33,18 @@ public interface GatewayAgentRepository extends JpaRepository<GatewayAgentEntity
     @Query("UPDATE GatewayAgentEntity a SET a.totalRequests = a.totalRequests + 1, " +
             "a.lastSeenAt = CURRENT_TIMESTAMP WHERE a.id = :agentId")
     void incrementRequestCount(@Param("agentId") UUID agentId);
+
+    // ── Tenant-scoped queries ───────────────────────────────────────────
+
+    Optional<GatewayAgentEntity> findByAgentNameAndAgentVersionAndWsTenantName(String agentName, String agentVersion, String wsTenantName);
+
+    List<GatewayAgentEntity> findByStatusAndWsTenantName(String status, String wsTenantName);
+
+    List<GatewayAgentEntity> findByAgentNameAndWsTenantName(String agentName, String wsTenantName);
+
+    List<GatewayAgentEntity> findByApprovalStatusAndWsTenantName(String approvalStatus, String wsTenantName);
+
+    List<GatewayAgentEntity> findAllByWsTenantName(String wsTenantName);
+
+    long countByWsTenantName(String wsTenantName);
 }

@@ -23,4 +23,12 @@ public interface McpToolRepository extends JpaRepository<McpToolEntity, UUID> {
     @Modifying
     @Transactional
     void deleteByServerId(UUID serverId);
+
+    // ── Tenant-scoped queries ───────────────────────────────────────────
+
+    List<McpToolEntity> findByServerIdAndWsTenantName(UUID serverId, String wsTenantName);
+
+    Optional<McpToolEntity> findByPublicNameAndWsTenantName(String publicName, String wsTenantName);
+
+    List<McpToolEntity> findAllByWsTenantName(String wsTenantName);
 }

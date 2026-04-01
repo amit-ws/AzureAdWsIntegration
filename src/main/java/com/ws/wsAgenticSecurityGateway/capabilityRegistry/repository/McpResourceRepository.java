@@ -23,4 +23,12 @@ public interface McpResourceRepository extends JpaRepository<McpResourceEntity, 
     @Modifying
     @Transactional
     void deleteByServerId(UUID serverId);
+
+    // ── Tenant-scoped queries ───────────────────────────────────────────
+
+    List<McpResourceEntity> findByServerIdAndWsTenantName(UUID serverId, String wsTenantName);
+
+    Optional<McpResourceEntity> findByPublicNameAndWsTenantName(String publicName, String wsTenantName);
+
+    List<McpResourceEntity> findAllByWsTenantName(String wsTenantName);
 }

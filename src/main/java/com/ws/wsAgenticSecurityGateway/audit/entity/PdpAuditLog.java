@@ -49,6 +49,9 @@ public class PdpAuditLog {
     @GeneratedValue(generator = "UUID")
     private UUID id;
 
+    @Column(name = "ws_tenant_name", nullable = false)
+    private String wsTenantName;
+
     // ── Event Identity ────────────────────────────────────────────────
 
     @Enumerated(EnumType.STRING)

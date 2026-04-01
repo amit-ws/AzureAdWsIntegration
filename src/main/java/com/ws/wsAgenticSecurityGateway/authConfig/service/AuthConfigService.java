@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.authConfig.dto.*;
+import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import com.ws.wsAgenticSecurityGateway.authConfig.entity.GatewayAuthConfigEntity;
 import com.ws.wsAgenticSecurityGateway.authConfig.repository.GatewayAuthConfigRepository;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
@@ -139,8 +140,11 @@ public class AuthConfigService {
     /** Returns the full effective config as a response DTO (DB → env → defaults). */
     @Transactional(readOnly = true)
     public AuthConfigResponse getEffectiveConfig() {
-        // 1. Try DB
-        Optional<GatewayAuthConfigEntity> dbConfig = repository.findFirstByEnabledTrueOrderByCreatedAtAsc();
+        // 1. Try DB (tenant-scoped)
+        String tenant = TenantContext.get();
+        Optional<GatewayAuthConfigEntity> dbConfig = tenant != null
+                ? repository.findFirstByEnabledTrueAndWsTenantNameOrderByCreatedAtAsc(tenant)
+                : repository.findFirstByEnabledTrueOrderByCreatedAtAsc();
         if (dbConfig.isPresent()) {
             return toResponse(dbConfig.get(), "database");
         }
@@ -176,8 +180,10 @@ public class AuthConfigService {
     @Transactional
     public AuthConfigResponse createAuthConfig(AuthConfigRequest request,
                                                 String adminIdentity, String sourceIp) {
-        // Prevent multiple rows
-        if (repository.count() > 0) {
+        // Prevent multiple rows per tenant
+        String tenant = TenantContext.get();
+        Optional<GatewayAuthConfigEntity> existingConfig = repository.findFirstByEnabledTrueAndWsTenantNameOrderByCreatedAtAsc(tenant);
+        if (existingConfig.isPresent()) {
             throw new IllegalStateException("Auth config already exists — use update instead");
         }
 
@@ -197,6 +203,7 @@ public class AuthConfigService {
                 .supportedScopes(request.getSupportedScopes())
                 .audience(request.getAudience())
                 .tokenClassificationMode(request.getTokenClassificationMode())
+                .wsTenantName(tenant)
                 .introspectionClientId(request.getIntrospectionClientId())
                 .introspectionClientSecret(encryptSecret(request.getIntrospectionClientSecret()))
                 .gracePeriodMinutes(request.getGracePeriodMinutes())
@@ -222,7 +229,7 @@ public class AuthConfigService {
     @Transactional
     public AuthConfigResponse updateAuthConfig(AuthConfigRequest request,
                                                 String adminIdentity, String sourceIp) {
-        GatewayAuthConfigEntity existing = repository.findFirstByOrderByCreatedAtAsc()
+        GatewayAuthConfigEntity existing = repository.findFirstByWsTenantNameOrderByCreatedAtAsc(TenantContext.get())
                 .orElseThrow(() -> new IllegalStateException("No auth config exists — create first"));
 
         // Track changes for audit
@@ -305,7 +312,7 @@ public class AuthConfigService {
 
     @Transactional
     public void deleteAuthConfig(String adminIdentity, String sourceIp) {
-        GatewayAuthConfigEntity existing = repository.findFirstByOrderByCreatedAtAsc()
+        GatewayAuthConfigEntity existing = repository.findFirstByWsTenantNameOrderByCreatedAtAsc(TenantContext.get())
                 .orElseThrow(() -> new IllegalStateException("No auth config exists to delete"));
 
         String oldMode = existing.getAuthMode();

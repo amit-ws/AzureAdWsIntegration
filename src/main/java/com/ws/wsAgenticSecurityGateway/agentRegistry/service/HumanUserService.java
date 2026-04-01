@@ -10,6 +10,7 @@ import com.ws.wsAgenticSecurityGateway.audit.constants.AuditStatus;
 import com.ws.wsAgenticSecurityGateway.audit.entity.McpAuditLog;
 import com.ws.wsAgenticSecurityGateway.audit.repository.McpAuditLogRepository;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
+import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -62,24 +63,25 @@ public class HumanUserService {
     // ════════════════════════════════════════════════════════════════════
 
     public List<GatewayHumanUserEntity> findAll() {
-        return humanUserRepository.findAll();
+        return humanUserRepository.findAllByWsTenantName(TenantContext.get());
     }
 
     public Optional<GatewayHumanUserEntity> findById(UUID id) {
-        return humanUserRepository.findById(id);
+        return humanUserRepository.findById(id)
+                .filter(entity -> entity.getWsTenantName() != null
+                        && entity.getWsTenantName().equals(TenantContext.get()));
     }
 
     public boolean existsById(UUID id) {
-        return humanUserRepository.existsById(id);
+        return findById(id).isPresent();
     }
 
     public long count() {
-        return humanUserRepository.count();
+        return humanUserRepository.countByWsTenantName(TenantContext.get());
     }
 
     public List<GatewayHumanUserEntity> search(String query) {
-        return humanUserRepository
-                .findByPreferredUsernameContainingIgnoreCaseOrEmailContainingIgnoreCase(query, query);
+        return humanUserRepository.searchByTenant(query, TenantContext.get());
     }
 
     /**
@@ -194,20 +196,21 @@ public class HumanUserService {
     // ════════════════════════════════════════════════════════════════════
 
     public long countActiveHumansSince(LocalDateTime since) {
-        return humanUserRepository.countActiveHumansSince(since);
+        return humanUserRepository.countActiveHumansSinceByTenant(since, TenantContext.get());
     }
 
     public long countBlocked() {
-        return humanUserRepository.countBlocked();
+        return humanUserRepository.countBlockedByTenant(TenantContext.get());
     }
 
     public Map<String, Object> getSummary() {
-        long total = humanUserRepository.count();
-        long blocked = humanUserRepository.countBlocked();
-        long activeToday = humanUserRepository.countActiveHumansSince(
-                LocalDateTime.now().minusHours(24));
+        String tenant = TenantContext.get();
+        long total = humanUserRepository.countByWsTenantName(tenant);
+        long blocked = humanUserRepository.countBlockedByTenant(tenant);
+        long activeToday = humanUserRepository.countActiveHumansSinceByTenant(
+                LocalDateTime.now().minusHours(24), tenant);
 
-        List<GatewayAgentSessionEntity> connected = sessionRepository.findByStatus("CONNECTED");
+        List<GatewayAgentSessionEntity> connected = sessionRepository.findByStatusAndWsTenantName("CONNECTED", tenant);
         long activeNow = connected.stream()
                 .map(GatewayAgentSessionEntity::getHumanUserId)
                 .filter(Objects::nonNull)
@@ -265,7 +268,7 @@ public class HumanUserService {
     // ════════════════════════════════════════════════════════════════════
 
     public Map<String, Object> getActiveNow() {
-        List<GatewayAgentSessionEntity> connected = sessionRepository.findByStatus("CONNECTED");
+        List<GatewayAgentSessionEntity> connected = sessionRepository.findByStatusAndWsTenantName("CONNECTED", TenantContext.get());
 
         Map<UUID, List<GatewayAgentSessionEntity>> byHuman = connected.stream()
                 .filter(s -> s.getHumanUserId() != null)
