@@ -16,6 +16,7 @@ public class McpSession {
     private final McpSyncClient client;
     private final HttpMcpTransport transport;
     private final LocalDateTime connectedAt;
+    private final String wsTenantName;
 
     private List<McpSchema.Tool> tools;
     private List<McpSchema.Resource> resources;
@@ -25,12 +26,14 @@ public class McpSession {
 
     public McpSession(String serverName,
                       McpSyncClient client,
-                      HttpMcpTransport transport) {
+                      HttpMcpTransport transport,
+                      String wsTenantName) {
         this.sessionId = UUID.randomUUID().toString();
         this.serverName = serverName;
         this.client = client;
         this.transport = transport;
         this.connectedAt = LocalDateTime.now();
+        this.wsTenantName = wsTenantName;
     }
 
     public void setTools(List<McpSchema.Tool> tools) {

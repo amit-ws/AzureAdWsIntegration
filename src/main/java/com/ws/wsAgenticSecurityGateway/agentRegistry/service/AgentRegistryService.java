@@ -138,6 +138,7 @@ public class AgentRegistryService {
             cached.setStatus("ACTIVE");
             if (authClientId != null) cached.setAuthClientId(authClientId);
             if (tokenType != null) cached.setTokenType(tokenType);
+            if (wsTenantName != null) cached.setWsTenantName(wsTenantName);
             GatewayAgentEntity updated = agentRepository.saveAndFlush(cached);
             agentCache.put(key, updated);
             agentStatusById.put(updated.getId(), updated.getApprovalStatus());
@@ -163,6 +164,7 @@ public class AgentRegistryService {
             entity.setStatus("ACTIVE");
             if (authClientId != null) entity.setAuthClientId(authClientId);
             if (tokenType != null) entity.setTokenType(tokenType);
+            if (wsTenantName != null) entity.setWsTenantName(wsTenantName);
             GatewayAgentEntity updated = agentRepository.saveAndFlush(entity);
             agentCache.put(key, updated);
             agentStatusById.put(updated.getId(), updated.getApprovalStatus());

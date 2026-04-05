@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentCapabilityFilterService;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
+import com.ws.wsAgenticSecurityGateway.authConfig.repository.GatewayAuthConfigRepository;
 import com.ws.wsAgenticSecurityGateway.authConfig.service.AuthConfigService;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
@@ -77,13 +78,14 @@ public class HttpTransportConfig {
             AgentCapabilityFilterService capabilityFilterService,
             McpAuditService auditService,
             CapabilityRegistryService registryService,
+            GatewayAuthConfigRepository authConfigRepository,
             ObjectMapper objectMapper,
             TokenClassificationService tokenClassificationService) {
 
         FilterRegistrationBean<HttpMcpAuditFilter> registration = new FilterRegistrationBean<>();
         registration.setFilter(new HttpMcpAuditFilter(
                 agentRegistryService, capabilityFilterService, auditService, registryService,
-                objectMapper, tokenClassificationService));
+                authConfigRepository, objectMapper, tokenClassificationService));
         registration.addUrlPatterns("/mcp/*");
         registration.setOrder(2);
         registration.setName("mcpAuditFilter");

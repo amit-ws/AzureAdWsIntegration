@@ -2,6 +2,7 @@ package com.ws.wsAgenticSecurityGateway.capabilityRegistry.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditStatus;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.entity.McpPromptEntity;
@@ -116,9 +117,11 @@ public class CapabilityRegistryService {
                                JsonNode capabilities,
                                List<McpSchema.Tool> tools,
                                List<McpSchema.Resource> resources,
-                               List<McpSchema.Prompt> prompts) {
+                               List<McpSchema.Prompt> prompts,
+                               String wsTenantName) {
 
         long start = System.currentTimeMillis();
+        String tenant = wsTenantName != null ? wsTenantName : TenantContext.get();
  log.info("Registering server '{}' in capability registry...", serverConfigName);
 
         try {
@@ -130,6 +133,9 @@ public class CapabilityRegistryService {
                         existing.setProtocolVersion(protocolVersion);
                         existing.setStatus("ACTIVE");
                         existing.setCapabilities(capabilities);
+                        if (tenant != null && existing.getWsTenantName() == null) {
+                            existing.setWsTenantName(tenant);
+                        }
                         return existing;
                     })
                     .orElse(McpServerEntity.builder()
@@ -139,6 +145,7 @@ public class CapabilityRegistryService {
                             .protocolVersion(protocolVersion)
                             .status("ACTIVE")
                             .capabilities(capabilities)
+                            .wsTenantName(tenant)
                             .build());
 
             serverEntity = serverRepository.saveAndFlush(serverEntity);
@@ -175,6 +182,7 @@ public class CapabilityRegistryService {
                             .publicName(publicName)
                             .description(tool.description())
                             .inputSchema(inputSchemaStr)
+                            .wsTenantName(tenant)
                             .build();
                     toolRepository.save(entity);
 
@@ -207,6 +215,7 @@ public class CapabilityRegistryService {
                             .name(resource.name())
                             .description(resource.description())
                             .mimeType(resource.mimeType())
+                            .wsTenantName(tenant)
                             .build();
                     resourceRepository.save(entity);
 
@@ -245,6 +254,7 @@ public class CapabilityRegistryService {
                             .publicName(publicName)
                             .description(prompt.description())
                             .arguments(argsJson)
+                            .wsTenantName(tenant)
                             .build();
                     promptRepository.save(entity);
 
@@ -340,10 +350,11 @@ public class CapabilityRegistryService {
                               JsonNode capabilities,
                               List<McpSchema.Tool> tools,
                               List<McpSchema.Resource> resources,
-                              List<McpSchema.Prompt> prompts) {
+                              List<McpSchema.Prompt> prompts,
+                              String wsTenantName) {
 
         registerServer(sessionId, serverConfigName, displayName, version,
-                protocolVersion, capabilities, tools, resources, prompts);
+                protocolVersion, capabilities, tools, resources, prompts, wsTenantName);
     }
 
     public Optional<CapabilityDescriptor> lookupByPublicName(String publicName) {

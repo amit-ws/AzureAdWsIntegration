@@ -13,6 +13,7 @@ import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryServic
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService.AgentBlockedException;
 import com.ws.wsAgenticSecurityGateway.audit.error.McpErrorCode;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
+import com.ws.wsAgenticSecurityGateway.authConfig.repository.GatewayAuthConfigRepository;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
 import jakarta.servlet.*;
 import jakarta.servlet.http.HttpServletRequest;
@@ -40,6 +41,7 @@ public class HttpMcpAuditFilter implements Filter {
     private final AgentCapabilityFilterService capabilityFilterService;
     private final McpAuditService auditService;
     private final CapabilityRegistryService registryService;
+    private final GatewayAuthConfigRepository authConfigRepository;
     private final ObjectMapper objectMapper;
     private final TokenClassificationService tokenClassificationService;
 
@@ -67,12 +69,14 @@ public class HttpMcpAuditFilter implements Filter {
             AgentCapabilityFilterService capabilityFilterService,
             McpAuditService auditService,
             CapabilityRegistryService registryService,
+            GatewayAuthConfigRepository authConfigRepository,
             ObjectMapper objectMapper,
             TokenClassificationService tokenClassificationService) {
         this.agentRegistryService = agentRegistryService;
         this.capabilityFilterService = capabilityFilterService;
         this.auditService = auditService;
         this.registryService = registryService;
+        this.authConfigRepository = authConfigRepository;
         this.objectMapper = objectMapper;
         this.tokenClassificationService = tokenClassificationService;
     }
@@ -367,7 +371,15 @@ public class HttpMcpAuditFilter implements Filter {
 
         String wsTenantName = httpRequest.getHeader("X-WS-Tenant");
         if (wsTenantName == null || wsTenantName.isBlank()) {
-            wsTenantName = "default";
+            String jwtIssuer = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_ISSUER);
+            if (jwtIssuer != null) {
+                wsTenantName = authConfigRepository.findFirstByIssuerUri(jwtIssuer)
+                        .map(config -> config.getWsTenantName())
+                        .orElse("default");
+                log.info("Tenant resolved from JWT issuer: {} -> {}", jwtIssuer, wsTenantName);
+            } else {
+                wsTenantName = "default";
+            }
         }
         sessionToTenant.put(sessionId, wsTenantName);
 

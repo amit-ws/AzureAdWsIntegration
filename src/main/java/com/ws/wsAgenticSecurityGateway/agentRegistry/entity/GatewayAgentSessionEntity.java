@@ -30,7 +30,7 @@ public class GatewayAgentSessionEntity {
     @Column(name = "ws_tenant_name", nullable = false)
     private String wsTenantName;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "agent_id", nullable = false)
     private GatewayAgentEntity agent;
 

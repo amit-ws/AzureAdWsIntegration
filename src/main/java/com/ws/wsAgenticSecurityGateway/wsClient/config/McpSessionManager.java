@@ -49,7 +49,7 @@ public class McpSessionManager {
         this.objectMapper = new ObjectMapper();
     }
 
-    public synchronized void connect(String serverName, McpServerConfig config) throws Exception {
+    public synchronized void connect(String serverName, McpServerConfig config, String wsTenantName) throws Exception {
         HttpMcpTransport.clearRequestOverrideHeaders();
 
         if (sessions.containsKey(serverName)) {
@@ -110,7 +110,7 @@ public class McpSessionManager {
                 throw new RuntimeException("Client initialization failed for server: " + serverName);
             }
 
-            McpSession session = new McpSession(serverName, client, httpTransport);
+            McpSession session = new McpSession(serverName, client, httpTransport, wsTenantName);
 
             session.setServerInfo(client.getServerInfo());
             session.setCapabilities(client.getServerCapabilities());
@@ -144,7 +144,8 @@ public class McpSessionManager {
                         capsJson,
                         session.getTools(),
                         session.getResources(),
-                        session.getPrompts()
+                        session.getPrompts(),
+                        wsTenantName
                 );
  log.info("Server '{}' capabilities registered in registry", serverName);
                 eventPublisher.publishEvent(new CapabilityRegistryChangedEvent("SERVER_CONNECTED", serverName));
@@ -164,6 +165,7 @@ public class McpSessionManager {
                         .resourceCount(session.getResources() != null ? session.getResources().size() : 0)
                         .promptCount(session.getPrompts() != null ? session.getPrompts().size() : 0)
                         .status("CONNECTED")
+                        .wsTenantName(wsTenantName)
                         .build();
                 serverSessionRepository.save(entity);
  log.info("WS Client-side session persisted for server '{}'", serverName);
@@ -295,7 +297,8 @@ public class McpSessionManager {
                     capsJson,
                     session.getTools(),
                     session.getResources(),
-                    session.getPrompts()
+                    session.getPrompts(),
+                    session.getWsTenantName()
             );
 
  log.info("Server '{}' capabilities refreshed after WS Client-side notification", serverName);

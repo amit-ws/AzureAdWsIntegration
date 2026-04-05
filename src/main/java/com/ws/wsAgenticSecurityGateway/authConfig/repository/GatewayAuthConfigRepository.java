@@ -21,4 +21,6 @@ public interface GatewayAuthConfigRepository extends JpaRepository<GatewayAuthCo
     Optional<GatewayAuthConfigEntity> findFirstByEnabledTrueAndWsTenantNameOrderByCreatedAtAsc(String wsTenantName);
 
     boolean existsByIdNotAndWsTenantName(UUID id, String wsTenantName);
+
+    Optional<GatewayAuthConfigEntity> findFirstByIssuerUri(String issuerUri);
 }

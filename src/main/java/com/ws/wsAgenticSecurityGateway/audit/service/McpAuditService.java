@@ -14,6 +14,7 @@ import com.ws.wsAgenticSecurityGateway.audit.error.McpAuditException;
 import com.ws.wsAgenticSecurityGateway.audit.error.McpErrorCode;
 import com.ws.wsAgenticSecurityGateway.audit.repository.McpAuditLogRepository;
 import com.ws.wsAgenticSecurityGateway.audit.repository.PdpAuditLogRepository;
+import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -1858,6 +1859,15 @@ public class McpAuditService {
                                         if (auditLog.getWsTenantName() == null && ctx.wsTenantName() != null) {
                                                 auditLog.setWsTenantName(ctx.wsTenantName());
                                         }
+                                }
+                        }
+
+                        if (auditLog.getWsTenantName() == null) {
+                                String tenant = TenantContext.get();
+                                if (tenant != null) {
+                                        auditLog.setWsTenantName(tenant);
+                                } else {
+                                        auditLog.setWsTenantName("system");
                                 }
                         }
 

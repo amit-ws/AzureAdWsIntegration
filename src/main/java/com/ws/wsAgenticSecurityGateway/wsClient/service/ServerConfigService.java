@@ -235,7 +235,7 @@ public class ServerConfigService {
         mcpConfig.setTimeout(entity.getTimeoutSeconds());
 
         try {
-            sessionManager.connect(entity.getServerName(), mcpConfig);
+            sessionManager.connect(entity.getServerName(), mcpConfig, entity.getWsTenantName());
         } catch (Exception e) {
             throw new RuntimeException("Failed to connect server '" + entity.getServerName() + "': " + e.getMessage(), e);
         }
