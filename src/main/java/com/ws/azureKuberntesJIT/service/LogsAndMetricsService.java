@@ -36,7 +36,7 @@ import java.util.stream.Collectors;
 public class LogsAndMetricsService {
     CoreV1Api coreV1Api;
     final String clientId = "cb51e8d1-519c-4e18-9b2f-28d53e6badd1";
-    final String clientSecret = "3F18Q~iM8DjCXg7rL~2.BZZPtdGNAzfOf2qXRdhC";
+    final String clientSecret = "TUo8Q~eVNZNHVbrGV4E8VLNphrJ24xObLUolOcJD";
     final String tenantId = "f875ebf8-f5f0-4915-a2c9-4442e0118fd2";
     final String subscriptionId = "4769af8e-ca3d-448d-bd1a-80e03ed94158";
     final String workspaceId = "1ff52693-667a-48e8-a97a-9e8aa410c0d8";
