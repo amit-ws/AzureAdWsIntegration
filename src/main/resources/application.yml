@@ -157,7 +157,7 @@ ws:
     server-config-encryption:
       key: ${WS_GATEWAY_SERVER_CONFIG_ENCRYPTION_KEY:}
     pdp:
-      anthropic-api-key: ${WS_GATEWAY_ANTHROPIC_API_KEY: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}   # Anthropic API key for LLM policy generation
+      anthropic-api-key: ${WS_GATEWAY_ANTHROPIC_API_KEY:}   # Anthropic API key for LLM policy generation
 
 # ─── NOTE ────────────────────────────────────────────────────────────
 # The audit table 'mcp_audit_log' lives in schema 'ws_agentic_security'.
