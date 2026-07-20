@@ -17,10 +17,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Service layer for MCP client operations.
- * Provides business logic for interacting with multiple MCP servers.
- */
 @Service
 @Slf4j
 public class McpClientService {
@@ -36,15 +32,12 @@ public class McpClientService {
         this.objectMapper = new ObjectMapper();
     }
 
-    /**
-     * Get list of all connected servers with their metadata
-     */
     public Map<String, Map<String, Object>> listServers() {
         Map<String, Map<String, Object>> serversInfo = new HashMap<>();
 
         sessionManager.getAllSessions().forEach((configName, session) -> {
             Map<String, Object> info = new HashMap<>();
-            info.put("configName", configName);  // The key from config (e.g., "github")
+            info.put("configName", configName);
             info.put("status", session.isActive() ? "connected" : "disconnected");
             info.put("connectedAt", session.getConnectedAt().toString());
             info.put("toolCount", session.getToolCount());
@@ -52,7 +45,7 @@ public class McpClientService {
             info.put("promptCount", session.getPrompts() != null ? session.getPrompts().size() : 0);
 
             if (session.getServerInfo() != null) {
-                info.put("serverName", session.getServerInfo().name());  // Actual server name
+                info.put("serverName", session.getServerInfo().name());
                 info.put("serverVersion", session.getServerInfo().version());
             }
 
@@ -65,16 +58,12 @@ public class McpClientService {
                 info.put("capabilities", capabilities);
             }
 
-            // Use config name as the key (this is what users will reference)
             serversInfo.put(configName, info);
         });
 
         return serversInfo;
     }
 
-    /**
-     * Get detailed status for a specific server
-     */
     public Map<String, Object> getServerStatus(String serverName) {
         McpSession session = sessionManager.getSession(serverName);
         McpSyncClient client = session.getClient();
@@ -97,20 +86,16 @@ public class McpClientService {
         return status;
     }
 
-    /**
-     * List tools for a specific server
-     */
     public List<McpSchema.Tool> listTools(String serverName) {
         McpSession session = sessionManager.getSession(serverName);
 
         if (session.getTools() != null) {
-            log.info("📋 Returning {} cached tools for server '{}'",
+            log.info("Returning {} cached tools for server '{}'",
                     session.getTools().size(), serverName);
             return session.getTools();
         }
 
-        // If not cached, fetch from server
-        log.info("🔄 Fetching tools from server '{}'...", serverName);
+        log.info("Fetching tools from server '{}'...", serverName);
         long start = System.currentTimeMillis();
         try {
             List<McpSchema.Tool> tools = session.getClient().listTools().tools();
@@ -126,9 +111,6 @@ public class McpClientService {
         }
     }
 
-    /**
-     * List resources for a specific server
-     */
     public List<McpSchema.Resource> listResources(String serverName) {
         McpSession session = sessionManager.getSession(serverName);
 
@@ -136,7 +118,7 @@ public class McpClientService {
             return session.getResources();
         }
 
-        log.info("🔄 Fetching resources from server '{}'...", serverName);
+        log.info("Fetching resources from server '{}'...", serverName);
         long start = System.currentTimeMillis();
         try {
             List<McpSchema.Resource> resources = session.getClient().listResources().resources();
@@ -152,9 +134,6 @@ public class McpClientService {
         }
     }
 
-    /**
-     * List prompts for a specific server
-     */
     public List<McpSchema.Prompt> listPrompts(String serverName) {
         McpSession session = sessionManager.getSession(serverName);
 
@@ -162,7 +141,7 @@ public class McpClientService {
             return session.getPrompts();
         }
 
-        log.info("🔄 Fetching prompts from server '{}'...", serverName);
+        log.info("Fetching prompts from server '{}'...", serverName);
         long start = System.currentTimeMillis();
         try {
             List<McpSchema.Prompt> prompts = session.getClient().listPrompts().prompts();
@@ -178,12 +157,9 @@ public class McpClientService {
         }
     }
 
-    /**
-     * Call a tool on a specific server
-     */
     public List<McpSchema.Content> callTool(String correlationId, String serverName, String toolName, JsonNode input,
                                              LocalDateTime firedAt, Integer eventSequence) {
-        log.info("🔧 Calling tool '{}' on server '{}'", toolName, serverName);
+        log.info("Calling tool '{}' on server '{}'", toolName, serverName);
         long start = System.currentTimeMillis();
 
         McpSession session = sessionManager.getSession(serverName);
@@ -201,23 +177,21 @@ public class McpClientService {
             List<McpSchema.Content> result = client.callTool(request).content();
             long duration = System.currentTimeMillis() - start;
 
-            log.info("✅ Tool '{}' executed successfully, returned {} content item(s)",
+            log.info("Tool '{}' executed successfully, returned {} content item(s)",
                     toolName, result.size());
 
-            // Log content types
             result.forEach(content -> {
                 if (content instanceof McpSchema.TextContent t) {
-                    log.debug("   TEXT: {} chars", t.text().length());
+                    log.debug("TEXT: {} chars", t.text().length());
                 } else if (content instanceof McpSchema.ImageContent) {
-                    log.debug("   IMAGE");
+                    log.debug("IMAGE");
                 } else if (content instanceof McpSchema.AudioContent) {
-                    log.debug("   AUDIO");
+                    log.debug("AUDIO");
                 } else if (content instanceof McpSchema.EmbeddedResource r) {
-                    log.debug("   EMBEDDED RESOURCE: {}", r.resource().uri());
+                    log.debug("EMBEDDED RESOURCE: {}", r.resource().uri());
                 }
             });
 
-            // Audit — tool invocation success
             auditService.auditClientToolInvocation(session.getSessionId(), correlationId, serverName, toolName, args, result, duration, firedAt, eventSequence);
 
             return result;
@@ -229,12 +203,9 @@ public class McpClientService {
         }
     }
 
-    /**
-     * Get a prompt from a specific server (forwards the getPrompt request to enterprise server).
-     */
     public McpSchema.GetPromptResult getPrompt(String serverName, String promptName,
                                                 Map<String, Object> arguments) {
-        log.info("📝 Getting prompt '{}' from server '{}'", promptName, serverName);
+        log.info("Getting prompt '{}' from server '{}'", promptName, serverName);
         long start = System.currentTimeMillis();
 
         McpSession session = sessionManager.getSession(serverName);
@@ -247,22 +218,19 @@ public class McpClientService {
             long duration = System.currentTimeMillis() - start;
 
             int messageCount = result.messages() != null ? result.messages().size() : 0;
-            log.info("✅ Prompt '{}' retrieved successfully, {} message(s)", promptName, messageCount);
+            log.info("Prompt '{}' retrieved successfully, {} message(s)", promptName, messageCount);
 
             return result;
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - start;
-            log.error("❌ Failed to get prompt '{}' from '{}': {}", promptName, serverName, e.getMessage());
+            log.error("Failed to get prompt '{}' from '{}': {}", promptName, serverName, e.getMessage());
             throw e;
         }
     }
 
-    /**
-     * Read a resource from a specific server
-     */
     public List<McpSchema.ResourceContents> readResource(String correlationId, String serverName, String uri,
                                                           LocalDateTime firedAt, Integer eventSequence) {
-        log.info("📖 Reading resource '{}' from server '{}'", uri, serverName);
+        log.info("Reading resource '{}' from server '{}'", uri, serverName);
         long start = System.currentTimeMillis();
 
         McpSession session = sessionManager.getSession(serverName);
@@ -274,9 +242,8 @@ public class McpClientService {
             List<McpSchema.ResourceContents> contents = client.readResource(request).contents();
             long duration = System.currentTimeMillis() - start;
 
-            log.info("✅ Resource read successfully, {} content item(s)", contents.size());
+            log.info("Resource read successfully, {} content item(s)", contents.size());
 
-            // Audit — resource read success
             auditService.auditClientResourceRead(session.getSessionId(), correlationId, serverName, uri, contents, duration, firedAt, eventSequence);
 
             return contents;
@@ -287,35 +254,23 @@ public class McpClientService {
         }
     }
 
-    /**
-     * Disconnect a specific server
-     */
     public void disconnect(String serverName) {
-        log.info("🔌 Disconnecting server '{}'...", serverName);
+        log.info("Disconnecting server '{}'...", serverName);
         sessionManager.disconnect(serverName);
-        // Audit is handled inside McpSessionManager.disconnect()
     }
 
-    /**
-     * Disconnect all servers
-     */
     public void disconnectAll() {
-        log.info("🔌 Disconnecting all servers...");
+        log.info("Disconnecting all servers...");
         for (String serverName : sessionManager.getServerNames()) {
             sessionManager.disconnect(serverName);
         }
     }
 
-    /**
-     * Print detailed session info for a server
-     */
     public void printSessionInfo(String serverName) {
         McpSession session = sessionManager.getSession(serverName);
         McpSyncClient client = session.getClient();
 
-        System.out.println("═══════════════════════════════════════════════════════════");
-        System.out.println("📊 MCP SESSION INFO: " + serverName);
-        System.out.println("═══════════════════════════════════════════════════════════");
+        System.out.println("MCP SESSION INFO: " + serverName);
         System.out.println("Status: " + (session.isActive() ? "ACTIVE" : "INACTIVE"));
         System.out.println("Connected At: " + session.getConnectedAt());
         System.out.println("Initialized: " + client.isInitialized());
@@ -346,7 +301,5 @@ public class McpClientService {
         System.out.println("Tools: " + session.getToolCount());
         System.out.println("Resources: " + (session.getResources() != null ? session.getResources().size() : 0));
         System.out.println("Prompts: " + (session.getPrompts() != null ? session.getPrompts().size() : 0));
-
-        System.out.println("═══════════════════════════════════════════════════════════");
     }
 }

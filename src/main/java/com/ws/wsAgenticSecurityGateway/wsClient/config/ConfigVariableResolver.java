@@ -6,16 +6,6 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/**
- * Resolves variables in configuration values.
- * Supports:
- * - ${env:VAR_NAME} - Environment variables
- * - ${input:VAR_NAME} - Input variables from config
- *
- * Example:
- * "Authorization": "Bearer ${env:GITHUB_TOKEN}"
- * "url": "${input:jira_url}"
- */
 @Slf4j
 public class ConfigVariableResolver {
 
@@ -27,12 +17,6 @@ public class ConfigVariableResolver {
         this.inputs = inputs;
     }
 
-    /**
-     * Resolve all variables in a string value
-     *
-     * @param value The value containing variables
-     * @return Resolved value with variables replaced
-     */
     public String resolve(String value) {
         if (value == null || value.isEmpty()) {
             return value;
@@ -42,16 +26,15 @@ public class ConfigVariableResolver {
         StringBuffer result = new StringBuffer();
 
         while (matcher.find()) {
-            String type = matcher.group(1);  // env or input
-            String key = matcher.group(2);   // variable name
+            String type = matcher.group(1);
+            String key = matcher.group(2);
 
             String resolvedValue = resolveVariable(type, key);
 
             if (resolvedValue != null) {
                 matcher.appendReplacement(result, Matcher.quoteReplacement(resolvedValue));
             } else {
-                log.warn("⚠️  Variable ${{}:{}} could not be resolved, keeping as-is", type, key);
-                // Keep the original variable if not resolved
+ log.warn("⚠ Variable ${{}:{}} could not be resolved, keeping as-is", type, key);
                 matcher.appendReplacement(result, Matcher.quoteReplacement(matcher.group(0)));
             }
         }
@@ -60,9 +43,6 @@ public class ConfigVariableResolver {
         return result.toString();
     }
 
-    /**
-     * Resolve a single variable based on its type
-     */
     private String resolveVariable(String type, String key) {
         switch (type.toLowerCase()) {
             case "env":
@@ -70,45 +50,36 @@ public class ConfigVariableResolver {
             case "input":
                 return resolveInputVariable(key);
             default:
-                log.warn("⚠️  Unknown variable type: {}", type);
+ log.warn("⚠ Unknown variable type: {}", type);
                 return null;
         }
     }
 
-    /**
-     * Resolve environment variable
-     */
     private String resolveEnvVariable(String key) {
         String value = System.getenv(key);
         if (value != null) {
-            log.debug("✅ Resolved env variable: {} = {}", key, maskSensitive(key, value));
+ log.debug("Resolved env variable: {} = {}", key, maskSensitive(key, value));
         } else {
-            log.warn("⚠️  Environment variable not found: {}", key);
+ log.warn("⚠ Environment variable not found: {}", key);
         }
         return value;
     }
 
-    /**
-     * Resolve input variable from config
-     */
     private String resolveInputVariable(String key) {
         if (inputs == null) {
-            log.warn("⚠️  No inputs defined in config");
+ log.warn("⚠ No inputs defined in config");
             return null;
         }
 
         String value = inputs.get(key);
         if (value != null) {
-            log.debug("✅ Resolved input variable: {} = {}", key, maskSensitive(key, value));
+ log.debug("Resolved input variable: {} = {}", key, maskSensitive(key, value));
         } else {
-            log.warn("⚠️  Input variable not found: {}", key);
+ log.warn("⚠ Input variable not found: {}", key);
         }
         return value;
     }
 
-    /**
-     * Resolve all variables in a map (recursive for nested maps)
-     */
     public Map<String, String> resolveMap(Map<String, String> map) {
         if (map == null) {
             return null;
@@ -118,9 +89,6 @@ public class ConfigVariableResolver {
         return map;
     }
 
-    /**
-     * Resolve all variables in a nested object map
-     */
     @SuppressWarnings("unchecked")
     public Map<String, Object> resolveObjectMap(Map<String, Object> map) {
         if (map == null) {
@@ -138,9 +106,6 @@ public class ConfigVariableResolver {
         return map;
     }
 
-    /**
-     * Mask sensitive values in logs
-     */
     private String maskSensitive(String key, String value) {
         String lowerKey = key.toLowerCase();
         if (lowerKey.contains("token") ||

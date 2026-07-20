@@ -8,13 +8,16 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-/**
- * Repository for {@link McpServerEntity} — the registered MCP server records.
- */
 @Repository
 public interface McpServerRepository extends JpaRepository<McpServerEntity, UUID> {
 
     Optional<McpServerEntity> findByServerConfigName(String serverConfigName);
 
     List<McpServerEntity> findByStatus(String status);
+
+    Optional<McpServerEntity> findByServerConfigNameAndWsTenantName(String serverConfigName, String wsTenantName);
+
+    List<McpServerEntity> findByStatusAndWsTenantName(String status, String wsTenantName);
+
+    List<McpServerEntity> findAllByWsTenantName(String wsTenantName);
 }

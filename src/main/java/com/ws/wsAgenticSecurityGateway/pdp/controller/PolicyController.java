@@ -16,23 +16,6 @@ import org.springframework.web.bind.annotation.*;
 import java.util.*;
 import java.util.stream.Collectors;
 
-/**
- * REST controller for PDP (Policy Decision Point) management.
- *
- * <p>Endpoints:
- * <ul>
- *   <li>{@code GET    /api/admin/policies}          — List all policies</li>
- *   <li>{@code POST   /api/admin/policies}          — Create a new policy</li>
- *   <li>{@code GET    /api/admin/policies/{id}}      — Get a specific policy</li>
- *   <li>{@code PUT    /api/admin/policies/{id}}      — Update a policy</li>
- *   <li>{@code DELETE /api/admin/policies/{id}}      — Delete a policy</li>
- *   <li>{@code POST   /api/admin/policies/{id}/toggle} — Toggle enabled/disabled</li>
- *   <li>{@code POST   /api/admin/policies/reload}    — Force reload Cedar engine</li>
- *   <li>{@code GET    /api/admin/policies/stats}      — Policy statistics</li>
- *   <li>{@code POST   /api/admin/policies/validate}   — Validate Cedar syntax</li>
- *   <li>{@code POST   /api/admin/policies/chat}       — Chatbot: NL → Cedar policy</li>
- * </ul>
- */
 @RestController
 @RequestMapping("/api/admin/policies")
 @Slf4j
@@ -53,11 +36,6 @@ public class PolicyController {
         this.auditService = auditService;
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  CRUD
-    // ════════════════════════════════════════════════════════════════════
-
-    /** List all policies. */
     @GetMapping
     public ResponseEntity<List<Map<String, Object>>> listPolicies() {
         List<GatewayPolicyEntity> policies = policyService.getAllPolicies();
@@ -67,7 +45,6 @@ public class PolicyController {
         return ResponseEntity.ok(result);
     }
 
-    /** Get a specific policy by ID. */
     @GetMapping("/{id}")
     public ResponseEntity<Map<String, Object>> getPolicy(@PathVariable UUID id) {
         return policyService.getById(id)
@@ -75,7 +52,6 @@ public class PolicyController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    /** Create a new policy. */
     @PostMapping
     public ResponseEntity<Map<String, Object>> createPolicy(@RequestBody PolicyDto dto) {
         PolicyCreationResult result = policyService.createPolicy(dto);
@@ -85,7 +61,6 @@ public class PolicyController {
         return ResponseEntity.badRequest().body(Map.of("error", result.error()));
     }
 
-    /** Update an existing policy. */
     @PutMapping("/{id}")
     public ResponseEntity<Map<String, Object>> updatePolicy(@PathVariable UUID id,
                                                               @RequestBody PolicyDto dto) {
@@ -96,7 +71,6 @@ public class PolicyController {
         return ResponseEntity.badRequest().body(Map.of("error", result.error()));
     }
 
-    /** Delete a policy. */
     @DeleteMapping("/{id}")
     public ResponseEntity<Map<String, Object>> deletePolicy(@PathVariable UUID id) {
         if (policyService.deletePolicy(id)) {
@@ -105,7 +79,6 @@ public class PolicyController {
         return ResponseEntity.notFound().build();
     }
 
-    /** Toggle a policy's enabled/disabled state. */
     @PostMapping("/{id}/toggle")
     public ResponseEntity<Map<String, Object>> togglePolicy(@PathVariable UUID id) {
         return policyService.toggleEnabled(id)
@@ -113,11 +86,6 @@ public class PolicyController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  ENGINE OPERATIONS
-    // ════════════════════════════════════════════════════════════════════
-
-    /** Force reload all policies into the Cedar engine. */
     @PostMapping("/reload")
     public ResponseEntity<Map<String, Object>> reloadPolicies() {
         int count = policyService.reloadEngine();
@@ -128,7 +96,6 @@ public class PolicyController {
         ));
     }
 
-    /** Get policy statistics. */
     @GetMapping("/stats")
     public ResponseEntity<Map<String, Object>> getStats() {
         Map<String, Object> stats = policyService.getStats();
@@ -136,7 +103,6 @@ public class PolicyController {
         return ResponseEntity.ok(stats);
     }
 
-    /** Validate Cedar policy syntax without saving. */
     @PostMapping("/validate")
     public ResponseEntity<Map<String, Object>> validatePolicy(@RequestBody Map<String, String> body) {
         String policyText = body.get("policyText");
@@ -152,43 +118,16 @@ public class PolicyController {
         return ResponseEntity.ok(Map.of("valid", false, "error", error));
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  CHATBOT — Natural Language → Cedar Policy
-    // ════════════════════════════════════════════════════════════════════
-
-    /**
-     * Generate a Cedar policy from natural language via LLM (multi-turn supported).
-     *
-     * <p>Supports two modes:
-     * <ul>
-     *   <li><b>Single-shot</b>: Send {@code {"prompt": "..."}} — generates in one call</li>
-     *   <li><b>Multi-turn</b>: Send {@code {"messages": [...]}} — iterative refinement</li>
-     * </ul>
-     *
-     * <p>When the LLM needs more information, the response will have
-     * {@code conversationComplete=false} and a {@code followUpQuestion}.
-     * The UI should then re-send the full conversation history with the user's answer appended.
-     */
     @PostMapping("/chat")
     public ResponseEntity<PolicyChatResponse> chatGeneratePolicy(@RequestBody PolicyChatRequest request) {
         PolicyChatResponse response = llmService.generatePolicy(request);
         return ResponseEntity.ok(response);
     }
 
-    /**
-     * Generate AND save a Cedar policy from natural language.
-     * Only saves when the conversation is complete (policy generated).
-     *
-     * <p>If the LLM returns a follow-up question, this endpoint returns it
-     * without saving — the UI should continue the conversation via {@code /chat}
-     * and only call {@code /chat/save} once the policy is finalized.
-     */
     @PostMapping("/chat/save")
     public ResponseEntity<Map<String, Object>> chatAndSavePolicy(@RequestBody PolicyChatRequest request) {
-        // Step 1: Generate via LLM (multi-turn aware)
         PolicyChatResponse chatResponse = llmService.generatePolicy(request);
 
-        // If conversation is not complete, return follow-up — don't save
         if (!chatResponse.isConversationComplete()) {
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("saved", false);
@@ -201,7 +140,6 @@ public class PolicyController {
             return ResponseEntity.badRequest().body(Map.of("error", chatResponse.getError()));
         }
 
-        // Step 2: Check validation errors
         if (chatResponse.getValidationError() != null) {
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("saved", false);
@@ -211,7 +149,6 @@ public class PolicyController {
             return ResponseEntity.ok(response);
         }
 
-        // Step 3: Create policy from LLM output
         PolicyDto dto = PolicyDto.builder()
                 .policyName(chatResponse.getSuggestedName())
                 .description(chatResponse.getDescription())
@@ -236,10 +173,6 @@ public class PolicyController {
                 "generatedPolicy", chatResponse.getPolicyText()
         ));
     }
-
-    // ════════════════════════════════════════════════════════════════════
-    //  HELPERS
-    // ════════════════════════════════════════════════════════════════════
 
     private Map<String, Object> toMap(GatewayPolicyEntity entity) {
         Map<String, Object> map = new LinkedHashMap<>();

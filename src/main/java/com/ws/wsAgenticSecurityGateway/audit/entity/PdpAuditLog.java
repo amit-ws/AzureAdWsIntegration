@@ -15,19 +15,6 @@ import org.hibernate.annotations.CreationTimestamp;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-/**
- * Dedicated audit record for PDP (Policy Decision Point) evaluations.
- *
- * <p>Separated from {@link McpAuditLog} because:
- * <ul>
- *   <li>Every column is populated on every row — no sparse NULLs.</li>
- *   <li>Independent retention policies (compliance / SOC2 may differ).</li>
- *   <li>Independent indexing and partitioning strategies.</li>
- *   <li>Clean domain separation — PDP is a distinct concern.</li>
- * </ul>
- *
- * <p>Linked to {@code mcp_audit_log} via {@code correlation_id} (logical join, not FK).
- */
 @Entity
 @Table(name = "pdp_audit_log", schema = "ws_agentic_security",
         indexes = {
@@ -49,7 +36,8 @@ public class PdpAuditLog {
     @GeneratedValue(generator = "UUID")
     private UUID id;
 
-    // ── Event Identity ────────────────────────────────────────────────
+    @Column(name = "ws_tenant_name", nullable = false)
+    private String wsTenantName;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "event_type", nullable = false, length = 60)
@@ -64,47 +52,30 @@ public class PdpAuditLog {
     @Builder.Default
     private AuditSeverity severity = AuditSeverity.INFO;
 
-    // ── Correlation ───────────────────────────────────────────────────
-
-    /**
-     * Links this PDP record to the originating request chain in {@code mcp_audit_log}.
-     * This is the logical join key — NOT a foreign key.
-     */
     @Column(name = "correlation_id", nullable = false, length = 64)
     private String correlationId;
 
-    // ── PDP Fields (all populated on every row) ───────────────────────
-
-    /** The agent or user identity requesting access. */
     @Column(name = "pdp_subject", nullable = false, length = 256)
     private String pdpSubject;
 
-    /** The capability / resource being accessed. */
     @Column(name = "pdp_resource", nullable = false, length = 256)
     private String pdpResource;
 
-    /** The action being performed (e.g. "tools/call", "resources/read"). */
     @Column(name = "pdp_action", nullable = false, length = 128)
     private String pdpAction;
 
-    /** Full environment / context sent to the PDP engine (no truncation). */
     @Convert(converter = JsonNodeColumnConverter.class)
     @Column(name = "pdp_context", columnDefinition = "JSONB")
     private JsonNode pdpContext;
 
-    /** The decision rendered: ALLOW, DENY, etc. */
     @Column(name = "pdp_decision", length = 20)
     private String pdpDecision;
-
-    // ── Error Context ────────────────────────────────────────────────
 
     @Column(name = "error_code")
     private Integer errorCode;
 
     @Column(name = "error_message", columnDefinition = "TEXT")
     private String errorMessage;
-
-    // ── Timing & Metadata ─────────────────────────────────────────────
 
     @Column(name = "duration_ms")
     private Long durationMs;

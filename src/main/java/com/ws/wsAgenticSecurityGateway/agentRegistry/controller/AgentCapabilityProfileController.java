@@ -10,10 +10,6 @@ import org.springframework.web.bind.annotation.*;
 import java.util.*;
 import java.util.stream.Collectors;
 
-/**
- * REST controller for Capability Access Profile management.
- * CRUD operations for profiles, rules, and agent assignments.
- */
 @RestController
 @RequestMapping("/api/admin/capability-profiles")
 @Slf4j
@@ -27,10 +23,6 @@ public class AgentCapabilityProfileController {
         this.profileService = profileService;
         this.chatService = chatService;
     }
-
-    // ════════════════════════════════════════════════════════════════════
-    // PROFILE CRUD
-    // ════════════════════════════════════════════════════════════════════
 
     @GetMapping
     public ResponseEntity<List<Map<String, Object>>> listProfiles() {
@@ -103,10 +95,6 @@ public class AgentCapabilityProfileController {
         }
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    // PROFILE ASSIGNMENT
-    // ════════════════════════════════════════════════════════════════════
-
     @PostMapping("/{profileId}/assign/{agentId}")
     public ResponseEntity<Map<String, Object>> assignProfile(@PathVariable UUID profileId,
                                                                @PathVariable UUID agentId) {
@@ -133,13 +121,6 @@ public class AgentCapabilityProfileController {
         }
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    // PREVIEW / QUERY
-    // ════════════════════════════════════════════════════════════════════
-
-    /**
-     * Preview what capabilities a profile grants — resolves rules against current registry.
-     */
     @GetMapping("/{id}/preview")
     public ResponseEntity<Map<String, Object>> previewProfile(@PathVariable UUID id) {
         return profileService.findProfileById(id)
@@ -147,30 +128,16 @@ public class AgentCapabilityProfileController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    /**
-     * Preview effective access for a specific agent — union of all assigned profiles.
-     */
     @GetMapping("/agent-access/{agentId}")
     public ResponseEntity<Map<String, Object>> previewAgentAccess(@PathVariable UUID agentId) {
         return ResponseEntity.ok(profileService.computeAgentAccess(agentId));
     }
 
-    /**
-     * Get available servers and their capability counts — for the profile builder UI.
-     */
     @GetMapping("/available-servers")
     public ResponseEntity<List<Map<String, Object>>> getAvailableServers() {
         return ResponseEntity.ok(profileService.getAvailableServersForBuilder());
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    // CHAT ASSISTANT
-    // ════════════════════════════════════════════════════════════════════
-
-    /**
-     * Chat endpoint for LLM-powered profile generation.
-     * Accepts a prompt and optional conversation history.
-     */
     @PostMapping("/chat")
     public ResponseEntity<Map<String, Object>> chatGenerateProfile(@RequestBody Map<String, Object> request) {
         String prompt = (String) request.get("prompt");
@@ -182,9 +149,6 @@ public class AgentCapabilityProfileController {
         return ResponseEntity.ok(result);
     }
 
-    /**
-     * Check if the chat assistant is available (API key configured).
-     */
     @GetMapping("/chat/status")
     public ResponseEntity<Map<String, Object>> chatStatus() {
         return ResponseEntity.ok(Map.of("available", chatService.isLlmAvailable()));

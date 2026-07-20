@@ -22,10 +22,6 @@ import org.springframework.web.bind.annotation.*;
 import java.util.*;
 import java.util.stream.Collectors;
 
-/**
- * REST controller for the Agent Discovery Registry.
- * Exposes discovered agent profiles and session history to the admin dashboard.
- */
 @RestController
 @RequestMapping("/api/admin/agents")
 @Slf4j
@@ -46,21 +42,16 @@ public class AgentController {
         this.nhiService = nhiService;
     }
 
-    /**
-     * List all discovered agents with aggregate stats.
-     */
     @GetMapping
     public ResponseEntity<List<Map<String, Object>>> listAgents() {
         List<GatewayAgentEntity> agents = agentRegistryService.getAllAgents();
         List<GatewayAgentSessionEntity> connectedSessions = agentRegistryService.getConnectedSessions();
 
-        // Pre-compute connected session counts per agent
         Map<UUID, Long> connectedCountByAgent = connectedSessions.stream()
                 .collect(Collectors.groupingBy(
                         s -> s.getAgent().getId(),
                         Collectors.counting()));
 
-        // True total session counts from the sessions table (not the denormalized counter)
         Map<UUID, Long> totalSessionsByAgent = agentRegistryService.countSessionsByAgent();
 
         List<Map<String, Object>> result = new ArrayList<>();
@@ -85,14 +76,10 @@ public class AgentController {
         return ResponseEntity.ok(result);
     }
 
-    /**
-     * Get detailed info for a specific agent, including capabilities.
-     */
     @GetMapping("/{id}")
     public ResponseEntity<Map<String, Object>> getAgent(@PathVariable UUID id) {
         return agentRegistryService.getAgent(id)
                 .map(agent -> {
-                    // True total from sessions table (not the denormalized counter)
                     long totalSessions = agentRegistryService.countSessionsForAgent(id);
 
                     Map<String, Object> map = new LinkedHashMap<>();
@@ -112,9 +99,6 @@ public class AgentController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    /**
-     * Get session history for a specific agent.
-     */
     @GetMapping("/{id}/sessions")
     public ResponseEntity<List<Map<String, Object>>> getAgentSessions(@PathVariable UUID id) {
         List<GatewayAgentSessionEntity> sessions = agentRegistryService.getAgentSessions(id);
@@ -136,7 +120,6 @@ public class AgentController {
             map.put("nhiId", session.getNhiId());
             map.put("ipAddress", session.getIpAddress());
 
-            // Resolve caller name for display
             String calledByName = null;
             String callerType = session.getTokenType();
             if (session.getHumanUserId() != null) {
@@ -154,9 +137,6 @@ public class AgentController {
         return ResponseEntity.ok(result);
     }
 
-    /**
-     * Summary stats for the dashboard sidebar.
-     */
     @GetMapping("/summary")
     public ResponseEntity<Map<String, Object>> getSummary() {
         List<GatewayAgentEntity> agents = agentRegistryService.getAllAgents();
@@ -182,19 +162,10 @@ public class AgentController {
         return ResponseEntity.ok(summary);
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  LIVE SESSION MONITOR
-    // ════════════════════════════════════════════════════════════════════
-
-    /**
-     * Real-time view of all currently connected agent sessions.
-     * Enriched with agent identity, connected duration, and idle detection.
-     */
     @GetMapping("/sessions/live")
     public ResponseEntity<Map<String, Object>> getLiveSessions() {
         List<Map<String, Object>> sessions = agentRegistryService.getLiveSessionDetails();
 
-        // Count distinct agents online
         long distinctAgents = sessions.stream()
                 .map(s -> s.get("agentId"))
                 .distinct()
@@ -208,21 +179,12 @@ public class AgentController {
         return ResponseEntity.ok(result);
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  SESSION TIMELINE
-    // ════════════════════════════════════════════════════════════════════
-
-    /**
-     * Paginated chronological audit trail for a specific session.
-     * Used to trace exactly what happened during a session.
-     */
     @GetMapping("/sessions/{sessionId}/timeline")
     public ResponseEntity<Map<String, Object>> getSessionTimeline(
             @PathVariable String sessionId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size) {
 
-        // Get session metadata — search all sessions (connected + disconnected)
         Map<String, Object> sessionInfo = new LinkedHashMap<>();
         agentRegistryService.findSessionBySessionId(sessionId).ifPresentOrElse(
                 sessionEntity -> {
@@ -239,7 +201,6 @@ public class AgentController {
                 () -> sessionInfo.put("sessionId", sessionId)
         );
 
-        // Query audit logs for this session
         Page<McpAuditLog> auditPage = auditQueryService.getSessionTimeline(
                 sessionId, PageRequest.of(page, size));
 
@@ -272,13 +233,6 @@ public class AgentController {
         return ResponseEntity.ok(result);
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  APPROVAL WORKFLOW
-    // ════════════════════════════════════════════════════════════════════
-
-    /**
-     * Approve an agent — allows it to connect and use tools freely.
-     */
     @PostMapping("/{id}/approve")
     public ResponseEntity<Map<String, Object>> approveAgent(@PathVariable UUID id,
                                                             HttpServletRequest request) {
@@ -295,9 +249,6 @@ public class AgentController {
         }
     }
 
-    /**
-     * Block an agent — rejected on next connection attempt.
-     */
     @PostMapping("/{id}/block")
     public ResponseEntity<Map<String, Object>> blockAgent(@PathVariable UUID id,
                                                           HttpServletRequest request) {

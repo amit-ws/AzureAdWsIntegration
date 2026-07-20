@@ -14,23 +14,6 @@ import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
 
-/**
- * JWT claim extraction filter for the MCP HTTP endpoint ({@code /mcp/*}).
- *
- * <p>Runs at Order 1 (before HttpMcpAuditFilter at Order 2). By the time this filter
- * executes, Spring Security has already validated the JWT (signature, expiry, issuer).
- * Invalid tokens never reach this filter — Spring Security returns 401 directly.
- *
- * <p>This filter extracts ALL JWT claims and stores them as request attributes,
- * making them available to downstream filters and the context extractor without
- * coupling to Spring Security directly.
- *
- * <p>Classifies tokens as:
- * <ul>
- *   <li>{@code AUTOMATED_AGENT} — Client Credentials flow (no human involved)</li>
- *   <li>{@code HUMAN_DELEGATED} — Authorization Code flow (human logged in via agent)</li>
- * </ul>
- */
 @Slf4j
 public class GatewayOAuth2Filter implements Filter {
 
@@ -77,7 +60,6 @@ public class GatewayOAuth2Filter implements Filter {
 
         HttpServletRequest request = (HttpServletRequest) servletRequest;
 
-        // Skip JWT extraction when auth mode is "none" (runtime-configurable)
         if (!"oauth2".equals(authConfigService.getEffectiveMode())) {
             chain.doFilter(servletRequest, servletResponse);
             return;
@@ -96,13 +78,8 @@ public class GatewayOAuth2Filter implements Filter {
         chain.doFilter(servletRequest, servletResponse);
     }
 
-    /**
-     * Extracts ALL claims from the validated JWT and stores them as request attributes.
-     * Downstream filters (HttpMcpAuditFilter) and McpGatewayContextExtractor read these.
-     */
     @SuppressWarnings("unchecked")
     private void extractAndStoreJwtClaims(HttpServletRequest request, Jwt jwt) {
-        // ── Core Identity ──
         String clientId = resolveClientId(jwt);
         String subject = jwt.getSubject();
         String preferredUsername = jwt.getClaimAsString("preferred_username");
@@ -123,7 +100,6 @@ public class GatewayOAuth2Filter implements Filter {
         request.setAttribute(ATTR_EMAIL_VERIFIED, emailVerified);
         request.setAttribute(ATTR_ISSUER, issuer);
 
-        // ── Roles ──
         List<String> realmRoles = extractRealmRoles(jwt);
         List<String> clientRoles = extractClientRoles(jwt, clientId);
         List<String> allRoles = mergeRoles(realmRoles, clientRoles);
@@ -132,15 +108,12 @@ public class GatewayOAuth2Filter implements Filter {
         request.setAttribute(ATTR_CLIENT_ROLES, clientRoles);
         request.setAttribute(ATTR_ALL_ROLES, allRoles);
 
-        // ── Custom Claims (ws_gateway_* prefix) — extracted BEFORE classification ──
         Map<String, Object> customClaims = extractCustomClaims(jwt);
         request.setAttribute(ATTR_CUSTOM_CLAIMS, customClaims);
 
-        // ── Raw JWT claims (full payload for debugging) ──
         Map<String, Object> rawClaims = new HashMap<>(jwt.getClaims());
         request.setAttribute(ATTR_RAW_CLAIMS, rawClaims);
 
-        // ── Token Classification (Tier 2: JWT Signal Chain — 7 signals, zero latency) ──
         TokenClassificationService.ClassificationResult classification =
                 tokenClassificationService.classifyFromJwtSignals(rawClaims, customClaims);
         String tokenType = classification.tokenType();
@@ -148,23 +121,17 @@ public class GatewayOAuth2Filter implements Filter {
         request.setAttribute(ATTR_CLASSIFICATION_SIGNAL, classification.matchedSignal());
         request.setAttribute(ATTR_AUTH_METHOD, AUTH_METHOD_OAUTH2);
 
-        // Store raw access token for Tier 1 introspection in HttpMcpAuditFilter
         request.setAttribute(ATTR_ACCESS_TOKEN, jwt.getTokenValue());
 
         log.debug("JWT claims extracted: client_id={}, sub={}, tokenType={} ({}), roles={}, user={}",
                 clientId, subject, tokenType, classification.matchedSignal(), allRoles, preferredUsername);
 
-        // ── Async audit ──
         String sessionId = request.getHeader("Mcp-Session-Id");
         auditService.auditOAuth2AuthSuccess(
                 sessionId, clientId, subject, allRoles, tokenType,
                 preferredUsername, rawClaims, null);
     }
 
-    /**
-     * Resolves the OAuth2 client ID from JWT claims.
-     * Checks azp (authorized party) first, then client_id.
-     */
     private String resolveClientId(Jwt jwt) {
         String azp = jwt.getClaimAsString("azp");
         if (azp != null && !azp.isBlank()) return azp;
@@ -172,23 +139,18 @@ public class GatewayOAuth2Filter implements Filter {
         String clientId = jwt.getClaimAsString("client_id");
         if (clientId != null && !clientId.isBlank()) return clientId;
 
-        // Fallback: some IdPs use aud as a single string for the client
         List<String> audience = jwt.getAudience();
         if (audience != null && audience.size() == 1) return audience.get(0);
 
         return null;
     }
 
-    /**
-     * Extracts realm-level roles from Keycloak's realm_access.roles claim.
-     */
     @SuppressWarnings("unchecked")
     private List<String> extractRealmRoles(Jwt jwt) {
         Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
         if (realmAccess != null && realmAccess.get("roles") instanceof List<?> roles) {
             return roles.stream().map(String::valueOf).collect(Collectors.toList());
         }
-        // Azure AD / Okta fallback: flat "roles" or "groups" claim
         List<String> flatRoles = jwt.getClaimAsStringList("roles");
         if (flatRoles != null) return new ArrayList<>(flatRoles);
 
@@ -198,9 +160,6 @@ public class GatewayOAuth2Filter implements Filter {
         return List.of();
     }
 
-    /**
-     * Extracts client-level roles from Keycloak's resource_access.<client>.roles claim.
-     */
     @SuppressWarnings("unchecked")
     private List<String> extractClientRoles(Jwt jwt, String clientId) {
         Map<String, Object> resourceAccess = jwt.getClaimAsMap("resource_access");
@@ -216,19 +175,12 @@ public class GatewayOAuth2Filter implements Filter {
         return List.of();
     }
 
-    /**
-     * Merges realm and client roles into a single deduplicated list.
-     */
     private List<String> mergeRoles(List<String> realmRoles, List<String> clientRoles) {
         Set<String> merged = new LinkedHashSet<>(realmRoles);
         merged.addAll(clientRoles);
         return new ArrayList<>(merged);
     }
 
-    /**
-     * Extracts all custom claims prefixed with "ws_gateway_" from the JWT.
-     * These are enterprise-specific claims configured in the IdP (Standard 2).
-     */
     private Map<String, Object> extractCustomClaims(Jwt jwt) {
         Map<String, Object> customClaims = new HashMap<>();
         for (Map.Entry<String, Object> entry : jwt.getClaims().entrySet()) {

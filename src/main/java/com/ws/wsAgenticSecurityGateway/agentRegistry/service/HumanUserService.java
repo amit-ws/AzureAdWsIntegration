@@ -10,6 +10,7 @@ import com.ws.wsAgenticSecurityGateway.audit.constants.AuditStatus;
 import com.ws.wsAgenticSecurityGateway.audit.entity.McpAuditLog;
 import com.ws.wsAgenticSecurityGateway.audit.repository.McpAuditLogRepository;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
+import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -21,17 +22,6 @@ import java.time.LocalTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
-/**
- * Service layer for Human User admin operations.
- *
- * <p>Owns {@link GatewayHumanUserRepository} and human-scoped queries on
- * {@link GatewayAgentSessionRepository}. Provides CRUD, summary stats,
- * session lineage, risk assessment, and usage analytics.
- *
- * <p><strong>Separation from AgentRegistryService:</strong>
- * AgentRegistryService handles hot-path writes (discoverHumanUser, incrementRequestCount,
- * session lifecycle). This service handles admin/dashboard READ queries and human CRUD.
- */
 @Service
 @Slf4j
 public class HumanUserService {
@@ -57,38 +47,28 @@ public class HumanUserService {
         this.eventPublisher = eventPublisher;
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  CRUD
-    // ════════════════════════════════════════════════════════════════════
-
     public List<GatewayHumanUserEntity> findAll() {
-        return humanUserRepository.findAll();
+        return humanUserRepository.findAllByWsTenantName(TenantContext.get());
     }
 
     public Optional<GatewayHumanUserEntity> findById(UUID id) {
-        return humanUserRepository.findById(id);
+        return humanUserRepository.findById(id)
+                .filter(entity -> entity.getWsTenantName() != null
+                        && entity.getWsTenantName().equals(TenantContext.get()));
     }
 
     public boolean existsById(UUID id) {
-        return humanUserRepository.existsById(id);
+        return findById(id).isPresent();
     }
 
     public long count() {
-        return humanUserRepository.count();
+        return humanUserRepository.countByWsTenantName(TenantContext.get());
     }
 
     public List<GatewayHumanUserEntity> search(String query) {
-        return humanUserRepository
-                .findByPreferredUsernameContainingIgnoreCaseOrEmailContainingIgnoreCase(query, query);
+        return humanUserRepository.searchByTenant(query, TenantContext.get());
     }
 
-    /**
-     * Block a human user — sets status to BLOCKED, terminates all active sessions,
-     * publishes {@link BlockedSessionEvent} for each so {@code HttpMcpAuditFilter}
-     * immediately rejects further requests on those sessions.
-     *
-     * @return a result holder with the entity and the count of terminated sessions
-     */
     @Transactional
     public BlockResult blockHumanUser(UUID id, String reason, String adminActor, String adminIp) {
         GatewayHumanUserEntity human = humanUserRepository.findById(id)
@@ -100,20 +80,16 @@ public class HumanUserService {
         humanUserRepository.save(human);
         agentRegistryService.updateHumanStatusCache(human.getIdpSubject(), "BLOCKED");
 
-        // ── Proactive session termination ──
-        // Path 1: Find sessions linked by humanUserId FK (HUMAN_DELEGATED tokens)
         List<GatewayAgentSessionEntity> activeSessions =
                 sessionRepository.findConnectedByHumanUserId(id);
-        // Path 2: Fallback — find sessions by authIdentity (JWT subject) when humanUserId is null
-        // This catches token misclassification: human discovered but session not linked via FK
         if (activeSessions.isEmpty() && human.getIdpSubject() != null) {
             activeSessions = sessionRepository.findConnectedByAuthIdentity(human.getIdpSubject());
             if (!activeSessions.isEmpty()) {
-                log.warn("🔍 Found {} active session(s) via authIdentity fallback for human '{}' (idpSubject={})",
+ log.warn("Found {} active session(s) via authIdentity fallback for human '{}' (idpSubject={})",
                         activeSessions.size(), human.getPreferredUsername(), human.getIdpSubject());
             }
         }
-        Map<String, String> affectedAgentMap = new LinkedHashMap<>(); // agentId → agentName
+        Map<String, String> affectedAgentMap = new LinkedHashMap<>();
         for (GatewayAgentSessionEntity session : activeSessions) {
             String sessionId = session.getSessionId();
             String agentName = session.getAgent() != null ? session.getAgent().getAgentName() : "unknown";
@@ -135,13 +111,12 @@ public class HumanUserService {
                     return m;
                 }).toList();
 
-        // ── Audit: admin action ──
         auditService.auditHumanUserBlocked(
                 human.getId(), human.getPreferredUsername(), human.getIdpSubject(),
                 previousStatus, reason, adminActor, adminIp,
                 activeSessions.size(), affectedAgents);
 
-        log.info("🚫 Human user blocked: {} (reason: {}, sessions terminated: {}, agents affected: {})",
+ log.info("Human user blocked: {} (reason: {}, sessions terminated: {}, agents affected: {})",
                 human.getPreferredUsername(), reason, activeSessions.size(), affectedAgents.size());
         return new BlockResult(human, activeSessions.size(), affectedAgents);
     }
@@ -160,13 +135,10 @@ public class HumanUserService {
                 human.getId(), human.getPreferredUsername(), human.getIdpSubject(),
                 adminActor, adminIp);
 
-        log.info("✅ Human user unblocked: {}", human.getPreferredUsername());
+ log.info("Human user unblocked: {}", human.getPreferredUsername());
         return human;
     }
 
-    /**
-     * Approve a human user — sets status from PENDING → ACTIVE.
-     */
     @Transactional
     public GatewayHumanUserEntity approveHumanUser(UUID id, String adminActor, String adminIp) {
         GatewayHumanUserEntity human = humanUserRepository.findById(id)
@@ -180,34 +152,30 @@ public class HumanUserService {
                 human.getId(), human.getPreferredUsername(), human.getIdpSubject(),
                 previousStatus, adminActor, adminIp);
 
-        log.info("✅ Human user APPROVED: {} (id={}, previousStatus={})",
+ log.info("Human user APPROVED: {} (id={}, previousStatus={})",
                 human.getPreferredUsername(), id, previousStatus);
         return human;
     }
 
-    /** Result holder for block operations — includes entity + session termination count. */
     public record BlockResult(GatewayHumanUserEntity human, int sessionsTerminated,
                                List<Map<String, Object>> affectedAgents) {}
 
-    // ════════════════════════════════════════════════════════════════════
-    //  SUMMARY STATS
-    // ════════════════════════════════════════════════════════════════════
-
     public long countActiveHumansSince(LocalDateTime since) {
-        return humanUserRepository.countActiveHumansSince(since);
+        return humanUserRepository.countActiveHumansSinceByTenant(since, TenantContext.get());
     }
 
     public long countBlocked() {
-        return humanUserRepository.countBlocked();
+        return humanUserRepository.countBlockedByTenant(TenantContext.get());
     }
 
     public Map<String, Object> getSummary() {
-        long total = humanUserRepository.count();
-        long blocked = humanUserRepository.countBlocked();
-        long activeToday = humanUserRepository.countActiveHumansSince(
-                LocalDateTime.now().minusHours(24));
+        String tenant = TenantContext.get();
+        long total = humanUserRepository.countByWsTenantName(tenant);
+        long blocked = humanUserRepository.countBlockedByTenant(tenant);
+        long activeToday = humanUserRepository.countActiveHumansSinceByTenant(
+                LocalDateTime.now().minusHours(24), tenant);
 
-        List<GatewayAgentSessionEntity> connected = sessionRepository.findByStatus("CONNECTED");
+        List<GatewayAgentSessionEntity> connected = sessionRepository.findByStatusAndWsTenantName("CONNECTED", tenant);
         long activeNow = connected.stream()
                 .map(GatewayAgentSessionEntity::getHumanUserId)
                 .filter(Objects::nonNull)
@@ -221,10 +189,6 @@ public class HumanUserService {
         summary.put("activeNow", activeNow);
         return summary;
     }
-
-    // ════════════════════════════════════════════════════════════════════
-    //  SESSIONS
-    // ════════════════════════════════════════════════════════════════════
 
     public List<GatewayAgentSessionEntity> getHumanSessions(UUID humanUserId) {
         return sessionRepository.findByHumanUserIdOrderByConnectedAtDesc(humanUserId);
@@ -260,12 +224,8 @@ public class HumanUserService {
         }).collect(Collectors.toList());
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  ACTIVE NOW (SOC)
-    // ════════════════════════════════════════════════════════════════════
-
     public Map<String, Object> getActiveNow() {
-        List<GatewayAgentSessionEntity> connected = sessionRepository.findByStatus("CONNECTED");
+        List<GatewayAgentSessionEntity> connected = sessionRepository.findByStatusAndWsTenantName("CONNECTED", TenantContext.get());
 
         Map<UUID, List<GatewayAgentSessionEntity>> byHuman = connected.stream()
                 .filter(s -> s.getHumanUserId() != null)
@@ -323,10 +283,6 @@ public class HumanUserService {
         result.put("automatedSessionsCount", automatedCount);
         return result;
     }
-
-    // ════════════════════════════════════════════════════════════════════
-    //  SESSION LINEAGE
-    // ════════════════════════════════════════════════════════════════════
 
     public Map<String, Object> getSessionLineage(GatewayHumanUserEntity human) {
         List<GatewayAgentSessionEntity> sessions =
@@ -413,10 +369,6 @@ public class HumanUserService {
         return result;
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  RISK ASSESSMENT
-    // ════════════════════════════════════════════════════════════════════
-
     public Map<String, Object> getRiskAssessment(GatewayHumanUserEntity human, int hours) {
         LocalDateTime since = LocalDateTime.now().minusHours(hours);
 
@@ -448,7 +400,6 @@ public class HumanUserService {
         List<Map<String, Object>> signals = new ArrayList<>();
         int totalScore = 0;
 
-        // Signal 1: SESSION_FREQUENCY
         int windowSessionCount = windowSessions.size();
         double baselineSessions = avgSessionsPerDay * ((double) hours / 24.0);
         int sessionScore = baselineSessions > 0 && windowSessionCount > baselineSessions * 3 ? 15
@@ -459,7 +410,6 @@ public class HumanUserService {
                 windowSessionCount + " sessions in last " + hours + "h (baseline: "
                         + String.format("%.1f", baselineSessions) + ")"));
 
-        // Signal 2: UNIQUE_TOOLS_ACCESSED
         Set<String> uniqueTools = toolCallLogs.stream()
                 .map(McpAuditLog::getCapabilityName)
                 .filter(Objects::nonNull)
@@ -480,7 +430,6 @@ public class HumanUserService {
                 allTimeTools.size(), toolBreadthScore,
                 uniqueTools.size() + " distinct tools in window (all-time: " + allTimeTools.size() + ")"));
 
-        // Signal 3: ERROR_RATE
         long totalCalls = toolCallLogs.size();
         long errorCalls = toolCallLogs.stream()
                 .filter(l -> l.getStatus() == AuditStatus.ERROR || l.getStatus() == AuditStatus.FAILURE)
@@ -492,7 +441,6 @@ public class HumanUserService {
                 0.05, errorScore,
                 String.format("%.1f%% error rate (%d/%d calls)", errorRate * 100, errorCalls, totalCalls)));
 
-        // Signal 4: OFF_HOURS_USAGE
         long offHoursCount = windowLogs.stream()
                 .filter(l -> l.getTimestamp() != null)
                 .filter(l -> {
@@ -505,7 +453,6 @@ public class HumanUserService {
         signals.add(buildSignal("OFF_HOURS_USAGE", hasOffHours, null, offHoursScore,
                 offHoursCount + " requests outside business hours (8am-8pm)"));
 
-        // Signal 5: PDP_DENIAL_RATE
         long pdpDenials = windowLogs.stream()
                 .filter(l -> "DENIED".equals(l.getPdpDecision()))
                 .count();
@@ -519,7 +466,6 @@ public class HumanUserService {
                 0.01, denialScore,
                 String.format("%.1f%% policy denials (%d/%d checks)", denialRate * 100, pdpDenials, totalPdpChecks)));
 
-        // Signal 6: NEW_TOOLS_ACCESSED
         Set<String> historicalTools = allSessionIds.isEmpty() ? Set.of()
                 : auditLogRepository.findAll((root, query, cb) -> cb.and(
                         root.get("sessionId").in(allSessionIds),
@@ -550,10 +496,6 @@ public class HumanUserService {
         result.put("windowHours", hours);
         return result;
     }
-
-    // ════════════════════════════════════════════════════════════════════
-    //  USAGE ANALYTICS
-    // ════════════════════════════════════════════════════════════════════
 
     public Map<String, Object> getUsageAnalytics(GatewayHumanUserEntity human, int hours) {
         LocalDateTime since = LocalDateTime.now().minusHours(hours);
@@ -607,7 +549,6 @@ public class HumanUserService {
         summary.put("avgRequestsPerSession", Math.round(avgReqPerSession * 10.0) / 10.0);
         summary.put("avgSessionDurationMs", Math.round(avgSessionDurationMs));
 
-        // By agent
         Map<String, List<GatewayAgentSessionEntity>> byAgentName = windowSessions.stream()
                 .filter(s -> s.getAgent() != null)
                 .collect(Collectors.groupingBy(s -> s.getAgent().getAgentName()));
@@ -622,7 +563,6 @@ public class HumanUserService {
             return m;
         }).collect(Collectors.toList());
 
-        // By server
         List<Map<String, Object>> byServer = serverUsage.stream().map(r -> {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("serverName", r[0]);
@@ -631,7 +571,6 @@ public class HumanUserService {
             return m;
         }).collect(Collectors.toList());
 
-        // By tool
         List<Map<String, Object>> byTool = toolUsage.stream().map(r -> {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("toolName", r[0]);
@@ -641,7 +580,6 @@ public class HumanUserService {
             return m;
         }).collect(Collectors.toList());
 
-        // Timeline
         List<Map<String, Object>> timeline = hourlyBuckets.stream().map(r -> {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("hour", r[0]);
@@ -658,10 +596,6 @@ public class HumanUserService {
         result.put("timeline", timeline);
         return result;
     }
-
-    // ════════════════════════════════════════════════════════════════════
-    //  INTERNAL HELPERS
-    // ════════════════════════════════════════════════════════════════════
 
     private Map<String, Object> buildSignal(String name, Object value, Object baseline,
                                              int score, String description) {

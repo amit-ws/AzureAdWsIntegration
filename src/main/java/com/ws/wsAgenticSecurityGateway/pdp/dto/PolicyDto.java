@@ -8,9 +8,6 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-/**
- * DTO for policy CRUD operations via REST API.
- */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor

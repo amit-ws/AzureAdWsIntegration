@@ -10,6 +10,7 @@ import com.ws.wsAgenticSecurityGateway.audit.constants.AuditStatus;
 import com.ws.wsAgenticSecurityGateway.audit.entity.McpAuditLog;
 import com.ws.wsAgenticSecurityGateway.audit.repository.McpAuditLogRepository;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
+import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -21,17 +22,6 @@ import java.time.LocalTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
-/**
- * Service layer for Non-Human Identity (NHI) admin operations.
- *
- * <p>Owns {@link GatewayNhiRepository} and NHI-scoped queries on
- * {@link GatewayAgentSessionRepository}. Provides CRUD, summary stats,
- * session lineage, risk assessment, and usage analytics.
- *
- * <p><strong>Separation from AgentRegistryService:</strong>
- * AgentRegistryService handles hot-path writes (discoverNhi, incrementRequestCount,
- * session lifecycle). This service handles admin/dashboard READ queries and NHI CRUD.
- */
 @Service
 @Slf4j
 public class NhiService {
@@ -57,38 +47,28 @@ public class NhiService {
         this.eventPublisher = eventPublisher;
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  CRUD
-    // ════════════════════════════════════════════════════════════════════
-
     public List<GatewayNhiEntity> findAll() {
-        return nhiRepository.findAll();
+        return nhiRepository.findAllByWsTenantName(TenantContext.get());
     }
 
     public Optional<GatewayNhiEntity> findById(UUID id) {
-        return nhiRepository.findById(id);
+        return nhiRepository.findById(id)
+                .filter(entity -> entity.getWsTenantName() != null
+                        && entity.getWsTenantName().equals(TenantContext.get()));
     }
 
     public boolean existsById(UUID id) {
-        return nhiRepository.existsById(id);
+        return findById(id).isPresent();
     }
 
     public long count() {
-        return nhiRepository.count();
+        return nhiRepository.countByWsTenantName(TenantContext.get());
     }
 
     public List<GatewayNhiEntity> search(String query) {
-        return nhiRepository
-                .findByServiceNameContainingIgnoreCaseOrClientIdContainingIgnoreCase(query, query);
+        return nhiRepository.searchByTenant(query, TenantContext.get());
     }
 
-    /**
-     * Block an NHI — sets status to BLOCKED, terminates all active sessions,
-     * publishes {@link BlockedSessionEvent} for each so {@code HttpMcpAuditFilter}
-     * immediately rejects further requests on those sessions.
-     *
-     * @return a result holder with the entity and the count of terminated sessions
-     */
     @Transactional
     public BlockResult blockNhi(UUID id, String reason, String adminActor, String adminIp) {
         GatewayNhiEntity nhi = nhiRepository.findById(id)
@@ -100,19 +80,16 @@ public class NhiService {
         nhiRepository.save(nhi);
         agentRegistryService.updateNhiStatusCache(nhi.getIdpSubject(), "BLOCKED");
 
-        // ── Proactive session termination ──
-        // Path 1: Find sessions linked by nhiId FK (AUTOMATED_AGENT tokens)
         List<GatewayAgentSessionEntity> activeSessions =
                 sessionRepository.findConnectedByNhiId(id);
-        // Path 2: Fallback — find sessions by authIdentity (JWT subject) when nhiId is null
         if (activeSessions.isEmpty() && nhi.getIdpSubject() != null) {
             activeSessions = sessionRepository.findConnectedByAuthIdentity(nhi.getIdpSubject());
             if (!activeSessions.isEmpty()) {
-                log.warn("🔍 Found {} active session(s) via authIdentity fallback for NHI '{}' (idpSubject={})",
+ log.warn("Found {} active session(s) via authIdentity fallback for NHI '{}' (idpSubject={})",
                         activeSessions.size(), nhi.getServiceName(), nhi.getIdpSubject());
             }
         }
-        Map<String, String> affectedAgentMap = new LinkedHashMap<>(); // agentId -> agentName
+        Map<String, String> affectedAgentMap = new LinkedHashMap<>();
         for (GatewayAgentSessionEntity session : activeSessions) {
             String sessionId = session.getSessionId();
             String agentName = session.getAgent() != null ? session.getAgent().getAgentName() : "unknown";
@@ -134,13 +111,12 @@ public class NhiService {
                     return m;
                 }).toList();
 
-        // ── Audit: admin action ──
         auditService.auditNhiBlocked(
                 nhi.getId(), nhi.getServiceName(), nhi.getClientId(), nhi.getIdpSubject(),
                 previousStatus, reason, adminActor, adminIp,
                 activeSessions.size(), affectedAgents);
 
-        log.info("🚫 NHI blocked: {} (reason: {}, sessions terminated: {}, agents affected: {})",
+ log.info("NHI blocked: {} (reason: {}, sessions terminated: {}, agents affected: {})",
                 nhi.getServiceName(), reason, activeSessions.size(), affectedAgents.size());
         return new BlockResult(nhi, activeSessions.size(), affectedAgents);
     }
@@ -159,13 +135,10 @@ public class NhiService {
                 nhi.getId(), nhi.getServiceName(), nhi.getClientId(), nhi.getIdpSubject(),
                 adminActor, adminIp);
 
-        log.info("✅ NHI unblocked: {}", nhi.getServiceName());
+ log.info("NHI unblocked: {}", nhi.getServiceName());
         return nhi;
     }
 
-    /**
-     * Approve an NHI — sets status from PENDING → ACTIVE.
-     */
     @Transactional
     public GatewayNhiEntity approveNhi(UUID id, String adminActor, String adminIp) {
         GatewayNhiEntity nhi = nhiRepository.findById(id)
@@ -179,34 +152,30 @@ public class NhiService {
                 nhi.getId(), nhi.getServiceName(), nhi.getClientId(), nhi.getIdpSubject(),
                 previousStatus, adminActor, adminIp);
 
-        log.info("✅ NHI APPROVED: {} (id={}, previousStatus={})",
+ log.info("NHI APPROVED: {} (id={}, previousStatus={})",
                 nhi.getServiceName(), id, previousStatus);
         return nhi;
     }
 
-    /** Result holder for block operations — includes entity + session termination count. */
     public record BlockResult(GatewayNhiEntity nhi, int sessionsTerminated,
                                List<Map<String, Object>> affectedAgents) {}
 
-    // ════════════════════════════════════════════════════════════════════
-    //  SUMMARY STATS
-    // ════════════════════════════════════════════════════════════════════
-
     public long countActiveSince(LocalDateTime since) {
-        return nhiRepository.countActiveSince(since);
+        return nhiRepository.countActiveSinceByTenant(since, TenantContext.get());
     }
 
     public long countBlocked() {
-        return nhiRepository.countBlocked();
+        return nhiRepository.countBlockedByTenant(TenantContext.get());
     }
 
     public Map<String, Object> getSummary() {
-        long total = nhiRepository.count();
-        long blocked = nhiRepository.countBlocked();
-        long activeToday = nhiRepository.countActiveSince(
-                LocalDateTime.now().minusHours(24));
+        String tenant = TenantContext.get();
+        long total = nhiRepository.countByWsTenantName(tenant);
+        long blocked = nhiRepository.countBlockedByTenant(tenant);
+        long activeToday = nhiRepository.countActiveSinceByTenant(
+                LocalDateTime.now().minusHours(24), tenant);
 
-        List<GatewayAgentSessionEntity> connected = sessionRepository.findByStatus("CONNECTED");
+        List<GatewayAgentSessionEntity> connected = sessionRepository.findByStatusAndWsTenantName("CONNECTED", tenant);
         long activeNow = connected.stream()
                 .map(GatewayAgentSessionEntity::getNhiId)
                 .filter(Objects::nonNull)
@@ -220,10 +189,6 @@ public class NhiService {
         summary.put("activeNow", activeNow);
         return summary;
     }
-
-    // ════════════════════════════════════════════════════════════════════
-    //  SESSIONS
-    // ════════════════════════════════════════════════════════════════════
 
     public List<GatewayAgentSessionEntity> getNhiSessions(UUID nhiId) {
         return sessionRepository.findByNhiIdOrderByConnectedAtDesc(nhiId);
@@ -259,12 +224,8 @@ public class NhiService {
         }).collect(Collectors.toList());
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  ACTIVE NOW (SOC)
-    // ════════════════════════════════════════════════════════════════════
-
     public Map<String, Object> getActiveNow() {
-        List<GatewayAgentSessionEntity> connected = sessionRepository.findByStatus("CONNECTED");
+        List<GatewayAgentSessionEntity> connected = sessionRepository.findByStatusAndWsTenantName("CONNECTED", TenantContext.get());
 
         Map<UUID, List<GatewayAgentSessionEntity>> byNhi = connected.stream()
                 .filter(s -> s.getNhiId() != null)
@@ -322,10 +283,6 @@ public class NhiService {
         result.put("nonNhiSessionsCount", nonNhiCount);
         return result;
     }
-
-    // ════════════════════════════════════════════════════════════════════
-    //  SESSION LINEAGE
-    // ════════════════════════════════════════════════════════════════════
 
     public Map<String, Object> getSessionLineage(GatewayNhiEntity nhi) {
         List<GatewayAgentSessionEntity> sessions =
@@ -412,10 +369,6 @@ public class NhiService {
         return result;
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  RISK ASSESSMENT
-    // ════════════════════════════════════════════════════════════════════
-
     public Map<String, Object> getRiskAssessment(GatewayNhiEntity nhi, int hours) {
         LocalDateTime since = LocalDateTime.now().minusHours(hours);
 
@@ -447,7 +400,6 @@ public class NhiService {
         List<Map<String, Object>> signals = new ArrayList<>();
         int totalScore = 0;
 
-        // Signal 1: SESSION_FREQUENCY
         int windowSessionCount = windowSessions.size();
         double baselineSessions = avgSessionsPerDay * ((double) hours / 24.0);
         int sessionScore = baselineSessions > 0 && windowSessionCount > baselineSessions * 3 ? 15
@@ -458,7 +410,6 @@ public class NhiService {
                 windowSessionCount + " sessions in last " + hours + "h (baseline: "
                         + String.format("%.1f", baselineSessions) + ")"));
 
-        // Signal 2: UNIQUE_TOOLS_ACCESSED
         Set<String> uniqueTools = toolCallLogs.stream()
                 .map(McpAuditLog::getCapabilityName)
                 .filter(Objects::nonNull)
@@ -479,7 +430,6 @@ public class NhiService {
                 allTimeTools.size(), toolBreadthScore,
                 uniqueTools.size() + " distinct tools in window (all-time: " + allTimeTools.size() + ")"));
 
-        // Signal 3: ERROR_RATE
         long totalCalls = toolCallLogs.size();
         long errorCalls = toolCallLogs.stream()
                 .filter(l -> l.getStatus() == AuditStatus.ERROR || l.getStatus() == AuditStatus.FAILURE)
@@ -491,7 +441,6 @@ public class NhiService {
                 0.05, errorScore,
                 String.format("%.1f%% error rate (%d/%d calls)", errorRate * 100, errorCalls, totalCalls)));
 
-        // Signal 4: OFF_HOURS_USAGE
         long offHoursCount = windowLogs.stream()
                 .filter(l -> l.getTimestamp() != null)
                 .filter(l -> {
@@ -504,7 +453,6 @@ public class NhiService {
         signals.add(buildSignal("OFF_HOURS_USAGE", hasOffHours, null, offHoursScore,
                 offHoursCount + " requests outside business hours (8am-8pm)"));
 
-        // Signal 5: PDP_DENIAL_RATE
         long pdpDenials = windowLogs.stream()
                 .filter(l -> "DENIED".equals(l.getPdpDecision()))
                 .count();
@@ -518,7 +466,6 @@ public class NhiService {
                 0.01, denialScore,
                 String.format("%.1f%% policy denials (%d/%d checks)", denialRate * 100, pdpDenials, totalPdpChecks)));
 
-        // Signal 6: NEW_TOOLS_ACCESSED
         Set<String> historicalTools = allSessionIds.isEmpty() ? Set.of()
                 : auditLogRepository.findAll((root, query, cb) -> cb.and(
                         root.get("sessionId").in(allSessionIds),
@@ -549,10 +496,6 @@ public class NhiService {
         result.put("windowHours", hours);
         return result;
     }
-
-    // ════════════════════════════════════════════════════════════════════
-    //  USAGE ANALYTICS
-    // ════════════════════════════════════════════════════════════════════
 
     public Map<String, Object> getUsageAnalytics(GatewayNhiEntity nhi, int hours) {
         LocalDateTime since = LocalDateTime.now().minusHours(hours);
@@ -606,7 +549,6 @@ public class NhiService {
         summary.put("avgRequestsPerSession", Math.round(avgReqPerSession * 10.0) / 10.0);
         summary.put("avgSessionDurationMs", Math.round(avgSessionDurationMs));
 
-        // By agent
         Map<String, List<GatewayAgentSessionEntity>> byAgentName = windowSessions.stream()
                 .filter(s -> s.getAgent() != null)
                 .collect(Collectors.groupingBy(s -> s.getAgent().getAgentName()));
@@ -621,7 +563,6 @@ public class NhiService {
             return m;
         }).collect(Collectors.toList());
 
-        // By server
         List<Map<String, Object>> byServer = serverUsage.stream().map(r -> {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("serverName", r[0]);
@@ -630,7 +571,6 @@ public class NhiService {
             return m;
         }).collect(Collectors.toList());
 
-        // By tool
         List<Map<String, Object>> byTool = toolUsage.stream().map(r -> {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("toolName", r[0]);
@@ -640,7 +580,6 @@ public class NhiService {
             return m;
         }).collect(Collectors.toList());
 
-        // Timeline
         List<Map<String, Object>> timeline = hourlyBuckets.stream().map(r -> {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("hour", r[0]);
@@ -657,10 +596,6 @@ public class NhiService {
         result.put("timeline", timeline);
         return result;
     }
-
-    // ════════════════════════════════════════════════════════════════════
-    //  INTERNAL HELPERS
-    // ════════════════════════════════════════════════════════════════════
 
     private Map<String, Object> buildSignal(String name, Object value, Object baseline,
                                              int score, String description) {

@@ -11,18 +11,6 @@ import org.springframework.web.bind.annotation.*;
 import java.util.*;
 import java.util.stream.Collectors;
 
-/**
- * REST controller for Human User management and enterprise analytics.
- *
- * <p>Provides:
- * <ul>
- *   <li>Core CRUD — list, detail, search, block/unblock</li>
- *   <li>Session Lineage — "Which human authorized which AI actions?"</li>
- *   <li>Who's Active Now — real-time human activity for SOC teams</li>
- *   <li>Risk Assessment — behavioral anomaly scoring</li>
- *   <li>Usage Analytics — per-human consumption breakdown</li>
- * </ul>
- */
 @RestController
 @RequestMapping("/api/admin/human-users")
 @Slf4j
@@ -33,10 +21,6 @@ public class HumanUserController {
     public HumanUserController(HumanUserService humanUserService) {
         this.humanUserService = humanUserService;
     }
-
-    // ════════════════════════════════════════════════════════════════════
-    //  CORE CRUD
-    // ════════════════════════════════════════════════════════════════════
 
     @GetMapping
     public ResponseEntity<List<Map<String, Object>>> listHumanUsers() {
@@ -178,10 +162,6 @@ public class HumanUserController {
         return request.getRemoteAddr();
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  C2: HUMAN-AGENT SESSION LINEAGE
-    // ════════════════════════════════════════════════════════════════════
-
     @GetMapping("/{id}/lineage")
     public ResponseEntity<Map<String, Object>> getSessionLineage(@PathVariable UUID id) {
         Optional<GatewayHumanUserEntity> opt = humanUserService.findById(id);
@@ -194,18 +174,10 @@ public class HumanUserController {
         return ResponseEntity.ok(lineage);
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  C3: WHO'S ACTIVE NOW
-    // ════════════════════════════════════════════════════════════════════
-
     @GetMapping("/active-now")
     public ResponseEntity<Map<String, Object>> getActiveNow() {
         return ResponseEntity.ok(humanUserService.getActiveNow());
     }
-
-    // ════════════════════════════════════════════════════════════════════
-    //  C4: HUMAN RISK ASSESSMENT
-    // ════════════════════════════════════════════════════════════════════
 
     @GetMapping("/{id}/risk-assessment")
     public ResponseEntity<Map<String, Object>> getRiskAssessment(
@@ -222,10 +194,6 @@ public class HumanUserController {
         return ResponseEntity.ok(assessment);
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  C5: USAGE ANALYTICS PER HUMAN
-    // ════════════════════════════════════════════════════════════════════
-
     @GetMapping("/{id}/analytics")
     public ResponseEntity<Map<String, Object>> getAnalytics(
             @PathVariable UUID id,
@@ -240,10 +208,6 @@ public class HumanUserController {
 
         return ResponseEntity.ok(analytics);
     }
-
-    // ════════════════════════════════════════════════════════════════════
-    //  HELPERS
-    // ════════════════════════════════════════════════════════════════════
 
     private Map<String, Object> toListView(GatewayHumanUserEntity h) {
         Map<String, Object> map = new LinkedHashMap<>();

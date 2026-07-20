@@ -10,18 +10,11 @@ import org.hibernate.annotations.CreationTimestamp;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-/**
- * Many-to-many link between agents and capability profiles.
- *
- * <p>An agent can have multiple profiles (union semantics — tool is allowed
- * if ANY assigned profile allows it). A profile can be assigned to multiple
- * agents (reusable, like IAM roles).
- */
 @Entity
 @Table(name = "agent_capability_profile_assignment", schema = "ws_agentic_security",
         uniqueConstraints = {
                 @UniqueConstraint(name = "uq_agent_profile",
-                        columnNames = {"agent_id", "profile_id"})
+                        columnNames = {"agent_id", "profile_id", "ws_tenant_name"})
         },
         indexes = {
                 @Index(name = "idx_cap_assign_agent", columnList = "agent_id"),
@@ -37,11 +30,12 @@ public class AgentCapabilityProfileAssignment {
     @GeneratedValue(generator = "UUID")
     private UUID id;
 
-    /** The agent this profile is assigned to. */
+    @Column(name = "ws_tenant_name", nullable = false)
+    private String wsTenantName;
+
     @Column(name = "agent_id", nullable = false)
     private UUID agentId;
 
-    /** The profile assigned to the agent. */
     @Column(name = "profile_id", nullable = false)
     private UUID profileId;
 

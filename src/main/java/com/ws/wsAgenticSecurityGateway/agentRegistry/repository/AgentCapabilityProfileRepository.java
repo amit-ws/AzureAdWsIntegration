@@ -14,4 +14,10 @@ public interface AgentCapabilityProfileRepository extends JpaRepository<AgentCap
     Optional<AgentCapabilityProfile> findByName(String name);
 
     List<AgentCapabilityProfile> findByIsTemplateTrue();
+
+    Optional<AgentCapabilityProfile> findByNameAndWsTenantName(String name, String wsTenantName);
+
+    List<AgentCapabilityProfile> findByIsTemplateTrueAndWsTenantName(String wsTenantName);
+
+    List<AgentCapabilityProfile> findAllByWsTenantName(String wsTenantName);
 }

@@ -12,46 +12,16 @@ import org.springframework.stereotype.Component;
 
 import java.util.*;
 
-/**
- * Context Fetcher — builds the structured {@link PolicyEvaluationRequest}
- * from the current MCP request context for Cedar policy evaluation.
- *
- * <p>Gathers metadata from:
- * <ul>
- *   <li>MCP SDK exchange (agent identity, session, transport context)</li>
- *   <li>Agent Registry DB (approval status, total requests, etc.)</li>
- *   <li>Custom Attribute Registry (admin-registered DB-driven attributes)</li>
- *   <li>HTTP headers (auto-captured for HEADER-sourced attributes)</li>
- *   <li>Developer-provided {@link CustomAttributeProvider} beans</li>
- * </ul>
- */
 @Component
 @Slf4j
 public class PolicyContextBuilder {
 
     private final AgentRegistryService agentRegistryService;
 
-    /** Set at runtime from McpServerApplication — same pattern as ToolCallOrchestrator. */
     private volatile SessionManager sessionManager;
 
-    /**
-     * Pluggable custom attribute providers.
-     * Any Spring bean implementing this interface is auto-registered.
-     * Providers contribute attributes to the policy evaluation context,
-     * enabling ABAC policies like {@code context.riskScore > 50} without engine changes.
-     */
     @FunctionalInterface
     public interface CustomAttributeProvider {
-        /**
-         * Contribute custom attributes for policy evaluation.
-         *
-         * @param agentName    the requesting agent's name
-         * @param action       the action (toolCall, promptGet, resourceRead)
-         * @param resourceName the public resource name
-         * @param serverName   the MCP server name
-         * @param arguments    tool call arguments (null for prompts/resources)
-         * @return additional attributes to merge into context (never null)
-         */
         Map<String, Object> getAttributes(String agentName, String action,
                                            String resourceName, String serverName,
                                            Map<String, Object> arguments);
@@ -77,18 +47,6 @@ public class PolicyContextBuilder {
         this.sessionManager = sessionManager;
     }
 
-    /**
-     * Build a policy evaluation request for a tool call.
-     *
-     * @param exchange      MCP SDK exchange
-     * @param publicName    the namespaced tool name
-     * @param serverName    the enterprise MCP server name
-     * @param originalName  the tool's original name on the server
-     * @param arguments     tool call arguments
-     * @param correlationId orchestration correlation ID
-     * @param sessionId     agent session ID
-     * @return structured evaluation request for Cedar
-     */
     public PolicyEvaluationRequest buildForToolCall(
             McpSyncServerExchange exchange,
             String publicName,
@@ -102,9 +60,6 @@ public class PolicyContextBuilder {
                 originalName, "TOOL", arguments, correlationId, sessionId);
     }
 
-    /**
-     * Build a policy evaluation request for a prompt get.
-     */
     public PolicyEvaluationRequest buildForPromptGet(
             McpSyncServerExchange exchange,
             String publicName,
@@ -117,9 +72,6 @@ public class PolicyContextBuilder {
                 originalName, "PROMPT", null, correlationId, sessionId);
     }
 
-    /**
-     * Build a policy evaluation request for a resource read.
-     */
     public PolicyEvaluationRequest buildForResourceRead(
             McpSyncServerExchange exchange,
             String publicName,
@@ -132,10 +84,6 @@ public class PolicyContextBuilder {
                 originalName, "RESOURCE", null, correlationId, sessionId);
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  PRIVATE
-    // ════════════════════════════════════════════════════════════════════
-
     private PolicyEvaluationRequest buildRequest(
             McpSyncServerExchange exchange,
             String action,
@@ -147,7 +95,6 @@ public class PolicyContextBuilder {
             String correlationId,
             String sessionId) {
 
-        // ── Agent identity ────────────────────────────────────────────
         String agentName = "unknown";
         String agentVersion = null;
         try {
@@ -160,7 +107,6 @@ public class PolicyContextBuilder {
             log.debug("Could not extract agent info from exchange: {}", e.getMessage());
         }
 
-        // ── Agent approval status from DB ─────────────────────────────
         String approvalStatus = "UNKNOWN";
         try {
             List<GatewayAgentEntity> agents = agentRegistryService.findAgentsByName(agentName);
@@ -171,8 +117,6 @@ public class PolicyContextBuilder {
             log.debug("Could not fetch agent approval status: {}", e.getMessage());
         }
 
-        // ── Transport context extraction ─────────────────────────────
-        // Extract known keys + full HTTP headers for attribute resolution
         Map<String, Object> transportContext = new HashMap<>();
         Map<String, String> httpHeaders = Collections.emptyMap();
         String sourceIp = null;
@@ -183,13 +127,11 @@ public class PolicyContextBuilder {
                     sourceIp = String.valueOf(ip);
                     transportContext.put("clientIp", sourceIp);
                 }
-                // Extract other known transport context keys
                 Object tcAgentName = exchange.transportContext().get("agentName");
                 if (tcAgentName != null) transportContext.put("agentName", tcAgentName);
                 Object tcCorrelation = exchange.transportContext().get("correlationId");
                 if (tcCorrelation != null) transportContext.put("correlationId", tcCorrelation);
 
-                // Extract full HTTP headers map (captured by McpGatewayContextExtractor)
                 Object headersObj = exchange.transportContext().get("_httpHeaders");
                 if (headersObj instanceof Map<?, ?> rawMap) {
                     @SuppressWarnings("unchecked")
@@ -201,12 +143,10 @@ public class PolicyContextBuilder {
             log.debug("Could not extract transport context: {}", e.getMessage());
         }
 
-        // ── Resolve custom attributes (3-layer merge) ────────────────
         Map<String, Object> customAttrs = resolveAllCustomAttributes(
                 httpHeaders, transportContext, agentName, action,
                 publicName, serverName, arguments);
 
-        // ── JWT identity from transport context (set by GatewayOAuth2Filter → McpGatewayContextExtractor) ──
         String agentClientId = null;
         String jwtSubject = null;
         List<String> agentRoles = null;
@@ -243,7 +183,6 @@ public class PolicyContextBuilder {
             log.debug("Could not extract JWT claims from transport context: {}", e.getMessage());
         }
 
-        // ── Build request ─────────────────────────────────────────────
         return PolicyEvaluationRequest.builder()
                 .agentName(agentName)
                 .agentVersion(agentVersion)
@@ -269,15 +208,6 @@ public class PolicyContextBuilder {
                 .build();
     }
 
-    /**
-     * Resolve all custom attributes from 3 layers (in priority order):
-     * <ol>
-     *   <li><b>DB-registered attributes</b> (Approach A) — admin-defined, resolved from
-     *       STATIC/HEADER/AGENT_FIELD sources via {@link CustomAttributeService}</li>
-     *   <li><b>Developer providers</b> — Spring beans implementing {@link CustomAttributeProvider}</li>
-     * </ol>
-     * Higher priority layers override lower ones for the same attribute name.
-     */
     private Map<String, Object> resolveAllCustomAttributes(
             Map<String, String> httpHeaders,
             Map<String, Object> transportContext,
@@ -287,7 +217,6 @@ public class PolicyContextBuilder {
 
         Map<String, Object> merged = new HashMap<>();
 
-        // Layer 1: DB-registered custom attributes (Approach A)
         try {
             Map<String, Object> registeredAttrs = customAttributeService.resolveAttributes(
                     httpHeaders, transportContext, agentName);
@@ -298,7 +227,6 @@ public class PolicyContextBuilder {
             log.warn("Failed to resolve DB-registered custom attributes: {}", e.getMessage());
         }
 
-        // Layer 2: Developer CustomAttributeProvider beans (overrides layer 1)
         Map<String, Object> providerAttrs = collectCustomAttributes(
                 agentName, action, resourceName, serverName, arguments);
         if (!providerAttrs.isEmpty()) {
@@ -308,10 +236,6 @@ public class PolicyContextBuilder {
         return merged;
     }
 
-    /**
-     * Collect attributes from all registered providers.
-     * Each provider runs in isolation — failures are logged and skipped.
-     */
     private Map<String, Object> collectCustomAttributes(
             String agentName, String action, String resourceName,
             String serverName, Map<String, Object> arguments) {
@@ -334,10 +258,6 @@ public class PolicyContextBuilder {
         return merged;
     }
 
-    /**
-     * Sanitize arguments — truncate large values, remove binary data.
-     * We include arguments in policy evaluation but not raw bytes.
-     */
     private Map<String, Object> sanitizeArguments(Map<String, Object> args) {
         Map<String, Object> sanitized = new HashMap<>();
         for (Map.Entry<String, Object> entry : args.entrySet()) {

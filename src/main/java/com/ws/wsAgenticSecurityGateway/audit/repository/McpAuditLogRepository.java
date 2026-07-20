@@ -17,12 +17,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * Persistence gateway for {@link McpAuditLog} records.
- *
- * <p>Extends {@link JpaSpecificationExecutor} for dynamic multi-field
- * filtering used by the admin dashboard audit log page.
- */
 @Repository
 public interface McpAuditLogRepository
         extends JpaRepository<McpAuditLog, UUID>, JpaSpecificationExecutor<McpAuditLog> {
@@ -47,8 +41,6 @@ public interface McpAuditLogRepository
     Page<McpAuditLog> findByModuleAndStatus(AuditModule module, AuditStatus status, Pageable pageable);
 
     long countByModuleAndStatus(AuditModule module, AuditStatus status);
-
-    // ── Dashboard stat queries ─────────────────────────────────────────
 
     long countByStatus(AuditStatus status);
 
@@ -87,8 +79,6 @@ public interface McpAuditLogRepository
 
     long countByStatusAndTimestampAfter(AuditStatus status, LocalDateTime since);
 
-    // ── Health dashboard queries ────────────────────────────────────────
-
     @Query(value = "SELECT " +
             "percentile_cont(0.5) WITHIN GROUP (ORDER BY duration_ms) AS p50, " +
             "percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95, " +
@@ -105,15 +95,9 @@ public interface McpAuditLogRepository
             nativeQuery = true)
     List<Object[]> findLastActivityPerServer();
 
-    // ── Live Session Monitor queries ─────────────────────────────────
-
-    /** Recent audit events for a specific session (for recent-tools enrichment). */
     List<McpAuditLog> findTop5BySessionIdAndEventTypeOrderByTimestampDesc(
             String sessionId, AuditEventType eventType);
 
-    // ── Per-Agent Usage Analytics queries ────────────────────────────
-
-    /** Total orchestration events for a set of sessions in a time window. */
     @Query("SELECT COUNT(a) FROM McpAuditLog a " +
             "WHERE a.sessionId IN :sessionIds AND a.timestamp > :since " +
             "AND a.module = com.ws.wsAgenticSecurityGateway.audit.constants.AuditModule.ORCHESTRATION_LAYER")
@@ -121,7 +105,6 @@ public interface McpAuditLogRepository
             @Param("sessionIds") List<String> sessionIds,
             @Param("since") LocalDateTime since);
 
-    /** Status breakdown for a set of sessions. */
     @Query("SELECT a.status, COUNT(a) FROM McpAuditLog a " +
             "WHERE a.sessionId IN :sessionIds AND a.timestamp > :since " +
             "AND a.module = com.ws.wsAgenticSecurityGateway.audit.constants.AuditModule.ORCHESTRATION_LAYER " +
@@ -130,7 +113,6 @@ public interface McpAuditLogRepository
             @Param("sessionIds") List<String> sessionIds,
             @Param("since") LocalDateTime since);
 
-    /** Hourly bucketed request counts for a set of sessions. */
     @Query(value = "SELECT date_trunc('hour', timestamp) AS bucket, COUNT(*) AS cnt " +
             "FROM ws_agentic_security.mcp_audit_log " +
             "WHERE session_id IN :sessionIds AND timestamp > :since " +
@@ -141,7 +123,6 @@ public interface McpAuditLogRepository
             @Param("sessionIds") List<String> sessionIds,
             @Param("since") LocalDateTime since);
 
-    /** Tool usage breakdown: which tools each agent uses most. */
     @Query("SELECT a.capabilityName, a.serverName, COUNT(a), AVG(a.durationMs) " +
             "FROM McpAuditLog a " +
             "WHERE a.sessionId IN :sessionIds AND a.timestamp > :since " +
@@ -151,7 +132,6 @@ public interface McpAuditLogRepository
             @Param("sessionIds") List<String> sessionIds,
             @Param("since") LocalDateTime since);
 
-    /** Server usage breakdown with error counts. */
     @Query("SELECT a.serverName, COUNT(a), " +
             "SUM(CASE WHEN a.status = com.ws.wsAgenticSecurityGateway.audit.constants.AuditStatus.ERROR " +
             "OR a.status = com.ws.wsAgenticSecurityGateway.audit.constants.AuditStatus.FAILURE THEN 1L ELSE 0L END) " +
@@ -163,7 +143,6 @@ public interface McpAuditLogRepository
             @Param("sessionIds") List<String> sessionIds,
             @Param("since") LocalDateTime since);
 
-    /** Latency percentiles (p50, p95, p99) for a set of sessions. */
     @Query(value = "SELECT " +
             "percentile_cont(0.5) WITHIN GROUP (ORDER BY duration_ms) AS p50, " +
             "percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95, " +
@@ -176,7 +155,6 @@ public interface McpAuditLogRepository
             @Param("sessionIds") List<String> sessionIds,
             @Param("since") LocalDateTime since);
 
-    /** Error breakdown with error codes and messages. */
     @Query("SELECT a.errorCode, a.errorMessage, COUNT(a) FROM McpAuditLog a " +
             "WHERE a.sessionId IN :sessionIds AND a.timestamp > :since " +
             "AND (a.status = com.ws.wsAgenticSecurityGateway.audit.constants.AuditStatus.ERROR " +
@@ -186,9 +164,86 @@ public interface McpAuditLogRepository
             @Param("sessionIds") List<String> sessionIds,
             @Param("since") LocalDateTime since);
 
-    // ── Session Timeline query ──────────────────────────────────────
-
-    /** Paginated audit events for a specific session, newest first. */
     Page<McpAuditLog> findBySessionIdOrderByTimestampDesc(
             String sessionId, Pageable pageable);
+
+    Page<McpAuditLog> findByModuleAndWsTenantName(AuditModule module, String wsTenantName, Pageable pageable);
+
+    Page<McpAuditLog> findByEventTypeAndWsTenantName(AuditEventType eventType, String wsTenantName, Pageable pageable);
+
+    Page<McpAuditLog> findByStatusAndWsTenantName(AuditStatus status, String wsTenantName, Pageable pageable);
+
+    Page<McpAuditLog> findByServerNameAndWsTenantName(String serverName, String wsTenantName, Pageable pageable);
+
+    List<McpAuditLog> findByCorrelationIdAndWsTenantName(String correlationId, String wsTenantName);
+
+    List<McpAuditLog> findBySessionIdAndWsTenantName(String sessionId, String wsTenantName);
+
+    Page<McpAuditLog> findByTimestampBetweenAndWsTenantName(LocalDateTime from, LocalDateTime to, String wsTenantName, Pageable pageable);
+
+    Page<McpAuditLog> findByModuleAndTimestampBetweenAndWsTenantName(
+            AuditModule module, LocalDateTime from, LocalDateTime to, String wsTenantName, Pageable pageable);
+
+    Page<McpAuditLog> findByModuleAndStatusAndWsTenantName(AuditModule module, AuditStatus status, String wsTenantName, Pageable pageable);
+
+    long countByModuleAndStatusAndWsTenantName(AuditModule module, AuditStatus status, String wsTenantName);
+
+    long countByStatusAndWsTenantName(AuditStatus status, String wsTenantName);
+
+    long countByModuleAndWsTenantName(AuditModule module, String wsTenantName);
+
+    long countBySeverityAndWsTenantName(AuditSeverity severity, String wsTenantName);
+
+    @Query("SELECT AVG(m.durationMs) FROM McpAuditLog m WHERE m.durationMs IS NOT NULL AND m.wsTenantName = :wsTenantName")
+    Double findAverageDurationMsByTenant(@Param("wsTenantName") String wsTenantName);
+
+    @Query("SELECT AVG(m.durationMs) FROM McpAuditLog m WHERE m.durationMs IS NOT NULL AND m.timestamp >= :since AND m.wsTenantName = :wsTenantName")
+    Double findAverageDurationMsSinceByTenant(@Param("since") LocalDateTime since, @Param("wsTenantName") String wsTenantName);
+
+    @Query(value = "SELECT date_trunc('hour', m.timestamp) AS bucket, COUNT(*) AS cnt " +
+            "FROM ws_agentic_security.mcp_audit_log m " +
+            "WHERE m.timestamp >= :since AND m.ws_tenant_name = :wsTenantName " +
+            "GROUP BY date_trunc('hour', m.timestamp) ORDER BY bucket",
+            nativeQuery = true)
+    List<Object[]> countByHourSinceByTenant(@Param("since") LocalDateTime since, @Param("wsTenantName") String wsTenantName);
+
+    @Query("SELECT DISTINCT m.serverName FROM McpAuditLog m WHERE m.serverName IS NOT NULL AND m.wsTenantName = :wsTenantName ORDER BY m.serverName")
+    List<String> findDistinctServerNamesByTenant(@Param("wsTenantName") String wsTenantName);
+
+    @Query("SELECT DISTINCT m.capabilityName FROM McpAuditLog m WHERE m.capabilityName IS NOT NULL AND m.wsTenantName = :wsTenantName ORDER BY m.capabilityName")
+    List<String> findDistinctCapabilityNamesByTenant(@Param("wsTenantName") String wsTenantName);
+
+    @Query("SELECT DISTINCT m.agentName FROM McpAuditLog m WHERE m.agentName IS NOT NULL AND m.wsTenantName = :wsTenantName ORDER BY m.agentName")
+    List<String> findDistinctAgentNamesByTenant(@Param("wsTenantName") String wsTenantName);
+
+    @Query("SELECT DISTINCT m.userIdentity FROM McpAuditLog m WHERE m.userIdentity IS NOT NULL AND m.wsTenantName = :wsTenantName ORDER BY m.userIdentity")
+    List<String> findDistinctUserIdentitiesByTenant(@Param("wsTenantName") String wsTenantName);
+
+    long countByTimestampAfterAndWsTenantName(LocalDateTime since, String wsTenantName);
+
+    long countByModuleAndTimestampAfterAndWsTenantName(AuditModule module, LocalDateTime since, String wsTenantName);
+
+    long countByStatusAndTimestampAfterAndWsTenantName(AuditStatus status, LocalDateTime since, String wsTenantName);
+
+    @Query(value = "SELECT " +
+            "percentile_cont(0.5) WITHIN GROUP (ORDER BY duration_ms) AS p50, " +
+            "percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95, " +
+            "percentile_cont(0.99) WITHIN GROUP (ORDER BY duration_ms) AS p99 " +
+            "FROM ws_agentic_security.mcp_audit_log " +
+            "WHERE duration_ms IS NOT NULL AND timestamp >= :since AND ws_tenant_name = :wsTenantName",
+            nativeQuery = true)
+    List<Object[]> findLatencyPercentilesSinceByTenant(@Param("since") LocalDateTime since, @Param("wsTenantName") String wsTenantName);
+
+    @Query(value = "SELECT server_name, MAX(timestamp) AS last_activity " +
+            "FROM ws_agentic_security.mcp_audit_log " +
+            "WHERE server_name IS NOT NULL AND ws_tenant_name = :wsTenantName " +
+            "GROUP BY server_name",
+            nativeQuery = true)
+    List<Object[]> findLastActivityPerServerByTenant(@Param("wsTenantName") String wsTenantName);
+
+    List<McpAuditLog> findTop5BySessionIdAndEventTypeAndWsTenantNameOrderByTimestampDesc(
+            String sessionId, AuditEventType eventType, String wsTenantName);
+
+    Page<McpAuditLog> findBySessionIdAndWsTenantNameOrderByTimestampDesc(
+            String sessionId, String wsTenantName, Pageable pageable);
 }

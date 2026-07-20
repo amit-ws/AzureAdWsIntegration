@@ -9,6 +9,7 @@ import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.AgentCapabilityP
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayAgentRepository;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.event.CapabilityProfileChangedEvent;
+import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
 import org.springframework.context.ApplicationEventPublisher;
@@ -19,14 +20,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.*;
 import java.util.stream.Collectors;
 
-/**
- * Service layer for Capability Access Profile management.
- *
- * <p>Owns CRUD, assignment, and preview operations for capability profiles.
- * Owns {@link AgentCapabilityProfileRepository},
- * {@link AgentCapabilityProfileAssignmentRepository}, and profile-scoped
- * lookups on {@link GatewayAgentRepository}.
- */
 @Service
 @Slf4j
 public class CapabilityProfileService {
@@ -55,20 +48,18 @@ public class CapabilityProfileService {
         this.eventPublisher = eventPublisher;
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  PROFILE CRUD
-    // ════════════════════════════════════════════════════════════════════
-
     public List<AgentCapabilityProfile> findAllProfiles() {
-        return profileRepository.findAll();
+        return profileRepository.findAllByWsTenantName(TenantContext.get());
     }
 
     public List<AgentCapabilityProfile> findTemplates() {
-        return profileRepository.findByIsTemplateTrue();
+        return profileRepository.findByIsTemplateTrueAndWsTenantName(TenantContext.get());
     }
 
     public Optional<AgentCapabilityProfile> findProfileById(UUID id) {
-        return profileRepository.findById(id);
+        return profileRepository.findById(id)
+                .filter(entity -> entity.getWsTenantName() != null
+                        && entity.getWsTenantName().equals(TenantContext.get()));
     }
 
     @Transactional
@@ -79,6 +70,7 @@ public class CapabilityProfileService {
                 .name(name)
                 .description(description)
                 .isTemplate(isTemplate != null ? isTemplate : false)
+                .wsTenantName(TenantContext.get())
                 .build();
 
         if (rulesData != null) {
@@ -96,12 +88,12 @@ public class CapabilityProfileService {
     }
 
     public boolean existsByName(String name) {
-        return profileRepository.findByName(name).isPresent();
+        return profileRepository.findByNameAndWsTenantName(name, TenantContext.get()).isPresent();
     }
 
     @Transactional
     public AgentCapabilityProfile updateProfile(UUID id, Map<String, Object> request) {
-        AgentCapabilityProfile profile = profileRepository.findById(id)
+        AgentCapabilityProfile profile = findProfileById(id)
                 .orElseThrow(() -> new NoSuchElementException("Profile not found: " + id));
 
         List<String> changed = new ArrayList<>();
@@ -136,7 +128,6 @@ public class CapabilityProfileService {
         auditService.auditCapabilityProfileUpdated(saved.getName(), saved.getId(),
                 String.join(", ", changed));
 
-        // Notify agents whose effective tool list may have changed
         List<String> affectedAgentNames = assignmentRepository.findByProfileId(id).stream()
                 .map(a -> getAgentName(a.getAgentId()))
                 .collect(Collectors.toList());
@@ -149,7 +140,7 @@ public class CapabilityProfileService {
 
     @Transactional
     public void deleteProfile(UUID id) {
-        AgentCapabilityProfile profile = profileRepository.findById(id)
+        AgentCapabilityProfile profile = findProfileById(id)
                 .orElseThrow(() -> new NoSuchElementException("Profile not found: " + id));
 
         List<AgentCapabilityProfileAssignment> assignments = assignmentRepository.findByProfileId(id);
@@ -166,7 +157,6 @@ public class CapabilityProfileService {
         log.info("Deleted capability profile: {} (id={})", profile.getName(), id);
         auditService.auditCapabilityProfileDeleted(profile.getName(), id);
 
-        // Notify affected agents
         List<String> affectedAgentNames = affectedAgentIds.stream()
                 .map(this::getAgentName)
                 .collect(Collectors.toList());
@@ -176,13 +166,9 @@ public class CapabilityProfileService {
         }
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  ASSIGNMENT
-    // ════════════════════════════════════════════════════════════════════
-
     @Transactional
     public void assignProfile(UUID profileId, UUID agentId) {
-        AgentCapabilityProfile profile = profileRepository.findById(profileId)
+        AgentCapabilityProfile profile = findProfileById(profileId)
                 .orElseThrow(() -> new NoSuchElementException("Profile not found: " + profileId));
 
         if (assignmentRepository.findByAgentIdAndProfileId(agentId, profileId).isPresent()) {
@@ -200,7 +186,6 @@ public class CapabilityProfileService {
         log.info("Assigned profile {} to agent {}", profileId, agentId);
         auditService.auditCapabilityProfileAssigned(profile.getName(), profileId, agentName, agentId);
 
-        // Notify — this agent's effective tool list just changed
         eventPublisher.publishEvent(new CapabilityProfileChangedEvent(
                 "PROFILE_ASSIGNED", profile.getName(), profileId, List.of(agentName)));
     }
@@ -220,7 +205,6 @@ public class CapabilityProfileService {
         log.info("Unassigned profile {} from agent {}", profileId, agentId);
         auditService.auditCapabilityProfileUnassigned(profileName, profileId, agentName, agentId);
 
-        // Notify — this agent's effective tool list just changed
         eventPublisher.publishEvent(new CapabilityProfileChangedEvent(
                 "PROFILE_UNASSIGNED", profileName, profileId, List.of(agentName)));
     }
@@ -228,10 +212,6 @@ public class CapabilityProfileService {
     public boolean isAssigned(UUID profileId, UUID agentId) {
         return assignmentRepository.findByAgentIdAndProfileId(agentId, profileId).isPresent();
     }
-
-    // ════════════════════════════════════════════════════════════════════
-    //  PREVIEW / QUERY
-    // ════════════════════════════════════════════════════════════════════
 
     public Map<String, Object> computeProfilePreview(AgentCapabilityProfile profile) {
         Set<String> allowedTools = new HashSet<>();
@@ -283,7 +263,6 @@ public class CapabilityProfileService {
             }
         }
 
-        // Per-server breakdown
         Collection<CapabilityDescriptor> allCaps = registryService.getAllCapabilities();
         Map<String, Map<String, List<CapabilityDescriptor>>> byServer = allCaps.stream()
                 .collect(Collectors.groupingBy(CapabilityDescriptor::getServerConfigName,
@@ -404,10 +383,6 @@ public class CapabilityProfileService {
         return servers;
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  RESPONSE BUILDERS
-    // ════════════════════════════════════════════════════════════════════
-
     public Map<String, Object> toProfileResponse(AgentCapabilityProfile profile) {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("id", profile.getId().toString());
@@ -456,10 +431,6 @@ public class CapabilityProfileService {
                 .map(GatewayAgentEntity::getAgentName)
                 .orElse("unknown");
     }
-
-    // ════════════════════════════════════════════════════════════════════
-    //  INTERNAL HELPERS
-    // ════════════════════════════════════════════════════════════════════
 
     AgentCapabilityProfileRule parseRule(Map<String, Object> ruleData,
                                          AgentCapabilityProfile profile) {

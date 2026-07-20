@@ -5,10 +5,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/**
- * Response from IdP connectivity validation.
- * Tests that the JWKS endpoint is reachable and returns valid keys.
- */
 @Data
 @Builder
 @NoArgsConstructor

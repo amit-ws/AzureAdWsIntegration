@@ -10,6 +10,7 @@ import com.ws.wsAgenticSecurityGateway.wsClient.dto.ServerConfigRequest;
 import com.ws.wsAgenticSecurityGateway.wsClient.dto.ServerConfigResponse;
 import com.ws.wsAgenticSecurityGateway.wsClient.entity.GatewayServerConfigEntity;
 import com.ws.wsAgenticSecurityGateway.wsClient.repository.GatewayServerConfigRepository;
+import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,16 +19,6 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/**
- * Core service for MCP server configuration management.
- *
- * <p>Provides CRUD operations for server configs persisted in the
- * {@code gateway_server_config} table, plus connection lifecycle
- * operations (connect, disconnect, reconnect).
- *
- * <p>Header values containing {@code ${env:VAR_NAME}} patterns are
- * resolved from system environment variables at connect time.
- */
 @Service
 @Slf4j
 public class ServerConfigService {
@@ -57,22 +48,14 @@ public class ServerConfigService {
         this.objectMapper = objectMapper;
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  CRUD
-    // ════════════════════════════════════════════════════════════════════
-
-    /**
-     * Create a new server configuration. Auto-connects if enabled + autoConnect.
-     */
     @Transactional
     public ServerConfigResponse createServerConfig(ServerConfigRequest request) {
-        // Validate uniqueness
-        if (configRepository.existsByServerName(request.getServerName())) {
+        String tenant = TenantContext.get();
+        if (configRepository.existsByServerNameAndWsTenantName(request.getServerName(), tenant)) {
             throw new IllegalArgumentException(
                     "Server config '" + request.getServerName() + "' already exists");
         }
 
-        // Persist
         GatewayServerConfigEntity entity = GatewayServerConfigEntity.builder()
                 .serverName(request.getServerName())
                 .type(request.getType() != null ? request.getType() : "http")
@@ -82,15 +65,14 @@ public class ServerConfigService {
                 .timeoutSeconds(request.getTimeoutSeconds() != null ? request.getTimeoutSeconds() : 30)
                 .enabled(request.getEnabled() != null ? request.getEnabled() : true)
                 .autoConnect(request.getAutoConnect() != null ? request.getAutoConnect() : true)
+                .wsTenantName(tenant)
                 .build();
 
         entity = configRepository.save(entity);
         log.info("Server config '{}' created (url={})", entity.getServerName(), entity.getUrl());
 
-        // Audit
         auditService.auditServerConfigCreated(entity.getServerName(), entity.getUrl());
 
-        // Auto-connect if enabled
         if (Boolean.TRUE.equals(entity.getEnabled()) && Boolean.TRUE.equals(entity.getAutoConnect())) {
             try {
                 connectFromConfig(entity);
@@ -98,19 +80,15 @@ public class ServerConfigService {
             } catch (Exception e) {
                 log.warn("Auto-connect failed for '{}' after creation: {}",
                         entity.getServerName(), e.getMessage());
-                // Don't throw — config is saved, connection can be retried manually
             }
         }
 
         return toResponse(entity);
     }
 
-    /**
-     * List all server configurations with enriched connection status.
-     */
     @Transactional(readOnly = true)
     public List<ServerConfigResponse> listServerConfigs() {
-        List<GatewayServerConfigEntity> entities = configRepository.findAllByOrderByServerNameAsc();
+        List<GatewayServerConfigEntity> entities = configRepository.findAllByWsTenantNameOrderByServerNameAsc(TenantContext.get());
         List<ServerConfigResponse> responses = new ArrayList<>();
         for (GatewayServerConfigEntity entity : entities) {
             responses.add(toResponse(entity));
@@ -118,30 +96,22 @@ public class ServerConfigService {
         return responses;
     }
 
-    /**
-     * Get a specific server configuration by name.
-     */
     @Transactional(readOnly = true)
     public ServerConfigResponse getServerConfig(String serverName) {
-        GatewayServerConfigEntity entity = configRepository.findByServerName(serverName)
+        GatewayServerConfigEntity entity = configRepository.findByServerNameAndWsTenantName(serverName, TenantContext.get())
                 .orElseThrow(() -> new NoSuchElementException(
                         "Server config '" + serverName + "' not found"));
         return toResponse(entity);
     }
 
-    /**
-     * Update an existing server configuration.
-     * If the server was connected, disconnects first, updates, then reconnects.
-     */
     @Transactional
     public ServerConfigResponse updateServerConfig(String serverName, ServerConfigRequest request) {
-        GatewayServerConfigEntity entity = configRepository.findByServerName(serverName)
+        GatewayServerConfigEntity entity = configRepository.findByServerNameAndWsTenantName(serverName, TenantContext.get())
                 .orElseThrow(() -> new NoSuchElementException(
                         "Server config '" + serverName + "' not found"));
 
         boolean wasConnected = sessionManager.isConnected(serverName);
 
-        // Disconnect first if connected
         if (wasConnected) {
             try {
                 sessionManager.disconnect(serverName);
@@ -151,7 +121,6 @@ public class ServerConfigService {
             }
         }
 
-        // Update entity fields
         if (request.getUrl() != null) entity.setUrl(request.getUrl());
         if (request.getType() != null) entity.setType(request.getType());
         if (request.getHeaders() != null) {
@@ -168,10 +137,8 @@ public class ServerConfigService {
         entity = configRepository.save(entity);
         log.info("Server config '{}' updated", serverName);
 
-        // Audit
         auditService.auditServerConfigUpdated(serverName, entity.getUrl());
 
-        // Reconnect if it was connected and still enabled
         if (wasConnected && Boolean.TRUE.equals(entity.getEnabled())) {
             try {
                 connectFromConfig(entity);
@@ -184,16 +151,12 @@ public class ServerConfigService {
         return toResponse(entity);
     }
 
-    /**
-     * Delete a server configuration. Disconnects first if connected.
-     */
     @Transactional
     public void deleteServerConfig(String serverName) {
-        GatewayServerConfigEntity entity = configRepository.findByServerName(serverName)
+        GatewayServerConfigEntity entity = configRepository.findByServerNameAndWsTenantName(serverName, TenantContext.get())
                 .orElseThrow(() -> new NoSuchElementException(
                         "Server config '" + serverName + "' not found"));
 
-        // Disconnect if connected
         if (sessionManager.isConnected(serverName)) {
             try {
                 sessionManager.disconnect(serverName);
@@ -206,19 +169,11 @@ public class ServerConfigService {
         configRepository.delete(entity);
         log.info("Server config '{}' deleted", serverName);
 
-        // Audit
         auditService.auditServerConfigDeleted(serverName);
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  CONNECTION LIFECYCLE
-    // ════════════════════════════════════════════════════════════════════
-
-    /**
-     * Connect a server by name. Must be enabled.
-     */
     public void connectServer(String serverName) {
-        GatewayServerConfigEntity entity = configRepository.findByServerName(serverName)
+        GatewayServerConfigEntity entity = configRepository.findByServerNameAndWsTenantName(serverName, TenantContext.get())
                 .orElseThrow(() -> new NoSuchElementException(
                         "Server config '" + serverName + "' not found"));
 
@@ -229,12 +184,8 @@ public class ServerConfigService {
         connectFromConfig(entity);
     }
 
-    /**
-     * Disconnect a server by name.
-     */
     public void disconnectServer(String serverName) {
-        // Verify config exists
-        configRepository.findByServerName(serverName)
+        configRepository.findByServerNameAndWsTenantName(serverName, TenantContext.get())
                 .orElseThrow(() -> new NoSuchElementException(
                         "Server config '" + serverName + "' not found"));
 
@@ -245,11 +196,8 @@ public class ServerConfigService {
         sessionManager.disconnect(serverName);
     }
 
-    /**
-     * Reconnect a server — disconnect then connect again.
-     */
     public void reconnectServer(String serverName) {
-        GatewayServerConfigEntity entity = configRepository.findByServerName(serverName)
+        GatewayServerConfigEntity entity = configRepository.findByServerNameAndWsTenantName(serverName, TenantContext.get())
                 .orElseThrow(() -> new NoSuchElementException(
                         "Server config '" + serverName + "' not found"));
 
@@ -257,7 +205,6 @@ public class ServerConfigService {
             throw new IllegalStateException("Server '" + serverName + "' is disabled. Enable it first.");
         }
 
-        // Disconnect if currently connected
         if (sessionManager.isConnected(serverName)) {
             try {
                 sessionManager.disconnect(serverName);
@@ -269,30 +216,17 @@ public class ServerConfigService {
         connectFromConfig(entity);
     }
 
-    /**
-     * Returns all configs that should auto-connect on startup.
-     */
     @Transactional(readOnly = true)
     public List<GatewayServerConfigEntity> getStartupConfigs() {
         return configRepository.findByEnabledTrueAndAutoConnectTrue();
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  CORE — Build McpServerConfig from entity and connect
-    // ════════════════════════════════════════════════════════════════════
-
-    /**
-     * Convert entity to McpServerConfig (resolving env vars) and connect.
-     */
     public void connectFromConfig(GatewayServerConfigEntity entity) {
-        // Convert JSONB headers to runtime-ready headers (decrypt + resolve env vars)
         Map<String, String> storedHeaders = jsonNodeToStringMap(entity.getHeaders());
         Map<String, String> resolvedHeaders = buildRuntimeHeaders(storedHeaders);
 
-        // Convert JSONB serverConfig to Map<String,Object>
         Map<String, Object> config = jsonNodeToObjectMap(entity.getServerConfig());
 
-        // Build McpServerConfig
         McpServerConfig mcpConfig = new McpServerConfig();
         mcpConfig.setType(entity.getType());
         mcpConfig.setUrl(entity.getUrl());
@@ -301,20 +235,12 @@ public class ServerConfigService {
         mcpConfig.setTimeout(entity.getTimeoutSeconds());
 
         try {
-            sessionManager.connect(entity.getServerName(), mcpConfig);
+            sessionManager.connect(entity.getServerName(), mcpConfig, entity.getWsTenantName());
         } catch (Exception e) {
             throw new RuntimeException("Failed to connect server '" + entity.getServerName() + "': " + e.getMessage(), e);
         }
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  ENV VAR RESOLUTION
-    // ════════════════════════════════════════════════════════════════════
-
-    /**
-     * Resolve {@code ${env:VAR_NAME}} patterns in header values.
-     * If an env var is not found, the literal pattern is kept (connection will likely fail).
-     */
     private Map<String, String> resolveEnvVars(Map<String, String> headers) {
         if (headers == null || headers.isEmpty()) {
             return headers;
@@ -347,10 +273,6 @@ public class ServerConfigService {
         return resolved;
     }
 
-    /**
-     * Build runtime headers from stored headers by decrypting encrypted values first,
-     * then resolving ${env:VAR} placeholders.
-     */
     private Map<String, String> buildRuntimeHeaders(Map<String, String> storedHeaders) {
         if (storedHeaders == null || storedHeaders.isEmpty()) {
             return storedHeaders;
@@ -360,7 +282,7 @@ public class ServerConfigService {
         for (Map.Entry<String, String> entry : storedHeaders.entrySet()) {
             try {
                 String decryptedValue = cryptoService.decryptIfEncrypted(entry.getValue());
-                log.debug("🔑 Header '{}': stored={}... decrypted={}...",
+                log.debug("Header '{}': stored={}... decrypted={}...",
                         entry.getKey(),
                         entry.getValue().substring(0, Math.min(20, entry.getValue().length())),
                         decryptedValue.substring(0, Math.min(20, decryptedValue.length())));
@@ -373,17 +295,11 @@ public class ServerConfigService {
         return resolveEnvVars(decrypted);
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  RESPONSE BUILDING + SECRET MASKING
-    // ════════════════════════════════════════════════════════════════════
-
     private ServerConfigResponse toResponse(GatewayServerConfigEntity entity) {
-        // Decrypt (if needed) + mask secrets in response headers
         Map<String, String> storedHeaders = jsonNodeToStringMap(entity.getHeaders());
         Map<String, String> maskedHeaders = maskHeadersForResponse(storedHeaders);
         Map<String, Object> serverConfigMap = jsonNodeToObjectMap(entity.getServerConfig());
 
-        // Enrich with live connection status
         boolean connected = sessionManager.isConnected(entity.getServerName());
         String connectionSessionId = null;
         java.time.LocalDateTime connectedAt = null;
@@ -425,12 +341,6 @@ public class ServerConfigService {
                 .build();
     }
 
-    /**
-     * For storage:
-     * - Keep existing encrypted secret if UI sends masked placeholder on update.
-     * - Encrypt secret header values at rest.
-     * - Keep env placeholders (${env:...}) as-is.
-     */
     private Map<String, String> prepareHeadersForStorage(Map<String, String> incomingHeaders,
                                                          Map<String, String> existingStoredHeaders) {
         if (incomingHeaders == null) return null;
@@ -452,14 +362,12 @@ public class ServerConfigService {
                 existingStoredValue = findHeaderValueIgnoreCase(existingStoredHeaders, key);
             }
 
-            // UI sends masked placeholders for unchanged secrets; preserve stored value.
             if (isMaskedPlaceholder(incomingValue)) {
                 if (existingStoredValue != null &&
                         (cryptoService.isEncryptedValue(existingStoredValue) || isSecretHeaderKey(key))) {
                     headersToStore.put(key, existingStoredValue);
                     continue;
                 }
-                // Never persist masked placeholders as real secret values.
                 throw new IllegalArgumentException(
                         "Masked value received for header '" + key + "' but no existing secret is available. "
                                 + "Resubmit the real value.");
@@ -474,11 +382,6 @@ public class ServerConfigService {
         return headersToStore;
     }
 
-    /**
-     * For API responses:
-     * - Decrypt encrypted values.
-     * - Mask secret values except ${env:...} placeholders.
-     */
     private Map<String, String> maskHeadersForResponse(Map<String, String> storedHeaders) {
         if (storedHeaders == null) return null;
 
@@ -533,10 +436,6 @@ public class ServerConfigService {
         }
         return null;
     }
-
-    // ════════════════════════════════════════════════════════════════════
-    //  JSON HELPERS
-    // ════════════════════════════════════════════════════════════════════
 
     private JsonNode toJsonNode(Object value) {
         if (value == null) return null;

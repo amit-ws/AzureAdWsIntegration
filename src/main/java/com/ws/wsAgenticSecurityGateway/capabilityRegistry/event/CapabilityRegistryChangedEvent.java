@@ -1,11 +1,5 @@
 package com.ws.wsAgenticSecurityGateway.capabilityRegistry.event;
 
-/**
- * Application event emitted when the capability registry changes at runtime.
- *
- * <p>Used by the WS Server MCP server to refresh exposed
- * tools/prompts/resources without requiring a gateway restart.
- */
 public class CapabilityRegistryChangedEvent {
 
     private final String reason;

@@ -12,9 +12,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * Persistence gateway for {@link PdpAuditLog} records.
- */
 @Repository
 public interface PdpAuditLogRepository extends JpaRepository<PdpAuditLog, UUID> {
 
@@ -41,4 +38,28 @@ public interface PdpAuditLogRepository extends JpaRepository<PdpAuditLog, UUID> 
     long countByPdpDecision(String pdpDecision);
 
     long countByPdpDecisionAndTimestampBetween(String pdpDecision, LocalDateTime from, LocalDateTime to);
+
+    List<PdpAuditLog> findByCorrelationIdAndWsTenantName(String correlationId, String wsTenantName);
+
+    Page<PdpAuditLog> findByPdpSubjectAndWsTenantName(String pdpSubject, String wsTenantName, Pageable pageable);
+
+    Page<PdpAuditLog> findByPdpResourceAndWsTenantName(String pdpResource, String wsTenantName, Pageable pageable);
+
+    Page<PdpAuditLog> findByPdpDecisionAndWsTenantName(String pdpDecision, String wsTenantName, Pageable pageable);
+
+    Page<PdpAuditLog> findByStatusAndWsTenantName(AuditStatus status, String wsTenantName, Pageable pageable);
+
+    Page<PdpAuditLog> findByEventTypeAndWsTenantName(AuditEventType eventType, String wsTenantName, Pageable pageable);
+
+    Page<PdpAuditLog> findByTimestampBetweenAndWsTenantName(LocalDateTime from, LocalDateTime to, String wsTenantName, Pageable pageable);
+
+    Page<PdpAuditLog> findByPdpSubjectAndTimestampBetweenAndWsTenantName(
+            String pdpSubject, LocalDateTime from, LocalDateTime to, String wsTenantName, Pageable pageable);
+
+    Page<PdpAuditLog> findByPdpDecisionAndTimestampBetweenAndWsTenantName(
+            String pdpDecision, LocalDateTime from, LocalDateTime to, String wsTenantName, Pageable pageable);
+
+    long countByPdpDecisionAndWsTenantName(String pdpDecision, String wsTenantName);
+
+    long countByPdpDecisionAndTimestampBetweenAndWsTenantName(String pdpDecision, LocalDateTime from, LocalDateTime to, String wsTenantName);
 }

@@ -10,24 +10,6 @@ import org.springframework.web.bind.annotation.*;
 import java.util.*;
 import java.util.stream.Collectors;
 
-/**
- * REST controller for managing custom policy attributes.
- *
- * <p>Allows admins to register, update, and delete custom attributes
- * that become available in Cedar policies as {@code context.<attributeName>}.
- *
- * <p>Endpoints:
- * <ul>
- *   <li>{@code GET    /api/admin/custom-attributes}          — List all attributes</li>
- *   <li>{@code POST   /api/admin/custom-attributes}          — Register a new attribute</li>
- *   <li>{@code GET    /api/admin/custom-attributes/{id}}      — Get a specific attribute</li>
- *   <li>{@code PUT    /api/admin/custom-attributes/{id}}      — Update an attribute</li>
- *   <li>{@code DELETE /api/admin/custom-attributes/{id}}      — Delete an attribute</li>
- *   <li>{@code POST   /api/admin/custom-attributes/{id}/toggle} — Toggle enabled/disabled</li>
- *   <li>{@code GET    /api/admin/custom-attributes/stats}      — Attribute statistics</li>
- *   <li>{@code GET    /api/admin/custom-attributes/sources}    — List valid value sources and agent fields</li>
- * </ul>
- */
 @RestController
 @RequestMapping("/api/admin/custom-attributes")
 @Slf4j
@@ -39,11 +21,6 @@ public class CustomAttributeController {
         this.customAttributeService = customAttributeService;
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  CRUD
-    // ════════════════════════════════════════════════════════════════════
-
-    /** List all custom attributes. */
     @GetMapping
     public ResponseEntity<List<Map<String, Object>>> listAll() {
         List<GatewayCustomAttributeEntity> attrs = customAttributeService.getAll();
@@ -53,7 +30,6 @@ public class CustomAttributeController {
         return ResponseEntity.ok(result);
     }
 
-    /** Get a specific attribute by ID. */
     @GetMapping("/{id}")
     public ResponseEntity<Map<String, Object>> getById(@PathVariable UUID id) {
         return customAttributeService.getById(id)
@@ -61,7 +37,6 @@ public class CustomAttributeController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    /** Register a new custom attribute. */
     @PostMapping
     public ResponseEntity<Map<String, Object>> create(@RequestBody GatewayCustomAttributeEntity attr) {
         AttributeResult result = customAttributeService.create(attr);
@@ -71,7 +46,6 @@ public class CustomAttributeController {
         return ResponseEntity.badRequest().body(Map.of("error", result.error()));
     }
 
-    /** Update an existing attribute. */
     @PutMapping("/{id}")
     public ResponseEntity<Map<String, Object>> update(@PathVariable UUID id,
                                                         @RequestBody GatewayCustomAttributeEntity updates) {
@@ -82,7 +56,6 @@ public class CustomAttributeController {
         return ResponseEntity.badRequest().body(Map.of("error", result.error()));
     }
 
-    /** Delete a custom attribute. */
     @DeleteMapping("/{id}")
     public ResponseEntity<Map<String, Object>> delete(@PathVariable UUID id) {
         if (customAttributeService.delete(id)) {
@@ -91,7 +64,6 @@ public class CustomAttributeController {
         return ResponseEntity.notFound().build();
     }
 
-    /** Toggle an attribute's enabled/disabled state. */
     @PostMapping("/{id}/toggle")
     public ResponseEntity<Map<String, Object>> toggle(@PathVariable UUID id) {
         return customAttributeService.toggleEnabled(id)
@@ -99,20 +71,11 @@ public class CustomAttributeController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  INFO ENDPOINTS
-    // ════════════════════════════════════════════════════════════════════
-
-    /** Get attribute statistics. */
     @GetMapping("/stats")
     public ResponseEntity<Map<String, Object>> getStats() {
         return ResponseEntity.ok(customAttributeService.getStats());
     }
 
-    /**
-     * List valid value sources, data types, and agent fields.
-     * Useful for building UI forms and for reference.
-     */
     @GetMapping("/sources")
     public ResponseEntity<Map<String, Object>> getSources() {
         Map<String, Object> info = new LinkedHashMap<>();
@@ -156,10 +119,6 @@ public class CustomAttributeController {
 
         return ResponseEntity.ok(info);
     }
-
-    // ════════════════════════════════════════════════════════════════════
-    //  HELPERS
-    // ════════════════════════════════════════════════════════════════════
 
     private Map<String, Object> toMap(GatewayCustomAttributeEntity entity) {
         Map<String, Object> map = new LinkedHashMap<>();

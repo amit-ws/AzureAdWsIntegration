@@ -10,9 +10,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-/**
- * Repository for {@link McpResourceEntity} — resources discovered from enterprise MCP servers.
- */
 @Repository
 public interface McpResourceRepository extends JpaRepository<McpResourceEntity, UUID> {
 
@@ -23,4 +20,10 @@ public interface McpResourceRepository extends JpaRepository<McpResourceEntity, 
     @Modifying
     @Transactional
     void deleteByServerId(UUID serverId);
+
+    List<McpResourceEntity> findByServerIdAndWsTenantName(UUID serverId, String wsTenantName);
+
+    Optional<McpResourceEntity> findByPublicNameAndWsTenantName(String publicName, String wsTenantName);
+
+    List<McpResourceEntity> findAllByWsTenantName(String wsTenantName);
 }

@@ -13,24 +13,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * OAuth2 Protected Resource Metadata endpoint (RFC 9728).
- *
- * <p>When {@code ws.gateway.auth.mode=oauth2}, this endpoint tells MCP clients
- * (like Claude Desktop connectors) how to discover the Authorization Server.
- * The client flow is:
- * <ol>
- *   <li>Client connects to {@code /mcp} → gets 401 Unauthorized</li>
- *   <li>Client fetches {@code /.well-known/oauth-protected-resource}</li>
- *   <li>Client reads {@code authorization_servers[0]} → e.g., Keycloak issuer URI</li>
- *   <li>Client fetches {@code <issuer>/.well-known/openid-configuration} for endpoints</li>
- *   <li>Client performs Authorization Code + PKCE flow → gets JWT</li>
- *   <li>Client sends JWT as {@code Authorization: Bearer <token>} on all MCP requests</li>
- * </ol>
- *
- * <p>IdP-agnostic: just configure {@code OAUTH2_ISSUER_URI} to point at any
- * OIDC-compliant provider (Keycloak, Azure AD, Okta, Auth0).
- */
 @Slf4j
 @RestController
 public class OAuth2ProtectedResourceConfig {
@@ -46,15 +28,10 @@ public class OAuth2ProtectedResourceConfig {
         this.authConfigService = authConfigService;
     }
 
-    /** Resolve issuer URI dynamically: DB config > env vars > null. */
     private String resolveIssuerUri() {
         return authConfigService.getEffectiveIssuerUri();
     }
 
-    /**
-     * RFC 9728 — OAuth 2.0 Protected Resource Metadata.
-     * Returns the authorization server(s) that protect this resource.
-     */
     @GetMapping(value = "/.well-known/oauth-protected-resource",
                 produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Map<String, Object>> protectedResourceMetadata() {
@@ -77,13 +54,6 @@ public class OAuth2ProtectedResourceConfig {
         return ResponseEntity.ok(metadata);
     }
 
-    /**
-     * OAuth2 Authorization Server Metadata (RFC 8414).
-     *
-     * <p>MCP clients (like Claude.ai connectors) fetch this from the gateway's origin
-     * to discover authorization/token endpoints. We proxy the IdP's OIDC discovery
-     * document so the gateway acts as the OAuth2 metadata source.
-     */
     @GetMapping(value = "/.well-known/oauth-authorization-server",
                 produces = MediaType.APPLICATION_JSON_VALUE)
     @SuppressWarnings("unchecked")
@@ -115,13 +85,6 @@ public class OAuth2ProtectedResourceConfig {
         }
     }
 
-    /**
-     * OAuth2 authorize redirect — forwards the client to the IdP's authorization endpoint.
-     *
-     * <p>MCP clients send the authorize request to the gateway's origin. We redirect
-     * to the actual IdP authorization endpoint, preserving all query parameters
-     * (response_type, client_id, redirect_uri, code_challenge, state, scope, etc.).
-     */
     @GetMapping("/authorize")
     public ResponseEntity<Void> authorize(jakarta.servlet.http.HttpServletRequest request) {
         String issuer = resolveIssuerUri();
@@ -130,15 +93,11 @@ public class OAuth2ProtectedResourceConfig {
             return ResponseEntity.internalServerError().build();
         }
 
-        // Rewrite scope: MCP clients (like Claude.ai) may send custom scopes
-        // (e.g., "claudeai") that the IdP doesn't recognize → invalid_scope error.
-        // We replace with standard OIDC scopes that any IdP supports.
         String queryString = request.getQueryString();
         if (queryString != null) {
             queryString = queryString.replaceAll("scope=[^&]*", "scope=openid+email+profile");
         }
 
-        // Use discovered authorization endpoint from DB config, or default Keycloak convention
         String authEndpoint = null;
         var dbConfig = authConfigService.getActiveDbConfig();
         if (dbConfig.isPresent() && dbConfig.get().getAuthorizationEndpoint() != null) {
@@ -155,12 +114,6 @@ public class OAuth2ProtectedResourceConfig {
                 .build();
     }
 
-    /**
-     * OAuth2 token endpoint proxy — forwards token exchange requests to the IdP.
-     *
-     * <p>After the authorization code redirect, the MCP client sends the code exchange
-     * to the gateway's /token endpoint. We proxy it to the IdP's token endpoint.
-     */
     @org.springframework.web.bind.annotation.PostMapping(value = "/token",
             consumes = MediaType.APPLICATION_FORM_URLENCODED_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
@@ -172,7 +125,6 @@ public class OAuth2ProtectedResourceConfig {
         }
 
         try {
-            // Use discovered token endpoint from DB config, or default Keycloak convention
             String tokenEndpoint = null;
             var dbConfig = authConfigService.getActiveDbConfig();
             if (dbConfig.isPresent() && dbConfig.get().getTokenEndpoint() != null) {
@@ -182,7 +134,6 @@ public class OAuth2ProtectedResourceConfig {
             }
             log.info("Proxying OAuth2 token exchange to IdP: {}", tokenEndpoint);
 
-            // Read form parameters and forward them
             Map<String, String[]> params = request.getParameterMap();
             org.springframework.util.LinkedMultiValueMap<String, String> formData =
                     new org.springframework.util.LinkedMultiValueMap<>();

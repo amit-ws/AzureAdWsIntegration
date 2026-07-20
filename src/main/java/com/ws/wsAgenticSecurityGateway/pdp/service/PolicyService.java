@@ -1,6 +1,7 @@
 package com.ws.wsAgenticSecurityGateway.pdp.service;
 
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
+import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyDto;
 import com.ws.wsAgenticSecurityGateway.pdp.entity.GatewayPolicyEntity;
 import com.ws.wsAgenticSecurityGateway.pdp.repository.GatewayPolicyRepository;
@@ -12,16 +13,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 
-/**
- * Policy lifecycle service — CRUD, validation, reload, and audit logging.
- *
- * <p>On startup, loads all enabled policies into the Cedar engine.
- * Policies are created exclusively via the LLM-powered chatbot or REST API —
- * no hardcoded templates exist.
- *
- * <p>Every create/update/delete triggers an automatic policy reload
- * so the Cedar engine always evaluates against the latest policy set.
- */
 @Service
 @Slf4j
 public class PolicyService {
@@ -38,29 +29,18 @@ public class PolicyService {
         this.auditService = auditService;
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  STARTUP — Load policies into Cedar engine
-    // ════════════════════════════════════════════════════════════════════
-
-    /**
-     * On application startup, load all enabled policies into the Cedar engine.
-     */
     @EventListener(ApplicationReadyEvent.class)
     @Transactional
     public void onStartup() {
         long count = repository.count();
         if (count == 0) {
-            log.info("🏛️  No policies in DB — use the LLM chatbot or REST API to create policies");
+ log.info("No policies in DB — use the LLM chatbot or REST API to create policies");
         }
         reloadEngine();
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  CRUD
-    // ════════════════════════════════════════════════════════════════════
-
     public List<GatewayPolicyEntity> getAllPolicies() {
-        return repository.findAll();
+        return repository.findAllByWsTenantName(TenantContext.get());
     }
 
     public Optional<GatewayPolicyEntity> getById(UUID id) {
@@ -68,28 +48,21 @@ public class PolicyService {
     }
 
     public Optional<GatewayPolicyEntity> getByName(String name) {
-        return repository.findByPolicyName(name);
+        return repository.findByPolicyNameAndWsTenantName(name, TenantContext.get());
     }
 
-    /**
-     * Create a new policy. Validates Cedar syntax before persisting.
-     *
-     * @return the saved entity, or empty if validation failed
-     */
     @Transactional
     public PolicyCreationResult createPolicy(PolicyDto dto) {
-        // Validate Cedar syntax
         String validationError = cedarEngine.validatePolicy(dto.getPolicyText());
         if (validationError != null) {
             return PolicyCreationResult.error("Invalid Cedar policy syntax: " + validationError);
         }
 
-        // Check for duplicate name
-        if (repository.findByPolicyName(dto.getPolicyName()).isPresent()) {
+        String tenant = TenantContext.get();
+        if (repository.findByPolicyNameAndWsTenantName(dto.getPolicyName(), tenant).isPresent()) {
             return PolicyCreationResult.error("Policy with name '" + dto.getPolicyName() + "' already exists");
         }
 
-        // Generate cedar policy ID if not provided
         String cedarId = dto.getCedarPolicyId();
         if (cedarId == null || cedarId.isBlank()) {
             cedarId = dto.getPolicyName().toLowerCase()
@@ -109,12 +82,13 @@ public class PolicyService {
                 .source(dto.getSource() != null ? dto.getSource() : "MANUAL")
                 .originalPrompt(dto.getOriginalPrompt())
                 .createdBy(dto.getCreatedBy() != null ? dto.getCreatedBy() : "admin")
+                .wsTenantName(tenant)
                 .build();
 
         GatewayPolicyEntity saved = repository.save(entity);
         reloadEngine();
 
-        log.info("🏛️  Policy created: {} ({})", saved.getPolicyName(), saved.getEffect());
+ log.info("Policy created: {} ({})", saved.getPolicyName(), saved.getEffect());
         Map<String, String> refs = cedarEngine.extractPolicyReferences(saved.getPolicyText());
         auditService.auditPdpPolicyCreated(saved.getPolicyName(), saved.getEffect(),
                 saved.getSource() != null ? saved.getSource() : "MANUAL",
@@ -123,9 +97,6 @@ public class PolicyService {
         return PolicyCreationResult.success(saved);
     }
 
-    /**
-     * Update an existing policy.
-     */
     @Transactional
     public PolicyCreationResult updatePolicy(UUID id, PolicyDto dto) {
         Optional<GatewayPolicyEntity> existing = repository.findById(id);
@@ -133,7 +104,6 @@ public class PolicyService {
             return PolicyCreationResult.error("Policy not found: " + id);
         }
 
-        // Validate Cedar syntax if policy text changed
         if (dto.getPolicyText() != null) {
             String validationError = cedarEngine.validatePolicy(dto.getPolicyText());
             if (validationError != null) {
@@ -155,7 +125,7 @@ public class PolicyService {
         GatewayPolicyEntity saved = repository.save(entity);
         reloadEngine();
 
-        log.info("🏛️  Policy updated: {}", saved.getPolicyName());
+ log.info("Policy updated: {}", saved.getPolicyName());
         Map<String, String> refs = cedarEngine.extractPolicyReferences(saved.getPolicyText());
         auditService.auditPdpPolicyUpdated(saved.getPolicyName(), "updated via REST API",
                 saved.getDescription(), saved.getPolicyText(), saved.getEffect(),
@@ -163,9 +133,6 @@ public class PolicyService {
         return PolicyCreationResult.success(saved);
     }
 
-    /**
-     * Delete a policy by ID.
-     */
     @Transactional
     public boolean deletePolicy(UUID id) {
         Optional<GatewayPolicyEntity> existing = repository.findById(id);
@@ -173,58 +140,56 @@ public class PolicyService {
             String policyName = existing.get().getPolicyName();
             repository.deleteById(id);
             reloadEngine();
-            log.info("🏛️  Policy deleted: {} ({})", policyName, id);
+ log.info("Policy deleted: {} ({})", policyName, id);
             auditService.auditPdpPolicyDeleted(policyName);
             return true;
         }
         return false;
     }
 
-    /**
-     * Toggle a policy's enabled state.
-     */
     @Transactional
     public Optional<GatewayPolicyEntity> toggleEnabled(UUID id) {
         return repository.findById(id).map(entity -> {
             entity.setEnabled(!entity.getEnabled());
             GatewayPolicyEntity saved = repository.save(entity);
             reloadEngine();
-            log.info("🏛️  Policy {} → {}", saved.getPolicyName(), saved.getEnabled() ? "ENABLED" : "DISABLED");
+ log.info("Policy {} → {}", saved.getPolicyName(), saved.getEnabled() ? "ENABLED": "DISABLED");
             auditService.auditPdpPolicyToggled(saved.getPolicyName(), saved.getEnabled());
             return saved;
         });
     }
 
-    /**
-     * Force reload all policies into the Cedar engine.
-     */
     public int reloadEngine() {
-        List<GatewayPolicyEntity> enabledPolicies = repository.findByEnabledTrueOrderByPriorityAsc();
+        String tenant = TenantContext.get();
+        List<GatewayPolicyEntity> enabledPolicies;
+        if (tenant != null) {
+            enabledPolicies = repository.findByEnabledTrueAndWsTenantNameOrderByPriorityAsc(tenant);
+        } else {
+            enabledPolicies = repository.findByEnabledTrueOrderByPriorityAsc();
+        }
         int count = cedarEngine.reloadPolicies(enabledPolicies);
         auditService.auditPdpEngineReloaded(Math.max(count, 0));
         return count;
     }
 
-    /**
-     * Get policy statistics for the dashboard.
-     */
     public Map<String, Object> getStats() {
+        String tenant = TenantContext.get();
         Map<String, Object> stats = new LinkedHashMap<>();
-        stats.put("totalPolicies", repository.count());
-        stats.put("enabledPolicies", repository.countByEnabledTrue());
-        stats.put("permitPolicies", repository.countByEffect("PERMIT"));
-        stats.put("forbidPolicies", repository.countByEffect("FORBID"));
+        if (tenant != null) {
+            stats.put("totalPolicies", repository.findAllByWsTenantName(tenant).size());
+            stats.put("enabledPolicies", repository.countByEnabledTrueAndWsTenantName(tenant));
+            stats.put("permitPolicies", repository.countByEffectAndWsTenantName("PERMIT", tenant));
+            stats.put("forbidPolicies", repository.countByEffectAndWsTenantName("FORBID", tenant));
+        } else {
+            stats.put("totalPolicies", repository.count());
+            stats.put("enabledPolicies", repository.countByEnabledTrue());
+            stats.put("permitPolicies", repository.countByEffect("PERMIT"));
+            stats.put("forbidPolicies", repository.countByEffect("FORBID"));
+        }
         stats.put("engineLoaded", cedarEngine.hasPolicies());
         return stats;
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  HELPERS
-    // ════════════════════════════════════════════════════════════════════
-
-    /**
-     * Detect effect (PERMIT or FORBID) from Cedar policy text.
-     */
     private String detectEffect(String policyText) {
         if (policyText != null) {
             String trimmed = policyText.trim().toLowerCase();
@@ -234,9 +199,6 @@ public class PolicyService {
         return "PERMIT";
     }
 
-    /**
-     * Result wrapper for policy creation/update operations.
-     */
     public record PolicyCreationResult(boolean success, GatewayPolicyEntity policy, String error) {
         public static PolicyCreationResult success(GatewayPolicyEntity policy) {
             return new PolicyCreationResult(true, policy, null);

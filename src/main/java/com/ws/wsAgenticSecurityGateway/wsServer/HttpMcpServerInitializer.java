@@ -35,24 +35,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * WS MCP Server — HTTP Streamable mode.
- *
- * <p>Builds the same MCP server (tools, prompts, resources from Capability Registry)
- * but uses {@link HttpServletStreamableServerTransportProvider} instead of stdio.
- * The servlet is registered by {@code HttpTransportConfig}.
- *
- * <p>Key difference from {@link McpServerApplication} (stdio mode):
- * <ul>
- *   <li>No {@code Thread.currentThread().join()} — the servlet container handles HTTP requests</li>
- *   <li>No {@code SessionManager} — the SDK manages per-agent sessions internally</li>
- *   <li>Multiple agents can connect simultaneously</li>
- *   <li>WS Client MCP connections persist across agent reconnects</li>
- * </ul>
- *
- * <p>{@code @Order(2)} ensures this runs <strong>after</strong> the MCP Client
- * initializer ({@code @Order(1)}) so the capability registry is populated.
- */
 @Component
 @Slf4j
 @Order(2)
@@ -67,7 +49,6 @@ public class HttpMcpServerInitializer implements ApplicationRunner {
     private final GatewayAgentSessionRepository agentSessionRepository;
     private final ObjectMapper objectMapper;
 
-    /** Tracks which HTTP sessions have been checked for fallback registration. */
     private final ConcurrentHashMap<String, Boolean> checkedSessions = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, String> registeredToolSignatures = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, String> registeredPromptSignatures = new ConcurrentHashMap<>();
@@ -95,123 +76,91 @@ public class HttpMcpServerInitializer implements ApplicationRunner {
     @Override
     public void run(ApplicationArguments args) {
         try {
-            log.info("═══════════════════════════════════════════════════════════");
-            log.info("🚀 WS MCP SERVER INITIALIZATION (HTTP MODE)");
-            log.info("═══════════════════════════════════════════════════════════");
+ log.info("WS MCP SERVER INITIALIZATION (HTTP MODE)");
 
-            // ── Configure server capabilities ──────────────────────────
-            // Gateway is an aggregating proxy — always advertise all 3 capability types
-            // with listChanged=true, because any enterprise MCP server may bring tools,
-            // prompts, or resources that agents need to discover dynamically.
             McpSchema.ServerCapabilities capabilities = McpSchema.ServerCapabilities.builder()
-                    .tools(true)                // listChanged=true → agents get notified on tool changes
-                    .resources(true, true)      // subscribe=true, listChanged=true → full resource support
-                    .prompts(true)              // listChanged=true → agents get notified on prompt changes
+                    .tools(true)
+                    .resources(true, true)
+                    .prompts(true)
                     .build();
 
-            // ── Build MCP server using HTTP Streamable transport ────────
             var serverBuilder = McpServer.sync(transportProvider)
                     .serverInfo("ws-mcp-gateway", "1.0.0")
                     .capabilities(capabilities);
 
-            // ── Register tools from capability registry ─────────────────
             List<CapabilityDescriptor> toolDescriptors = registryService.getToolDescriptors();
             List<McpServerFeatures.SyncToolSpecification> toolSpecs = new ArrayList<>();
 
             for (CapabilityDescriptor descriptor : toolDescriptors) {
                 toolSpecs.add(toToolSpec(descriptor));
-                log.info("   🔧 Registered tool: {} (from '{}')",
+ log.info("Registered tool: {} (from '{}')",
                         descriptor.getPublicName(), descriptor.getServerConfigName());
             }
             if (!toolSpecs.isEmpty()) {
                 serverBuilder.tools(toolSpecs);
             }
 
-            // ── Register prompts from capability registry ────────────────
             List<CapabilityDescriptor> promptDescriptors = registryService.getPromptDescriptors();
             if (!promptDescriptors.isEmpty()) {
                 List<McpServerFeatures.SyncPromptSpecification> promptSpecs = new ArrayList<>();
 
                 for (CapabilityDescriptor descriptor : promptDescriptors) {
                     promptSpecs.add(toPromptSpec(descriptor));
-                    log.info("   📝 Registered prompt: {} (from '{}')",
+ log.info("Registered prompt: {} (from '{}')",
                             descriptor.getPublicName(), descriptor.getServerConfigName());
                 }
                 serverBuilder.prompts(promptSpecs);
             }
 
-            // ── Register resources from capability registry ──────────────
             List<CapabilityDescriptor> resourceDescriptors = registryService.getResourceDescriptors();
             if (!resourceDescriptors.isEmpty()) {
                 List<McpServerFeatures.SyncResourceSpecification> resourceSpecs = new ArrayList<>();
 
                 for (CapabilityDescriptor descriptor : resourceDescriptors) {
                     resourceSpecs.add(toResourceSpec(descriptor));
-                    log.info("   📁 Registered resource: {} → {} (from '{}')",
+ log.info("Registered resource: {} → {} (from '{}')",
                             descriptor.getPublicName(), descriptor.getResourceUri(),
                             descriptor.getServerConfigName());
                 }
                 serverBuilder.resources(resourceSpecs);
             }
 
-            // ── Build the server ─────────────────────────────────────────
             server = serverBuilder.build();
             primeRegisteredSignatures(toolDescriptors, promptDescriptors, resourceDescriptors);
 
-            log.info("═══════════════════════════════════════════════════════════");
-            log.info("✅ WS MCP SERVER STARTED (HTTP MODE)");
-            log.info("   Server: ws-mcp-gateway v1.0.0");
-            log.info("   Transport: HTTP Streamable at /mcp");
-            log.info("   Tools:     {} (from {} enterprise servers)",
+ log.info("WS MCP SERVER STARTED (HTTP MODE)");
+            log.info("Server: ws-mcp-gateway v1.0.0");
+            log.info("Transport: HTTP Streamable at /mcp");
+            log.info("Tools:     {} (from {} enterprise servers)",
                     toolDescriptors.size(), registryService.getRegisteredServerNames().size());
-            log.info("   Prompts:   {}", promptDescriptors.size());
-            log.info("   Resources: {}", resourceDescriptors.size());
-            log.info("   Ready for agent connections via HTTP");
-            log.info("═══════════════════════════════════════════════════════════");
-
-            // NO Thread.currentThread().join() — servlet container handles requests
+            log.info("Prompts:   {}", promptDescriptors.size());
+            log.info("Resources: {}", resourceDescriptors.size());
+            log.info("Ready for agent connections via HTTP");
 
         } catch (Exception e) {
-            log.error("═══════════════════════════════════════════════════════════");
-            log.error("❌ WS MCP SERVER (HTTP) INITIALIZATION FAILED");
-            log.error("═══════════════════════════════════════════════════════════");
+ log.error("WS MCP SERVER (HTTP) INITIALIZATION FAILED");
             log.error("Error: {}", e.getMessage(), e);
         }
     }
 
-    /**
-     * Graceful shutdown — closes all HTTP agent sessions.
-     */
     @PreDestroy
     public void shutdown() {
-        log.info("🛑 WS MCP Server (HTTP) shutting down...");
+ log.info("WS MCP Server (HTTP) shutting down...");
         if (server != null) {
             try {
                 server.closeGracefully();
-                log.info("✅ HTTP server shutdown complete");
+ log.info("HTTP server shutdown complete");
             } catch (Exception e) {
                 log.error("Error during HTTP server shutdown: {}", e.getMessage());
             }
         }
     }
 
-    /**
-     * Runtime capability refresh hook.
-     *
-     * <p>The registry is updated when enterprise MCP servers connect/disconnect at runtime.
-     * This listener keeps the WS Server MCP SDK registrations in sync so agents
-     * receive fresh {@code tools/list}, {@code prompts/list}, and {@code resources/list}
-     * without restarting the gateway.
-     */
     @EventListener
     public void onCapabilityRegistryChanged(CapabilityRegistryChangedEvent event) {
         refreshCapabilitiesFromRegistry(event.getReason(), event.getServerConfigName());
     }
 
-    /**
-     * Workflow 2: Capability profile changed — notify agents to re-fetch tools/prompts/resources.
-     * Triggered when a profile is assigned, unassigned, updated, or deleted.
-     */
     @EventListener
     public void onCapabilityProfileChanged(CapabilityProfileChangedEvent event) {
         if (server == null) {
@@ -219,14 +168,13 @@ public class HttpMcpServerInitializer implements ApplicationRunner {
             return;
         }
 
-        log.info("📢 Capability profile change [{}] profile='{}' affectedAgents={} — broadcasting notifications",
+ log.info("Capability profile change [{}] profile='{}' affectedAgents={} — broadcasting notifications",
                 event.getReason(), event.getProfileName(), event.getAffectedAgentNames());
 
         server.notifyToolsListChanged();
         server.notifyPromptsListChanged();
         server.notifyResourcesListChanged();
 
-        // Collect all connected agent names for audit (SDK broadcasts to all)
         List<String> notifiedAgents = agentRegistryService.getConnectedSessions().stream()
                 .filter(s -> s.getAgent() != null)
                 .map(s -> s.getAgent().getAgentName())
@@ -238,16 +186,6 @@ public class HttpMcpServerInitializer implements ApplicationRunner {
                 event.getAffectedAgentNames(), notifiedAgents);
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  FALLBACK AGENT REGISTRATION — primary registration happens in
-    //  HttpMcpAuditFilter on initialize. This is a safety net for edge
-    //  cases where the filter missed the initialize request.
-    // ════════════════════════════════════════════════════════════════════
-
-    /**
-     * Fallback: ensures the agent is registered if the {@code HttpMcpAuditFilter}
-     * missed the initialize. Checks the DB first to avoid duplicate session rows.
-     */
     private void ensureAgentRegistered(McpSyncServerExchange exchange) {
         String sessionId = exchange.sessionId();
         if (sessionId == null || checkedSessions.containsKey(sessionId)) {
@@ -258,13 +196,11 @@ public class HttpMcpServerInitializer implements ApplicationRunner {
         }
 
         try {
-            // Check if the filter already registered this session
             if (agentSessionRepository.findBySessionId(sessionId).isPresent()) {
                 log.debug("Session {} already registered by audit filter", sessionId);
                 return;
             }
 
-            // Filter missed it — do fallback registration
             McpSchema.Implementation clientInfo = exchange.getClientInfo();
             McpSchema.ClientCapabilities clientCaps = exchange.getClientCapabilities();
             String agentName = clientInfo != null ? clientInfo.name() : "unknown";
@@ -286,10 +222,6 @@ public class HttpMcpServerInitializer implements ApplicationRunner {
         }
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  HANDLERS — delegate to ToolCallOrchestrator (same as stdio mode)
-    // ════════════════════════════════════════════════════════════════════
-
     private McpSchema.CallToolResult handleToolCall(McpSyncServerExchange exchange,
                                                      McpSchema.CallToolRequest request) {
         ensureAgentRegistered(exchange);
@@ -308,10 +240,6 @@ public class HttpMcpServerInitializer implements ApplicationRunner {
         String publicName = resolvePublicNameByUri(request.uri());
         return orchestrator.orchestrateReadResource(exchange, publicName, request.uri());
     }
-
-    // ════════════════════════════════════════════════════════════════════
-    //  HELPERS
-    // ════════════════════════════════════════════════════════════════════
 
     private void primeRegisteredSignatures(List<CapabilityDescriptor> toolDescriptors,
                                            List<CapabilityDescriptor> promptDescriptors,
@@ -450,20 +378,18 @@ public class HttpMcpServerInitializer implements ApplicationRunner {
 
             if (toolsNotified || promptsNotified || resourcesNotified) {
                 log.info(
-                        "🔄 MCP capability refresh [{}:{}] tools(+{},~{},-{}), prompts(+{},~{},-{}), resources(+{},~{},-{})",
+ "MCP capability refresh [{}:{}] tools(+{},~{},-{}), prompts(+{},~{},-{}), resources(+{},~{},-{})",
                         reason, serverConfigName,
                         toolAdded, toolUpdated, toolRemoved,
                         promptAdded, promptUpdated, promptRemoved,
                         resourceAdded, resourceUpdated, resourceRemoved);
 
-                // Collect all connected agent names for audit
                 List<String> notifiedAgents = agentRegistryService.getConnectedSessions().stream()
                         .filter(s -> s.getAgent() != null)
                         .map(s -> s.getAgent().getAgentName())
                         .distinct()
                         .collect(java.util.stream.Collectors.toList());
 
-                // Audit the notification broadcast (async, non-blocking)
                 auditService.auditNotificationBroadcast(reason, serverConfigName,
                         toolAdded, toolUpdated, toolRemoved,
                         promptAdded, promptUpdated, promptRemoved,

@@ -27,31 +27,10 @@ public class StdioServerTransport implements McpServerTransport {
     private final McpAuditService auditService;
     private volatile boolean closed = false;
 
-    /**
-     * Tracks in-flight requests by JSON-RPC id so that when the response is sent,
-     * we can calculate duration and dispatch the appropriate audit call.
-     */
     private final ConcurrentHashMap<Object, RequestContext> inflightRequests = new ConcurrentHashMap<>();
 
-    /**
-     * Maps a parsed JSONRPCMessage → its JSON-RPC {@code id}, so that
-     * {@link ServerTransportProvider} can look up the id and inject it into
-     * Reactor Context via {@code .contextWrite()} before the SDK dispatches
-     * the handler on a (possibly different) thread.
-     *
-     * <p>Entries are removed by {@link #removeRequestId(McpSchema.JSONRPCMessage)}
-     * to prevent memory leaks.
-     *
-     * <p><strong>Why not ThreadLocal?</strong> The SDK's Reactor {@code flatMap()}
-     * chain in {@code McpServerSession.handle()} can switch threads between transport
-     * and handler — ThreadLocal values set on the reader thread are invisible to the
-     * handler thread.
-     */
     private final ConcurrentHashMap<McpSchema.JSONRPCMessage, Object> messageToRequestId = new ConcurrentHashMap<>();
 
-    /**
-     * Context stored for each incoming request, keyed by JSON-RPC id.
-     */
     private record RequestContext(String method, Object params, long startTimeMs) {}
 
     public StdioServerTransport(SessionManager sessionManager, McpAuditService auditService) {
@@ -85,25 +64,15 @@ public class StdioServerTransport implements McpServerTransport {
                             @SuppressWarnings("unchecked")
                             Map<String, Object> rawData = mapper.readValue(jsonLine, Map.class);
 
-                            // Capture client data on initialize
-//                            if ("initialize".equals(rawData.get("method"))) {
-//                                captureClientData(rawData);
-//                            }
-                            captureAllRequestData(rawData);  // ← Capture EVERYTHING
+                            captureAllRequestData(rawData);
 
-                            // Parse message
                             McpSchema.JSONRPCMessage message = parseMessage(rawData);
 
-                            // Store JSON-RPC id → message mapping for Reactor Context injection.
-                            // ServerTransportProvider will call removeRequestId(message) to look this up
-                            // and inject it into Reactor Context via .contextWrite().
                             Object jsonRpcId = rawData.get("id");
                             if (jsonRpcId != null) {
                                 messageToRequestId.put(message, jsonRpcId);
                             }
 
-                            // Pass to handler
-                            // The handler (session.handle) will process and send response internally
                             handler.apply(Mono.just(message))
                                     .doOnSuccess(v -> log.debug("Message processed"))
                                     .doOnError(e -> log.error("Handler error", e))
@@ -115,10 +84,9 @@ public class StdioServerTransport implements McpServerTransport {
                         }
                     }
 
-                    // ── Pipe closed (agent disconnected or process killed) ──
                     if (!closed) {
                         closed = true;
-                        log.info("📡 Stdio pipe closed — agent disconnected");
+ log.info("Stdio pipe closed — agent disconnected");
                         try {
                             ClientSession session = sessionManager.getCurrentSession();
                             String sessionId = session.getSessionId();
@@ -127,7 +95,7 @@ public class StdioServerTransport implements McpServerTransport {
 
                             auditService.auditServerSessionDisconnectedSync(sessionId, agentName);
                             sessionManager.removeSession(sessionId);
-                            log.info("✅ Session {} cleaned up after pipe close", sessionId);
+ log.info("Session {} cleaned up after pipe close", sessionId);
                         } catch (Exception cleanupEx) {
                             log.error("Failed to cleanup session after pipe close: {}",
                                     cleanupEx.getMessage());
@@ -159,7 +127,6 @@ public class StdioServerTransport implements McpServerTransport {
                     out.flush();
                 }
 
-                // ── Audit response interception ────────────────────────────
                 auditResponseIfTracked(message, json);
 
             } catch (Exception e) {
@@ -174,16 +141,13 @@ public class StdioServerTransport implements McpServerTransport {
         return Mono.fromRunnable(() -> {
             closed = true;
             try {
-                // Audit session disconnect + clean up session state
                 try {
                     ClientSession session = sessionManager.getCurrentSession();
                     String sessionId = session.getSessionId();
                     String agentName = session.getClientInfo() != null ? session.getClientInfo().name() : null;
 
-                    // 1. Audit (async, non-blocking)
                     auditService.auditServerSessionDisconnectedSync(sessionId, agentName);
 
-                    // 2. Update DB status + clean in-memory maps
                     sessionManager.removeSession(sessionId);
                 } catch (Exception e) {
                     log.error("Failed to clean up session on disconnect: {}", e.getMessage());
@@ -207,17 +171,6 @@ public class StdioServerTransport implements McpServerTransport {
         return List.of("2024-11-05", "2025-03-26");
     }
 
-    /**
-     * Removes and returns the JSON-RPC id associated with the given parsed message.
-     *
-     * <p>Called by {@link ServerTransportProvider} in the Reactor chain, BEFORE
-     * the SDK dispatches the handler. The id is then injected into Reactor Context
-     * as a {@code McpTransportContext} so the orchestrator can read it from
-     * {@code exchange.transportContext().get("jsonRpcRequestId")}.
-     *
-     * @param message the parsed JSONRPCMessage
-     * @return the JSON-RPC id (String or Integer), or null if not a request
-     */
     public Object removeRequestId(McpSchema.JSONRPCMessage message) {
         return messageToRequestId.remove(message);
     }
@@ -228,10 +181,6 @@ public class StdioServerTransport implements McpServerTransport {
             Object id = rawData.get("id");
             Object params = rawData.get("params");
 
-            // JSON-RPC id is now stored in messageToRequestId map (in connect()),
-            // NOT ThreadLocal. ServerTransportProvider injects it into Reactor Context
-            // via .contextWrite() so it's available in exchange.transportContext().
-
             log.info("====================================");
             log.info("INCOMING REQUEST");
             log.info("====================================");
@@ -241,23 +190,18 @@ public class StdioServerTransport implements McpServerTransport {
             log.info("RAW DATA: {}", rawData);
             log.info("====================================");
 
-            // Extract tokens from ANY request
             extractTokens(rawData);
             if (params instanceof Map) {
                 extractTokens((Map<String, Object>) params);
             }
 
-            // Special handling for initialize
             if ("initialize".equals(method)) {
                 captureClientData(rawData, id);
             }
 
-            // ── Track request for audit (request → response matching) ───
             if (id != null && method != null) {
-                // Request with id — track it so we can audit when response is sent
                 inflightRequests.put(id, new RequestContext(method, params, System.currentTimeMillis()));
             } else if (id == null && method != null) {
-                // Notification (no id, no response expected) — audit immediately
                 auditNotification(method, params);
             }
 
@@ -268,7 +212,7 @@ public class StdioServerTransport implements McpServerTransport {
 
     private void captureClientData(Map<String, Object> rawData, Object requestId) {
         try {
-            log.info("🔍 CAPTURING CLIENT DATA...");
+ log.info("CAPTURING CLIENT DATA...");
 
             log.info(" ");
             log.info("rawData: {}", rawData);
@@ -317,14 +261,6 @@ public class StdioServerTransport implements McpServerTransport {
         }
     }
 
-    /**
-     * Extracts tokens from incoming request data and stores them in the ClientSession.
-     *
-     * <p>Scans for well-known token keys at top level and recursively in nested maps.
-     * When a token is found, it is both logged (masked) and stored in
-     * {@link ClientSession#storeToken(String, String)} for later use by the
-     * orchestrator when forwarding tool calls to enterprise servers.
-     */
     private void extractTokens(Map<String, Object> data) {
         String[] tokenKeys = {
                 "token", "apiKey", "api_key", "accessToken", "access_token",
@@ -332,7 +268,6 @@ public class StdioServerTransport implements McpServerTransport {
                 "authorization", "credentials", "secret", "key", "jwt"
         };
 
-        // Get current session for token storage (best-effort)
         ClientSession session = null;
         try {
             session = sessionManager.getCurrentSession();
@@ -347,7 +282,6 @@ public class StdioServerTransport implements McpServerTransport {
                     String tokenValue = value.toString();
                     log.info("TOKEN: {} = {}...", key, maskToken(tokenValue));
 
-                    // Store in ClientSession for orchestrator to use
                     if (session != null && !tokenValue.isBlank()) {
                         session.storeToken(key, tokenValue);
                     }
@@ -369,14 +303,6 @@ public class StdioServerTransport implements McpServerTransport {
         return token.substring(0, 4) + "..." + token.substring(token.length() - 4);
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  AUDIT — Response interception & notification handling
-    // ════════════════════════════════════════════════════════════════════
-
-    /**
-     * Matches an outgoing response to its original request by JSON-RPC id,
-     * calculates the duration, and dispatches the appropriate audit method.
-     */
     private void auditResponseIfTracked(McpSchema.JSONRPCMessage message, String json) {
         try {
             if (!(message instanceof McpSchema.JSONRPCResponse response)) {
@@ -390,7 +316,7 @@ public class StdioServerTransport implements McpServerTransport {
 
             RequestContext ctx = inflightRequests.remove(responseId);
             if (ctx == null) {
-                return; // No matching request tracked (e.g., initialize is audited in ClientSession)
+                return;
             }
 
             long durationMs = System.currentTimeMillis() - ctx.startTimeMs();
@@ -415,8 +341,6 @@ public class StdioServerTransport implements McpServerTransport {
                     auditService.auditServerPromptsListRequested(sessionId, promptCount, durationMs, requestId, agentName);
                     log.debug("Audited prompts/list — {} prompts, {}ms (requestId={})", promptCount, durationMs, requestId);
                 }
-                // tools/call is audited in McpServerApplication.handleToolCall() — no duplicate here
-                // initialize is audited in ClientSession.initialize() — no duplicate here
                 default -> log.debug("Response for method '{}' — no specific audit handler", ctx.method());
             }
         } catch (Exception e) {
@@ -424,12 +348,8 @@ public class StdioServerTransport implements McpServerTransport {
         }
     }
 
-    /**
-     * Audits an incoming notification (JSON-RPC message with method but no id).
-     */
     private void auditNotification(String method, Object params) {
         try {
-            // Skip initialize — it's not a notification, but it's handled separately anyway
             if ("initialize".equals(method)) {
                 return;
             }
@@ -444,11 +364,6 @@ public class StdioServerTransport implements McpServerTransport {
         }
     }
 
-    /**
-     * Extracts the count of items in a list result from the JSON response.
-     * For example, for tools/list, the response is: {"result": {"tools": [...]}}
-     * This parses the JSON to count the array items.
-     */
     @SuppressWarnings("unchecked")
     private int extractListCount(String json, String listKey) {
         try {
@@ -463,7 +378,7 @@ public class StdioServerTransport implements McpServerTransport {
         } catch (Exception e) {
             log.debug("Could not extract {} count from response: {}", listKey, e.getMessage());
         }
-        return -1; // Unknown count
+        return -1;
     }
 
     private McpSchema.JSONRPCMessage parseMessage(Map<String, Object> rawData) {

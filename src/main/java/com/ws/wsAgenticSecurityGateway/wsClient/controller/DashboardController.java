@@ -22,12 +22,6 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.*;
 
-/**
- * Dashboard overview controller for the Admin UI.
- *
- * <p>Provides gateway-wide summary statistics, health overview,
- * and in-flight request monitoring for the admin dashboard.
- */
 @RestController
 @RequestMapping("/api/admin/dashboard")
 @Slf4j
@@ -63,17 +57,12 @@ public class DashboardController {
         this.humanUserService = humanUserService;
     }
 
-    /**
-     * GET /api/admin/dashboard/summary
-     * Gateway-wide overview for the dashboard sidebar.
-     */
     @GetMapping("/summary")
     public ResponseEntity<Map<String, Object>> getSummary() {
-        log.info("📊 GET /api/admin/dashboard/summary");
+ log.info("GET /api/admin/dashboard/summary");
 
         Map<String, Object> summary = new LinkedHashMap<>();
 
-        // Server counts
         var allSessions = sessionManager.getAllSessions();
         long activeServers = allSessions.values().stream()
                 .filter(McpSession::isActive)
@@ -83,37 +72,28 @@ public class DashboardController {
         summary.put("activeServers", activeServers);
         summary.put("serverNames", sessionManager.getServerNames());
 
-        // Capability counts
         summary.put("totalTools", registryService.getToolDescriptors().size());
         summary.put("totalResources", registryService.getResourceDescriptors().size());
         summary.put("totalPrompts", registryService.getPromptDescriptors().size());
         summary.put("totalCapabilities", registryService.getTotalCapabilityCount());
 
-        // Recent audit activity (last 24 hours)
         LocalDateTime last24h = LocalDateTime.now().minusHours(24);
         summary.put("recentEventCount", auditQueryService.countRecentEvents(last24h));
         summary.put("recentErrorCount",
                 auditQueryService.countRecentErrors(last24h));
 
-        // In-flight count for sidebar badge
         summary.put("inFlightCount", inFlightRegistry.getActiveCount());
 
-        // Agent registry stats
         summary.put("totalAgents", agentRegistryService.getAllAgents().size());
         int connectedSessions = agentRegistryService.getConnectedSessions().size();
         summary.put("connectedAgentSessions", connectedSessions);
         summary.put("activeSessions", connectedSessions);
 
-        // Human user stats
         summary.put("totalHumanUsers", humanUserService.count());
 
         return ResponseEntity.ok(summary);
     }
 
-    /**
-     * GET /api/admin/dashboard/in-flight
-     * Live in-flight request monitoring for the admin dashboard.
-     */
     @GetMapping("/in-flight")
     public ResponseEntity<Map<String, Object>> getInFlight() {
         Collection<InFlightRequestRegistry.InFlightEntry> entries = inFlightRegistry.getActiveEntries();
@@ -143,7 +123,6 @@ public class DashboardController {
             entryList.add(map);
         }
 
-        // Recent completed/failed history
         List<InFlightRequestRegistry.CompletedEntry> history = inFlightRegistry.getRecentHistory();
         List<Map<String, Object>> historyList = new ArrayList<>();
         for (InFlightRequestRegistry.CompletedEntry h : history) {
@@ -180,25 +159,19 @@ public class DashboardController {
         return ResponseEntity.ok(result);
     }
 
-    /**
-     * GET /api/admin/dashboard/health
-     * Comprehensive health overview for the admin dashboard landing page.
-     */
     @GetMapping("/health")
     public ResponseEntity<Map<String, Object>> getHealth() {
-        log.info("📊 GET /api/admin/dashboard/health");
+ log.info("GET /api/admin/dashboard/health");
 
         Map<String, Object> health = new LinkedHashMap<>();
         LocalDateTime last24h = LocalDateTime.now().minusHours(24);
         LocalDateTime last5min = LocalDateTime.now().minusMinutes(5);
 
-        // ── Server status ────────────────────────────────────────────
         var allSessions = sessionManager.getAllSessions();
         long activeCount = allSessions.values().stream().filter(McpSession::isActive).count();
         health.put("totalServers", allSessions.size());
         health.put("activeServers", activeCount);
 
-        // Per-server details with last activity
         Map<String, Timestamp> lastActivityMap = new HashMap<>();
         try {
             List<Object[]> lastActivityRows = auditQueryService.findLastActivityPerServer();
@@ -227,12 +200,10 @@ public class DashboardController {
         }
         health.put("servers", serverDetails);
 
-        // ── Capability counts ────────────────────────────────────────
         health.put("totalTools", registryService.getToolDescriptors().size());
         health.put("totalResources", registryService.getResourceDescriptors().size());
         health.put("totalPrompts", registryService.getPromptDescriptors().size());
 
-        // ── Traffic metrics ──────────────────────────────────────────
         long recentEvents = auditQueryService.countRecentEvents(last24h);
         long recentErrors = auditQueryService.countRecentErrors(last24h);
         double successRate = recentEvents > 0 ? Math.round((1.0 - (double) recentErrors / recentEvents) * 10000.0) / 100.0 : 100.0;
@@ -244,7 +215,6 @@ public class DashboardController {
         health.put("successRate", successRate);
         health.put("requestsPerMinute", requestsPerMinute);
 
-        // ── Latency percentiles ──────────────────────────────────────
         Double avgDuration = auditQueryService.findAverageDurationSince(last24h);
         health.put("avgDurationMs", avgDuration != null ? Math.round(avgDuration * 100.0) / 100.0 : 0);
 
@@ -269,32 +239,21 @@ public class DashboardController {
         }
         health.put("latency", latency);
 
-        // ── In-flight ────────────────────────────────────────────────
         health.put("inFlightCount", inFlightRegistry.getActiveCount());
 
         return ResponseEntity.ok(health);
     }
 
-    /**
-     * GET /api/admin/dashboard/pdp
-     * PDP (Policy Decision Point) analytics for the admin dashboard.
-     *
-     * <p>Returns policy stats, custom attribute stats, LLM availability,
-     * and PDP-related audit event count for the last 24 hours.
-     */
     @GetMapping("/pdp")
     public ResponseEntity<Map<String, Object>> getPdpDashboard() {
-        log.info("📊 GET /api/admin/dashboard/pdp");
+ log.info("GET /api/admin/dashboard/pdp");
 
         Map<String, Object> pdp = new LinkedHashMap<>();
 
-        // ── Policy stats ─────────────────────────────────────────────
         pdp.put("policies", policyService.getStats());
 
-        // ── Custom attribute stats ───────────────────────────────────
         pdp.put("customAttributes", customAttributeService.getStats());
 
-        // ── Activity & LLM availability ──────────────────────────────
         Map<String, Object> activity = new LinkedHashMap<>();
         LocalDateTime last24h = LocalDateTime.now().minusHours(24);
         activity.put("pdpEventsLast24h",

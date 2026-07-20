@@ -10,12 +10,6 @@ import org.hibernate.annotations.CreationTimestamp;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-/**
- * Tracks WS Client-side sessions between the WS Gateway and enterprise MCP servers.
- *
- * <p>Persisted in {@code gateway_mcp_server_session} table, this entity provides
- * visibility into server connection lifecycle, health status, and activity.
- */
 @Entity
 @Table(name = "gateway_mcp_server_session", schema = "ws_agentic_security",
         indexes = {
@@ -32,6 +26,9 @@ public class GatewayMcpServerSessionEntity {
     @Id
     @GeneratedValue(generator = "UUID")
     private UUID id;
+
+    @Column(name = "ws_tenant_name", nullable = false)
+    private String wsTenantName;
 
     @Column(name = "server_name", nullable = false, length = 128)
     private String serverName;

@@ -14,15 +14,6 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 
-/**
- * Periodically scans for idle agent sessions and marks them as DISCONNECTED.
- *
- * <p>This is the enterprise-grade solution for detecting agent disconnections
- * that cannot be detected via transport-level events (e.g., HTTP agents that
- * simply stop sending requests, network drops, ungraceful process kills).
- *
- * <p>Controlled by {@code ws.gateway.session.*} properties in application.yml.
- */
 @Service
 @Slf4j
 @ConditionalOnProperty(name = "ws.gateway.session.reaper-enabled",
@@ -34,7 +25,6 @@ public class SessionReaperService {
     private final McpAuditService auditService;
     private final SessionLifecycleProperties properties;
 
-    /** SessionManager is a POJO (not a Spring bean) — injected via setter after creation. */
     private volatile SessionManager sessionManager;
 
     public SessionReaperService(GatewayAgentSessionRepository sessionRepository,
@@ -51,13 +41,6 @@ public class SessionReaperService {
         this.sessionManager = sessionManager;
     }
 
-    /**
-     * Periodic scan for stale CONNECTED sessions.
-     *
-     * <p>A session is considered stale if its last activity
-     * ({@code COALESCE(lastRequestAt, connectedAt)}) is older than
-     * the configured idle timeout.
-     */
     @Scheduled(fixedDelayString = "${ws.gateway.session.reaper-interval-seconds:60}000")
     @Transactional
     public void reapIdleSessions() {
@@ -89,28 +72,23 @@ public class SessionReaperService {
             String agentName = staleSession.getAgent() != null
                     ? staleSession.getAgent().getAgentName() : null;
 
-            // Compute how long this session has been idle
             LocalDateTime lastActivity = staleSession.getLastRequestAt() != null
                     ? staleSession.getLastRequestAt()
                     : staleSession.getConnectedAt();
             long idleDurationMs = Duration.between(lastActivity, LocalDateTime.now()).toMillis();
 
-            // 1. Mark DB as DISCONNECTED (WHERE status='CONNECTED' — idempotent)
             sessionRepository.markDisconnected(sessionId);
 
-            // 2. Remove from AgentRegistryService in-memory maps
             try {
                 agentRegistryService.disconnectSession(sessionId);
             } catch (Exception e) {
                 log.debug("Agent registry disconnect for reaped session: {}", e.getMessage());
             }
 
-            // 3. Remove from SessionManager if available
             if (sessionManager != null) {
                 sessionManager.removeSessionFromMemory(sessionId);
             }
 
-            // 4. Audit the idle timeout reap (distinct from graceful disconnect)
             auditService.auditServerSessionIdleReaped(sessionId, agentName, idleDurationMs);
 
             log.info("Reaped idle session: {} (agent={}, idle for {}s)",

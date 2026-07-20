@@ -9,23 +9,11 @@ import org.springframework.data.jpa.domain.Specification;
 
 import java.time.LocalDateTime;
 
-/**
- * Dynamic specification builder for {@link McpAuditLog} queries.
- *
- * <p>Composes optional filter predicates via AND-composition, enabling
- * a single REST endpoint to handle any combination of filters without
- * a combinatorial explosion of repository finder methods.
- */
 public class McpAuditLogSpecification {
 
     private McpAuditLogSpecification() {
-        // static utility
     }
 
-    /**
-     * Build a composed specification from optional filter parameters.
-     * Any {@code null} parameter is silently skipped.
-     */
     public static Specification<McpAuditLog> build(
             AuditModule module,
             AuditEventType eventType,
@@ -42,8 +30,34 @@ public class McpAuditLogSpecification {
             String searchText,
             LocalDateTime fromDate,
             LocalDateTime toDate) {
+        return build(module, eventType, status, severity, serverName, capabilityName,
+                correlationId, sessionId, agentName, tokenType, userIdentity, sourceIp,
+                searchText, fromDate, toDate, null);
+    }
+
+    public static Specification<McpAuditLog> build(
+            AuditModule module,
+            AuditEventType eventType,
+            AuditStatus status,
+            AuditSeverity severity,
+            String serverName,
+            String capabilityName,
+            String correlationId,
+            String sessionId,
+            String agentName,
+            String tokenType,
+            String userIdentity,
+            String sourceIp,
+            String searchText,
+            LocalDateTime fromDate,
+            LocalDateTime toDate,
+            String wsTenantName) {
 
         Specification<McpAuditLog> spec = Specification.where(null);
+
+        if (wsTenantName != null && !wsTenantName.isBlank()) {
+            spec = spec.and((root, query, cb) -> cb.equal(root.get("wsTenantName"), wsTenantName));
+        }
 
         if (module != null) {
             spec = spec.and((root, query, cb) -> cb.equal(root.get("module"), module));

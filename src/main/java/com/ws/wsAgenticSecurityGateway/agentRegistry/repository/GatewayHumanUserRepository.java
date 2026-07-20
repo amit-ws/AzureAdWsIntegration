@@ -33,9 +33,34 @@ public interface GatewayHumanUserRepository extends JpaRepository<GatewayHumanUs
     @Query("SELECT COUNT(h) FROM GatewayHumanUserEntity h WHERE h.status = 'BLOCKED'")
     long countBlocked();
 
-    /** Atomic request count increment — called async on every orchestration for human-delegated sessions. */
     @Modifying
     @Query("UPDATE GatewayHumanUserEntity h SET h.totalRequests = h.totalRequests + 1, " +
             "h.lastSeenAt = CURRENT_TIMESTAMP WHERE h.id = :humanUserId")
     void incrementRequestCount(@Param("humanUserId") UUID humanUserId);
+
+    Optional<GatewayHumanUserEntity> findByIdpSubjectAndWsTenantName(String idpSubject, String wsTenantName);
+
+    Optional<GatewayHumanUserEntity> findByPreferredUsernameAndWsTenantName(String preferredUsername, String wsTenantName);
+
+    List<GatewayHumanUserEntity> findByStatusAndWsTenantName(String status, String wsTenantName);
+
+    Optional<GatewayHumanUserEntity> findByEmailAndWsTenantName(String email, String wsTenantName);
+
+    List<GatewayHumanUserEntity> findByWsTenantNameAndPreferredUsernameContainingIgnoreCaseOrWsTenantNameAndEmailContainingIgnoreCase(
+            String wsTenantName1, String username, String wsTenantName2, String email);
+
+    @Query("SELECT COUNT(h) FROM GatewayHumanUserEntity h WHERE h.lastSeenAt > :since AND h.wsTenantName = :wsTenantName")
+    long countActiveHumansSinceByTenant(@Param("since") LocalDateTime since, @Param("wsTenantName") String wsTenantName);
+
+    @Query("SELECT COUNT(h) FROM GatewayHumanUserEntity h WHERE h.status = 'BLOCKED' AND h.wsTenantName = :wsTenantName")
+    long countBlockedByTenant(@Param("wsTenantName") String wsTenantName);
+
+    List<GatewayHumanUserEntity> findAllByWsTenantName(String wsTenantName);
+
+    long countByWsTenantName(String wsTenantName);
+
+    @Query("SELECT h FROM GatewayHumanUserEntity h WHERE h.wsTenantName = :tenant " +
+            "AND (LOWER(h.preferredUsername) LIKE LOWER(CONCAT('%', :q, '%')) " +
+            "OR LOWER(h.email) LIKE LOWER(CONCAT('%', :q, '%')))")
+    List<GatewayHumanUserEntity> searchByTenant(@Param("q") String query, @Param("tenant") String tenant);
 }

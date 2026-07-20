@@ -21,15 +21,6 @@ import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
-/**
- * LLM-powered capability profile generation service.
- *
- * <p>Converts natural-language admin requests into structured capability profile
- * definitions using the Anthropic Claude API.
- *
- * <p>Example: "Create a profile for OCR agents with read-only github access and
- * slack messaging" → returns structured JSON with profile name, description, and rules.
- */
 @Service
 @Slf4j
 public class CapabilityProfileChatService {
@@ -70,13 +61,6 @@ public class CapabilityProfileChatService {
         return anthropicApiKey != null && !anthropicApiKey.isBlank();
     }
 
-    /**
-     * Generate a capability profile definition from a natural-language prompt.
-     *
-     * @param prompt admin's natural-language request
-     * @param conversationHistory optional previous messages for multi-turn
-     * @return structured profile definition or error/follow-up
-     */
     public Map<String, Object> generateProfile(String prompt, List<Map<String, String>> conversationHistory) {
         if (prompt == null || prompt.isBlank()) {
             return Map.of("error", "Prompt cannot be empty");
@@ -128,7 +112,6 @@ public class CapabilityProfileChatService {
 
             log.info("Profile chat completed in {}ms", durationMs);
 
-            // Try to parse structured JSON from the response
             return parseProfileResponse(content);
 
         } catch (Exception e) {
@@ -204,7 +187,6 @@ public class CapabilityProfileChatService {
             }
         }
 
-        // ── Human Users (OAuth2 delegated) ──
         sb.append("\n## Registered Human Users (who interact through agents)\n");
         sb.append("Human users authenticate via OAuth2/OIDC and use AI agents to interact with MCP servers.\n");
         sb.append("Consider human user context when designing profiles — profiles assigned to agents affect all humans who use those agents.\n\n");
@@ -222,7 +204,6 @@ public class CapabilityProfileChatService {
                     String clientRoles = h.getClientRoles() != null && !h.getClientRoles().isEmpty()
                             ? String.join(", ", h.getClientRoles()) : "-";
 
-                    // Find agents this human uses
                     String agentsUsed = "-";
                     try {
                         List<GatewayAgentSessionEntity> sessions = humanUserService.getHumanSessionsWithAgent(h.getId());
@@ -257,7 +238,6 @@ public class CapabilityProfileChatService {
             log.debug("Could not fetch human users for profile chat: {}", e.getMessage());
         }
 
-        // ── Non-Human Identities (NHIs) ──
         sb.append("\n## Registered Non-Human Identities (service accounts, bots)\n");
         sb.append("NHIs authenticate via Client Credentials flow and use agents to interact with MCP servers.\n\n");
         try {
@@ -344,7 +324,6 @@ public class CapabilityProfileChatService {
     }
 
     private Map<String, Object> parseProfileResponse(String content) {
-        // Try to extract JSON from ```json ... ``` block
         int jsonStart = content.indexOf("```json");
         int jsonEnd = content.lastIndexOf("```");
 
@@ -362,7 +341,6 @@ public class CapabilityProfileChatService {
             }
         }
 
-        // No JSON found — treat as a follow-up question or plain text response
         return Map.of(
                 "success", false,
                 "followUp", true,

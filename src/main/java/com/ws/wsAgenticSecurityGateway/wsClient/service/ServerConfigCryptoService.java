@@ -15,11 +15,6 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Base64;
 
-/**
- * Encrypts/decrypts sensitive server-config values for DB at-rest protection.
- *
- * <p>Storage format: {@code ENCv1:<base64(iv + ciphertextAndTag)>}
- */
 @Service
 @Slf4j
 public class ServerConfigCryptoService {
@@ -38,7 +33,7 @@ public class ServerConfigCryptoService {
         String effectiveKey = keyMaterial;
         if (effectiveKey == null || effectiveKey.isBlank()) {
             effectiveKey = Constant.ENCRYPTION_KEY;
-            log.warn("⚠️ ws.gateway.server-config-encryption.key not set. Falling back to Constant.ENCRYPTION_KEY.");
+            log.warn("ws.gateway.server-config-encryption.key not set. Falling back to Constant.ENCRYPTION_KEY.");
         }
         if (effectiveKey == null || effectiveKey.isBlank()) {
             throw new IllegalStateException(
@@ -47,7 +42,7 @@ public class ServerConfigCryptoService {
         }
 
         this.secretKey = deriveKey(effectiveKey);
-        log.info("🔐 Server config crypto service initialized");
+        log.info("Server config crypto service initialized");
     }
 
     public boolean isEncryptedValue(String value) {

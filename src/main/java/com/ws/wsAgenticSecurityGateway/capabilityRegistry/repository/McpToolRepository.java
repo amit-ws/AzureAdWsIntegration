@@ -10,9 +10,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-/**
- * Repository for {@link McpToolEntity} — tools discovered from enterprise MCP servers.
- */
 @Repository
 public interface McpToolRepository extends JpaRepository<McpToolEntity, UUID> {
 
@@ -23,4 +20,10 @@ public interface McpToolRepository extends JpaRepository<McpToolEntity, UUID> {
     @Modifying
     @Transactional
     void deleteByServerId(UUID serverId);
+
+    List<McpToolEntity> findByServerIdAndWsTenantName(UUID serverId, String wsTenantName);
+
+    Optional<McpToolEntity> findByPublicNameAndWsTenantName(String publicName, String wsTenantName);
+
+    List<McpToolEntity> findAllByWsTenantName(String wsTenantName);
 }
