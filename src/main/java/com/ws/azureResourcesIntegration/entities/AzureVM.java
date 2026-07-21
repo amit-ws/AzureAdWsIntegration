@@ -1,16 +1,14 @@
 package com.ws.azureResourcesIntegration.entities;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.ws.azureAdIntegration.entity.AzureTenant;
 import jakarta.persistence.*;
-
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 import lombok.experimental.SuperBuilder;
 
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 
 
 @EqualsAndHashCode(callSuper = true)
@@ -40,7 +38,7 @@ public class AzureVM extends BaseAzureResource {
     String zones;
     String resourceIdentityType;
     String ipAddress;
-
+    OffsetDateTime timeCreated;
 //    @ElementCollection(fetch = FetchType.EAGER)
 //    @CollectionTable(
 //            name = "azure_vm_public_nework_interfaces",

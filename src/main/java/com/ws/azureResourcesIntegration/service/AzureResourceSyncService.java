@@ -182,14 +182,15 @@ public class AzureResourceSyncService {
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_RESOURCE_DATA_TRUNCATED, "Info");
             AzureSubscription azureSubscription = syncSubscription(azureTenant);
             Map<String, AzureResourceGroup> azureResourceGroupMap = createAzureResourceGroupMap(syncResourceGroups(azureSubscription));
-//            syncAzureVMs(azureSubscription, azureResourceGroupMap);
-            syncStorageData(azureSubscription, azureResourceGroupMap);
-            syncServersAndDatabases(azureSubscription, azureResourceGroupMap);
-            syncRoleDefinitions(azureTenant, azureSubscription);
-            log.info("azure role definitions data fetched..");
-            syncRoleAssignments(azureTenant, azureSubscription);
-            log.info("azure role assignments data fetched..");
-            List<AzureKubernetesCluster> azureKubernetesClusters = syncAzureKubernetesClusters(azureSubscription, azureResourceGroupMap);
+            syncAzureVMs(azureSubscription, azureResourceGroupMap);
+            log.info("VMs synced...");
+//            syncStorageData(azureSubscription, azureResourceGroupMap);
+//            syncServersAndDatabases(azureSubscription, azureResourceGroupMap);
+//            syncRoleDefinitions(azureTenant, azureSubscription);
+//            log.info("azure role definitions data fetched..");
+//            syncRoleAssignments(azureTenant, azureSubscription);
+//            log.info("azure role assignments data fetched..");
+//            List<AzureKubernetesCluster> azureKubernetesClusters = syncAzureKubernetesClusters(azureSubscription, azureResourceGroupMap);
 //            syncKubernetesResources(azureSubscription.getAzureSubscriptionId(), azureKubernetesClusters);
             backendApplicationLogservice.saveAuditLog(this.wsTenantName, this.tenantEmail, Constant.ADD, Constant.AZURE_RESOURCE_DATA_SYNC_END, "Info");
         } catch (Exception ex) {
@@ -309,6 +310,7 @@ public class AzureResourceSyncService {
                                 .azureVmId(vm.vmId())
                                 .instanceId(vm.id())
                                 .name(vm.name())
+                                .timeCreated(vm.timeCreated())
                                 .computerName(vm.computerName())
                                 .powerState(GenericUtil.getOrNull(() -> vm.powerState().toString()))
                                 .size(GenericUtil.getOrNull(() -> vm.size().getValue()))

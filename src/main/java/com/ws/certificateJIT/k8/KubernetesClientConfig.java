@@ -65,7 +65,7 @@ public class KubernetesClientConfig {
     private ApiClient initializeK8Client() {
         String rgName = "ws-test-aks-rg";
         String clusterName = "ws-test-aks-cluster-1";
-        AzureResourceManager azureResourceManager = getAzureResourceManager("cb51e8d1-519c-4e18-9b2f-28d53e6badd1", "yye8Q~FxfhNLvs07nM3PIPF0.H0zAvcvQ1Z5FcCJ",
+        AzureResourceManager azureResourceManager = getAzureResourceManager("cb51e8d1-519c-4e18-9b2f-28d53e6badd1", "TUo8Q~eVNZNHVbrGV4E8VLNphrJ24xObLUolOcJD",
                 "f875ebf8-f5f0-4915-a2c9-4442e0118fd2", "4769af8e-ca3d-448d-bd1a-80e03ed94158");
         KubernetesCluster cluster = azureResourceManager
                 .kubernetesClusters()
