@@ -24,7 +24,7 @@ import java.util.stream.Collectors;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class K8LogHelperServiceOld {
     final String clientId = "cb51e8d1-519c-4e18-9b2f-28d53e6badd1";
-    final String clientSecret = "TUo8Q~eVNZNHVbrGV4E8VLNphrJ24xObLUolOcJD";
+    final String clientSecret = "jaU8Q~TsB3s2lXIr0d51F6ClwHXTWJWbuRwiAbDq";
     final String tenantId = "f875ebf8-f5f0-4915-a2c9-4442e0118fd2";
     final String workspaceId = "1ff52693-667a-48e8-a97a-9e8aa410c0d8";
 
