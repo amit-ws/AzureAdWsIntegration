@@ -65,6 +65,8 @@ Split `ToolCallOrchestrator` → `HopOrchestrator` (spine) + MCP adapter; add Ro
 Inbound identity dispatch (SPIFFE+mesh / mTLS / JWT → agent id via registry). STS: short-lived scoped tokens, OBO/token-exchange, `act_chain`, JWKS, JIT scoping. Credential brokering on the outbound.
 **Achievement:** a single-hop MCP call fully governed by the engine (short-lived token, OBO, JIT least-priv, `act_chain=[Sarah,Agent]`, brokered downstream cred).
 
+**Carry-over cleanup from Stage 0 (fold in here):** `ToolCallOrchestrator` (the facade) currently holds a direct reference to `McpAdapter` *only* to forward `setSessionManager` — a Stage-0 compromise that kept `McpServerApplication`'s wiring untouched. Stage 1 reworks exactly this credential/session wiring (SessionManager → STS), so remove that facade→adapter reference then: set `SessionManager` (or its STS replacement) onto `HopOrchestrator` + `McpAdapter` at the wiring point, leaving the facade knowing only the spine.
+
 ### Stage 2 — Policy + governance → V1
 Cedar ABAC + invariants (initiator-gate, monotonic down-scoping, default-deny) + approval gates. Full audit (`act_chain`/`trace_id`/scope/decision) + revocation (CAEP / registry-block).
 **Achievement: Full functional Agentic Auth Gateway V1 — single-hop MCP proving everything.**

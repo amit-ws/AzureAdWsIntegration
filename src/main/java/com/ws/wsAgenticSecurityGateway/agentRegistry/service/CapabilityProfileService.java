@@ -450,6 +450,7 @@ public class CapabilityProfileService {
 
         return AgentCapabilityProfileRule.builder()
                 .profile(profile)
+                .wsTenantName(profile.getWsTenantName())
                 .serverConfigName(serverConfigName)
                 .capabilityType(capabilityType)
                 .mode(mode)

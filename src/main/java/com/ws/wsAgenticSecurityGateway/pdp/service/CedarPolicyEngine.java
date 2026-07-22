@@ -589,6 +589,21 @@ public class CedarPolicyEngine {
         putIfNotNull(ctx.contextAttrs, "correlationId", request.getCorrelationId());
         ctx.contextAttrs.put("argumentsFlat", flattenArguments(request.getArguments()));
 
+        // Delegation lineage (act_chain) — exposed as flat context attributes so policies can gate on it,
+        // e.g. context.rootVerified == true, context.rootType == "human", context.actChainDepth <= 2.
+        java.util.List<java.util.Map<String, Object>> actChain = request.getActChain();
+        if (actChain != null && !actChain.isEmpty()) {
+            ctx.contextAttrs.put("actChainDepth", (long) actChain.size());
+            java.util.Map<String, Object> root = actChain.get(0);
+            java.util.Map<String, Object> actor = actChain.get(actChain.size() - 1);
+            if (root.get("type") != null) ctx.contextAttrs.put("rootType", String.valueOf(root.get("type")));
+            if (root.get("id") != null) ctx.contextAttrs.put("rootId", String.valueOf(root.get("id")));
+            ctx.contextAttrs.put("rootVerified", Boolean.TRUE.equals(root.get("verified")));
+            if (actor.get("type") != null) ctx.contextAttrs.put("actorType", String.valueOf(actor.get("type")));
+            if (actor.get("id") != null) ctx.contextAttrs.put("actorId", String.valueOf(actor.get("id")));
+            ctx.contextAttrs.put("actorVerified", Boolean.TRUE.equals(actor.get("verified")));
+        }
+
         if (request.getCustomAttributes() != null) {
             ctx.contextAttrs.putAll(request.getCustomAttributes());
         }

@@ -28,6 +28,9 @@ public class PolicyEvaluationRequest {
     private String tokenType;
     private Map<String, Object> jwtCustomClaims;
 
+    /** Delegation lineage (root human/NHI -> agent actor), in the act_chain claim form. */
+    private List<Map<String, Object>> actChain;
+
     private String action;
 
     private String resourceName;

@@ -6,6 +6,10 @@ import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryServic
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
+import com.ws.wsAgenticSecurityGateway.orchestration.adapter.McpAdapter;
+import com.ws.wsAgenticSecurityGateway.sts.model.ActChain;
+import com.ws.wsAgenticSecurityGateway.sts.service.ActChainBuilder;
+import com.ws.wsAgenticSecurityGateway.sts.service.HopTokenMinter;
 import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyEvaluationRequest;
 import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyEvaluationResult;
 import com.ws.wsAgenticSecurityGateway.pdp.service.CedarPolicyEngine;
@@ -34,13 +38,16 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Characterization tests: pin the OBSERVABLE behavior of {@link ToolCallOrchestrator}
- * BEFORE the Stage-0 spine/adapter refactor. These MUST stay green after the refactor —
- * they are the definition of "MCP stays green".
+ * Characterization tests pinning the OBSERVABLE behavior of the MCP orchestration path
+ * (public API: {@link ToolCallOrchestrator}). Written against the pre-refactor monolith and
+ * kept green through the Stage-0 spine/adapter split — after the facade rewire they exercise
+ * the full refactored chain (facade -> {@link HopOrchestrator} spine -> MCP adapter -> mocked
+ * client) through the same public methods, which is the definition of "MCP stays green".
  *
- * <p>Dependencies are mocked; the small Lombok DTOs are built for real. The MCP exchange
- * is stubbed minimally (empty transport context, a session id, null client info — all of
- * which the orchestrator handles gracefully) so the tests exercise the real control flow.
+ * <p>Spine dependencies are mocked; the MCP adapter is real (wrapping the mocked
+ * McpClientService); the small Lombok DTOs are built for real. The MCP exchange is stubbed
+ * minimally (empty transport context, a session id, null client info — all handled
+ * gracefully) so the tests exercise the real control flow.
  */
 class ToolCallOrchestratorCharacterizationTest {
 
@@ -65,9 +72,14 @@ class ToolCallOrchestratorCharacterizationTest {
 
     @BeforeEach
     void setUp() {
-        orchestrator = new ToolCallOrchestrator(registryService, mcpClientService, auditService,
-                inFlight, objectMapper, mcpSessionManager, agentRegistryService,
-                capabilityFilterService, cedarPolicyEngine, policyContextBuilder);
+        McpAdapter adapter = new McpAdapter(mcpClientService);
+        HopTokenMinter hopTokenMinter = mock(HopTokenMinter.class); // returns null -> mint skipped (open mode)
+        ActChainBuilder actChainBuilder = mock(ActChainBuilder.class);
+        when(actChainBuilder.fromTransportContext(any(), any())).thenReturn(new ActChain(List.of()));
+        HopOrchestrator hopOrchestrator = new HopOrchestrator(registryService, auditService, inFlight,
+                objectMapper, mcpSessionManager, agentRegistryService, capabilityFilterService,
+                cedarPolicyEngine, policyContextBuilder, adapter, hopTokenMinter, actChainBuilder);
+        orchestrator = new ToolCallOrchestrator(hopOrchestrator, adapter);
 
         when(exchange.transportContext()).thenReturn(McpTransportContext.EMPTY);
         when(exchange.sessionId()).thenReturn("test-session");

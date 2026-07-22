@@ -36,7 +36,7 @@ import java.util.stream.Collectors;
 public class PolicyLlmService {
 
     private static final String ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-    private static final String MODEL = "claude-sonnet-4-20250514";
+    private static final String MODEL = "claude-haiku-4-5";
     private static final int MAX_TOKENS = 2048;
     private static final long METADATA_CACHE_TTL_MS = 60_000;
 

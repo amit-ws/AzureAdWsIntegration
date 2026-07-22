@@ -903,6 +903,52 @@ public class McpAuditService {
                                 .build());
         }
 
+        /** Resolve the tenant recorded for a session (from the per-session identity context), or null. */
+        public String resolveTenant(String sessionId) {
+                if (sessionId == null) {
+                        return null;
+                }
+                AuditIdentityContext ctx = sessionIdentityCache.get(sessionId);
+                return ctx != null ? ctx.wsTenantName() : null;
+        }
+
+        @Async("mcpAuditExecutor")
+        public void auditStsTokenMinted(String correlationId,
+                        String sessionId,
+                        String tenant,
+                        String serverName,
+                        String capabilityName,
+                        String capabilityType,
+                        String jti,
+                        String scope,
+                        java.util.List<java.util.Map<String, Object>> actChain,
+                        java.time.Instant expiresAt,
+                        String requestId,
+                        LocalDateTime firedAt, Integer eventSequence) {
+                java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
+                payload.put("jti", jti);
+                payload.put("scope", scope);
+                payload.put("act_chain", actChain);
+                payload.put("expiresAt", expiresAt != null ? expiresAt.toString() : null);
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.STS_TOKEN_MINTED)
+                                .module(AuditModule.ORCHESTRATION_LAYER)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .correlationId(correlationId)
+                                .sessionId(sessionId)
+                                .wsTenantName(tenant)
+                                .serverName(serverName)
+                                .capabilityName(capabilityName)
+                                .capabilityType(capabilityType)
+                                .mcpMethod("sts/mint")
+                                .requestId(requestId)
+                                .responsePayload(objectMapper.valueToTree(payload))
+                                .timestamp(firedAt)
+                                .eventSequence(eventSequence)
+                                .build());
+        }
+
         @Async("mcpAuditExecutor")
         public void auditOrchestrationError(String correlationId,
                         String sessionId,

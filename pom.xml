@@ -182,7 +182,7 @@
         <dependency>
             <groupId>com.nimbusds</groupId>
             <artifactId>nimbus-jose-jwt</artifactId>
-            <version>9.23</version>
+            <version>9.37.3</version> <!-- aligned with spring-boot 3.3.4 / spring-security-oauth2-jose 6.3.3; was 9.23 (too old for NimbusJwtEncoder) -->
         </dependency>
 
         <!--        &lt;!&ndash; Apache HttpClient for fetching the JWKS &ndash;&gt;-->
