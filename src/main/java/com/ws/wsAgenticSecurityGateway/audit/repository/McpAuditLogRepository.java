@@ -35,6 +35,49 @@ public interface McpAuditLogRepository
 
     List<McpAuditLog> findBySessionId(String sessionId);
 
+    /**
+     * Distinct trace ids for one agent (matched by OAuth client id OR policy principal name — covers both
+     * session and stateless rows), most-recent first. One trace id == one "activity". Paginated because an
+     * agent accrues unbounded requests over time.
+     */
+    @Query("SELECT m.traceId FROM McpAuditLog m WHERE m.traceId IS NOT NULL "
+            + "AND (m.agentClientId = :key OR m.agentName = :key) "
+            + "GROUP BY m.traceId ORDER BY MAX(m.timestamp) DESC")
+    List<String> findDistinctTraceIdsByAgentKey(@Param("key") String key, Pageable pageable);
+
+    /** All events for a set of traces, oldest first — the rows a set of activities roll up from. */
+    List<McpAuditLog> findByTraceIdInOrderByTimestampAsc(List<String> traceIds);
+
+    /**
+     * Identity-graph edge aggregation: {@code human → agent} ("acts-through"). Counts DISTINCT requests
+     * (traces), so multiple audit events per request don't inflate the edge. Returns
+     * {@code [userIdentity, humanUserId, agentName, agentClientId, requestCount]}.
+     */
+    @Query("SELECT m.userIdentity, m.humanUserId, m.agentName, m.agentClientId, COUNT(DISTINCT m.traceId) "
+            + "FROM McpAuditLog m "
+            + "WHERE m.agentName IS NOT NULL AND m.userIdentity IS NOT NULL AND m.traceId IS NOT NULL "
+            + "AND (CAST(:tenant AS string) IS NULL OR m.wsTenantName = :tenant) "
+            + "AND m.timestamp >= :since "
+            + "GROUP BY m.userIdentity, m.humanUserId, m.agentName, m.agentClientId")
+    List<Object[]> aggregateHumanAgentEdges(@Param("tenant") String tenant,
+                                            @Param("since") LocalDateTime since);
+
+    /**
+     * Identity-graph edge aggregation: {@code agent → tool} ("invoked"), split by decision so the edge can
+     * show allow/deny. Sourced from PDP decision rows (one per tool call). Returns
+     * {@code [agentName, agentClientId, capabilityName, serverName, status, requestCount]}.
+     */
+    @Query("SELECT m.agentName, m.agentClientId, m.capabilityName, m.serverName, m.status, "
+            + "COUNT(DISTINCT m.traceId) "
+            + "FROM McpAuditLog m "
+            + "WHERE m.eventType = :eventType AND m.capabilityName IS NOT NULL AND m.agentName IS NOT NULL "
+            + "AND (CAST(:tenant AS string) IS NULL OR m.wsTenantName = :tenant) "
+            + "AND m.timestamp >= :since "
+            + "GROUP BY m.agentName, m.agentClientId, m.capabilityName, m.serverName, m.status")
+    List<Object[]> aggregateAgentToolEdges(@Param("eventType") AuditEventType eventType,
+                                           @Param("tenant") String tenant,
+                                           @Param("since") LocalDateTime since);
+
     Page<McpAuditLog> findByTimestampBetween(LocalDateTime from, LocalDateTime to, Pageable pageable);
 
     Page<McpAuditLog> findByModuleAndTimestampBetween(

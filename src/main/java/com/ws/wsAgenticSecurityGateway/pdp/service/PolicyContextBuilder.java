@@ -107,6 +107,20 @@ public class PolicyContextBuilder {
             log.debug("Could not extract agent info from exchange: {}", e.getMessage());
         }
 
+        // Stateless bridge (Delta 2): the synthetic exchange carries no clientInfo — the authoritative caller
+        // identity rides on the transport context as the JWT client_id. Use it as the policy principal so a
+        // stateless request matches the SAME agent policies as its session-mode counterpart.
+        if ("unknown".equals(agentName) && exchange != null) {
+            try {
+                Object tcClientId = exchange.transportContext().get("agentClientId");
+                if (tcClientId instanceof String s && !s.isBlank()) {
+                    agentName = s;
+                }
+            } catch (Exception e) {
+                log.debug("Could not resolve stateless agent client id: {}", e.getMessage());
+            }
+        }
+
         String approvalStatus = "UNKNOWN";
         try {
             List<GatewayAgentEntity> agents = agentRegistryService.findAgentsByName(agentName);

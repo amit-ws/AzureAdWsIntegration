@@ -85,6 +85,7 @@ public class AgentController {
                     Map<String, Object> map = new LinkedHashMap<>();
                     map.put("id", agent.getId());
                     map.put("agentName", agent.getAgentName());
+                    map.put("authClientId", agent.getAuthClientId());
                     map.put("agentVersion", agent.getAgentVersion());
                     map.put("protocolVersion", agent.getProtocolVersion());
                     map.put("capabilities", agent.getCapabilities());

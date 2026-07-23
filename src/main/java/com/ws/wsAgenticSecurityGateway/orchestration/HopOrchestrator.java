@@ -941,6 +941,12 @@ public class HopOrchestrator {
                     String version = clientInfo.version() != null ? " v" + clientInfo.version() : "";
                     return name + version;
                 }
+                // Stateless bridge: no clientInfo on the synthetic exchange — fall back to the JWT client_id
+                // so logs/audit name the caller instead of "unknown".
+                Object tcClientId = exchange.transportContext().get("agentClientId");
+                if (tcClientId instanceof String s && !s.isBlank()) {
+                    return s;
+                }
             }
         } catch (Exception e) {
             log.debug("Could not resolve client info from exchange: {}", e.getMessage());

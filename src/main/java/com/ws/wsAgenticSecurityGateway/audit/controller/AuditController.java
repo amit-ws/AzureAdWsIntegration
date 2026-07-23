@@ -4,6 +4,8 @@ import com.ws.wsAgenticSecurityGateway.audit.constants.AuditEventType;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditModule;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditSeverity;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditStatus;
+import com.ws.wsAgenticSecurityGateway.audit.dto.AgentActivity;
+import com.ws.wsAgenticSecurityGateway.audit.dto.IdentityGraph;
 import com.ws.wsAgenticSecurityGateway.audit.entity.McpAuditLog;
 import com.ws.wsAgenticSecurityGateway.audit.service.AuditQueryService;
 import lombok.extern.slf4j.Slf4j;
@@ -91,6 +93,31 @@ public class AuditController {
  log.info("GET /api/admin/audit/logs/trace/{}", traceId);
         List<McpAuditLog> records = auditQueryService.getTraceChain(traceId);
         return ResponseEntity.ok(records);
+    }
+
+    /**
+     * Per-request "activities" for one agent (matched by OAuth client id or principal name), newest first.
+     * The transport-agnostic view the dashboard shows in place of sessions — works for stateless requests
+     * (no session row) and names the human each request acted for.
+     */
+    @GetMapping("/logs/activities")
+    public ResponseEntity<List<AgentActivity>> getAgentActivities(
+            @RequestParam String agentKey,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "25") int size) {
+ log.info("GET /api/admin/audit/logs/activities agentKey={} page={} size={}", agentKey, page, size);
+        return ResponseEntity.ok(auditQueryService.getAgentActivities(agentKey, page, size));
+    }
+
+    /**
+     * The identity graph — human → agent → tool relationships (with allow/deny) rolled up from the audit
+     * trail. Read-only, tenant-scoped, optionally windowed by {@code hours} (omit for all-time).
+     */
+    @GetMapping("/graph")
+    public ResponseEntity<IdentityGraph> getIdentityGraph(
+            @RequestParam(required = false) Integer hours) {
+ log.info("GET /api/admin/audit/graph hours={}", hours);
+        return ResponseEntity.ok(auditQueryService.getIdentityGraph(hours));
     }
 
     @GetMapping("/stats")

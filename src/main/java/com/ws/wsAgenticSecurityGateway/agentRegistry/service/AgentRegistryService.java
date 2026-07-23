@@ -475,6 +475,28 @@ public class AgentRegistryService {
         return sessionToAgentId.get(sessionId);
     }
 
+    /**
+     * Link identity to a session IN-MEMORY ONLY (no DB session row) — for the stateless path (Delta 2),
+     * where identity is resolved per request and there is no long-lived session. Mirrors the map population
+     * {@link #registerSession} does, minus persistence.
+     */
+    public void linkSessionIdentity(String sessionId, UUID agentId, UUID humanUserId, UUID nhiId, String authIdentity) {
+        if (sessionId == null) return;
+        if (agentId != null) sessionToAgentId.put(sessionId, agentId);
+        if (humanUserId != null) sessionToHumanUserId.put(sessionId, humanUserId);
+        if (nhiId != null) sessionToNhiId.put(sessionId, nhiId);
+        if (authIdentity != null) sessionToAuthIdentity.put(sessionId, authIdentity);
+    }
+
+    /** Drop a stateless request's in-memory identity link (no DB touch). */
+    public void unlinkSession(String sessionId) {
+        if (sessionId == null) return;
+        sessionToAgentId.remove(sessionId);
+        sessionToHumanUserId.remove(sessionId);
+        sessionToNhiId.remove(sessionId);
+        sessionToAuthIdentity.remove(sessionId);
+    }
+
     @Transactional(readOnly = true)
     public String getAgentNameBySessionId(String sessionId) {
         if (sessionId == null)

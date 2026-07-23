@@ -913,6 +913,21 @@ public class McpAuditService {
                 return ctx != null ? ctx.wsTenantName() : null;
         }
 
+        /**
+         * Tenant for an async-persisted audit row. The {@code @PrePersist} tenant listener can't fire on the
+         * audit executor thread (no {@code TenantContext} there), so resolve it explicitly: the per-session
+         * identity cache first, then the request-scoped MDC tenant (captured at submission time). MDC is the
+         * safety net for the stateless path, whose per-request identity is evicted as soon as the request
+         * returns — before this async row is guaranteed to have persisted.
+         */
+        private String resolveTenantForAudit(String sessionId) {
+                String tenant = resolveTenant(sessionId);
+                if (tenant == null) {
+                        tenant = org.slf4j.MDC.get("wsTenant");
+                }
+                return tenant;
+        }
+
         @Async("mcpAuditExecutor")
         public void auditStsTokenMinted(String correlationId,
                         String sessionId,
@@ -1008,6 +1023,7 @@ public class McpAuditService {
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.INFO)
                                 .correlationId(correlationId)
+                                .wsTenantName(resolveTenantForAudit(sessionId))
                                 .pdpSubject(subject)
                                 .pdpResource(resource)
                                 .pdpAction(action)
@@ -1055,6 +1071,7 @@ public class McpAuditService {
                                 .status(decisionStatus)
                                 .severity(decisionSeverity)
                                 .correlationId(correlationId)
+                                .wsTenantName(resolveTenantForAudit(sessionId))
                                 .pdpSubject(subject)
                                 .pdpResource(resource)
                                 .pdpAction(action)
@@ -1962,11 +1979,12 @@ public class McpAuditService {
 
                         if (auditLog.getWsTenantName() == null) {
                                 String tenant = TenantContext.get();
-                                if (tenant != null) {
-                                        auditLog.setWsTenantName(tenant);
-                                } else {
-                                        auditLog.setWsTenantName("system");
+                                if (tenant == null) {
+                                        // Request-scoped tenant captured into MDC at submission time — survives the
+                                        // stateless per-request identity eviction the long-lived session cache doesn't.
+                                        tenant = org.slf4j.MDC.get("wsTenant");
                                 }
+                                auditLog.setWsTenantName(tenant != null ? tenant : "system");
                         }
 
                         repository.save(auditLog);
@@ -1984,6 +2002,11 @@ public class McpAuditService {
 
         private void persistPdp(PdpAuditLog pdpLog) {
                 try {
+                        if (pdpLog.getWsTenantName() == null) {
+                                // Last-resort guard: the @PrePersist tenant listener can't fire on the async audit
+                                // thread and pdp_audit_log.ws_tenant_name is NOT NULL — never let a null crash the row.
+                                pdpLog.setWsTenantName("system");
+                        }
                         pdpRepository.save(pdpLog);
                         log.debug("PDP Audit [{}] {} — {} | subject={} resource={} decision={}",
                                         pdpLog.getEventType(),

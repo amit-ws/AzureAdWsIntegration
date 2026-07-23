@@ -8,6 +8,7 @@ import com.ws.wsAgenticSecurityGateway.authConfig.repository.GatewayAuthConfigRe
 import com.ws.wsAgenticSecurityGateway.authConfig.service.AuthConfigService;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
+import io.modelcontextprotocol.server.transport.HttpServletStatelessServerTransport;
 import io.modelcontextprotocol.server.transport.HttpServletStreamableServerTransportProvider;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -57,6 +58,40 @@ public class HttpTransportConfig {
         return registration;
     }
 
+    // ── Stateless MCP endpoint (Delta 2: no `initialize`/session — per-request `_meta` + `server/discover`) ──
+
+    @Bean
+    public HttpServletStatelessServerTransport mcpStatelessTransport(
+            ObjectMapper objectMapper,
+            McpGatewayContextExtractor contextExtractor) {
+
+        ObjectMapper mcpObjectMapper = objectMapper.copy()
+                .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+        HttpServletStatelessServerTransport transport =
+                HttpServletStatelessServerTransport.builder()
+                        .objectMapper(mcpObjectMapper)
+                        .messageEndpoint("/mcp-stateless")
+                        .contextExtractor(contextExtractor)
+                        .build();
+
+        log.info("MCP HTTP Stateless transport created (endpoint: /mcp-stateless)");
+        return transport;
+    }
+
+    @Bean
+    public ServletRegistrationBean<HttpServletStatelessServerTransport> mcpStatelessServletRegistration(
+            HttpServletStatelessServerTransport transport) {
+
+        ServletRegistrationBean<HttpServletStatelessServerTransport> registration =
+                new ServletRegistrationBean<>(transport, "/mcp-stateless/*");
+        registration.setName("mcpStatelessServlet");
+        registration.setLoadOnStartup(1);
+
+        log.info("MCP stateless servlet registered at /mcp-stateless/*");
+        return registration;
+    }
+
     @Bean
     public FilterRegistrationBean<GatewayOAuth2Filter> mcpOAuth2FilterRegistration(
             McpAuditService auditService,
@@ -64,7 +99,7 @@ public class HttpTransportConfig {
             AuthConfigService authConfigService) {
         FilterRegistrationBean<GatewayOAuth2Filter> registration = new FilterRegistrationBean<>();
         registration.setFilter(new GatewayOAuth2Filter(auditService, tokenClassificationService, authConfigService));
-        registration.addUrlPatterns("/mcp/*");
+        registration.addUrlPatterns("/mcp/*", "/mcp-stateless/*");
         registration.setOrder(1);
         registration.setName("mcpOAuth2Filter");
 
