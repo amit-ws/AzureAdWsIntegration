@@ -37,6 +37,7 @@ public class AuditController {
             @RequestParam(required = false) String serverName,
             @RequestParam(required = false) String capabilityName,
             @RequestParam(required = false) String correlationId,
+            @RequestParam(required = false) String traceId,
             @RequestParam(required = false) String sessionId,
             @RequestParam(required = false) String agentName,
             @RequestParam(required = false) String tokenType,
@@ -64,7 +65,7 @@ public class AuditController {
 
         Page<McpAuditLog> results = auditQueryService.queryLogs(
                 moduleEnum, eventTypeEnum, statusEnum, severityEnum,
-                serverName, capabilityName, correlationId, sessionId,
+                serverName, capabilityName, correlationId, traceId, sessionId,
                 agentName, tokenType, userIdentity, sourceIp,
                 search, fromDate, toDate, pageRequest);
         return ResponseEntity.ok(results);
@@ -82,6 +83,13 @@ public class AuditController {
     public ResponseEntity<List<McpAuditLog>> getByCorrelationId(@PathVariable String correlationId) {
  log.info("GET /api/admin/audit/logs/correlation/{}", correlationId);
         List<McpAuditLog> records = auditQueryService.getCorrelationChain(correlationId);
+        return ResponseEntity.ok(records);
+    }
+
+    @GetMapping("/logs/trace/{traceId}")
+    public ResponseEntity<List<McpAuditLog>> getByTraceId(@PathVariable String traceId) {
+ log.info("GET /api/admin/audit/logs/trace/{}", traceId);
+        List<McpAuditLog> records = auditQueryService.getTraceChain(traceId);
         return ResponseEntity.ok(records);
     }
 

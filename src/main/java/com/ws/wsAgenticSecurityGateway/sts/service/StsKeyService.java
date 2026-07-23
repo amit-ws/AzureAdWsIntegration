@@ -11,7 +11,9 @@ import com.ws.wsAgenticSecurityGateway.wsClient.service.ServerConfigCryptoServic
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -57,6 +59,23 @@ public class StsKeyService {
                 .filter(Objects::nonNull)
                 .toList();
         return new JWKSet(publicKeys);
+    }
+
+    /**
+     * Public metadata for a tenant's STS signing keys — {@code kid / status / createdAt / publicJwk}, never
+     * the encrypted private material. Backs the admin "STS status" panel (newest key first).
+     */
+    public List<Map<String, Object>> listPublicKeys(String tenant) {
+        return repository.findByWsTenantNameOrderByCreatedAtDesc(tenant).stream()
+                .map(k -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("kid", k.getKid());
+                    m.put("status", k.getStatus());
+                    m.put("createdAt", k.getCreatedAt());
+                    m.put("publicJwk", k.getPublicJwk());
+                    return m;
+                })
+                .toList();
     }
 
     private RSAKey loadOrCreateActive(String tenant) {

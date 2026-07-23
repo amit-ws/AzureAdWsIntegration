@@ -31,6 +31,8 @@ public interface McpAuditLogRepository
 
     List<McpAuditLog> findByCorrelationId(String correlationId);
 
+    List<McpAuditLog> findByTraceId(String traceId);
+
     List<McpAuditLog> findBySessionId(String sessionId);
 
     Page<McpAuditLog> findByTimestampBetween(LocalDateTime from, LocalDateTime to, Pageable pageable);

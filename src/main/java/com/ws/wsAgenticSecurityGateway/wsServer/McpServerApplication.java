@@ -2,7 +2,9 @@ package com.ws.wsAgenticSecurityGateway.wsServer;
 
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
+import com.ws.wsAgenticSecurityGateway.orchestration.HopOrchestrator;
 import com.ws.wsAgenticSecurityGateway.orchestration.ToolCallOrchestrator;
+import com.ws.wsAgenticSecurityGateway.orchestration.adapter.McpAdapter;
 import com.ws.wsAgenticSecurityGateway.pdp.service.PolicyContextBuilder;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
@@ -38,6 +40,8 @@ public class McpServerApplication implements ApplicationRunner {
     private final CapabilityRegistryService registryService;
     private final McpAuditService auditService;
     private final ToolCallOrchestrator orchestrator;
+    private final HopOrchestrator hopOrchestrator;
+    private final McpAdapter mcpAdapter;
     private final AgentRegistryService agentRegistryService;
     private final ObjectMapper objectMapper;
     private final SessionReaperService sessionReaperService;
@@ -49,6 +53,8 @@ public class McpServerApplication implements ApplicationRunner {
     public McpServerApplication(CapabilityRegistryService registryService,
                                 McpAuditService auditService,
                                 ToolCallOrchestrator orchestrator,
+                                HopOrchestrator hopOrchestrator,
+                                McpAdapter mcpAdapter,
                                 AgentRegistryService agentRegistryService,
                                 ObjectMapper objectMapper,
                                 @Autowired(required = false) SessionReaperService sessionReaperService,
@@ -56,6 +62,8 @@ public class McpServerApplication implements ApplicationRunner {
         this.registryService = registryService;
         this.auditService = auditService;
         this.orchestrator = orchestrator;
+        this.hopOrchestrator = hopOrchestrator;
+        this.mcpAdapter = mcpAdapter;
         this.agentRegistryService = agentRegistryService;
         this.objectMapper = objectMapper;
         this.sessionReaperService = sessionReaperService;
@@ -70,7 +78,8 @@ public class McpServerApplication implements ApplicationRunner {
             sessionManager = new SessionManager(auditService);
             sessionManager.setAgentRegistryService(agentRegistryService);
 
-            orchestrator.setSessionManager(sessionManager);
+            hopOrchestrator.setSessionManager(sessionManager);
+            mcpAdapter.setSessionManager(sessionManager);
             if (policyContextBuilder != null) {
                 policyContextBuilder.setSessionManager(sessionManager);
             }

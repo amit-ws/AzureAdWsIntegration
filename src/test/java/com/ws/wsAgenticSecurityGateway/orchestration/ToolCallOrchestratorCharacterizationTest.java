@@ -79,7 +79,7 @@ class ToolCallOrchestratorCharacterizationTest {
         HopOrchestrator hopOrchestrator = new HopOrchestrator(registryService, auditService, inFlight,
                 objectMapper, mcpSessionManager, agentRegistryService, capabilityFilterService,
                 cedarPolicyEngine, policyContextBuilder, adapter, hopTokenMinter, actChainBuilder);
-        orchestrator = new ToolCallOrchestrator(hopOrchestrator, adapter);
+        orchestrator = new ToolCallOrchestrator(hopOrchestrator);
 
         when(exchange.transportContext()).thenReturn(McpTransportContext.EMPTY);
         when(exchange.sessionId()).thenReturn("test-session");

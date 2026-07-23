@@ -13,4 +13,6 @@ public interface GatewayStsKeyRepository extends JpaRepository<GatewayStsKeyEnti
     Optional<GatewayStsKeyEntity> findFirstByWsTenantNameAndStatus(String wsTenantName, String status);
 
     List<GatewayStsKeyEntity> findByWsTenantNameAndStatusIn(String wsTenantName, Collection<String> statuses);
+
+    List<GatewayStsKeyEntity> findByWsTenantNameOrderByCreatedAtDesc(String wsTenantName);
 }

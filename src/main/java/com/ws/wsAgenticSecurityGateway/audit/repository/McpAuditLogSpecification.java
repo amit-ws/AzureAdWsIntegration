@@ -22,6 +22,7 @@ public class McpAuditLogSpecification {
             String serverName,
             String capabilityName,
             String correlationId,
+            String traceId,
             String sessionId,
             String agentName,
             String tokenType,
@@ -31,7 +32,7 @@ public class McpAuditLogSpecification {
             LocalDateTime fromDate,
             LocalDateTime toDate) {
         return build(module, eventType, status, severity, serverName, capabilityName,
-                correlationId, sessionId, agentName, tokenType, userIdentity, sourceIp,
+                correlationId, traceId, sessionId, agentName, tokenType, userIdentity, sourceIp,
                 searchText, fromDate, toDate, null);
     }
 
@@ -43,6 +44,7 @@ public class McpAuditLogSpecification {
             String serverName,
             String capabilityName,
             String correlationId,
+            String traceId,
             String sessionId,
             String agentName,
             String tokenType,
@@ -82,6 +84,9 @@ public class McpAuditLogSpecification {
         if (correlationId != null && !correlationId.isBlank()) {
             spec = spec.and((root, query, cb) -> cb.equal(root.get("correlationId"), correlationId));
         }
+        if (traceId != null && !traceId.isBlank()) {
+            spec = spec.and((root, query, cb) -> cb.equal(root.get("traceId"), traceId));
+        }
         if (sessionId != null && !sessionId.isBlank()) {
             spec = spec.and((root, query, cb) -> cb.equal(root.get("sessionId"), sessionId));
         }
@@ -112,6 +117,7 @@ public class McpAuditLogSpecification {
             String lower = "%" + searchText.toLowerCase() + "%";
             spec = spec.and((root, query, cb) -> cb.or(
                     cb.like(cb.lower(root.get("correlationId")), lower),
+                    cb.like(cb.lower(root.get("traceId")), lower),
                     cb.like(cb.lower(root.get("sessionId")), lower),
                     cb.like(cb.lower(root.get("capabilityName")), lower),
                     cb.like(cb.lower(root.get("errorMessage")), lower),

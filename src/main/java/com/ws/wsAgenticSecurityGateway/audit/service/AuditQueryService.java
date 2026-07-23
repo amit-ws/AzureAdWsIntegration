@@ -35,7 +35,7 @@ public class AuditQueryService {
     public Page<McpAuditLog> queryLogs(AuditModule module, AuditEventType eventType,
                                         AuditStatus status, AuditSeverity severity,
                                         String serverName, String capabilityName,
-                                        String correlationId, String sessionId,
+                                        String correlationId, String traceId, String sessionId,
                                         String agentName, String tokenType,
                                         String userIdentity, String sourceIp,
                                         String search,
@@ -43,7 +43,7 @@ public class AuditQueryService {
                                         PageRequest pageRequest) {
         var spec = McpAuditLogSpecification.build(
                 module, eventType, status, severity,
-                serverName, capabilityName, correlationId, sessionId,
+                serverName, capabilityName, correlationId, traceId, sessionId,
                 agentName, tokenType, userIdentity, sourceIp,
                 search, fromDate, toDate, TenantContext.get());
         return auditRepo.findAll(spec, pageRequest);
@@ -71,6 +71,39 @@ public class AuditQueryService {
         for (PdpAuditLog pdp : pdpRecords) {
             if (!existingPdpTypes.contains(pdp.getEventType())) {
                 records.add(toChainEntry(pdp));
+            }
+        }
+
+        records.sort(Comparator
+                .comparing(McpAuditLog::getEventSequence,
+                        Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(McpAuditLog::getTimestamp));
+        return records;
+    }
+
+    /**
+     * The full lifecycle of a request by {@code trace_id} — the umbrella that spans every leg (and every
+     * {@code correlationId}) of the request, single- or multi-hop. Mirrors {@link #getCorrelationChain} but
+     * trace-scoped, bridging to PDP-only records (which carry no trace_id) via the correlation ids seen.
+     */
+    public List<McpAuditLog> getTraceChain(String traceId) {
+        List<McpAuditLog> records = new ArrayList<>(auditRepo.findByTraceId(traceId));
+
+        Set<String> correlationIds = records.stream()
+                .map(McpAuditLog::getCorrelationId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Set<String> existingPdpKeys = records.stream()
+                .filter(r -> r.getModule() == AuditModule.PDP
+                        && (r.getEventType() == AuditEventType.PDP_EVALUATION_REQUESTED
+                            || r.getEventType() == AuditEventType.PDP_DECISION_RENDERED))
+                .map(r -> r.getCorrelationId() + "|" + r.getEventType())
+                .collect(Collectors.toSet());
+        for (String corrId : correlationIds) {
+            for (PdpAuditLog pdp : pdpAuditRepo.findByCorrelationId(corrId)) {
+                if (!existingPdpKeys.contains(corrId + "|" + pdp.getEventType())) {
+                    records.add(toChainEntry(pdp));
+                }
             }
         }
 

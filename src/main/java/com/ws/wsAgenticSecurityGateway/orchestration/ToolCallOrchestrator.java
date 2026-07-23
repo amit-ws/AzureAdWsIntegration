@@ -1,9 +1,7 @@
 package com.ws.wsAgenticSecurityGateway.orchestration;
 
-import com.ws.wsAgenticSecurityGateway.orchestration.adapter.McpAdapter;
 import com.ws.wsAgenticSecurityGateway.orchestration.model.CapabilityType;
 import com.ws.wsAgenticSecurityGateway.orchestration.model.Hop;
-import com.ws.wsAgenticSecurityGateway.wsServer.session.SessionManager;
 import io.modelcontextprotocol.server.McpSyncServerExchange;
 import io.modelcontextprotocol.spec.McpSchema;
 import lombok.extern.slf4j.Slf4j;
@@ -18,27 +16,15 @@ import java.util.Map;
  * ({@code HttpMcpServerInitializer}, {@code McpServerApplication}) call, so those classes
  * need no change. Each method builds a {@link Hop} and delegates to the spine, which runs the
  * governance lifecycle and dispatches through the MCP adapter.
- *
- * <p>{@link #setSessionManager} is retained here (forwarding to both the spine and the MCP
- * adapter) because the {@code SessionManager} is created at runtime by
- * {@code McpServerApplication} and wired through this call site — keeping that wiring unchanged.
  */
 @Service
 @Slf4j
 public class ToolCallOrchestrator {
 
     private final HopOrchestrator hopOrchestrator;
-    private final McpAdapter mcpAdapter;
 
-    public ToolCallOrchestrator(HopOrchestrator hopOrchestrator, McpAdapter mcpAdapter) {
+    public ToolCallOrchestrator(HopOrchestrator hopOrchestrator) {
         this.hopOrchestrator = hopOrchestrator;
-        this.mcpAdapter = mcpAdapter;
-    }
-
-    /** Wires the runtime-created SessionManager into the spine and the MCP adapter. */
-    public void setSessionManager(SessionManager sessionManager) {
-        hopOrchestrator.setSessionManager(sessionManager);
-        mcpAdapter.setSessionManager(sessionManager);
     }
 
     public McpSchema.CallToolResult orchestrate(McpSyncServerExchange exchange,

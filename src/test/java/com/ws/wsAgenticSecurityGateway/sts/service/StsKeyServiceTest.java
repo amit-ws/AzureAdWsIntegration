@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.AdditionalAnswers.returnsFirstArg;
@@ -82,6 +83,22 @@ class StsKeyServiceTest {
         assertThat(pub).isNotNull();
         assertThat(pub.isPrivate()).isFalse();
         assertThat(jwt.verify(new RSASSAVerifier(pub))).isTrue();
+    }
+
+    @Test
+    void listPublicKeys_returnsSafeMetadataOnly_neverPrivateKeyMaterial() {
+        GatewayStsKeyEntity key = GatewayStsKeyEntity.builder()
+                .kid("kid-1").status("ACTIVE").publicJwk("{\"kty\":\"RSA\"}")
+                .privateKeyEnc("SECRET-ENCRYPTED-PRIVATE").wsTenantName("acme").build();
+        when(repo.findByWsTenantNameOrderByCreatedAtDesc("acme")).thenReturn(List.of(key));
+
+        List<Map<String, Object>> keys = keyService.listPublicKeys("acme");
+
+        assertThat(keys).hasSize(1);
+        Map<String, Object> k = keys.get(0);
+        assertThat(k).containsKeys("kid", "status", "createdAt", "publicJwk");
+        assertThat(k).doesNotContainKey("privateKeyEnc");
+        assertThat(k.values()).doesNotContain("SECRET-ENCRYPTED-PRIVATE"); // private material never leaks
     }
 
     @Test
