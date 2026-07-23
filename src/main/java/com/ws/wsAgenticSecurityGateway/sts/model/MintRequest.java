@@ -9,6 +9,7 @@ public record MintRequest(
         ActChain actChain,
         String targetServer,
         String scope,
+        String traceId,
         String correlationId,
         long ttlSeconds
 ) {}

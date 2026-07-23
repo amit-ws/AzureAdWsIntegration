@@ -1,5 +1,6 @@
 package com.ws.wsAgenticSecurityGateway.sts.model;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -37,5 +38,28 @@ public final class ActChain {
     /** The {@code act_chain} claim value: ordered principal claim maps (root first, actor last). */
     public List<Map<String, Object>> toClaim() {
         return principals.stream().map(Principal::toClaim).toList();
+    }
+
+    /**
+     * The token's RFC 8693 {@code act} (actor) claim: a nested actor chain in which the current actor is
+     * outermost and each prior actor is nested inside via its own {@code act}, keyed by {@code sub}. The
+     * root (index 0) is carried as the token {@code sub}, not inside this claim. Returns {@code null} when
+     * there is no delegated actor (root only). This is the standards-interop form; {@link #toClaim()} stays
+     * the gateway's richer flat form used for audit and policy.
+     */
+    public Map<String, Object> toActClaim() {
+        if (principals.size() < 2) {
+            return null; // root only — no actor to express
+        }
+        Map<String, Object> act = null;
+        for (int i = 1; i < principals.size(); i++) { // actors in delegation order; each wraps the previous
+            Map<String, Object> node = new LinkedHashMap<>();
+            node.put("sub", principals.get(i).id());
+            if (act != null) {
+                node.put("act", act);
+            }
+            act = node;
+        }
+        return act;
     }
 }

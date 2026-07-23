@@ -133,6 +133,11 @@ public class AgentRegistryService {
                         "Agent '" + name + "' v" + version
                                 + " is blocked by admin. Contact your gateway administrator.");
             }
+            if ("DEPROVISIONED".equals(cached.getStatus())) {
+                throw new AgentBlockedException(
+                        "Agent '" + name + "' v" + version
+                                + " has been deprovisioned and can no longer connect.");
+            }
             cached.setProtocolVersion(protocolVersion);
             cached.setCapabilities(capabilities);
             cached.setStatus("ACTIVE");
@@ -158,6 +163,11 @@ public class AgentRegistryService {
                 throw new AgentBlockedException(
                         "Agent '" + name + "' v" + version
                                 + " is blocked by admin. Contact your gateway administrator.");
+            }
+            if ("DEPROVISIONED".equals(entity.getStatus())) {
+                throw new AgentBlockedException(
+                        "Agent '" + name + "' v" + version
+                                + " has been deprovisioned and can no longer connect.");
             }
             entity.setProtocolVersion(protocolVersion);
             entity.setCapabilities(capabilities);
@@ -416,6 +426,25 @@ public class AgentRegistryService {
                 .orElse(null);
     }
 
+    /**
+     * The agent lifecycle {@code status} (ACTIVE / DEPROVISIONED) for a session — distinct from the approval
+     * status returned by {@link #getAgentStatusForSession}. Read from the always-fresh agent cache (every
+     * mutator does {@code agentCache.put}); falls back to the DB. Backs the request-time deprovision guard so
+     * a deprovisioned agent is refused even on an already-open session.
+     */
+    public String getAgentLifecycleStatusForSession(String sessionId) {
+        if (sessionId == null) return null;
+        UUID agentId = sessionToAgentId.get(sessionId);
+        if (agentId != null) {
+            for (GatewayAgentEntity agent : agentCache.values()) {
+                if (agentId.equals(agent.getId())) {
+                    return agent.getStatus();
+                }
+            }
+        }
+        return sessionRepository.findAgentStatusBySessionId(sessionId).orElse(null);
+    }
+
     public String getAgentNameForSession(String sessionId) {
         if (sessionId == null) return "unknown";
         UUID agentId = sessionToAgentId.get(sessionId);
@@ -665,6 +694,38 @@ public class AgentRegistryService {
             List<Map<String, Object>> affectedHumanUsers,
             List<Map<String, Object>> affectedNhis
     ) {}
+
+    /**
+     * Deprovision an agent: set its lifecycle {@code status} to DEPROVISIONED (terminal — {@code discoverAgent}
+     * refuses to reactivate it) and tear down its live sessions the same way a block does (disconnect +
+     * {@link BlockedSessionEvent}, so in-flight requests are refused immediately). Distinct from block, which
+     * flips the reversible {@code approvalStatus}; deprovision is the decommission lifecycle state.
+     */
+    @Transactional
+    public AgentBlockResult deprovisionAgent(UUID agentId, String adminActor, String adminIp) {
+        GatewayAgentEntity agent = agentRepository.findById(agentId)
+                .orElseThrow(() -> new IllegalArgumentException("Agent not found: " + agentId));
+        String previousStatus = agent.getStatus();
+        agent.setStatus("DEPROVISIONED");
+        GatewayAgentEntity updated = agentRepository.saveAndFlush(agent);
+        String key = cacheKey(agent.getAgentName(), agent.getAgentVersion());
+        agentCache.put(key, updated);
+
+        List<GatewayAgentSessionEntity> activeSessions = sessionRepository.findConnectedByAgentId(agentId);
+        for (GatewayAgentSessionEntity session : activeSessions) {
+            String sessionId = session.getSessionId();
+            disconnectSession(sessionId);
+            eventPublisher.publishEvent(new BlockedSessionEvent(sessionId, "AGENT", agent.getAgentName()));
+            auditService.auditBlockedSessionTerminated(sessionId, agent.getAgentName(),
+                    "AGENT", agent.getAgentName(), "Admin deprovisioned agent");
+        }
+
+        auditService.auditAgentDeprovisioned(updated.getId(), updated.getAgentName(),
+                updated.getAgentVersion(), previousStatus, adminActor, adminIp, activeSessions.size());
+ log.info("Agent DEPROVISIONED: {} v{} (id={}, sessions terminated: {})",
+                agent.getAgentName(), agent.getAgentVersion(), agentId, activeSessions.size());
+        return new AgentBlockResult(updated, activeSessions.size(), List.of(), List.of());
+    }
 
     @Transactional
     public GatewayHumanUserEntity discoverHumanUser(

@@ -175,6 +175,20 @@ class ToolCallOrchestratorCharacterizationTest {
     }
 
     @Test
+    @DisplayName("tool governance: deprovisioned agent → denied at orchestrator (defense-in-depth), no southbound call")
+    void toolCall_governanceDeprovisioned() {
+        when(registryService.lookupByPublicName(TOOL_PUBLIC)).thenReturn(Optional.of(toolDescriptor()));
+        when(mcpSessionManager.isConnected(SERVER)).thenReturn(true);
+        when(agentRegistryService.getAgentLifecycleStatusForSession(any())).thenReturn("DEPROVISIONED");
+
+        McpSchema.CallToolResult result =
+                orchestrator.orchestrate(exchange, TOOL_PUBLIC, Map.of("title", "x"));
+
+        assertThat(result.isError()).isTrue();
+        verify(mcpClientService, never()).callTool(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
     @DisplayName("prompt happy path → resolves name, delegates to client.getPrompt")
     void promptGet_happyPath() {
         CapabilityDescriptor d = CapabilityDescriptor.builder()

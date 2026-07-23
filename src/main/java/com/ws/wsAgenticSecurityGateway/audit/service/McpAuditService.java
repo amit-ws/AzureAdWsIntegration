@@ -15,6 +15,7 @@ import com.ws.wsAgenticSecurityGateway.audit.error.McpErrorCode;
 import com.ws.wsAgenticSecurityGateway.audit.repository.McpAuditLogRepository;
 import com.ws.wsAgenticSecurityGateway.audit.repository.PdpAuditLogRepository;
 import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
+import com.ws.wsAgenticSecurityGateway.sts.model.MintedToken;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -919,17 +920,31 @@ public class McpAuditService {
                         String serverName,
                         String capabilityName,
                         String capabilityType,
-                        String jti,
-                        String scope,
+                        MintedToken minted,
+                        long ttlSeconds,
                         java.util.List<java.util.Map<String, Object>> actChain,
-                        java.time.Instant expiresAt,
                         String requestId,
                         LocalDateTime firedAt, Integer eventSequence) {
+                // Full token receipt (everything the minted JWT carried, except the raw token itself),
+                // so an auditor can reconstruct exactly what was granted, to whom, by which key, for how long.
                 java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
-                payload.put("jti", jti);
-                payload.put("scope", scope);
+                payload.put("jti", minted.jti());
+                payload.put("trace_id", org.slf4j.MDC.get("traceId")); // umbrella (also the trace_id column)
+                payload.put("corr_id", correlationId);                 // per-leg (also the correlation_id column)
+                payload.put("kid", minted.kid());
+                payload.put("alg", minted.alg());
+                payload.put("tokenType", "OBO");
+                payload.put("iss", minted.issuer());
+                payload.put("sub", minted.subject());
+                payload.put("aud", minted.audience());
+                payload.put("scope", minted.scope());
+                payload.put("ttlSeconds", ttlSeconds);
+                payload.put("issuedAt", minted.issuedAt() != null ? minted.issuedAt().toString() : null);
+                payload.put("expiresAt", minted.expiresAt() != null ? minted.expiresAt().toString() : null);
                 payload.put("act_chain", actChain);
-                payload.put("expiresAt", expiresAt != null ? expiresAt.toString() : null);
+                if (actChain != null && !actChain.isEmpty()) {
+                        payload.put("actor", actChain.get(actChain.size() - 1));
+                }
                 persist(McpAuditLog.builder()
                                 .eventType(AuditEventType.STS_TOKEN_MINTED)
                                 .module(AuditModule.ORCHESTRATION_LAYER)
@@ -1379,6 +1394,34 @@ public class McpAuditService {
                                 .severity(AuditSeverity.WARN)
                                 .agentName(agentName)
                                 .mcpMethod("admin/agents/block")
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(payload))
+                                .build());
+        }
+
+        public void auditAgentDeprovisioned(UUID agentId,
+                        String agentName,
+                        String agentVersion,
+                        String previousStatus,
+                        String adminActor,
+                        String adminIp,
+                        int sessionsTerminated) {
+                java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
+                payload.put("agentId", agentId != null ? agentId.toString() : "");
+                payload.put("agentName", agentName != null ? agentName : "unknown");
+                payload.put("agentVersion", agentVersion != null ? agentVersion : "");
+                payload.put("previousStatus", previousStatus != null ? previousStatus : "UNKNOWN");
+                payload.put("newStatus", "DEPROVISIONED");
+                payload.put("adminActor", adminActor != null ? adminActor : "unknown");
+                payload.put("adminIp", adminIp != null ? adminIp : "unknown");
+                payload.put("sessionsTerminated", sessionsTerminated);
+                persist(McpAuditLog.builder()
+                                .eventType(AuditEventType.AGENT_DEPROVISIONED)
+                                .module(AuditModule.AGENT_REGISTRY)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.WARN)
+                                .agentName(agentName)
+                                .mcpMethod("admin/agents/deprovision")
                                 .correlationId(generateCorrelationId())
                                 .requestPayload(toJson(payload))
                                 .build());
@@ -1888,6 +1931,15 @@ public class McpAuditService {
                 try {
                         if (auditLog.getTimestamp() == null) {
                                 auditLog.setTimestamp(LocalDateTime.now());
+                        }
+
+                        // Stamp the request trace id from MDC (propagated into this async thread), so every
+                        // audit event of a request shares one trace_id — the whole-journey umbrella.
+                        if (auditLog.getTraceId() == null) {
+                                String traceId = org.slf4j.MDC.get("traceId");
+                                if (traceId != null) {
+                                        auditLog.setTraceId(traceId);
+                                }
                         }
 
                         if (auditLog.getSessionId() != null) {

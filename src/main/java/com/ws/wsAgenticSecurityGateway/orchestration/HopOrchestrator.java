@@ -12,6 +12,8 @@ import com.ws.wsAgenticSecurityGateway.sts.model.ActChain;
 import com.ws.wsAgenticSecurityGateway.sts.model.MintedToken;
 import com.ws.wsAgenticSecurityGateway.sts.service.ActChainBuilder;
 import com.ws.wsAgenticSecurityGateway.sts.service.HopTokenMinter;
+import lombok.Setter;
+import org.slf4j.MDC;
 import com.ws.wsAgenticSecurityGateway.sts.service.StsMintException;
 import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyEvaluationRequest;
 import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyEvaluationResult;
@@ -69,6 +71,7 @@ public class HopOrchestrator {
     private final HopTokenMinter hopTokenMinter;
     private final ActChainBuilder actChainBuilder;
 
+    @Setter
     private volatile SessionManager sessionManager;
 
     public HopOrchestrator(CapabilityRegistryService registryService,
@@ -97,17 +100,34 @@ public class HopOrchestrator {
         this.actChainBuilder = actChainBuilder;
     }
 
-    public void setSessionManager(SessionManager sessionManager) {
-        this.sessionManager = sessionManager;
-    }
-
     /** Dispatch a hop through the lifecycle. Returns the MCP-typed result for the capability. */
     public Object handle(Hop hop) {
-        return switch (hop.capabilityType()) {
-            case TOOL -> handleToolCall(hop);
-            case PROMPT -> handleGetPrompt(hop);
-            case RESOURCE -> handleReadResource(hop);
-        };
+        String traceId = resolveTraceId(hop);
+        hop.setTraceId(traceId);
+        MDC.put("traceId", traceId);
+        try {
+            return switch (hop.capabilityType()) {
+                case TOOL -> handleToolCall(hop);
+                case PROMPT -> handleGetPrompt(hop);
+                case RESOURCE -> handleReadResource(hop);
+            };
+        } finally {
+            MDC.remove("traceId");
+            MDC.remove("correlationId");
+        }
+    }
+
+    /**
+     * The request-scoped trace id (umbrella over every leg). Honors an id the inbound request carried
+     * (X-Trace-Id, lifted onto the transport context by {@code McpGatewayContextExtractor}); otherwise
+     * generates one. Distinct from the per-leg {@code correlationId}, and identical across a multi-hop tree.
+     */
+    private String resolveTraceId(Hop hop) {
+        Object fromCtx = hop.exchange() != null ? hop.exchange().transportContext().get("traceId") : null;
+        if (fromCtx != null && !String.valueOf(fromCtx).isBlank()) {
+            return String.valueOf(fromCtx);
+        }
+        return UUID.randomUUID().toString().replace("-", "");
     }
 
     // ---------------------------------------------------------------------
@@ -119,6 +139,7 @@ public class HopOrchestrator {
         String publicName = hop.publicName();
 
         String correlationId = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+        MDC.put("correlationId", correlationId);
 
         Object rawJsonRpcId = exchange.transportContext().get("jsonRpcRequestId");
         String requestId = rawJsonRpcId != null ? String.valueOf(rawJsonRpcId) : null;
@@ -129,6 +150,16 @@ public class HopOrchestrator {
         agentRegistryService.recordRequest(sessionId);
 
         int seq = 0;
+
+        McpErrorCode denialCode = governanceDenial(sessionId);
+        if (denialCode != null) {
+            log.warn("[{}] GOVERNANCE DENIED (defense-in-depth): session={}, tool={}, reason={}",
+                    correlationId, sessionId, publicName, denialCode.getMessage());
+            auditService.auditOrchestrationError(correlationId, sessionId, null, publicName,
+                    denialCode, denialCode.getMessage(), requestId, clientName,
+                    LocalDateTime.now(), ++seq);
+            return buildErrorResult(denialCode, publicName);
+        }
 
         UUID agentIdForAccess = agentRegistryService.getAgentIdForSession(sessionId);
         if (agentIdForAccess != null
@@ -375,12 +406,24 @@ public class HopOrchestrator {
         String publicName = hop.publicName();
 
         String correlationId = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+        MDC.put("correlationId", correlationId);
         Object rawJsonRpcId = exchange.transportContext().get("jsonRpcRequestId");
         String requestId = rawJsonRpcId != null ? String.valueOf(rawJsonRpcId) : null;
         String sessionId = resolveSessionId(exchange);
         String clientName = resolveClientName(exchange);
         agentRegistryService.recordRequest(sessionId);
         int seq = 0;
+
+        McpErrorCode denialCode = governanceDenial(sessionId);
+        if (denialCode != null) {
+            log.warn("[{}] GOVERNANCE DENIED (defense-in-depth): session={}, prompt={}, reason={}",
+                    correlationId, sessionId, publicName, denialCode.getMessage());
+            auditService.auditOrchestrationError(correlationId, sessionId, null, publicName,
+                    denialCode, denialCode.getMessage(), requestId, clientName,
+                    LocalDateTime.now(), ++seq);
+            throw new RuntimeException(String.format("[%d] %s: prompt '%s'",
+                    denialCode.getCode(), denialCode.getMessage(), publicName));
+        }
 
         UUID promptAgentId = agentRegistryService.getAgentIdForSession(sessionId);
         if (promptAgentId != null
@@ -617,12 +660,24 @@ public class HopOrchestrator {
         String resourceUri = hop.resourceUri();
 
         String correlationId = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+        MDC.put("correlationId", correlationId);
         Object rawJsonRpcId = exchange.transportContext().get("jsonRpcRequestId");
         String requestId = rawJsonRpcId != null ? String.valueOf(rawJsonRpcId) : null;
         String sessionId = resolveSessionId(exchange);
         String clientName = resolveClientName(exchange);
         agentRegistryService.recordRequest(sessionId);
         int seq = 0;
+
+        McpErrorCode denialCode = governanceDenial(sessionId);
+        if (denialCode != null) {
+            log.warn("[{}] GOVERNANCE DENIED (defense-in-depth): session={}, resource={}, reason={}",
+                    correlationId, sessionId, publicName, denialCode.getMessage());
+            auditService.auditOrchestrationError(correlationId, sessionId, null, publicName,
+                    denialCode, denialCode.getMessage(), requestId, clientName,
+                    LocalDateTime.now(), ++seq);
+            throw new RuntimeException(String.format("[%d] %s: resource '%s'",
+                    denialCode.getCode(), denialCode.getMessage(), publicName));
+        }
 
         UUID resourceAgentId = agentRegistryService.getAgentIdForSession(sessionId);
         if (resourceAgentId != null
@@ -976,6 +1031,27 @@ public class HopOrchestrator {
         } catch (Exception e) {
             log.debug("Could not enrich resource response data for {}: {}", correlationId, e.getMessage());
         }
+    }
+
+    /**
+     * Defense-in-depth governance gate (LD-5). The inbound {@code HttpMcpAuditFilter} already refuses blocked
+     * / pending / deprovisioned agents; this is a second check at the orchestration layer so those agents are
+     * refused even on any execution path that does not traverse the servlet filter. Returns the refusal code,
+     * or {@code null} to proceed. Unknown/APPROVED status proceeds — the inbound filter is the primary gate,
+     * so this secondary check never turns a missing status into a false denial.
+     */
+    private McpErrorCode governanceDenial(String sessionId) {
+        if ("DEPROVISIONED".equals(agentRegistryService.getAgentLifecycleStatusForSession(sessionId))) {
+            return McpErrorCode.AGENT_DEPROVISIONED;
+        }
+        String approval = agentRegistryService.getAgentStatusForSession(sessionId);
+        if ("BLOCKED".equals(approval)) {
+            return McpErrorCode.AGENT_BLOCKED;
+        }
+        if ("PENDING".equals(approval)) {
+            return McpErrorCode.AGENT_PENDING_APPROVAL;
+        }
+        return null;
     }
 
     private McpSchema.CallToolResult buildErrorResult(McpErrorCode errorCode,

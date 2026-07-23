@@ -27,6 +27,7 @@ public final class Hop {
 
     private String serverName;   // resolved after registry lookup
     private String originalName; // resolved (tool/prompt name); resource uri for RESOURCE
+    private String traceId;      // request-scoped umbrella id (whole journey); set by the spine in handle()
 
     public Hop(CapabilityType capabilityType,
                String publicName,
@@ -53,6 +54,11 @@ public final class Hop {
     public String serverName() { return serverName; }
 
     public String originalName() { return originalName; }
+
+    public String traceId() { return traceId; }
+
+    /** The request-scoped trace id (umbrella over all legs); set by the spine at dispatch. */
+    public void setTraceId(String traceId) { this.traceId = traceId; }
 
     /** Set by the spine after the capability-registry lookup resolves the public name. */
     public void resolve(String serverName, String originalName) {

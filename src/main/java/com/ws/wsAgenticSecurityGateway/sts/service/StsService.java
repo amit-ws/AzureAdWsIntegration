@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -60,11 +61,13 @@ public class StsService {
 
         ActChain chain = req.actChain();
         Principal root = chain != null ? chain.root() : null;
-        Principal actor = chain != null ? chain.actor() : null;
+
+        String issuer = issuerBase + "/sts/" + req.tenant();
+        String subject = root != null ? root.id() : "unknown";
 
         JWTClaimsSet.Builder claims = new JWTClaimsSet.Builder()
-                .issuer(issuerBase + "/sts/" + req.tenant())
-                .subject(root != null ? root.id() : "unknown")
+                .issuer(issuer)
+                .subject(subject)
                 .audience(req.targetServer())
                 .issueTime(Date.from(now))
                 .notBeforeTime(Date.from(now))
@@ -72,10 +75,12 @@ public class StsService {
                 .jwtID(jti)
                 .claim("act_chain", chain != null ? chain.toClaim() : List.of())
                 .claim("scope", req.scope())
-                .claim("trace_id", req.correlationId())
+                .claim("trace_id", req.traceId())
+                .claim("corr_id", req.correlationId())
                 .claim("ws_tenant", req.tenant());
-        if (actor != null) {
-            claims.claim("actor", actor.toClaim());
+        Map<String, Object> actClaim = chain != null ? chain.toActClaim() : null;
+        if (actClaim != null) {
+            claims.claim("act", actClaim); // RFC 8693 nested actor claim (standards interop)
         }
 
         try {
@@ -88,7 +93,9 @@ public class StsService {
             jwt.sign(new RSASSASigner(signingKey));
             log.debug("Minted STS OBO token: jti={}, tenant={}, aud={}, scope={}, exp={}",
                     jti, req.tenant(), req.targetServer(), req.scope(), exp);
-            return new MintedToken(jwt.serialize(), jti, signingKey.getKeyID(), exp);
+            return new MintedToken(jwt.serialize(), jti, signingKey.getKeyID(),
+                    JWSAlgorithm.RS256.getName(), issuer, subject, req.targetServer(),
+                    req.scope(), now, exp);
         } catch (JOSEException e) {
             throw new StsMintException("Failed to sign STS OBO token for tenant " + req.tenant(), e);
         }

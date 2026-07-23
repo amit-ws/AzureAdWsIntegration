@@ -6,6 +6,7 @@ import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyDto;
 import com.ws.wsAgenticSecurityGateway.pdp.entity.GatewayPolicyEntity;
 import com.ws.wsAgenticSecurityGateway.pdp.repository.GatewayPolicyRepository;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
@@ -17,27 +18,92 @@ import java.util.*;
 @Slf4j
 public class PolicyService {
 
+    /**
+     * Stage-2 baseline lineage guardrails (LD-3): deny any call whose delegation root or acting agent is
+     * unverified. Expressed only in {@code act_chain} attributes the gateway already populates before PDP,
+     * so they gate with no new plumbing. Seeded per tenant with {@code source=DEFAULT}; a matching forbid
+     * short-circuits over any permit, so an unverified lineage is denied even under a broad allow policy.
+     */
+    private static final List<DefaultPolicy> DEFAULT_LINEAGE_POLICIES = List.of(
+            new DefaultPolicy("deny-unverified-root",
+                    "forbid(principal, action, resource) when { context.rootVerified == false };",
+                    "Baseline lineage guardrail: deny any call whose delegation root (the human/NHI the agent "
+                            + "acts on behalf of) is not a verified identity."),
+            new DefaultPolicy("deny-unverified-actor",
+                    "forbid(principal, action, resource) when { context.actorVerified == false };",
+                    "Baseline lineage guardrail: deny any call whose acting agent is not a verified, "
+                            + "registered identity."));
+
     private final GatewayPolicyRepository repository;
     private final CedarPolicyEngine cedarEngine;
     private final McpAuditService auditService;
+    private final boolean seedDefaultLineage;
 
     public PolicyService(GatewayPolicyRepository repository,
                          CedarPolicyEngine cedarEngine,
-                         McpAuditService auditService) {
+                         McpAuditService auditService,
+                         @Value("${ws.gateway.policy.seed-default-lineage:true}") boolean seedDefaultLineage) {
         this.repository = repository;
         this.cedarEngine = cedarEngine;
         this.auditService = auditService;
+        this.seedDefaultLineage = seedDefaultLineage;
     }
 
     @EventListener(ApplicationReadyEvent.class)
     @Transactional
     public void onStartup() {
+        if (seedDefaultLineage) {
+            List<String> tenants = repository.findDistinctWsTenantName();
+            int totalSeeded = 0;
+            for (String tenant : tenants) {
+                totalSeeded += seedDefaultLineagePolicies(tenant);
+            }
+            if (totalSeeded > 0) {
+ log.info("Seeded {} default lineage policy(ies) across {} tenant(s)", totalSeeded, tenants.size());
+            }
+        }
         long count = repository.count();
         if (count == 0) {
  log.info("No policies in DB — use the LLM chatbot or REST API to create policies");
         }
         reloadEngine();
     }
+
+    /**
+     * Idempotently install the baseline lineage guardrails for one tenant (LD-3). Skips any policy already
+     * present for that tenant (unique by {@code policy_name, ws_tenant_name}), so it is safe on every restart.
+     * The tenant is stamped explicitly, so it works at startup when {@code TenantContext} is null (the
+     * tenant listener does not overwrite an already-set value). Returns the number of policies inserted.
+     */
+    @Transactional
+    public int seedDefaultLineagePolicies(String tenant) {
+        if (tenant == null || tenant.isBlank()) {
+            return 0;
+        }
+        int seeded = 0;
+        for (DefaultPolicy dp : DEFAULT_LINEAGE_POLICIES) {
+            if (repository.findByPolicyNameAndWsTenantName(dp.name(), tenant).isPresent()) {
+                continue; // already present for this tenant — idempotent
+            }
+            repository.save(GatewayPolicyEntity.builder()
+                    .policyName(dp.name())
+                    .description(dp.description())
+                    .cedarPolicyId(dp.name())
+                    .policyText(dp.text())
+                    .effect("FORBID")
+                    .enabled(true)
+                    .priority(10) // low number = evaluated early; guardrails before allow policies
+                    .source("DEFAULT")
+                    .createdBy("system")
+                    .wsTenantName(tenant)
+                    .build());
+            seeded++;
+ log.info("Seeded default lineage policy '{}' for tenant '{}'", dp.name(), tenant);
+        }
+        return seeded;
+    }
+
+    private record DefaultPolicy(String name, String text, String description) {}
 
     public List<GatewayPolicyEntity> getAllPolicies() {
         return repository.findAllByWsTenantName(TenantContext.get());

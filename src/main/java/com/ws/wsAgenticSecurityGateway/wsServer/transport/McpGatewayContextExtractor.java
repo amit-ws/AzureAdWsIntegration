@@ -21,6 +21,14 @@ public class McpGatewayContextExtractor implements McpTransportContextExtractor<
     public McpTransportContext extract(HttpServletRequest request) {
         Map<String, Object> ctx = new HashMap<>();
 
+        // Request-scoped trace id (umbrella over every leg): honor an inbound X-Trace-Id for cross-service
+        // continuity, otherwise mint one here — the earliest per-request point that reaches the orchestrator.
+        String traceId = request.getHeader("X-Trace-Id");
+        if (traceId == null || traceId.isBlank()) {
+            traceId = UUID.randomUUID().toString().replace("-", "");
+        }
+        ctx.put("traceId", traceId);
+
         String auth = request.getHeader("Authorization");
         if (auth != null && !auth.isBlank()) {
             ctx.put("authorization", auth);

@@ -16,6 +16,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -51,7 +52,7 @@ class HopTokenMinterTest {
         assertThat(result).isNull();
         verify(stsService, never()).mint(any());
         verify(auditService, never()).auditStsTokenMinted(any(), any(), any(), any(), any(), any(),
-                any(), any(), any(), any(), any(), any(), any());
+                any(), anyLong(), any(), any(), any(), any());
     }
 
     @Test
@@ -59,7 +60,9 @@ class HopTokenMinterTest {
         when(auditService.resolveTenant("s")).thenReturn("amitdev.local");
         when(scopeDeriver.derive("github", "github_get_me", "TOOL"))
                 .thenReturn("mcp:tool:github:github_get_me");
-        MintedToken token = new MintedToken("jwt", "jti-1", "kid", Instant.now().plusSeconds(120));
+        MintedToken token = new MintedToken("jwt", "jti-1", "kid", "RS256",
+                "https://gateway.local/sts/amitdev.local", "sarah", "github",
+                "mcp:tool:github:github_get_me", Instant.now(), Instant.now().plusSeconds(120));
         when(stsService.mint(any())).thenReturn(token);
 
         MintedToken result = minter.mintForHop(hop, "s", chain, "rid", "corr", 1);
@@ -67,8 +70,8 @@ class HopTokenMinterTest {
         assertThat(result).isSameAs(token);
         verify(stsService).mint(any());
         verify(auditService).auditStsTokenMinted(eq("corr"), eq("s"), eq("amitdev.local"), eq("github"),
-                eq("github_get_me"), eq("TOOL"), eq("jti-1"), eq("mcp:tool:github:github_get_me"),
-                any(), any(), eq("rid"), any(), eq(1));
+                eq("github_get_me"), eq("TOOL"), eq(token), eq(120L),
+                any(), eq("rid"), any(), eq(1));
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.ws.wsAgenticSecurityGateway.pdp.repository;
 
 import com.ws.wsAgenticSecurityGateway.pdp.entity.GatewayPolicyEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -44,4 +45,8 @@ public interface GatewayPolicyRepository extends JpaRepository<GatewayPolicyEnti
     long countByEffectAndWsTenantName(String effect, String wsTenantName);
 
     List<GatewayPolicyEntity> findAllByWsTenantName(String wsTenantName);
+
+    /** Distinct tenants that already own at least one policy — the set to seed default guardrails for. */
+    @Query("SELECT DISTINCT p.wsTenantName FROM GatewayPolicyEntity p")
+    List<String> findDistinctWsTenantName();
 }

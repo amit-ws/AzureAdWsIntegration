@@ -268,6 +268,23 @@ public class AgentController {
         }
     }
 
+    @PostMapping("/{id}/deprovision")
+    public ResponseEntity<Map<String, Object>> deprovisionAgent(@PathVariable UUID id,
+                                                                HttpServletRequest request) {
+        try {
+            AgentRegistryService.AgentBlockResult result = agentRegistryService.deprovisionAgent(
+                    id, resolveAdminActor(request), resolveAdminIp(request));
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("status", "ok");
+            body.put("message", "Agent '" + result.agent().getAgentName() + "' deprovisioned");
+            body.put("lifecycleStatus", result.agent().getStatus());
+            body.put("sessionsTerminated", result.sessionsTerminated());
+            return ResponseEntity.ok(body);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
     private String resolveAdminActor(HttpServletRequest request) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth != null && auth.isAuthenticated() && !(auth instanceof AnonymousAuthenticationToken)) {

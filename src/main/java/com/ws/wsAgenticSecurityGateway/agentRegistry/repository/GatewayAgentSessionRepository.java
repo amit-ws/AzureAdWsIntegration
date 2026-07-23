@@ -90,6 +90,10 @@ public interface GatewayAgentSessionRepository extends JpaRepository<GatewayAgen
     @Query("SELECT a.approvalStatus FROM GatewayAgentSessionEntity s JOIN s.agent a WHERE s.sessionId = :sessionId")
     Optional<String> findAgentApprovalStatusBySessionId(@Param("sessionId") String sessionId);
 
+    /** The agent lifecycle {@code status} (ACTIVE / DEPROVISIONED) behind a session — DB fallback for the hot-path guard. */
+    @Query("SELECT a.status FROM GatewayAgentSessionEntity s JOIN s.agent a WHERE s.sessionId = :sessionId")
+    Optional<String> findAgentStatusBySessionId(@Param("sessionId") String sessionId);
+
     @Query("SELECT s FROM GatewayAgentSessionEntity s LEFT JOIN FETCH s.agent WHERE s.humanUserId = :humanUserId AND s.status = 'CONNECTED'")
     List<GatewayAgentSessionEntity> findConnectedByHumanUserId(@Param("humanUserId") UUID humanUserId);
 

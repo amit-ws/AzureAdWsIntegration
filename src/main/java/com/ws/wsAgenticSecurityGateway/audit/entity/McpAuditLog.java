@@ -25,6 +25,7 @@ import java.util.UUID;
                 @Index(name = "idx_audit_status", columnList = "status"),
                 @Index(name = "idx_audit_timestamp", columnList = "timestamp"),
                 @Index(name = "idx_audit_correlation_id", columnList = "correlation_id"),
+                @Index(name = "idx_audit_trace_id", columnList = "trace_id"),
                 @Index(name = "idx_audit_server_name", columnList = "server_name"),
                 @Index(name = "idx_audit_session_id", columnList = "session_id"),
                 @Index(name = "idx_audit_request_id", columnList = "request_id")
@@ -61,6 +62,10 @@ public class McpAuditLog {
 
     @Column(name = "correlation_id", length = 64)
     private String correlationId;
+
+    /** Request-scoped umbrella id — one trace spans all legs/events of a request (single- or multi-hop). */
+    @Column(name = "trace_id", length = 64)
+    private String traceId;
 
     @Column(name = "session_id", length = 128)
     private String sessionId;

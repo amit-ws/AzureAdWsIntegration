@@ -25,6 +25,7 @@ public enum McpErrorCode {
     HUMAN_BLOCKED(-33009, "Human user is blocked by admin"),
     NHI_BLOCKED(-33010, "Service identity is blocked by admin"),
     AGENT_PENDING_APPROVAL(-33011, "Agent is pending admin approval"),
+    AGENT_DEPROVISIONED(-33012, "Agent has been deprovisioned by admin"),
     HUMAN_PENDING_APPROVAL(-33013, "Human user is pending admin approval"),
     NHI_PENDING_APPROVAL(-33014, "Service identity is pending admin approval");
 

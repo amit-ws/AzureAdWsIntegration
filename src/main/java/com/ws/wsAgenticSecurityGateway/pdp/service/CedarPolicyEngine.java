@@ -285,12 +285,16 @@ public class CedarPolicyEngine {
 
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - startTime;
- log.error("Cedar evaluation error: {}", e.getMessage(), e);
+ log.error("Cedar evaluation error — failing CLOSED (request DENIED): {}", e.getMessage(), e);
 
+            // Fail-closed: if the decision engine itself errors, deny the request. A crash in the
+            // gate must never become a security bypass (a forbid policy could have been about to
+            // match). The error is surfaced loudly via reason/diagnostics/hasErrors + the audit
+            // deny, so the bug is found and fixed rather than silently allowing traffic through.
             return PolicyEvaluationResult.builder()
-                    .decision("ALLOW")
+                    .decision("DENY")
                     .matchedPolicies(Set.of())
-                    .reason("Policy evaluation error (fail-open): " + e.getMessage())
+                    .reason("Policy evaluation error (fail-closed, denied): " + e.getMessage())
                     .evaluationDurationMs(duration)
                     .hasErrors(true)
                     .diagnostics(e.getMessage())
@@ -570,6 +574,14 @@ public class CedarPolicyEngine {
         putIfNotNull(ctx.principalAttrs, "approvalStatus", request.getAgentApprovalStatus());
         putIfNotNull(ctx.principalAttrs, "sessionId", request.getAgentSessionId());
 
+        // User (root) roles from the JWT — exposed so policies can do attribute-based access control on the
+        // human/NHI identity, e.g. permit(...) when { principal.roles.contains("finance") }. Space-joined so
+        // the substring-based contains/like operators work. (Groups, if the IdP emits them, arrive via
+        // customClaims, which are merged into the context below.)
+        ctx.principalAttrs.put("roles", joinValues(request.getAgentRoles()));
+        ctx.principalAttrs.put("realmRoles", joinValues(request.getRealmRoles()));
+        ctx.principalAttrs.put("clientRoles", joinValues(request.getClientRoles()));
+
         putIfNotNull(ctx.resourceAttrs, "name", request.getResourceName());
         putIfNotNull(ctx.resourceAttrs, "serverName", request.getServerName());
         putIfNotNull(ctx.resourceAttrs, "originalName", request.getOriginalName());
@@ -624,6 +636,11 @@ public class CedarPolicyEngine {
         if (value != null) {
             map.put(key, value);
         }
+    }
+
+    /** Space-joins a list into one string for the substring-based contains/like operators; "" when empty. */
+    private static String joinValues(java.util.List<String> values) {
+        return (values == null || values.isEmpty()) ? "" : String.join(" ", values);
     }
 
     private boolean matches(ParsedPolicy policy, EvalContext ctx) {

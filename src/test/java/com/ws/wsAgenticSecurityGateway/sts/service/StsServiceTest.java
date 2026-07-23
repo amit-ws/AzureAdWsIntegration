@@ -44,7 +44,7 @@ class StsServiceTest {
                 Principal.human("sarah@acme.com", "sarah", "https://kc", true),
                 Principal.agent(agentUuid.toString(), "agent-client", true)));
         return new MintRequest("acme", chain, "github",
-                "mcp:tool:github:github_get_me", "corr-1", 120);
+                "mcp:tool:github:github_get_me", "trace-abc", "corr-1", 120);
     }
 
     @Test
@@ -56,6 +56,14 @@ class StsServiceTest {
         assertThat(minted.kid()).isEqualTo("kid-1");
         assertThat(minted.expiresAt()).isAfter(Instant.now());
 
+        // Enriched receipt: the returned MintedToken mirrors exactly what the signed JWT carries.
+        assertThat(minted.alg()).isEqualTo("RS256");
+        assertThat(minted.issuer()).isEqualTo("https://gateway.local/sts/acme");
+        assertThat(minted.subject()).isEqualTo("sarah@acme.com");
+        assertThat(minted.audience()).isEqualTo("github");
+        assertThat(minted.scope()).isEqualTo("mcp:tool:github:github_get_me");
+        assertThat(minted.issuedAt()).isBeforeOrEqualTo(Instant.now());
+
         SignedJWT jwt = SignedJWT.parse(minted.token());
         assertThat(jwt.verify(new RSASSAVerifier(signingKey.toPublicJWK()))).isTrue();
         assertThat(jwt.getHeader().getKeyID()).isEqualTo("kid-1");
@@ -66,15 +74,18 @@ class StsServiceTest {
         assertThat(c.getAudience()).containsExactly("github");
         assertThat(c.getJWTID()).isEqualTo(minted.jti());
         assertThat(c.getStringClaim("scope")).isEqualTo("mcp:tool:github:github_get_me");
-        assertThat(c.getStringClaim("trace_id")).isEqualTo("corr-1");
+        assertThat(c.getStringClaim("trace_id")).isEqualTo("trace-abc");
+        assertThat(c.getStringClaim("corr_id")).isEqualTo("corr-1");
         assertThat(c.getStringClaim("ws_tenant")).isEqualTo("acme");
         assertThat(c.getExpirationTime()).isNotNull();
 
         List<?> actChain = (List<?>) c.getClaim("act_chain");
         assertThat(actChain).hasSize(2);
 
-        Map<String, Object> actor = c.getJSONObjectClaim("actor");
-        assertThat(actor).containsEntry("id", agentUuid.toString()).containsEntry("type", "agent");
+        // RFC 8693 nested actor claim: the current actor is the token's act.sub; single-hop has no nested act.
+        Map<String, Object> act = c.getJSONObjectClaim("act");
+        assertThat(act).containsEntry("sub", agentUuid.toString());
+        assertThat(act).doesNotContainKey("act");
     }
 
     @Test

@@ -59,11 +59,11 @@ public class HopTokenMinter {
         String scope = scopeDeriver.derive(hop.serverName(), hop.publicName(), capabilityType);
 
         MintedToken minted = stsService.mint(new MintRequest(
-                tenant, chain, hop.serverName(), scope, correlationId, DEFAULT_TTL_SECONDS));
+                tenant, chain, hop.serverName(), scope, hop.traceId(), correlationId, DEFAULT_TTL_SECONDS));
 
         auditService.auditStsTokenMinted(correlationId, sessionId, tenant, hop.serverName(),
-                hop.publicName(), capabilityType, minted.jti(), scope, chain.toClaim(),
-                minted.expiresAt(), requestId, LocalDateTime.now(), eventSequence);
+                hop.publicName(), capabilityType, minted, DEFAULT_TTL_SECONDS, chain.toClaim(),
+                requestId, LocalDateTime.now(), eventSequence);
 
         log.info("[{}] STS OBO token minted: tenant={}, aud={}, scope={}, jti={}, actChainLen={}",
                 correlationId, tenant, hop.serverName(), scope, minted.jti(), chain.principals().size());

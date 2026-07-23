@@ -200,6 +200,19 @@ public class HttpMcpAuditFilter implements Filter {
         }
 
         if (sessionId != null) {
+            String lifecycleStatus = agentRegistryService.getAgentLifecycleStatusForSession(sessionId);
+            if ("DEPROVISIONED".equals(lifecycleStatus)) {
+                String deprovAgentName = agentRegistryService.getAgentNameForSession(sessionId);
+                log.warn("Request rejected — agent '{}' DEPROVISIONED, session={}, method={}",
+                        deprovAgentName, sessionId, mcpMethod);
+                auditService.auditAgentConnectionRejected(sessionId, requestId,
+                        deprovAgentName, null, mcpMethod, "HTTP",
+                        "Agent '" + deprovAgentName + "' has been deprovisioned");
+                rejectBlocked(httpResponse, requestIdRaw, McpErrorCode.AGENT_DEPROVISIONED,
+                        "Agent '" + deprovAgentName
+                                + "' has been deprovisioned by an administrator and can no longer operate through this gateway.");
+                return;
+            }
             String agentStatus = agentRegistryService.getAgentStatusForSession(sessionId);
             if ("BLOCKED".equals(agentStatus)) {
                 String blockedAgentName = agentRegistryService.getAgentNameForSession(sessionId);

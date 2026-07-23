@@ -25,6 +25,28 @@ public class AuditAsyncConfig {
         executor.setAwaitTerminationSeconds(30);
         executor.setRejectedExecutionHandler((r, e) ->
                 log.error("Audit executor rejected task — queue full. Consider increasing capacity."));
+        // Propagate the caller's MDC (traceId / correlationId) into the async audit thread so persisted
+        // audit rows and audit-thread logs carry the same request trace as the orchestration that fired them.
+        executor.setTaskDecorator(runnable -> {
+            java.util.Map<String, String> mdc = org.slf4j.MDC.getCopyOfContextMap();
+            return () -> {
+                java.util.Map<String, String> previous = org.slf4j.MDC.getCopyOfContextMap();
+                if (mdc != null) {
+                    org.slf4j.MDC.setContextMap(mdc);
+                } else {
+                    org.slf4j.MDC.clear();
+                }
+                try {
+                    runnable.run();
+                } finally {
+                    if (previous != null) {
+                        org.slf4j.MDC.setContextMap(previous);
+                    } else {
+                        org.slf4j.MDC.clear();
+                    }
+                }
+            };
+        });
         executor.initialize();
         log.info("MCP Audit async executor initialized [core={}, max={}, queue={}]",
                 executor.getCorePoolSize(), executor.getMaxPoolSize(), executor.getQueueCapacity());
