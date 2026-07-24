@@ -39,6 +39,13 @@ public interface ProtocolAdapter {
     void clearCredentials(String correlationId);
 
     /**
+     * The protocol this adapter speaks ({@code "MCP"}, {@code "A2A"}). The spine tags each hop with it, so
+     * protocol-scoped artifacts (OBO token scope, audit {@code protocol} column) are attributed correctly
+     * without the spine hardcoding any single protocol.
+     */
+    String protocol();
+
+    /**
      * Whether the downstream target is currently connected/reachable via this protocol. The spine calls
      * this as a pre-flight check without knowing how the adapter manages its connections — an A2A adapter
      * answers for its own peers, an MCP adapter for its server sessions.

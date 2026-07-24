@@ -99,6 +99,7 @@ public class HopOrchestrator {
     public Object handle(Hop hop) {
         String traceId = resolveTraceId(hop);
         hop.setTraceId(traceId);
+        hop.setProtocol(adapter.protocol());
         MDC.put("traceId", traceId);
         try {
             return switch (hop.capabilityType()) {

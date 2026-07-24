@@ -46,6 +46,11 @@ public class McpAdapter implements ProtocolAdapter {
     }
 
     @Override
+    public String protocol() {
+        return "MCP";
+    }
+
+    @Override
     public boolean isTargetConnected(String targetName) {
         return mcpSessionManager != null && mcpSessionManager.isConnected(targetName);
     }

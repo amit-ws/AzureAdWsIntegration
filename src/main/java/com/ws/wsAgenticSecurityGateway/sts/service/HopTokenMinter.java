@@ -56,7 +56,7 @@ public class HopTokenMinter {
         }
 
         String capabilityType = hop.capabilityType() != null ? hop.capabilityType().name() : "TOOL";
-        String scope = scopeDeriver.derive(hop.serverName(), hop.publicName(), capabilityType);
+        String scope = scopeDeriver.derive(hop.protocol(), hop.serverName(), hop.publicName(), capabilityType);
 
         MintedToken minted = stsService.mint(new MintRequest(
                 tenant, chain, hop.serverName(), scope, hop.traceId(), correlationId, DEFAULT_TTL_SECONDS));

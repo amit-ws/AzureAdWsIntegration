@@ -28,6 +28,7 @@ public final class Hop {
     private String serverName;   // resolved after registry lookup
     private String originalName; // resolved (tool/prompt name); resource uri for RESOURCE
     private String traceId;      // request-scoped umbrella id (whole journey); set by the spine in handle()
+    private String protocol;     // which adapter handles this hop (MCP/A2A); set by the spine in handle()
 
     public Hop(CapabilityType capabilityType,
                String publicName,
@@ -57,8 +58,13 @@ public final class Hop {
 
     public String traceId() { return traceId; }
 
+    public String protocol() { return protocol; }
+
     /** The request-scoped trace id (umbrella over all legs); set by the spine at dispatch. */
     public void setTraceId(String traceId) { this.traceId = traceId; }
+
+    /** The protocol handling this hop ({@code MCP}/{@code A2A}); set by the spine at dispatch. */
+    public void setProtocol(String protocol) { this.protocol = protocol; }
 
     /** Set by the spine after the capability-registry lookup resolves the public name. */
     public void resolve(String serverName, String originalName) {

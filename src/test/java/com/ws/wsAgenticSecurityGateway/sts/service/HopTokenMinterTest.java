@@ -38,6 +38,7 @@ class HopTokenMinterTest {
     void setUp() {
         hop = new Hop(CapabilityType.TOOL, "github_get_me", Map.of(), null, null);
         hop.resolve("github", "get_me");
+        hop.setProtocol("MCP"); // set by the spine at dispatch; the minter reads it for the scope prefix
         chain = new ActChain(List.of(
                 Principal.human("sarah", null, null, true),
                 Principal.agent("agent-uuid", "client", true)));
@@ -58,7 +59,7 @@ class HopTokenMinterTest {
     @Test
     void mintsAndAudits_whenTenantResolved() {
         when(auditService.resolveTenant("s")).thenReturn("amitdev.local");
-        when(scopeDeriver.derive("github", "github_get_me", "TOOL"))
+        when(scopeDeriver.derive("MCP", "github", "github_get_me", "TOOL"))
                 .thenReturn("mcp:tool:github:github_get_me");
         MintedToken token = new MintedToken("jwt", "jti-1", "kid", "RS256",
                 "https://gateway.local/sts/amitdev.local", "sarah", "github",
@@ -77,7 +78,7 @@ class HopTokenMinterTest {
     @Test
     void failClosed_propagatesStsMintException() {
         when(auditService.resolveTenant("s")).thenReturn("amitdev.local");
-        when(scopeDeriver.derive(any(), any(), any())).thenReturn("scope");
+        when(scopeDeriver.derive(any(), any(), any(), any())).thenReturn("scope");
         when(stsService.mint(any())).thenThrow(new StsMintException("boom"));
 
         assertThatThrownBy(() -> minter.mintForHop(hop, "s", chain, "rid", "corr", 1))

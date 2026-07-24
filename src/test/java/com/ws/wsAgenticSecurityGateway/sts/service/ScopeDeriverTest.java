@@ -10,13 +10,19 @@ class ScopeDeriverTest {
 
     @Test
     void derivesLeastPrivilegeScopeForOneCapabilityOnOneServer() {
-        assertThat(deriver.derive("github", "github_get_me", "TOOL"))
+        assertThat(deriver.derive("MCP", "github", "github_get_me", "TOOL"))
                 .isEqualTo("mcp:tool:github:github_get_me");
     }
 
     @Test
-    void handlesNullsSafely() {
-        assertThat(deriver.derive(null, null, null))
+    void protocolPrefixIsAdapterSupplied_soA2aMintsItsOwnScheme() {
+        assertThat(deriver.derive("A2A", "planner", "decompose", "SKILL"))
+                .isEqualTo("a2a:skill:planner:decompose");
+    }
+
+    @Test
+    void handlesNullsSafely_defaultingProtocolToMcp() {
+        assertThat(deriver.derive(null, null, null, null))
                 .isEqualTo("mcp:capability:unknown:unknown");
     }
 }
