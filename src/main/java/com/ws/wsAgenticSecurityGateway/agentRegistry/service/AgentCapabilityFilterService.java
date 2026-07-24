@@ -131,10 +131,6 @@ public class AgentCapabilityFilterService {
         return profileRepository.findAll();
     }
 
-    public List<AgentCapabilityProfile> getTemplateProfiles() {
-        return profileRepository.findByIsTemplateTrue();
-    }
-
     private Map<String, Set<String>> computeAllowedCapabilities(List<UUID> profileIds) {
         Set<String> allowedTools = new HashSet<>();
         Set<String> allowedPrompts = new HashSet<>();

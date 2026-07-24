@@ -290,19 +290,6 @@ public class AgentRegistryService {
     }
 
     @Transactional
-    public int disconnectExistingSessionsForAgent(UUID agentId, String excludeSessionId) {
-        List<GatewayAgentSessionEntity> staleSessions = sessionRepository.findActiveSessionsForAgentExcluding(agentId,
-                excludeSessionId);
-        for (GatewayAgentSessionEntity stale : staleSessions) {
-            String staleSessionId = stale.getSessionId();
-            String agentName = stale.getAgent().getAgentName();
-            disconnectSession(staleSessionId);
-            auditService.auditServerSessionDisconnectedSync(staleSessionId, agentName);
-        }
-        return staleSessions.size();
-    }
-
-    @Transactional
     public int disconnectExistingSessionsForIdentity(UUID agentId, UUID humanUserId, UUID nhiId,
                                                       String authIdentity, String excludeSessionId) {
         List<GatewayAgentSessionEntity> staleSessions;
@@ -366,29 +353,6 @@ public class AgentRegistryService {
             log.debug("Failed to record agent request for session {}: {}",
                     sessionId, e.getMessage());
         }
-    }
-
-    public boolean isAgentBlocked(String sessionId) {
-        if (sessionId == null)
-            return false;
-        UUID agentId = sessionToAgentId.get(sessionId);
-        if (agentId == null)
-            return false;
-
-        for (GatewayAgentEntity agent : agentCache.values()) {
-            if (agentId.equals(agent.getId())) {
-                return !"APPROVED".equals(agent.getApprovalStatus());
-            }
-        }
-        return false;
-    }
-
-    @Transactional(readOnly = true)
-    public boolean isAgentBlockedForSession(String sessionId) {
-        if (sessionId == null) return false;
-        return sessionRepository.findAgentApprovalStatusBySessionId(sessionId)
-                .map("BLOCKED"::equals)
-                .orElse(false);
     }
 
     public String getHumanStatus(String jwtSubject) {
@@ -514,23 +478,6 @@ public class AgentRegistryService {
         return sessionRepository.findBySessionId(sessionId)
                 .map(s -> s.getAgent().getAgentName())
                 .orElse("unknown");
-    }
-
-    public boolean isAgentBlocked(String agentName, String agentVersion) {
-        String key = cacheKey(agentName, agentVersion);
-
-        GatewayAgentEntity cached = agentCache.get(key);
-        if (cached != null) {
-            return "BLOCKED".equals(cached.getApprovalStatus());
-        }
-
-        Optional<GatewayAgentEntity> existing = agentRepository.findByAgentNameAndAgentVersion(agentName, agentVersion);
-        if (existing.isPresent()) {
-            GatewayAgentEntity entity = existing.get();
-            agentCache.put(key, entity);
-            return "BLOCKED".equals(entity.getApprovalStatus());
-        }
-        return false;
     }
 
     public List<GatewayAgentEntity> getAllAgents() {
@@ -825,50 +772,6 @@ public class AgentRegistryService {
         return sessionToHumanUserId.get(sessionId);
     }
 
-    public Optional<String> getHumanBlockReason(String sessionId) {
-        if (sessionId == null) return Optional.empty();
-
-        UUID humanUserId = sessionToHumanUserId.get(sessionId);
-        if (humanUserId != null) {
-            return humanUserRepository.findById(humanUserId)
-                    .filter(h -> "BLOCKED".equals(h.getStatus()))
-                    .map(h -> h.getBlockedReason() != null ? h.getBlockedReason() : "Blocked by admin");
-        }
-
-        String authIdentity = sessionToAuthIdentity.get(sessionId);
-        if (authIdentity != null) {
-            Optional<String> reason = humanUserRepository.findByIdpSubject(authIdentity)
-                    .filter(h -> "BLOCKED".equals(h.getStatus()))
-                    .map(h -> h.getBlockedReason() != null ? h.getBlockedReason() : "Blocked by admin");
-            if (reason.isPresent()) {
- log.warn("Human block reason found via authIdentity fallback: session={}, sub={}", sessionId, authIdentity);
-            }
-            return reason;
-        }
-
-        return Optional.empty();
-    }
-
-    public String getHumanUsername(String sessionId) {
-        if (sessionId == null) return null;
-
-        UUID humanUserId = sessionToHumanUserId.get(sessionId);
-        if (humanUserId != null) {
-            return humanUserRepository.findById(humanUserId)
-                    .map(GatewayHumanUserEntity::getPreferredUsername)
-                    .orElse(null);
-        }
-
-        String authIdentity = sessionToAuthIdentity.get(sessionId);
-        if (authIdentity != null) {
-            return humanUserRepository.findByIdpSubject(authIdentity)
-                    .map(GatewayHumanUserEntity::getPreferredUsername)
-                    .orElse(null);
-        }
-
-        return null;
-    }
-
     public boolean isHumanBlockedBySubject(String idpSubject) {
         if (idpSubject == null) return false;
         return humanUserRepository.findByIdpSubject(idpSubject)
@@ -956,50 +859,6 @@ public class AgentRegistryService {
     public UUID getNhiIdForSession(String sessionId) {
         if (sessionId == null) return null;
         return sessionToNhiId.get(sessionId);
-    }
-
-    public Optional<String> getNhiBlockReason(String sessionId) {
-        if (sessionId == null) return Optional.empty();
-
-        UUID nhiId = sessionToNhiId.get(sessionId);
-        if (nhiId != null) {
-            return nhiRepository.findById(nhiId)
-                    .filter(n -> "BLOCKED".equals(n.getStatus()))
-                    .map(n -> n.getBlockedReason() != null ? n.getBlockedReason() : "Blocked by admin");
-        }
-
-        String authIdentity = sessionToAuthIdentity.get(sessionId);
-        if (authIdentity != null) {
-            Optional<String> reason = nhiRepository.findByIdpSubject(authIdentity)
-                    .filter(n -> "BLOCKED".equals(n.getStatus()))
-                    .map(n -> n.getBlockedReason() != null ? n.getBlockedReason() : "Blocked by admin");
-            if (reason.isPresent()) {
- log.warn("NHI block reason found via authIdentity fallback: session={}, sub={}", sessionId, authIdentity);
-            }
-            return reason;
-        }
-
-        return Optional.empty();
-    }
-
-    public String getNhiServiceName(String sessionId) {
-        if (sessionId == null) return null;
-
-        UUID nhiId = sessionToNhiId.get(sessionId);
-        if (nhiId != null) {
-            return nhiRepository.findById(nhiId)
-                    .map(GatewayNhiEntity::getServiceName)
-                    .orElse(null);
-        }
-
-        String authIdentity = sessionToAuthIdentity.get(sessionId);
-        if (authIdentity != null) {
-            return nhiRepository.findByIdpSubject(authIdentity)
-                    .map(GatewayNhiEntity::getServiceName)
-                    .orElse(null);
-        }
-
-        return null;
     }
 
     public boolean isNhiBlockedBySubject(String idpSubject) {

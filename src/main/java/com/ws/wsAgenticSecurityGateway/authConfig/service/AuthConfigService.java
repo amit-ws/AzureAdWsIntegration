@@ -496,14 +496,6 @@ public class AuthConfigService {
         return envIssuerUri != null && !envIssuerUri.isBlank() ? envIssuerUri : null;
     }
 
-    public String getEffectiveJwksUri() {
-        Optional<GatewayAuthConfigEntity> dbConfig = repository.findFirstByEnabledTrueOrderByCreatedAtAsc();
-        if (dbConfig.isPresent() && dbConfig.get().getJwksUri() != null) {
-            return dbConfig.get().getJwksUri();
-        }
-        return envJwksUri != null && !envJwksUri.isBlank() ? envJwksUri : null;
-    }
-
     private void applyDecoderFromConfig(GatewayAuthConfigEntity config) {
         if (delegatingJwtDecoder == null) return;
         if (!"oauth2".equals(config.getAuthMode()) || !Boolean.TRUE.equals(config.getEnabled())) {

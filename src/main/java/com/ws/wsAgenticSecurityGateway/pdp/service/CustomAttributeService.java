@@ -49,10 +49,6 @@ public class CustomAttributeService {
         return repository.findById(id);
     }
 
-    public Optional<GatewayCustomAttributeEntity> getByName(String attributeName) {
-        return repository.findByAttributeNameAndWsTenantName(attributeName, TenantContext.get());
-    }
-
     public List<GatewayCustomAttributeEntity> getEnabledAttributes() {
         return getCachedAttributes();
     }

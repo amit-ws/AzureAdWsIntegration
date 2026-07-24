@@ -10,7 +10,6 @@ import com.ws.wsAgenticSecurityGateway.audit.constants.AuditSeverity;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditStatus;
 import com.ws.wsAgenticSecurityGateway.audit.entity.McpAuditLog;
 import com.ws.wsAgenticSecurityGateway.audit.entity.PdpAuditLog;
-import com.ws.wsAgenticSecurityGateway.audit.error.McpAuditException;
 import com.ws.wsAgenticSecurityGateway.audit.error.McpErrorCode;
 import com.ws.wsAgenticSecurityGateway.audit.repository.McpAuditLogRepository;
 import com.ws.wsAgenticSecurityGateway.audit.repository.PdpAuditLogRepository;
@@ -139,20 +138,6 @@ public class McpAuditService {
                                 .errorCode(McpErrorCode.TRANSPORT_ERROR.getCode())
                                 .errorMessage(errorMessage)
                                 .durationMs(durationMs)
-                                .build());
-        }
-
-        @Async("mcpAuditExecutor")
-        public void auditClientSessionDisconnected(String sessionId,
-                        String serverName) {
-                persist(McpAuditLog.builder()
-                                .eventType(AuditEventType.CLIENT_SESSION_DISCONNECTED)
-                                .module(AuditModule.WS_CLIENT)
-                                .status(AuditStatus.SUCCESS)
-                                .severity(AuditSeverity.INFO)
-                                .sessionId(sessionId)
-                                .serverName(serverName)
-                                .correlationId(generateCorrelationId())
                                 .build());
         }
 
@@ -510,33 +495,6 @@ public class McpAuditService {
         }
 
         @Async("mcpAuditExecutor")
-        public void auditServerToolInvocation(String sessionId,
-                        String toolName,
-                        Object requestArgs,
-                        Object responseContent,
-                        long durationMs,
-                        String agentName) {
-                persist(McpAuditLog.builder()
-                                .eventType(AuditEventType.SERVER_TOOL_INVOCATION)
-                                .module(AuditModule.WS_SERVER)
-                                .status(AuditStatus.SUCCESS)
-                                .severity(AuditSeverity.INFO)
-                                .sessionId(sessionId)
-                                .agentName(agentName)
-                                .capabilityName(toolName)
-                                .capabilityType("TOOL")
-                                .mcpMethod("tools/call")
-                                .correlationId(generateCorrelationId())
-                                .requestPayload(toJson(Map.of(
-                                                "toolName", toolName,
-                                                "arguments", requestArgs != null ? requestArgs : Map.of())))
-                                .responsePayload(toJson(Map.of(
-                                                "content", responseContent != null ? responseContent : "[]")))
-                                .durationMs(durationMs)
-                                .build());
-        }
-
-        @Async("mcpAuditExecutor")
         public void auditServerResourcesListRequested(String sessionId,
                         int resourceCount,
                         long durationMs,
@@ -595,19 +553,6 @@ public class McpAuditService {
                                 .requestPayload(toJson(Map.of(
                                                 "method", method != null ? method : "unknown",
                                                 "params", params != null ? params : Map.of())))
-                                .build());
-        }
-
-        @Async("mcpAuditExecutor")
-        public void auditServerSessionDisconnected(String sessionId, String agentName) {
-                persist(McpAuditLog.builder()
-                                .eventType(AuditEventType.SERVER_SESSION_DISCONNECTED)
-                                .module(AuditModule.WS_SERVER)
-                                .status(AuditStatus.SUCCESS)
-                                .severity(AuditSeverity.INFO)
-                                .sessionId(sessionId)
-                                .agentName(agentName)
-                                .correlationId(generateCorrelationId())
                                 .build());
         }
 
@@ -697,24 +642,6 @@ public class McpAuditService {
                         String capabilityType) {
                 persist(McpAuditLog.builder()
                                 .eventType(AuditEventType.REGISTRY_CAPABILITY_REMOVED)
-                                .module(AuditModule.CAPABILITY_REGISTRY)
-                                .status(AuditStatus.SUCCESS)
-                                .severity(AuditSeverity.INFO)
-                                .sessionId(sessionId)
-                                .serverName(serverName)
-                                .capabilityName(publicName)
-                                .capabilityType(capabilityType)
-                                .correlationId(generateCorrelationId())
-                                .build());
-        }
-
-        @Async("mcpAuditExecutor")
-        public void auditRegistryCapabilityUpdated(String sessionId,
-                        String serverName,
-                        String publicName,
-                        String capabilityType) {
-                persist(McpAuditLog.builder()
-                                .eventType(AuditEventType.REGISTRY_CAPABILITY_UPDATED)
                                 .module(AuditModule.CAPABILITY_REGISTRY)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.INFO)
@@ -1854,39 +1781,6 @@ public class McpAuditService {
         }
 
         @Async("mcpAuditExecutor")
-        public void auditSystemEvent(AuditEventType eventType,
-                        AuditStatus status,
-                        AuditSeverity severity,
-                        String message) {
-                persist(McpAuditLog.builder()
-                                .eventType(eventType)
-                                .module(AuditModule.SYSTEM)
-                                .status(status)
-                                .severity(severity)
-                                .correlationId(generateCorrelationId())
-                                .errorMessage(message)
-                                .build());
-        }
-
-        @Async("mcpAuditExecutor")
-        public void auditError(AuditModule module,
-                        AuditEventType eventType,
-                        String serverName,
-                        McpAuditException ex) {
-                persist(McpAuditLog.builder()
-                                .eventType(eventType)
-                                .module(module)
-                                .status(AuditStatus.ERROR)
-                                .severity(AuditSeverity.ERROR)
-                                .serverName(serverName)
-                                .correlationId(generateCorrelationId())
-                                .errorCode(ex.getErrorCode().getCode())
-                                .errorMessage(ex.getMessage())
-                                .errorData(toJson(ex.getErrorData()))
-                                .build());
-        }
-
-        @Async("mcpAuditExecutor")
         public void auditOAuth2AuthSuccess(String sessionId, String agentClientId, String subject,
                         List<String> roles, String tokenType, String userIdentity,
                         Map<String, Object> rawClaims, String requestId) {
@@ -1905,20 +1799,6 @@ public class McpAuditService {
                                 .userIdentity(userIdentity)
                                 .agentName(agentClientId)
                                 .requestPayload(toJson(rawClaims))
-                                .build());
-        }
-
-        @Async("mcpAuditExecutor")
-        public void auditOAuth2AuthFailure(String remoteAddr, String errorMessage, String requestId) {
-                persist(McpAuditLog.builder()
-                                .eventType(AuditEventType.OAUTH2_AUTH_FAILURE)
-                                .module(AuditModule.WS_SERVER)
-                                .status(AuditStatus.FAILURE)
-                                .severity(AuditSeverity.WARN)
-                                .requestId(requestId)
-                                .authMethod("OAUTH2")
-                                .errorMessage(errorMessage)
-                                .agentName(remoteAddr)
                                 .build());
         }
 
@@ -2173,20 +2053,6 @@ public class McpAuditService {
                                                 "newIssuer", newIssuer != null ? newIssuer : "",
                                                 "gracePeriodMinutes", gracePeriodMinutes,
                                                 "activeSessionCount", activeSessionCount)))
-                                .build());
-        }
-
-        @Async("mcpAuditExecutor")
-        public void auditAuthGracePeriodEnded(String previousIssuer, int sessionsStillOnOldAuth) {
-                persist(McpAuditLog.builder()
-                                .eventType(AuditEventType.AUTH_GRACE_PERIOD_ENDED)
-                                .module(AuditModule.AUTH_CONFIG)
-                                .status(AuditStatus.SUCCESS)
-                                .severity(AuditSeverity.INFO)
-                                .correlationId(generateCorrelationId())
-                                .requestPayload(toJson(Map.of(
-                                                "previousIssuer", previousIssuer != null ? previousIssuer : "",
-                                                "sessionsStillOnOldAuth", sessionsStillOnOldAuth)))
                                 .build());
         }
 

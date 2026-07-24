@@ -209,10 +209,6 @@ public class CapabilityProfileService {
                 "PROFILE_UNASSIGNED", profileName, profileId, List.of(agentName)));
     }
 
-    public boolean isAssigned(UUID profileId, UUID agentId) {
-        return assignmentRepository.findByAgentIdAndProfileId(agentId, profileId).isPresent();
-    }
-
     public Map<String, Object> computeProfilePreview(AgentCapabilityProfile profile) {
         Set<String> allowedTools = new HashSet<>();
         Set<String> allowedPrompts = new HashSet<>();

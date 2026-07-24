@@ -127,10 +127,6 @@ public class InFlightRequestRegistry {
         return List.copyOf(recentHistory);
     }
 
-    public boolean isInFlight(String correlationId) {
-        return registry.containsKey(correlationId);
-    }
-
     @Getter
     public static class InFlightEntry {
         private final String correlationId;

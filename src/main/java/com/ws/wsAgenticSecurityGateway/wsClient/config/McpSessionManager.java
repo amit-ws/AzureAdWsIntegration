@@ -440,16 +440,6 @@ public class McpSessionManager {
  log.info("All WS Client-side sessions disconnected gracefully");
     }
 
-    public Map<String, Object> getStatusSummary() {
-        return Map.of(
-                "totalServers", sessions.size(),
-                "activeServers", sessions.values().stream()
-                        .filter(McpSession::isActive)
-                        .count(),
-                "servers", sessions.keySet()
-        );
-    }
-
     @Transactional
     public void cleanupOrphanedSessions() {
         try {

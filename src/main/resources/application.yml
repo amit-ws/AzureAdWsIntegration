@@ -112,20 +112,10 @@ certificate:
 github:
   token: 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
 
-#mcp:
-#  server:
-#    enabled: false  # Set to true only when you want MCP server to run [for option 2]
-
-
-
-mcp:
-  config:
-    file: mcp_config.json
-
 logging:
   level:
-    com.ws.wsAgenticSecurity.client: INFO
-    com.ws.wsAgenticSecurity.audit: DEBUG
+    com.ws.wsAgenticSecurityGateway.wsClient: INFO
+    com.ws.wsAgenticSecurityGateway.audit: DEBUG
     io.modelcontextprotocol: DEBUG
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"

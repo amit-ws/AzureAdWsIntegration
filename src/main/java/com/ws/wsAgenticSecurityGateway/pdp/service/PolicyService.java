@@ -113,10 +113,6 @@ public class PolicyService {
         return repository.findById(id);
     }
 
-    public Optional<GatewayPolicyEntity> getByName(String name) {
-        return repository.findByPolicyNameAndWsTenantName(name, TenantContext.get());
-    }
-
     @Transactional
     public PolicyCreationResult createPolicy(PolicyDto dto) {
         String validationError = cedarEngine.validatePolicy(dto.getPolicyText());

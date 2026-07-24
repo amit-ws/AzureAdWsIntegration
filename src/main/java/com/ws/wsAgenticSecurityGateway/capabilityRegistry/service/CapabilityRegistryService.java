@@ -341,22 +341,6 @@ public class CapabilityRegistryService {
         }
     }
 
-    @Transactional
-    public void refreshServer(String sessionId,
-                              String serverConfigName,
-                              String displayName,
-                              String version,
-                              String protocolVersion,
-                              JsonNode capabilities,
-                              List<McpSchema.Tool> tools,
-                              List<McpSchema.Resource> resources,
-                              List<McpSchema.Prompt> prompts,
-                              String wsTenantName) {
-
-        registerServer(sessionId, serverConfigName, displayName, version,
-                protocolVersion, capabilities, tools, resources, prompts, wsTenantName);
-    }
-
     public Optional<CapabilityDescriptor> lookupByPublicName(String publicName) {
         return Optional.ofNullable(primaryIndex.get(publicName));
     }

@@ -185,16 +185,6 @@ public class TokenClassificationService {
         }
     }
 
-    public CachedClassification getCachedClassification(String sessionId) {
-        if (sessionId == null) return null;
-        CachedClassification cached = sessionCache.get(sessionId);
-        if (cached != null && cached.isExpired(props.getCacheTtl())) {
-            sessionCache.remove(sessionId);
-            return null;
-        }
-        return cached;
-    }
-
     public void cacheClassification(String sessionId, ClassificationResult result) {
         if (sessionId == null || result == null) return;
         sessionCache.put(sessionId, new CachedClassification(
@@ -207,9 +197,6 @@ public class TokenClassificationService {
         }
     }
 
-    public int getCacheSize() {
-        return sessionCache.size();
-    }
 
     private String resolveIntrospectionEndpoint() {
         if (props.getIntrospectionUri() != null && !props.getIntrospectionUri().isBlank()) {
