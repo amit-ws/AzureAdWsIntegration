@@ -73,12 +73,12 @@ class ToolCallOrchestratorCharacterizationTest {
 
     @BeforeEach
     void setUp() {
-        McpAdapter adapter = new McpAdapter(mcpClientService);
+        McpAdapter adapter = new McpAdapter(mcpClientService, mcpSessionManager);
         HopTokenMinter hopTokenMinter = mock(HopTokenMinter.class); // returns null -> mint skipped (open mode)
         ActChainBuilder actChainBuilder = mock(ActChainBuilder.class);
         when(actChainBuilder.fromTransportContext(any(), any())).thenReturn(new ActChain(List.of()));
         HopOrchestrator hopOrchestrator = new HopOrchestrator(registryService, auditService, inFlight,
-                objectMapper, mcpSessionManager, agentRegistryService, capabilityFilterService,
+                objectMapper, agentRegistryService, capabilityFilterService,
                 cedarPolicyEngine, policyContextBuilder, adapter, hopTokenMinter, actChainBuilder);
         orchestrator = new ToolCallOrchestrator(hopOrchestrator);
 

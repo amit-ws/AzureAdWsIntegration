@@ -19,8 +19,6 @@ import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyEvaluationRequest;
 import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyEvaluationResult;
 import com.ws.wsAgenticSecurityGateway.pdp.service.CedarPolicyEngine;
 import com.ws.wsAgenticSecurityGateway.pdp.service.PolicyContextBuilder;
-import com.ws.wsAgenticSecurityGateway.protocol.mcp.outbound.config.McpSession;
-import com.ws.wsAgenticSecurityGateway.protocol.mcp.outbound.config.McpSessionManager;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
 import com.ws.wsAgenticSecurityGateway.protocol.mcp.session.ClientSession;
@@ -62,7 +60,6 @@ public class HopOrchestrator {
     private final GatewayAuditService auditService;
     private final InFlightRequestRegistry inFlightRegistry;
     private final ObjectMapper objectMapper;
-    private final McpSessionManager mcpSessionManager;
     private final AgentRegistryService agentRegistryService;
     private final AgentCapabilityFilterService capabilityFilterService;
     private final CedarPolicyEngine cedarPolicyEngine;
@@ -78,7 +75,6 @@ public class HopOrchestrator {
                            GatewayAuditService auditService,
                            InFlightRequestRegistry inFlightRegistry,
                            ObjectMapper objectMapper,
-                           McpSessionManager mcpSessionManager,
                            AgentRegistryService agentRegistryService,
                            AgentCapabilityFilterService capabilityFilterService,
                            CedarPolicyEngine cedarPolicyEngine,
@@ -90,7 +86,6 @@ public class HopOrchestrator {
         this.auditService = auditService;
         this.inFlightRegistry = inFlightRegistry;
         this.objectMapper = objectMapper;
-        this.mcpSessionManager = mcpSessionManager;
         this.agentRegistryService = agentRegistryService;
         this.capabilityFilterService = capabilityFilterService;
         this.cedarPolicyEngine = cedarPolicyEngine;
@@ -259,7 +254,7 @@ public class HopOrchestrator {
             log.error("[{}] PDP evaluation error (fail-open): {}", correlationId, e.getMessage());
         }
 
-        if (!mcpSessionManager.isConnected(serverName)) {
+        if (!adapter.isTargetConnected(serverName)) {
             log.error("[{}] Server '{}' is not connected — rejecting immediately", correlationId, serverName);
             auditService.auditOrchestrationError(
                     correlationId, sessionId, serverName, publicName,
@@ -272,10 +267,7 @@ public class HopOrchestrator {
         }
 
         String clientSessionId = null;
-        try {
-            McpSession clientSession = mcpSessionManager.getSession(serverName);
-            clientSessionId = clientSession.getSessionId();
-        } catch (Exception ignored) {}
+        clientSessionId = adapter.downstreamSessionId(serverName);
 
         String agentName = "unknown";
         String agentVersion = "";
@@ -527,7 +519,7 @@ public class HopOrchestrator {
             log.error("[{}] PDP evaluation error (fail-open): {}", correlationId, e.getMessage());
         }
 
-        if (!mcpSessionManager.isConnected(serverName)) {
+        if (!adapter.isTargetConnected(serverName)) {
             log.error("[{}] Server '{}' is not connected — rejecting prompt immediately", correlationId, serverName);
             auditService.auditOrchestrationError(
                     correlationId, sessionId, serverName, publicName,
@@ -541,10 +533,7 @@ public class HopOrchestrator {
         }
 
         String pClientSessionId = null;
-        try {
-            McpSession pClientSession = mcpSessionManager.getSession(serverName);
-            pClientSessionId = pClientSession.getSessionId();
-        } catch (Exception ignored) {}
+        pClientSessionId = adapter.downstreamSessionId(serverName);
 
         String pAgentName = "unknown";
         String pAgentVersion = "";
@@ -781,7 +770,7 @@ public class HopOrchestrator {
             log.error("[{}] PDP evaluation error (fail-open): {}", correlationId, e.getMessage());
         }
 
-        if (!mcpSessionManager.isConnected(serverName)) {
+        if (!adapter.isTargetConnected(serverName)) {
             log.error("[{}] Server '{}' is not connected — rejecting resource read immediately", correlationId, serverName);
             auditService.auditOrchestrationError(
                     correlationId, sessionId, serverName, publicName,
@@ -795,10 +784,7 @@ public class HopOrchestrator {
         }
 
         String rClientSessionId = null;
-        try {
-            McpSession rClientSession = mcpSessionManager.getSession(serverName);
-            rClientSessionId = rClientSession.getSessionId();
-        } catch (Exception ignored) {}
+        rClientSessionId = adapter.downstreamSessionId(serverName);
 
         String rAgentName = "unknown";
         String rAgentVersion = "";

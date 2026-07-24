@@ -37,4 +37,17 @@ public interface ProtocolAdapter {
 
     /** Clears any credentials applied by {@link #applyCredentials(Hop, String)}. */
     void clearCredentials(String correlationId);
+
+    /**
+     * Whether the downstream target is currently connected/reachable via this protocol. The spine calls
+     * this as a pre-flight check without knowing how the adapter manages its connections — an A2A adapter
+     * answers for its own peers, an MCP adapter for its server sessions.
+     */
+    boolean isTargetConnected(String targetName);
+
+    /**
+     * The gateway's downstream session id for the target (for audit correlation), or {@code null} if the
+     * protocol has no session concept or none is currently established. Never throws.
+     */
+    String downstreamSessionId(String targetName);
 }

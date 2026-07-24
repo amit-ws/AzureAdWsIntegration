@@ -3,6 +3,8 @@ package com.ws.wsAgenticSecurityGateway.orchestration.adapter;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.ws.wsAgenticSecurityGateway.orchestration.model.Hop;
 import com.ws.wsAgenticSecurityGateway.protocol.mcp.outbound.config.HttpMcpTransport;
+import com.ws.wsAgenticSecurityGateway.protocol.mcp.outbound.config.McpSession;
+import com.ws.wsAgenticSecurityGateway.protocol.mcp.outbound.config.McpSessionManager;
 import com.ws.wsAgenticSecurityGateway.protocol.mcp.outbound.service.McpClientService;
 import com.ws.wsAgenticSecurityGateway.protocol.mcp.session.ClientSession;
 import com.ws.wsAgenticSecurityGateway.protocol.mcp.session.SessionManager;
@@ -30,12 +32,32 @@ public class McpAdapter implements ProtocolAdapter {
 
     private final McpClientService mcpClientService;
 
+    /** Southbound session manager (gateway → downstream MCP servers) — source of the connection status
+     *  and downstream session id the spine used to read directly. */
+    private final McpSessionManager mcpSessionManager;
+
     /** Northbound agent session (source of agent-provided tokens). Wired at startup, mirrors
      *  the previous {@code ToolCallOrchestrator.setSessionManager} pattern. */
     private volatile SessionManager sessionManager;
 
-    public McpAdapter(McpClientService mcpClientService) {
+    public McpAdapter(McpClientService mcpClientService, McpSessionManager mcpSessionManager) {
         this.mcpClientService = mcpClientService;
+        this.mcpSessionManager = mcpSessionManager;
+    }
+
+    @Override
+    public boolean isTargetConnected(String targetName) {
+        return mcpSessionManager != null && mcpSessionManager.isConnected(targetName);
+    }
+
+    @Override
+    public String downstreamSessionId(String targetName) {
+        try {
+            McpSession session = mcpSessionManager != null ? mcpSessionManager.getSession(targetName) : null;
+            return session != null ? session.getSessionId() : null;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     public void setSessionManager(SessionManager sessionManager) {
