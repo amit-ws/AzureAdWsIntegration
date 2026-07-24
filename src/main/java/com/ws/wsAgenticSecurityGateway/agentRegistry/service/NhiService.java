@@ -7,7 +7,7 @@ import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayAgentSess
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayNhiRepository;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditEventType;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditStatus;
-import com.ws.wsAgenticSecurityGateway.audit.entity.McpAuditLog;
+import com.ws.wsAgenticSecurityGateway.audit.entity.GatewayAuditLog;
 import com.ws.wsAgenticSecurityGateway.audit.repository.GatewayAuditLogRepository;
 import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
 import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
@@ -301,7 +301,7 @@ public class NhiService {
                 .map(GatewayAgentSessionEntity::getSessionId)
                 .collect(Collectors.toList());
 
-        List<McpAuditLog> toolCallLogs = auditLogRepository.findAll((root, query, cb) -> {
+        List<GatewayAuditLog> toolCallLogs = auditLogRepository.findAll((root, query, cb) -> {
             query.orderBy(cb.desc(root.get("timestamp")));
             return cb.and(
                     root.get("sessionId").in(sessionIds),
@@ -324,12 +324,12 @@ public class NhiService {
             List<GatewayAgentSessionEntity> agentSessions = e.getValue();
             Set<String> agentSessionIds = sessionIdsByAgent.get(agentName);
 
-            List<McpAuditLog> agentLogs = toolCallLogs.stream()
+            List<GatewayAuditLog> agentLogs = toolCallLogs.stream()
                     .filter(l -> agentSessionIds.contains(l.getSessionId()))
                     .collect(Collectors.toList());
 
             Set<String> toolsUsed = agentLogs.stream()
-                    .map(McpAuditLog::getCapabilityName)
+                    .map(GatewayAuditLog::getCapabilityName)
                     .filter(Objects::nonNull)
                     .collect(Collectors.toSet());
 
@@ -382,14 +382,14 @@ public class NhiService {
                 .map(GatewayAgentSessionEntity::getSessionId)
                 .collect(Collectors.toList());
 
-        List<McpAuditLog> windowLogs = windowSessionIds.isEmpty() ? List.of()
+        List<GatewayAuditLog> windowLogs = windowSessionIds.isEmpty() ? List.of()
                 : auditLogRepository.findAll((root, query, cb) ->
                 cb.and(
                         root.get("sessionId").in(windowSessionIds),
                         cb.greaterThan(root.get("timestamp"), since)
                 ));
 
-        List<McpAuditLog> toolCallLogs = windowLogs.stream()
+        List<GatewayAuditLog> toolCallLogs = windowLogs.stream()
                 .filter(l -> l.getEventType() == AuditEventType.ORCHESTRATION_RESPONSE_RETURNED)
                 .collect(Collectors.toList());
 
@@ -411,7 +411,7 @@ public class NhiService {
                         + String.format("%.1f", baselineSessions) + ")"));
 
         Set<String> uniqueTools = toolCallLogs.stream()
-                .map(McpAuditLog::getCapabilityName)
+                .map(GatewayAuditLog::getCapabilityName)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
         List<String> allSessionIds = sessions.stream()
@@ -422,7 +422,7 @@ public class NhiService {
                         root.get("sessionId").in(allSessionIds),
                         root.get("eventType").in(AuditEventType.ORCHESTRATION_RESPONSE_RETURNED),
                         cb.isNotNull(root.get("capabilityName"))
-                )).stream().map(McpAuditLog::getCapabilityName).collect(Collectors.toSet());
+                )).stream().map(GatewayAuditLog::getCapabilityName).collect(Collectors.toSet());
 
         int toolBreadthScore = uniqueTools.size() > 10 ? 12 : uniqueTools.size() > 6 ? 5 : 0;
         totalScore += toolBreadthScore;
@@ -472,7 +472,7 @@ public class NhiService {
                         root.get("eventType").in(AuditEventType.ORCHESTRATION_RESPONSE_RETURNED),
                         cb.isNotNull(root.get("capabilityName")),
                         cb.lessThan(root.get("timestamp"), since)
-                )).stream().map(McpAuditLog::getCapabilityName).collect(Collectors.toSet());
+                )).stream().map(GatewayAuditLog::getCapabilityName).collect(Collectors.toSet());
 
         Set<String> newTools = uniqueTools.stream()
                 .filter(t -> !historicalTools.contains(t))

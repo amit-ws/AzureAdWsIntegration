@@ -2,6 +2,7 @@ package com.ws.wsAgenticSecurityGateway.protocol.mcp.inbound;
 
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor;
+import com.ws.wsAgenticSecurityGateway.capabilityRegistry.event.CapabilityRegistryChangedEvent;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
 import com.ws.wsAgenticSecurityGateway.protocol.mcp.inbound.ToolCallOrchestrator;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -19,12 +20,16 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.event.EventListener;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.function.Function;
 
@@ -51,6 +56,14 @@ public class StatelessMcpServerInitializer implements ApplicationRunner {
     private final ObjectMapper objectMapper;
 
     private McpStatelessSyncServer server;
+
+    // Live registration signatures (publicName/uri -> signature) so the runtime refresh can diff the SDK
+    // server's registration against the registry — mirrors the session server, minus client notifications
+    // (stateless clients re-query tools/list on every request, so there is nothing to notify).
+    private final Object refreshLock = new Object();
+    private final Map<String, String> registeredToolSignatures = new HashMap<>();
+    private final Map<String, String> registeredPromptSignatures = new HashMap<>();
+    private final Map<String, String> registeredResourceSignatures = new HashMap<>();
 
     public StatelessMcpServerInitializer(HttpServletStatelessServerTransport transport,
                                          CapabilityRegistryService registryService,
@@ -81,6 +94,7 @@ public class StatelessMcpServerInitializer implements ApplicationRunner {
             List<McpStatelessServerFeatures.SyncToolSpecification> toolSpecs = new ArrayList<>();
             for (CapabilityDescriptor descriptor : toolDescriptors) {
                 toolSpecs.add(toStatelessToolSpec(descriptor));
+                registeredToolSignatures.put(descriptor.getPublicName(), toolSignature(descriptor));
             }
             if (!toolSpecs.isEmpty()) {
                 builder.tools(toolSpecs);
@@ -90,6 +104,7 @@ public class StatelessMcpServerInitializer implements ApplicationRunner {
             List<McpStatelessServerFeatures.SyncPromptSpecification> promptSpecs = new ArrayList<>();
             for (CapabilityDescriptor descriptor : promptDescriptors) {
                 promptSpecs.add(toStatelessPromptSpec(descriptor));
+                registeredPromptSignatures.put(descriptor.getPublicName(), promptSignature(descriptor));
             }
             if (!promptSpecs.isEmpty()) {
                 builder.prompts(promptSpecs);
@@ -99,6 +114,7 @@ public class StatelessMcpServerInitializer implements ApplicationRunner {
             List<McpStatelessServerFeatures.SyncResourceSpecification> resourceSpecs = new ArrayList<>();
             for (CapabilityDescriptor descriptor : resourceDescriptors) {
                 resourceSpecs.add(toStatelessResourceSpec(descriptor));
+                registeredResourceSignatures.put(descriptor.getResourceUri(), resourceSignature(descriptor));
             }
             if (!resourceSpecs.isEmpty()) {
                 builder.resources(resourceSpecs);
@@ -121,6 +137,127 @@ public class StatelessMcpServerInitializer implements ApplicationRunner {
                 log.debug("Stateless server shutdown: {}", e.getMessage());
             }
         }
+    }
+
+    /**
+     * Keep the stateless server's registered capabilities in sync with the registry when downstream servers
+     * are (dis)connected AFTER startup — the stateless counterpart of the session server's refresh. Without
+     * this, a server configured after boot (e.g. a fresh schema where the admin adds a server post-startup)
+     * would never appear in {@code tools/list}. No client notifications: stateless clients re-query on each
+     * request.
+     */
+    @EventListener
+    public void onCapabilityRegistryChanged(CapabilityRegistryChangedEvent event) {
+        reconcileCapabilities(event.getReason(), event.getServerConfigName());
+    }
+
+    private void reconcileCapabilities(String reason, String serverConfigName) {
+        synchronized (refreshLock) {
+            if (server == null) {
+                log.debug("Skipping stateless capability refresh (reason={}, server={}): not initialized yet",
+                        reason, serverConfigName);
+                return;
+            }
+            int tAdd = 0, tUpd = 0, tRem = 0, pAdd = 0, pUpd = 0, pRem = 0, rAdd = 0, rUpd = 0, rRem = 0;
+
+            Map<String, CapabilityDescriptor> desiredTools = new LinkedHashMap<>();
+            for (CapabilityDescriptor d : registryService.getToolDescriptors()) desiredTools.put(d.getPublicName(), d);
+            Map<String, CapabilityDescriptor> desiredPrompts = new LinkedHashMap<>();
+            for (CapabilityDescriptor d : registryService.getPromptDescriptors()) desiredPrompts.put(d.getPublicName(), d);
+            Map<String, CapabilityDescriptor> desiredResources = new LinkedHashMap<>();
+            for (CapabilityDescriptor d : registryService.getResourceDescriptors()) desiredResources.put(d.getResourceUri(), d);
+
+            // Tools (keyed by public name)
+            for (String name : new ArrayList<>(registeredToolSignatures.keySet())) {
+                if (!desiredTools.containsKey(name) && safeRemoveTool(name)) {
+                    registeredToolSignatures.remove(name); tRem++;
+                }
+            }
+            for (CapabilityDescriptor d : desiredTools.values()) {
+                String name = d.getPublicName(), sig = toolSignature(d), cur = registeredToolSignatures.get(name);
+                if (cur == null) {
+                    if (safeAddTool(d)) { registeredToolSignatures.put(name, sig); tAdd++; }
+                } else if (!cur.equals(sig) && safeRemoveTool(name)) {
+                    registeredToolSignatures.remove(name);
+                    if (safeAddTool(d)) { registeredToolSignatures.put(name, sig); tUpd++; }
+                }
+            }
+
+            // Prompts (keyed by public name)
+            for (String name : new ArrayList<>(registeredPromptSignatures.keySet())) {
+                if (!desiredPrompts.containsKey(name) && safeRemovePrompt(name)) {
+                    registeredPromptSignatures.remove(name); pRem++;
+                }
+            }
+            for (CapabilityDescriptor d : desiredPrompts.values()) {
+                String name = d.getPublicName(), sig = promptSignature(d), cur = registeredPromptSignatures.get(name);
+                if (cur == null) {
+                    if (safeAddPrompt(d)) { registeredPromptSignatures.put(name, sig); pAdd++; }
+                } else if (!cur.equals(sig) && safeRemovePrompt(name)) {
+                    registeredPromptSignatures.remove(name);
+                    if (safeAddPrompt(d)) { registeredPromptSignatures.put(name, sig); pUpd++; }
+                }
+            }
+
+            // Resources (keyed by uri)
+            for (String uri : new ArrayList<>(registeredResourceSignatures.keySet())) {
+                if (!desiredResources.containsKey(uri) && safeRemoveResource(uri)) {
+                    registeredResourceSignatures.remove(uri); rRem++;
+                }
+            }
+            for (CapabilityDescriptor d : desiredResources.values()) {
+                String uri = d.getResourceUri(), sig = resourceSignature(d), cur = registeredResourceSignatures.get(uri);
+                if (cur == null) {
+                    if (safeAddResource(d)) { registeredResourceSignatures.put(uri, sig); rAdd++; }
+                } else if (!cur.equals(sig) && safeRemoveResource(uri)) {
+                    registeredResourceSignatures.remove(uri);
+                    if (safeAddResource(d)) { registeredResourceSignatures.put(uri, sig); rUpd++; }
+                }
+            }
+
+            if (tAdd + tUpd + tRem + pAdd + pUpd + pRem + rAdd + rUpd + rRem > 0) {
+ log.info("Stateless MCP capability refresh [{}:{}] tools(+{},~{},-{}), prompts(+{},~{},-{}), resources(+{},~{},-{})",
+                        reason, serverConfigName, tAdd, tUpd, tRem, pAdd, pUpd, pRem, rAdd, rUpd, rRem);
+            }
+        }
+    }
+
+    private boolean safeAddTool(CapabilityDescriptor d) {
+        try { server.addTool(toStatelessToolSpec(d)); return true; }
+        catch (Exception e) { log.error("stateless addTool '{}' failed: {}", d.getPublicName(), e.getMessage()); return false; }
+    }
+    private boolean safeRemoveTool(String name) {
+        try { server.removeTool(name); return true; }
+        catch (Exception e) { log.error("stateless removeTool '{}' failed: {}", name, e.getMessage()); return false; }
+    }
+    private boolean safeAddPrompt(CapabilityDescriptor d) {
+        try { server.addPrompt(toStatelessPromptSpec(d)); return true; }
+        catch (Exception e) { log.error("stateless addPrompt '{}' failed: {}", d.getPublicName(), e.getMessage()); return false; }
+    }
+    private boolean safeRemovePrompt(String name) {
+        try { server.removePrompt(name); return true; }
+        catch (Exception e) { log.error("stateless removePrompt '{}' failed: {}", name, e.getMessage()); return false; }
+    }
+    private boolean safeAddResource(CapabilityDescriptor d) {
+        try { server.addResource(toStatelessResourceSpec(d)); return true; }
+        catch (Exception e) { log.error("stateless addResource '{}' failed: {}", d.getResourceUri(), e.getMessage()); return false; }
+    }
+    private boolean safeRemoveResource(String uri) {
+        try { server.removeResource(uri); return true; }
+        catch (Exception e) { log.error("stateless removeResource '{}' failed: {}", uri, e.getMessage()); return false; }
+    }
+
+    private static String toolSignature(CapabilityDescriptor d) {
+        return String.join("", nz(d.getServerConfigName()), nz(d.getOriginalName()), nz(d.getDescription()), nz(d.getInputSchema()));
+    }
+    private static String promptSignature(CapabilityDescriptor d) {
+        return String.join("", nz(d.getServerConfigName()), nz(d.getOriginalName()), nz(d.getDescription()), nz(d.getArguments()));
+    }
+    private static String resourceSignature(CapabilityDescriptor d) {
+        return String.join("", nz(d.getServerConfigName()), nz(d.getResourceUri()), nz(d.getDescription()), nz(d.getMimeType()));
+    }
+    private static String nz(String s) {
+        return s == null ? "" : s;
     }
 
     private McpStatelessServerFeatures.SyncToolSpecification toStatelessToolSpec(CapabilityDescriptor descriptor) {

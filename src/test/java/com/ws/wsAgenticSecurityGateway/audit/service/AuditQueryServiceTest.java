@@ -2,7 +2,7 @@ package com.ws.wsAgenticSecurityGateway.audit.service;
 
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditEventType;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditModule;
-import com.ws.wsAgenticSecurityGateway.audit.entity.McpAuditLog;
+import com.ws.wsAgenticSecurityGateway.audit.entity.GatewayAuditLog;
 import com.ws.wsAgenticSecurityGateway.audit.repository.GatewayAuditLogRepository;
 import com.ws.wsAgenticSecurityGateway.audit.repository.PdpAuditLogRepository;
 import org.junit.jupiter.api.Test;
@@ -25,8 +25,8 @@ class AuditQueryServiceTest {
     private final PdpAuditLogRepository pdpAuditRepo = mock(PdpAuditLogRepository.class);
     private final AuditQueryService service = new AuditQueryService(auditRepo, pdpAuditRepo);
 
-    private static McpAuditLog event(String traceId, String corrId, int seq, AuditEventType type) {
-        return McpAuditLog.builder()
+    private static GatewayAuditLog event(String traceId, String corrId, int seq, AuditEventType type) {
+        return GatewayAuditLog.builder()
                 .traceId(traceId).correlationId(corrId).eventSequence(seq)
                 .module(AuditModule.ORCHESTRATION_LAYER).eventType(type)
                 .timestamp(LocalDateTime.now()).build();
@@ -40,7 +40,7 @@ class AuditQueryServiceTest {
                 event("trace-1", "corr-1", 1, AuditEventType.AGENT_DEPROVISIONED)));
         when(pdpAuditRepo.findByCorrelationId(any())).thenReturn(List.of());
 
-        List<McpAuditLog> chain = service.getTraceChain("trace-1");
+        List<GatewayAuditLog> chain = service.getTraceChain("trace-1");
 
         assertThat(chain).hasSize(2);
         assertThat(chain.get(0).getEventSequence()).isEqualTo(1);

@@ -18,7 +18,7 @@ import java.util.List;
 import java.util.UUID;
 
 @Entity
-@Table(name = "mcp_audit_log", schema = "ws_agentic_security",
+@Table(name = "gateway_audit_log", schema = "ws_agentic_security",
         indexes = {
                 @Index(name = "idx_audit_event_type", columnList = "event_type"),
                 @Index(name = "idx_audit_module", columnList = "module"),
@@ -34,7 +34,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class McpAuditLog {
+public class GatewayAuditLog {
 
     @Id
     @GeneratedValue(generator = "UUID")
@@ -42,6 +42,11 @@ public class McpAuditLog {
 
     @Column(name = "ws_tenant_name", nullable = false)
     private String wsTenantName;
+
+    /** Which protocol adapter produced this event — {@code MCP} today, {@code A2A} once that adapter lands. */
+    @Column(name = "protocol", nullable = false, length = 20)
+    @Builder.Default
+    private String protocol = "MCP";
 
     @Enumerated(EnumType.STRING)
     @Column(name = "event_type", nullable = false, length = 60)
@@ -122,8 +127,8 @@ public class McpAuditLog {
     @Column(name = "capability_type", length = 20)
     private String capabilityType;
 
-    @Column(name = "mcp_method", length = 128)
-    private String mcpMethod;
+    @Column(name = "protocol_method", length = 128)
+    private String protocolMethod;
 
     @Column(name = "protocol_version", length = 20)
     private String protocolVersion;

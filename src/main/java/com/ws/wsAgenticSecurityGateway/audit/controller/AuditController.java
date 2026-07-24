@@ -6,7 +6,7 @@ import com.ws.wsAgenticSecurityGateway.audit.constants.AuditSeverity;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditStatus;
 import com.ws.wsAgenticSecurityGateway.audit.dto.AgentActivity;
 import com.ws.wsAgenticSecurityGateway.audit.dto.IdentityGraph;
-import com.ws.wsAgenticSecurityGateway.audit.entity.McpAuditLog;
+import com.ws.wsAgenticSecurityGateway.audit.entity.GatewayAuditLog;
 import com.ws.wsAgenticSecurityGateway.audit.service.AuditQueryService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -31,7 +31,7 @@ public class AuditController {
     }
 
     @GetMapping("/logs")
-    public ResponseEntity<Page<McpAuditLog>> getLogs(
+    public ResponseEntity<Page<GatewayAuditLog>> getLogs(
             @RequestParam(required = false) String module,
             @RequestParam(required = false) String eventType,
             @RequestParam(required = false) String status,
@@ -65,7 +65,7 @@ public class AuditController {
         AuditStatus statusEnum = parseEnum(AuditStatus.class, status);
         AuditSeverity severityEnum = parseEnum(AuditSeverity.class, severity);
 
-        Page<McpAuditLog> results = auditQueryService.queryLogs(
+        Page<GatewayAuditLog> results = auditQueryService.queryLogs(
                 moduleEnum, eventTypeEnum, statusEnum, severityEnum,
                 serverName, capabilityName, correlationId, traceId, sessionId,
                 agentName, tokenType, userIdentity, sourceIp,
@@ -74,7 +74,7 @@ public class AuditController {
     }
 
     @GetMapping("/logs/{id}")
-    public ResponseEntity<McpAuditLog> getLogById(@PathVariable UUID id) {
+    public ResponseEntity<GatewayAuditLog> getLogById(@PathVariable UUID id) {
  log.info("GET /api/admin/audit/logs/{}", id);
         return auditQueryService.findById(id)
                 .map(ResponseEntity::ok)
@@ -82,16 +82,16 @@ public class AuditController {
     }
 
     @GetMapping("/logs/correlation/{correlationId}")
-    public ResponseEntity<List<McpAuditLog>> getByCorrelationId(@PathVariable String correlationId) {
+    public ResponseEntity<List<GatewayAuditLog>> getByCorrelationId(@PathVariable String correlationId) {
  log.info("GET /api/admin/audit/logs/correlation/{}", correlationId);
-        List<McpAuditLog> records = auditQueryService.getCorrelationChain(correlationId);
+        List<GatewayAuditLog> records = auditQueryService.getCorrelationChain(correlationId);
         return ResponseEntity.ok(records);
     }
 
     @GetMapping("/logs/trace/{traceId}")
-    public ResponseEntity<List<McpAuditLog>> getByTraceId(@PathVariable String traceId) {
+    public ResponseEntity<List<GatewayAuditLog>> getByTraceId(@PathVariable String traceId) {
  log.info("GET /api/admin/audit/logs/trace/{}", traceId);
-        List<McpAuditLog> records = auditQueryService.getTraceChain(traceId);
+        List<GatewayAuditLog> records = auditQueryService.getTraceChain(traceId);
         return ResponseEntity.ok(records);
     }
 

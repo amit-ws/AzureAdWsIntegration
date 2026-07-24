@@ -118,7 +118,7 @@ public class HttpMcpAuditFilter implements Filter {
         JsonNode requestJson = parseRequestJson(wrappedRequest.getCachedBody());
         String requestIdRaw = extractRequestIdRaw(requestJson);
         String requestId = extractRequestId(requestJson);
-        String mcpMethod = requestJson != null ? requestJson.path("method").asText("") : "";
+        String protocolMethod = requestJson != null ? requestJson.path("method").asText("") : "";
 
         String sessionId = wrappedRequest.getHeader("Mcp-Session-Id");
         if (sessionId != null && blockedSessionIds.contains(sessionId)) {
@@ -128,7 +128,7 @@ public class HttpMcpAuditFilter implements Filter {
                     requestId,
                     blockedAgentName,
                     null,
-                    mcpMethod,
+                    protocolMethod,
                     "HTTP",
                     "Blocked session attempted request; reconnect after admin approval.");
             rejectBlocked(httpResponse, requestIdRaw, GatewayErrorCode.AGENT_BLOCKED,
@@ -136,7 +136,7 @@ public class HttpMcpAuditFilter implements Filter {
             return;
         }
 
-        boolean isExecutionMethod = EXECUTION_METHODS.contains(mcpMethod);
+        boolean isExecutionMethod = EXECUTION_METHODS.contains(protocolMethod);
         String reqJwtSubject = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_SUBJECT);
 
         if (reqJwtSubject != null) {
@@ -145,9 +145,9 @@ public class HttpMcpAuditFilter implements Filter {
                 String humanUsername = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_PREFERRED_USERNAME);
                 String displayUsername = humanUsername != null ? humanUsername : reqJwtSubject;
                 log.warn("Request rejected — human '{}' BLOCKED, session={}, method={}",
-                        displayUsername, sessionId, mcpMethod);
+                        displayUsername, sessionId, protocolMethod);
                 auditService.auditHumanConnectionRejected(sessionId, requestId,
-                        displayUsername, reqJwtSubject, resolveAgentName(sessionId), mcpMethod,
+                        displayUsername, reqJwtSubject, resolveAgentName(sessionId), protocolMethod,
                         "Human user '" + displayUsername + "' is BLOCKED");
                 rejectBlocked(httpResponse, requestIdRaw, GatewayErrorCode.HUMAN_BLOCKED,
                         "Your account '" + displayUsername
@@ -159,9 +159,9 @@ public class HttpMcpAuditFilter implements Filter {
                 String humanUsername = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_PREFERRED_USERNAME);
                 String displayUsername = humanUsername != null ? humanUsername : reqJwtSubject;
                 log.warn("Execution rejected — human '{}' PENDING approval, session={}, method={}",
-                        displayUsername, sessionId, mcpMethod);
+                        displayUsername, sessionId, protocolMethod);
                 auditService.auditHumanConnectionRejected(sessionId, requestId,
-                        displayUsername, reqJwtSubject, resolveAgentName(sessionId), mcpMethod,
+                        displayUsername, reqJwtSubject, resolveAgentName(sessionId), protocolMethod,
                         "Human user '" + displayUsername + "' is PENDING admin approval");
                 rejectBlocked(httpResponse, requestIdRaw, GatewayErrorCode.HUMAN_PENDING_APPROVAL,
                         "Your account '" + displayUsername
@@ -175,9 +175,9 @@ public class HttpMcpAuditFilter implements Filter {
                 String nhiClientId = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_CLIENT_ID);
                 String displayName = nhiClientId != null ? nhiClientId : reqJwtSubject;
                 log.warn("Request rejected — NHI '{}' BLOCKED, session={}, method={}",
-                        displayName, sessionId, mcpMethod);
+                        displayName, sessionId, protocolMethod);
                 auditService.auditNhiConnectionRejected(sessionId, requestId,
-                        displayName, nhiClientId, reqJwtSubject, resolveAgentName(sessionId), mcpMethod,
+                        displayName, nhiClientId, reqJwtSubject, resolveAgentName(sessionId), protocolMethod,
                         "Service identity '" + displayName + "' is BLOCKED");
                 rejectBlocked(httpResponse, requestIdRaw, GatewayErrorCode.NHI_BLOCKED,
                         "Service identity '" + displayName
@@ -189,9 +189,9 @@ public class HttpMcpAuditFilter implements Filter {
                 String nhiClientId = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_CLIENT_ID);
                 String displayName = nhiClientId != null ? nhiClientId : reqJwtSubject;
                 log.warn("Execution rejected — NHI '{}' PENDING approval, session={}, method={}",
-                        displayName, sessionId, mcpMethod);
+                        displayName, sessionId, protocolMethod);
                 auditService.auditNhiConnectionRejected(sessionId, requestId,
-                        displayName, nhiClientId, reqJwtSubject, resolveAgentName(sessionId), mcpMethod,
+                        displayName, nhiClientId, reqJwtSubject, resolveAgentName(sessionId), protocolMethod,
                         "Service identity '" + displayName + "' is PENDING admin approval");
                 rejectBlocked(httpResponse, requestIdRaw, GatewayErrorCode.NHI_PENDING_APPROVAL,
                         "Service identity '" + displayName
@@ -206,9 +206,9 @@ public class HttpMcpAuditFilter implements Filter {
             if ("DEPROVISIONED".equals(lifecycleStatus)) {
                 String deprovAgentName = agentRegistryService.getAgentNameForSession(sessionId);
                 log.warn("Request rejected — agent '{}' DEPROVISIONED, session={}, method={}",
-                        deprovAgentName, sessionId, mcpMethod);
+                        deprovAgentName, sessionId, protocolMethod);
                 auditService.auditAgentConnectionRejected(sessionId, requestId,
-                        deprovAgentName, null, mcpMethod, "HTTP",
+                        deprovAgentName, null, protocolMethod, "HTTP",
                         "Agent '" + deprovAgentName + "' has been deprovisioned");
                 rejectBlocked(httpResponse, requestIdRaw, GatewayErrorCode.AGENT_DEPROVISIONED,
                         "Agent '" + deprovAgentName
@@ -219,9 +219,9 @@ public class HttpMcpAuditFilter implements Filter {
             if ("BLOCKED".equals(agentStatus)) {
                 String blockedAgentName = agentRegistryService.getAgentNameForSession(sessionId);
                 log.warn("Request rejected — agent '{}' BLOCKED, session={}, method={}",
-                        blockedAgentName, sessionId, mcpMethod);
+                        blockedAgentName, sessionId, protocolMethod);
                 auditService.auditAgentConnectionRejected(sessionId, requestId,
-                        blockedAgentName, null, mcpMethod, "HTTP",
+                        blockedAgentName, null, protocolMethod, "HTTP",
                         "Agent '" + blockedAgentName + "' is BLOCKED");
                 rejectBlocked(httpResponse, requestIdRaw, GatewayErrorCode.AGENT_BLOCKED,
                         "Agent '" + blockedAgentName
@@ -231,9 +231,9 @@ public class HttpMcpAuditFilter implements Filter {
             if (isExecutionMethod && "PENDING".equals(agentStatus)) {
                 String pendingAgentName = agentRegistryService.getAgentNameForSession(sessionId);
                 log.warn("Execution rejected — agent '{}' PENDING approval, session={}, method={}",
-                        pendingAgentName, sessionId, mcpMethod);
+                        pendingAgentName, sessionId, protocolMethod);
                 auditService.auditAgentConnectionRejected(sessionId, requestId,
-                        pendingAgentName, null, mcpMethod, "HTTP",
+                        pendingAgentName, null, protocolMethod, "HTTP",
                         "Agent '" + pendingAgentName + "' is PENDING admin approval");
                 rejectBlocked(httpResponse, requestIdRaw, GatewayErrorCode.AGENT_PENDING_APPROVAL,
                         "Agent '" + pendingAgentName
@@ -243,7 +243,7 @@ public class HttpMcpAuditFilter implements Filter {
             }
         }
 
-        if (sessionId != null && !"initialize".equals(mcpMethod)) {
+        if (sessionId != null && !"initialize".equals(protocolMethod)) {
             String jwtSubject = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_SUBJECT);
             String foundingSub = sessionIdentityCache.get(sessionId);
             if (foundingSub != null && jwtSubject != null && !foundingSub.equals(jwtSubject)) {
@@ -274,7 +274,7 @@ public class HttpMcpAuditFilter implements Filter {
             }
         }
 
-        if ("initialize".equals(mcpMethod) && requestJson != null) {
+        if ("initialize".equals(protocolMethod) && requestJson != null) {
             JsonNode clientInfoNode = requestJson.path("params").path("clientInfo");
             String agentName = clientInfoNode.path("name").asText("unknown");
             String agentVersion = clientInfoNode.path("version").asText(null);
@@ -316,7 +316,7 @@ public class HttpMcpAuditFilter implements Filter {
 
         long startTime = System.currentTimeMillis();
 
-        boolean shouldFilterResponse = LIST_METHODS.contains(mcpMethod) && sessionId != null;
+        boolean shouldFilterResponse = LIST_METHODS.contains(protocolMethod) && sessionId != null;
         UUID filterAgentId = null;
         if (shouldFilterResponse) {
             filterAgentId = capabilityFilterService.resolveAgentId(sessionId);
@@ -330,7 +330,7 @@ public class HttpMcpAuditFilter implements Filter {
 
             long durationMs = System.currentTimeMillis() - startTime;
 
-            filterListResponse(responseWrapper, httpResponse, filterAgentId, mcpMethod);
+            filterListResponse(responseWrapper, httpResponse, filterAgentId, protocolMethod);
 
             afterSdkProcessing(wrappedRequest, httpResponse, durationMs);
         } else {
@@ -351,7 +351,7 @@ public class HttpMcpAuditFilter implements Filter {
                 return;
 
             JsonNode json = objectMapper.readTree(body);
-            String mcpMethod = json.path("method").asText("");
+            String protocolMethod = json.path("method").asText("");
             String requestId = json.has("id") ? json.get("id").asText() : null;
 
             String sessionId = httpResponse.getHeader("Mcp-Session-Id");
@@ -361,7 +361,7 @@ public class HttpMcpAuditFilter implements Filter {
             if (sessionId == null)
                 return;
 
-            switch (mcpMethod) {
+            switch (protocolMethod) {
                 case "initialize" -> handleInitialize(json, sessionId, requestId, wrappedRequest);
                 case "tools/list" -> handleToolsList(sessionId, requestId, durationMs);
                 case "prompts/list" -> handlePromptsList(sessionId, requestId, durationMs);
@@ -369,8 +369,8 @@ public class HttpMcpAuditFilter implements Filter {
                 case "notifications/initialized" -> {
                 }
                 default -> {
-                    if (requestId == null && !mcpMethod.isEmpty()) {
-                        handleNotification(sessionId, mcpMethod, json.path("params"));
+                    if (requestId == null && !protocolMethod.isEmpty()) {
+                        handleNotification(sessionId, protocolMethod, json.path("params"));
                     }
                 }
             }
@@ -609,7 +609,7 @@ public class HttpMcpAuditFilter implements Filter {
     private void filterListResponse(ContentCachingResponseWrapper responseWrapper,
                                       HttpServletResponse originalResponse,
                                       UUID agentId,
-                                      String mcpMethod) {
+                                      String protocolMethod) {
         try {
             byte[] responseBody = responseWrapper.getContentAsByteArray();
             if (responseBody.length == 0) {
@@ -619,12 +619,12 @@ public class HttpMcpAuditFilter implements Filter {
 
             String capabilityType;
             String resultArrayField;
-            switch (mcpMethod) {
+            switch (protocolMethod) {
                 case "tools/list" -> { capabilityType = "TOOL"; resultArrayField = "tools"; }
                 case "prompts/list" -> { capabilityType = "PROMPT"; resultArrayField = "prompts"; }
                 case "resources/list", "resources/templates/list" -> {
                     capabilityType = "RESOURCE"; resultArrayField = "resources";
-                    if ("resources/templates/list".equals(mcpMethod)) {
+                    if ("resources/templates/list".equals(protocolMethod)) {
                         resultArrayField = "resourceTemplates";
                     }
                 }
@@ -692,11 +692,11 @@ public class HttpMcpAuditFilter implements Filter {
             originalResponse.getOutputStream().flush();
 
             log.debug("Filtered {}: {} -> {} items for agent {}",
-                    mcpMethod, itemsArray.size(), filteredArray.size(), agentId);
+                    protocolMethod, itemsArray.size(), filteredArray.size(), agentId);
 
         } catch (Exception e) {
             log.error("Error filtering {} response for agent {}: {}",
-                    mcpMethod, agentId, e.getMessage(), e);
+                    protocolMethod, agentId, e.getMessage(), e);
             try {
                 responseWrapper.copyBodyToResponse();
             } catch (IOException ioe) {

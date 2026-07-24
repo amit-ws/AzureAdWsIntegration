@@ -7,7 +7,7 @@ import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayNhiEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.HumanUserService;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.NhiService;
-import com.ws.wsAgenticSecurityGateway.audit.entity.McpAuditLog;
+import com.ws.wsAgenticSecurityGateway.audit.entity.GatewayAuditLog;
 import com.ws.wsAgenticSecurityGateway.audit.service.AuditQueryService;
 import lombok.extern.slf4j.Slf4j;
 import jakarta.servlet.http.HttpServletRequest;
@@ -202,11 +202,11 @@ public class AgentController {
                 () -> sessionInfo.put("sessionId", sessionId)
         );
 
-        Page<McpAuditLog> auditPage = auditQueryService.getSessionTimeline(
+        Page<GatewayAuditLog> auditPage = auditQueryService.getSessionTimeline(
                 sessionId, PageRequest.of(page, size));
 
         List<Map<String, Object>> timeline = new ArrayList<>();
-        for (McpAuditLog entry : auditPage.getContent()) {
+        for (GatewayAuditLog entry : auditPage.getContent()) {
             Map<String, Object> event = new LinkedHashMap<>();
             event.put("id", entry.getId());
             event.put("timestamp", entry.getTimestamp());

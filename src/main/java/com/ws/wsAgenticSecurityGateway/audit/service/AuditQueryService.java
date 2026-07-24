@@ -6,7 +6,7 @@ import com.ws.wsAgenticSecurityGateway.audit.constants.AuditSeverity;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditStatus;
 import com.ws.wsAgenticSecurityGateway.audit.dto.AgentActivity;
 import com.ws.wsAgenticSecurityGateway.audit.dto.IdentityGraph;
-import com.ws.wsAgenticSecurityGateway.audit.entity.McpAuditLog;
+import com.ws.wsAgenticSecurityGateway.audit.entity.GatewayAuditLog;
 import com.ws.wsAgenticSecurityGateway.audit.entity.PdpAuditLog;
 import com.ws.wsAgenticSecurityGateway.audit.repository.GatewayAuditLogRepository;
 import com.ws.wsAgenticSecurityGateway.audit.repository.GatewayAuditLogSpecification;
@@ -34,7 +34,7 @@ public class AuditQueryService {
         this.pdpAuditRepo = pdpAuditRepo;
     }
 
-    public Page<McpAuditLog> queryLogs(AuditModule module, AuditEventType eventType,
+    public Page<GatewayAuditLog> queryLogs(AuditModule module, AuditEventType eventType,
                                         AuditStatus status, AuditSeverity severity,
                                         String serverName, String capabilityName,
                                         String correlationId, String traceId, String sessionId,
@@ -51,7 +51,7 @@ public class AuditQueryService {
         return auditRepo.findAll(spec, pageRequest);
     }
 
-    public Optional<McpAuditLog> findById(UUID id) {
+    public Optional<GatewayAuditLog> findById(UUID id) {
         return auditRepo.findById(id)
                 .filter(entry -> {
                     String tenant = TenantContext.get();
@@ -59,14 +59,14 @@ public class AuditQueryService {
                 });
     }
 
-    public List<McpAuditLog> getCorrelationChain(String correlationId) {
-        List<McpAuditLog> records = new ArrayList<>(auditRepo.findByCorrelationId(correlationId));
+    public List<GatewayAuditLog> getCorrelationChain(String correlationId) {
+        List<GatewayAuditLog> records = new ArrayList<>(auditRepo.findByCorrelationId(correlationId));
 
         Set<AuditEventType> existingPdpTypes = records.stream()
                 .filter(r -> r.getModule() == AuditModule.PDP
                         && (r.getEventType() == AuditEventType.PDP_EVALUATION_REQUESTED
                             || r.getEventType() == AuditEventType.PDP_DECISION_RENDERED))
-                .map(McpAuditLog::getEventType)
+                .map(GatewayAuditLog::getEventType)
                 .collect(Collectors.toSet());
 
         List<PdpAuditLog> pdpRecords = pdpAuditRepo.findByCorrelationId(correlationId);
@@ -77,9 +77,9 @@ public class AuditQueryService {
         }
 
         records.sort(Comparator
-                .comparing(McpAuditLog::getEventSequence,
+                .comparing(GatewayAuditLog::getEventSequence,
                         Comparator.nullsLast(Comparator.naturalOrder()))
-                .thenComparing(McpAuditLog::getTimestamp));
+                .thenComparing(GatewayAuditLog::getTimestamp));
         return records;
     }
 
@@ -88,11 +88,11 @@ public class AuditQueryService {
      * {@code correlationId}) of the request, single- or multi-hop. Mirrors {@link #getCorrelationChain} but
      * trace-scoped, bridging to PDP-only records (which carry no trace_id) via the correlation ids seen.
      */
-    public List<McpAuditLog> getTraceChain(String traceId) {
-        List<McpAuditLog> records = new ArrayList<>(auditRepo.findByTraceId(traceId));
+    public List<GatewayAuditLog> getTraceChain(String traceId) {
+        List<GatewayAuditLog> records = new ArrayList<>(auditRepo.findByTraceId(traceId));
 
         Set<String> correlationIds = records.stream()
-                .map(McpAuditLog::getCorrelationId)
+                .map(GatewayAuditLog::getCorrelationId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
         Set<String> existingPdpKeys = records.stream()
@@ -110,9 +110,9 @@ public class AuditQueryService {
         }
 
         records.sort(Comparator
-                .comparing(McpAuditLog::getEventSequence,
+                .comparing(GatewayAuditLog::getEventSequence,
                         Comparator.nullsLast(Comparator.naturalOrder()))
-                .thenComparing(McpAuditLog::getTimestamp));
+                .thenComparing(GatewayAuditLog::getTimestamp));
         return records;
     }
 
@@ -132,17 +132,17 @@ public class AuditQueryService {
         }
 
         // Group all events of the paged traces, preserving the (newest-first) trace order.
-        Map<String, List<McpAuditLog>> byTrace = new LinkedHashMap<>();
+        Map<String, List<GatewayAuditLog>> byTrace = new LinkedHashMap<>();
         traceIds.forEach(tid -> byTrace.put(tid, new ArrayList<>()));
-        for (McpAuditLog row : auditRepo.findByTraceIdInOrderByTimestampAsc(traceIds)) {
-            List<McpAuditLog> bucket = byTrace.get(row.getTraceId());
+        for (GatewayAuditLog row : auditRepo.findByTraceIdInOrderByTimestampAsc(traceIds)) {
+            List<GatewayAuditLog> bucket = byTrace.get(row.getTraceId());
             if (bucket != null) {
                 bucket.add(row);
             }
         }
 
         List<AgentActivity> activities = new ArrayList<>(byTrace.size());
-        for (Map.Entry<String, List<McpAuditLog>> e : byTrace.entrySet()) {
+        for (Map.Entry<String, List<GatewayAuditLog>> e : byTrace.entrySet()) {
             if (!e.getValue().isEmpty()) {
                 activities.add(summarizeActivity(e.getKey(), e.getValue()));
             }
@@ -151,15 +151,15 @@ public class AuditQueryService {
     }
 
     /** Collapse one trace's events (sorted oldest-first) into a single activity summary. */
-    private AgentActivity summarizeActivity(String traceId, List<McpAuditLog> events) {
-        String sessionId = firstNonNull(events, McpAuditLog::getSessionId);
+    private AgentActivity summarizeActivity(String traceId, List<GatewayAuditLog> events) {
+        String sessionId = firstNonNull(events, GatewayAuditLog::getSessionId);
         String transport = (sessionId != null && sessionId.startsWith("stateless-")) ? "STATELESS" : "SESSION";
         LocalDateTime startedAt = events.get(0).getTimestamp();
         LocalDateTime endedAt = events.get(events.size() - 1).getTimestamp();
 
         Set<String> tools = new LinkedHashSet<>();
         boolean denied = false, errored = false, allowed = false;
-        for (McpAuditLog ev : events) {
+        for (GatewayAuditLog ev : events) {
             if (ev.getCapabilityName() != null) {
                 tools.add(ev.getCapabilityName());
             }
@@ -186,20 +186,20 @@ public class AuditQueryService {
                 transport,
                 startedAt,
                 endedAt,
-                firstNonNull(events, McpAuditLog::getAgentName),
-                firstNonNull(events, McpAuditLog::getAgentClientId),
-                firstNonNull(events, McpAuditLog::getHumanUserId),
-                firstNonNull(events, McpAuditLog::getUserIdentity),
-                firstNonNull(events, McpAuditLog::getTokenType),
-                firstNonNull(events, McpAuditLog::getWsTenantName),
+                firstNonNull(events, GatewayAuditLog::getAgentName),
+                firstNonNull(events, GatewayAuditLog::getAgentClientId),
+                firstNonNull(events, GatewayAuditLog::getHumanUserId),
+                firstNonNull(events, GatewayAuditLog::getUserIdentity),
+                firstNonNull(events, GatewayAuditLog::getTokenType),
+                firstNonNull(events, GatewayAuditLog::getWsTenantName),
                 new ArrayList<>(tools),
-                firstNonNull(events, McpAuditLog::getServerName),
+                firstNonNull(events, GatewayAuditLog::getServerName),
                 outcome,
                 events.size());
     }
 
-    private static <T> T firstNonNull(List<McpAuditLog> events, java.util.function.Function<McpAuditLog, T> getter) {
-        for (McpAuditLog ev : events) {
+    private static <T> T firstNonNull(List<GatewayAuditLog> events, java.util.function.Function<GatewayAuditLog, T> getter) {
+        for (GatewayAuditLog ev : events) {
             T v = getter.apply(ev);
             if (v != null) {
                 return v;
@@ -461,7 +461,7 @@ public class AuditQueryService {
         return auditRepo.countByModuleAndTimestampAfter(module, since);
     }
 
-    public Page<McpAuditLog> getSessionTimeline(String sessionId, PageRequest pageRequest) {
+    public Page<GatewayAuditLog> getSessionTimeline(String sessionId, PageRequest pageRequest) {
         String tenant = TenantContext.get();
         if (tenant != null) {
             return auditRepo.findBySessionIdAndWsTenantNameOrderByTimestampDesc(sessionId, tenant, pageRequest);
@@ -469,8 +469,8 @@ public class AuditQueryService {
         return auditRepo.findBySessionIdOrderByTimestampDesc(sessionId, pageRequest);
     }
 
-    McpAuditLog toChainEntry(PdpAuditLog pdp) {
-        return McpAuditLog.builder()
+    GatewayAuditLog toChainEntry(PdpAuditLog pdp) {
+        return GatewayAuditLog.builder()
                 .id(pdp.getId())
                 .eventType(pdp.getEventType())
                 .module(AuditModule.PDP)
@@ -479,7 +479,7 @@ public class AuditQueryService {
                 .correlationId(pdp.getCorrelationId())
                 .agentName(pdp.getPdpSubject())
                 .capabilityName(pdp.getPdpResource())
-                .mcpMethod(pdp.getPdpAction())
+                .protocolMethod(pdp.getPdpAction())
                 .capabilityType(pdp.getPdpDecision())
                 .durationMs(pdp.getDurationMs())
                 .requestPayload(pdp.getPdpContext())

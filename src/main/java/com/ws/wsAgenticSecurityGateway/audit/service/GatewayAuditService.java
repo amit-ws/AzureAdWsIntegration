@@ -8,7 +8,7 @@ import com.ws.wsAgenticSecurityGateway.audit.constants.AuditEventType;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditModule;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditSeverity;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditStatus;
-import com.ws.wsAgenticSecurityGateway.audit.entity.McpAuditLog;
+import com.ws.wsAgenticSecurityGateway.audit.entity.GatewayAuditLog;
 import com.ws.wsAgenticSecurityGateway.audit.entity.PdpAuditLog;
 import com.ws.wsAgenticSecurityGateway.audit.error.GatewayErrorCode;
 import com.ws.wsAgenticSecurityGateway.audit.repository.GatewayAuditLogRepository;
@@ -103,14 +103,14 @@ public class GatewayAuditService {
                         Map<String, Object> serverInfo,
                         Map<String, Object> capabilities,
                         long durationMs) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.CLIENT_SESSION_INITIALIZED)
-                                .module(AuditModule.WS_CLIENT)
+                                .module(AuditModule.MCP_OUTBOUND)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.INFO)
                                 .sessionId(sessionId)
                                 .serverName(serverName)
-                                .mcpMethod("initialize")
+                                .protocolMethod("initialize")
                                 .protocolVersion(protocolVersion)
                                 .correlationId(generateCorrelationId())
                                 .requestPayload(toJson(Map.of("serverName", serverName)))
@@ -126,14 +126,14 @@ public class GatewayAuditService {
                         String serverName,
                         String errorMessage,
                         long durationMs) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.CLIENT_SESSION_INITIALIZED)
-                                .module(AuditModule.WS_CLIENT)
+                                .module(AuditModule.MCP_OUTBOUND)
                                 .status(AuditStatus.FAILURE)
                                 .severity(AuditSeverity.ERROR)
                                 .sessionId(sessionId)
                                 .serverName(serverName)
-                                .mcpMethod("initialize")
+                                .protocolMethod("initialize")
                                 .correlationId(generateCorrelationId())
                                 .errorCode(GatewayErrorCode.TRANSPORT_ERROR.getCode())
                                 .errorMessage(errorMessage)
@@ -143,9 +143,9 @@ public class GatewayAuditService {
 
         public void auditClientSessionDisconnectedSync(String sessionId,
                         String serverName) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.CLIENT_SESSION_DISCONNECTED)
-                                .module(AuditModule.WS_CLIENT)
+                                .module(AuditModule.MCP_OUTBOUND)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.INFO)
                                 .sessionId(sessionId)
@@ -159,9 +159,9 @@ public class GatewayAuditService {
                         String serverName,
                         int consecutiveFailures,
                         String reason) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.CLIENT_HEALTH_CHECK_FAILED)
-                                .module(AuditModule.WS_CLIENT)
+                                .module(AuditModule.MCP_OUTBOUND)
                                 .status(AuditStatus.FAILURE)
                                 .severity(consecutiveFailures >= 3 ? AuditSeverity.ERROR : AuditSeverity.WARN)
                                 .sessionId(sessionId)
@@ -177,14 +177,14 @@ public class GatewayAuditService {
                         int toolCount,
                         Object toolsList,
                         long durationMs) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.CLIENT_TOOLS_LIST_FETCHED)
-                                .module(AuditModule.WS_CLIENT)
+                                .module(AuditModule.MCP_OUTBOUND)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.INFO)
                                 .sessionId(sessionId)
                                 .serverName(serverName)
-                                .mcpMethod("tools/list")
+                                .protocolMethod("tools/list")
                                 .capabilityType("TOOL")
                                 .correlationId(generateCorrelationId())
                                 .responsePayload(toJson(Map.of(
@@ -199,14 +199,14 @@ public class GatewayAuditService {
                         String serverName,
                         String errorMessage,
                         long durationMs) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.CLIENT_TOOLS_LIST_FETCHED)
-                                .module(AuditModule.WS_CLIENT)
+                                .module(AuditModule.MCP_OUTBOUND)
                                 .status(AuditStatus.FAILURE)
                                 .severity(AuditSeverity.ERROR)
                                 .sessionId(sessionId)
                                 .serverName(serverName)
-                                .mcpMethod("tools/list")
+                                .protocolMethod("tools/list")
                                 .capabilityType("TOOL")
                                 .correlationId(generateCorrelationId())
                                 .errorCode(GatewayErrorCode.INTERNAL_ERROR.getCode())
@@ -221,14 +221,14 @@ public class GatewayAuditService {
                         int resourceCount,
                         Object resourcesList,
                         long durationMs) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.CLIENT_RESOURCES_LIST_FETCHED)
-                                .module(AuditModule.WS_CLIENT)
+                                .module(AuditModule.MCP_OUTBOUND)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.INFO)
                                 .sessionId(sessionId)
                                 .serverName(serverName)
-                                .mcpMethod("resources/list")
+                                .protocolMethod("resources/list")
                                 .capabilityType("RESOURCE")
                                 .correlationId(generateCorrelationId())
                                 .responsePayload(toJson(Map.of(
@@ -243,14 +243,14 @@ public class GatewayAuditService {
                         String serverName,
                         String errorMessage,
                         long durationMs) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.CLIENT_RESOURCES_LIST_FETCHED)
-                                .module(AuditModule.WS_CLIENT)
+                                .module(AuditModule.MCP_OUTBOUND)
                                 .status(AuditStatus.FAILURE)
                                 .severity(AuditSeverity.ERROR)
                                 .sessionId(sessionId)
                                 .serverName(serverName)
-                                .mcpMethod("resources/list")
+                                .protocolMethod("resources/list")
                                 .capabilityType("RESOURCE")
                                 .correlationId(generateCorrelationId())
                                 .errorCode(GatewayErrorCode.INTERNAL_ERROR.getCode())
@@ -265,14 +265,14 @@ public class GatewayAuditService {
                         int promptCount,
                         Object promptsList,
                         long durationMs) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.CLIENT_PROMPTS_LIST_FETCHED)
-                                .module(AuditModule.WS_CLIENT)
+                                .module(AuditModule.MCP_OUTBOUND)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.INFO)
                                 .sessionId(sessionId)
                                 .serverName(serverName)
-                                .mcpMethod("prompts/list")
+                                .protocolMethod("prompts/list")
                                 .capabilityType("PROMPT")
                                 .correlationId(generateCorrelationId())
                                 .responsePayload(toJson(Map.of(
@@ -287,14 +287,14 @@ public class GatewayAuditService {
                         String serverName,
                         String errorMessage,
                         long durationMs) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.CLIENT_PROMPTS_LIST_FETCHED)
-                                .module(AuditModule.WS_CLIENT)
+                                .module(AuditModule.MCP_OUTBOUND)
                                 .status(AuditStatus.FAILURE)
                                 .severity(AuditSeverity.ERROR)
                                 .sessionId(sessionId)
                                 .serverName(serverName)
-                                .mcpMethod("prompts/list")
+                                .protocolMethod("prompts/list")
                                 .capabilityType("PROMPT")
                                 .correlationId(generateCorrelationId())
                                 .errorCode(GatewayErrorCode.INTERNAL_ERROR.getCode())
@@ -313,16 +313,16 @@ public class GatewayAuditService {
                         long durationMs,
                         LocalDateTime firedAt,
                         Integer eventSequence) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.CLIENT_TOOL_INVOCATION)
-                                .module(AuditModule.WS_CLIENT)
+                                .module(AuditModule.MCP_OUTBOUND)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.INFO)
                                 .sessionId(sessionId)
                                 .serverName(serverName)
                                 .capabilityName(toolName)
                                 .capabilityType("TOOL")
-                                .mcpMethod("tools/call")
+                                .protocolMethod("tools/call")
                                 .correlationId(correlationId)
                                 .requestPayload(toJson(Map.of(
                                                 "toolName", toolName,
@@ -346,16 +346,16 @@ public class GatewayAuditService {
                         long durationMs,
                         LocalDateTime firedAt,
                         Integer eventSequence) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.CLIENT_TOOL_INVOCATION)
-                                .module(AuditModule.WS_CLIENT)
+                                .module(AuditModule.MCP_OUTBOUND)
                                 .status(AuditStatus.FAILURE)
                                 .severity(AuditSeverity.ERROR)
                                 .sessionId(sessionId)
                                 .serverName(serverName)
                                 .capabilityName(toolName)
                                 .capabilityType("TOOL")
-                                .mcpMethod("tools/call")
+                                .protocolMethod("tools/call")
                                 .correlationId(correlationId)
                                 .requestPayload(toJson(Map.of(
                                                 "toolName", toolName,
@@ -378,16 +378,16 @@ public class GatewayAuditService {
                         long durationMs,
                         LocalDateTime firedAt,
                         Integer eventSequence) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.CLIENT_RESOURCE_READ)
-                                .module(AuditModule.WS_CLIENT)
+                                .module(AuditModule.MCP_OUTBOUND)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.INFO)
                                 .sessionId(sessionId)
                                 .serverName(serverName)
                                 .capabilityName(resourceUri)
                                 .capabilityType("RESOURCE")
-                                .mcpMethod("resources/read")
+                                .protocolMethod("resources/read")
                                 .correlationId(correlationId)
                                 .requestPayload(toJson(Map.of("uri", resourceUri)))
                                 .responsePayload(toJson(Map.of(
@@ -407,16 +407,16 @@ public class GatewayAuditService {
                         long durationMs,
                         LocalDateTime firedAt,
                         Integer eventSequence) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.CLIENT_RESOURCE_READ)
-                                .module(AuditModule.WS_CLIENT)
+                                .module(AuditModule.MCP_OUTBOUND)
                                 .status(AuditStatus.FAILURE)
                                 .severity(AuditSeverity.ERROR)
                                 .sessionId(sessionId)
                                 .serverName(serverName)
                                 .capabilityName(resourceUri)
                                 .capabilityType("RESOURCE")
-                                .mcpMethod("resources/read")
+                                .protocolMethod("resources/read")
                                 .correlationId(correlationId)
                                 .requestPayload(toJson(Map.of("uri", resourceUri)))
                                 .errorCode(GatewayErrorCode.INTERNAL_ERROR.getCode())
@@ -431,14 +431,14 @@ public class GatewayAuditService {
         public void auditClientNotificationReceived(String sessionId,
                         String serverName,
                         String notificationType) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.CLIENT_NOTIFICATION_RECEIVED)
-                                .module(AuditModule.WS_CLIENT)
+                                .module(AuditModule.MCP_OUTBOUND)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.INFO)
                                 .sessionId(sessionId)
                                 .serverName(serverName)
-                                .mcpMethod(notificationType)
+                                .protocolMethod(notificationType)
                                 .correlationId(generateCorrelationId())
                                 .requestPayload(toJson(Map.of(
                                                 "notification", notificationType,
@@ -455,14 +455,14 @@ public class GatewayAuditService {
                         Object clientCapabilities,
                         String requestId,
                         String agentName) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.SERVER_SESSION_INITIALIZED)
-                                .module(AuditModule.WS_SERVER)
+                                .module(AuditModule.MCP_INBOUND)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.INFO)
                                 .sessionId(sessionId)
                                 .agentName(agentName)
-                                .mcpMethod("initialize")
+                                .protocolMethod("initialize")
                                 .protocolVersion(protocolVersion)
                                 .requestId(requestId)
                                 .correlationId(generateCorrelationId())
@@ -479,15 +479,15 @@ public class GatewayAuditService {
                         long durationMs,
                         String requestId,
                         String agentName) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.SERVER_TOOLS_LIST_REQUESTED)
-                                .module(AuditModule.WS_SERVER)
+                                .module(AuditModule.MCP_INBOUND)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.INFO)
                                 .sessionId(sessionId)
                                 .agentName(agentName)
                                 .requestId(requestId)
-                                .mcpMethod("tools/list")
+                                .protocolMethod("tools/list")
                                 .correlationId(generateCorrelationId())
                                 .responsePayload(toJson(Map.of("toolCount", toolCount)))
                                 .durationMs(durationMs)
@@ -500,15 +500,15 @@ public class GatewayAuditService {
                         long durationMs,
                         String requestId,
                         String agentName) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.SERVER_RESOURCES_LIST_REQUESTED)
-                                .module(AuditModule.WS_SERVER)
+                                .module(AuditModule.MCP_INBOUND)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.INFO)
                                 .sessionId(sessionId)
                                 .agentName(agentName)
                                 .requestId(requestId)
-                                .mcpMethod("resources/list")
+                                .protocolMethod("resources/list")
                                 .correlationId(generateCorrelationId())
                                 .responsePayload(toJson(Map.of("resourceCount", resourceCount)))
                                 .durationMs(durationMs)
@@ -521,15 +521,15 @@ public class GatewayAuditService {
                         long durationMs,
                         String requestId,
                         String agentName) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.SERVER_PROMPTS_LIST_REQUESTED)
-                                .module(AuditModule.WS_SERVER)
+                                .module(AuditModule.MCP_INBOUND)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.INFO)
                                 .sessionId(sessionId)
                                 .agentName(agentName)
                                 .requestId(requestId)
-                                .mcpMethod("prompts/list")
+                                .protocolMethod("prompts/list")
                                 .correlationId(generateCorrelationId())
                                 .responsePayload(toJson(Map.of("promptCount", promptCount)))
                                 .durationMs(durationMs)
@@ -541,14 +541,14 @@ public class GatewayAuditService {
                         String method,
                         Object params,
                         String agentName) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.SERVER_NOTIFICATION_RECEIVED)
-                                .module(AuditModule.WS_SERVER)
+                                .module(AuditModule.MCP_INBOUND)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.DEBUG)
                                 .sessionId(sessionId)
                                 .agentName(agentName)
-                                .mcpMethod(method)
+                                .protocolMethod(method)
                                 .correlationId(generateCorrelationId())
                                 .requestPayload(toJson(Map.of(
                                                 "method", method != null ? method : "unknown",
@@ -557,9 +557,9 @@ public class GatewayAuditService {
         }
 
         public void auditServerSessionDisconnectedSync(String sessionId, String agentName) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.SERVER_SESSION_DISCONNECTED)
-                                .module(AuditModule.WS_SERVER)
+                                .module(AuditModule.MCP_INBOUND)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.INFO)
                                 .sessionId(sessionId)
@@ -571,9 +571,9 @@ public class GatewayAuditService {
         @Async("auditExecutor")
         public void auditServerSessionIdleReaped(String sessionId, String agentName,
                         long idleDurationMs) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.SERVER_SESSION_IDLE_REAPED)
-                                .module(AuditModule.WS_SERVER)
+                                .module(AuditModule.MCP_INBOUND)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.WARN)
                                 .sessionId(sessionId)
@@ -601,15 +601,15 @@ public class GatewayAuditService {
                         }
                 }
 
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.SERVER_REQUEST_REJECTED)
-                                .module(AuditModule.WS_SERVER)
+                                .module(AuditModule.MCP_INBOUND)
                                 .status(AuditStatus.DENIED)
                                 .severity(AuditSeverity.WARN)
                                 .sessionId(sessionId)
                                 .agentName(agentName)
                                 .requestId(requestId)
-                                .mcpMethod(method)
+                                .protocolMethod(method)
                                 .correlationId(generateCorrelationId())
                                 .errorCode(GatewayErrorCode.REQUEST_TIMEOUT.getCode())
                                 .errorMessage(errorMessage)
@@ -622,7 +622,7 @@ public class GatewayAuditService {
                         String serverName,
                         String publicName,
                         String capabilityType) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.REGISTRY_CAPABILITY_REGISTERED)
                                 .module(AuditModule.CAPABILITY_REGISTRY)
                                 .status(AuditStatus.SUCCESS)
@@ -640,7 +640,7 @@ public class GatewayAuditService {
                         String serverName,
                         String publicName,
                         String capabilityType) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.REGISTRY_CAPABILITY_REMOVED)
                                 .module(AuditModule.CAPABILITY_REGISTRY)
                                 .status(AuditStatus.SUCCESS)
@@ -660,7 +660,7 @@ public class GatewayAuditService {
                         int resourceCount,
                         int promptCount,
                         long durationMs) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.REGISTRY_BULK_LOAD)
                                 .module(AuditModule.CAPABILITY_REGISTRY)
                                 .status(AuditStatus.SUCCESS)
@@ -682,7 +682,7 @@ public class GatewayAuditService {
                         AuditStatus status,
                         String errorMessage,
                         long durationMs) {
-                McpAuditLog.McpAuditLogBuilder builder = McpAuditLog.builder()
+                GatewayAuditLog.GatewayAuditLogBuilder builder = GatewayAuditLog.builder()
                                 .eventType(AuditEventType.REGISTRY_SERVER_REFRESH)
                                 .module(AuditModule.CAPABILITY_REGISTRY)
                                 .status(status)
@@ -713,7 +713,7 @@ public class GatewayAuditService {
                 if (promptsNotified) notified.add("prompts");
                 if (resourcesNotified) notified.add("resources");
 
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.REGISTRY_NOTIFICATION_BROADCAST)
                                 .module(AuditModule.CAPABILITY_REGISTRY)
                                 .status(AuditStatus.SUCCESS)
@@ -738,7 +738,7 @@ public class GatewayAuditService {
                         java.util.UUID profileId,
                         List<String> affectedAgents,
                         List<String> notifiedAgents) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.REGISTRY_NOTIFICATION_BROADCAST)
                                 .module(AuditModule.CAPABILITY_REGISTRY)
                                 .status(AuditStatus.SUCCESS)
@@ -761,7 +761,7 @@ public class GatewayAuditService {
                         String requestId,
                         String agentName,
                         LocalDateTime firedAt, Integer eventSequence) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.ORCHESTRATION_TOOL_EXTRACTED)
                                 .module(AuditModule.ORCHESTRATION_LAYER)
                                 .status(AuditStatus.SUCCESS)
@@ -786,7 +786,7 @@ public class GatewayAuditService {
                         String requestId,
                         String agentName,
                         LocalDateTime firedAt, Integer eventSequence) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.ORCHESTRATION_REGISTRY_LOOKUP)
                                 .module(AuditModule.ORCHESTRATION_LAYER)
                                 .status(AuditStatus.SUCCESS)
@@ -812,7 +812,7 @@ public class GatewayAuditService {
                         String requestId,
                         String agentName,
                         LocalDateTime firedAt, Integer eventSequence) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.ORCHESTRATION_RESPONSE_RETURNED)
                                 .module(AuditModule.ORCHESTRATION_LAYER)
                                 .status(AuditStatus.SUCCESS)
@@ -824,7 +824,7 @@ public class GatewayAuditService {
                                 .serverName(serverName)
                                 .capabilityName(toolName)
                                 .capabilityType("TOOL")
-                                .mcpMethod("tools/call")
+                                .protocolMethod("tools/call")
                                 .durationMs(durationMs)
                                 .timestamp(firedAt)
                                 .eventSequence(eventSequence)
@@ -887,7 +887,7 @@ public class GatewayAuditService {
                 if (actChain != null && !actChain.isEmpty()) {
                         payload.put("actor", actChain.get(actChain.size() - 1));
                 }
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.STS_TOKEN_MINTED)
                                 .module(AuditModule.ORCHESTRATION_LAYER)
                                 .status(AuditStatus.SUCCESS)
@@ -898,7 +898,7 @@ public class GatewayAuditService {
                                 .serverName(serverName)
                                 .capabilityName(capabilityName)
                                 .capabilityType(capabilityType)
-                                .mcpMethod("sts/mint")
+                                .protocolMethod("sts/mint")
                                 .requestId(requestId)
                                 .responsePayload(objectMapper.valueToTree(payload))
                                 .timestamp(firedAt)
@@ -916,7 +916,7 @@ public class GatewayAuditService {
                         String requestId,
                         String agentName,
                         LocalDateTime firedAt, Integer eventSequence) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.ORCHESTRATION_ERROR)
                                 .module(AuditModule.ORCHESTRATION_LAYER)
                                 .status(AuditStatus.ERROR)
@@ -957,7 +957,7 @@ public class GatewayAuditService {
                                 .pdpContext(toJson(context))
                                 .build());
 
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.PDP_EVALUATION_REQUESTED)
                                 .module(AuditModule.PDP)
                                 .status(AuditStatus.SUCCESS)
@@ -967,7 +967,7 @@ public class GatewayAuditService {
                                 .agentName(agentName)
                                 .capabilityName(resource)
                                 .serverName(serverName)
-                                .mcpMethod(action)
+                                .protocolMethod(action)
                                 .requestId(requestId)
                                 .requestPayload(toJson(context))
                                 .timestamp(firedAt)
@@ -1007,7 +1007,7 @@ public class GatewayAuditService {
                                 .durationMs(durationMs)
                                 .build());
 
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.PDP_DECISION_RENDERED)
                                 .module(AuditModule.PDP)
                                 .status(decisionStatus)
@@ -1017,7 +1017,7 @@ public class GatewayAuditService {
                                 .agentName(agentName)
                                 .capabilityName(resource)
                                 .serverName(serverName)
-                                .mcpMethod(action)
+                                .protocolMethod(action)
                                 .capabilityType(decision)
                                 .durationMs(durationMs)
                                 .requestId(requestId)
@@ -1049,7 +1049,7 @@ public class GatewayAuditService {
                         payload.put("referencedAction", refs.getOrDefault("actionName", ""));
                 }
 
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.PDP_POLICY_CREATED)
                                 .module(AuditModule.PDP)
                                 .status(AuditStatus.SUCCESS)
@@ -1082,7 +1082,7 @@ public class GatewayAuditService {
                         payload.put("referencedAction", refs.getOrDefault("actionName", ""));
                 }
 
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.PDP_POLICY_UPDATED)
                                 .module(AuditModule.PDP)
                                 .status(AuditStatus.SUCCESS)
@@ -1098,7 +1098,7 @@ public class GatewayAuditService {
 
         @Async("auditExecutor")
         public void auditPdpPolicyDeleted(String policyName) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.PDP_POLICY_DELETED)
                                 .module(AuditModule.PDP)
                                 .status(AuditStatus.SUCCESS)
@@ -1110,7 +1110,7 @@ public class GatewayAuditService {
 
         @Async("auditExecutor")
         public void auditPdpPolicyToggled(String policyName, boolean enabled) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.PDP_POLICY_TOGGLED)
                                 .module(AuditModule.PDP)
                                 .status(AuditStatus.SUCCESS)
@@ -1125,7 +1125,7 @@ public class GatewayAuditService {
 
         @Async("auditExecutor")
         public void auditPdpPolicyValidated(String cedarText, boolean valid, String error) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.PDP_POLICY_VALIDATED)
                                 .module(AuditModule.PDP)
                                 .status(valid ? AuditStatus.SUCCESS : AuditStatus.FAILURE)
@@ -1141,7 +1141,7 @@ public class GatewayAuditService {
 
         @Async("auditExecutor")
         public void auditPdpEngineReloaded(int policyCount) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.PDP_ENGINE_RELOADED)
                                 .module(AuditModule.PDP)
                                 .status(AuditStatus.SUCCESS)
@@ -1153,7 +1153,7 @@ public class GatewayAuditService {
 
         @Async("auditExecutor")
         public void auditPdpLlmChatRequested(String prompt, int messageCount) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.PDP_LLM_CHAT_REQUESTED)
                                 .module(AuditModule.PDP)
                                 .status(AuditStatus.SUCCESS)
@@ -1170,7 +1170,7 @@ public class GatewayAuditService {
         @Async("auditExecutor")
         public void auditPdpLlmChatCompleted(String prompt, String responseText,
                         long durationMs, boolean success) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.PDP_LLM_CHAT_COMPLETED)
                                 .module(AuditModule.PDP)
                                 .status(success ? AuditStatus.SUCCESS : AuditStatus.FAILURE)
@@ -1190,7 +1190,7 @@ public class GatewayAuditService {
 
         @Async("auditExecutor")
         public void auditPdpCustomAttrCreated(String attrName, String valueSource, String dataType) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.PDP_CUSTOM_ATTR_CREATED)
                                 .module(AuditModule.PDP)
                                 .status(AuditStatus.SUCCESS)
@@ -1206,7 +1206,7 @@ public class GatewayAuditService {
 
         @Async("auditExecutor")
         public void auditPdpCustomAttrUpdated(String attrName) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.PDP_CUSTOM_ATTR_UPDATED)
                                 .module(AuditModule.PDP)
                                 .status(AuditStatus.SUCCESS)
@@ -1218,7 +1218,7 @@ public class GatewayAuditService {
 
         @Async("auditExecutor")
         public void auditPdpCustomAttrDeleted(String attrName) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.PDP_CUSTOM_ATTR_DELETED)
                                 .module(AuditModule.PDP)
                                 .status(AuditStatus.SUCCESS)
@@ -1230,7 +1230,7 @@ public class GatewayAuditService {
 
         @Async("auditExecutor")
         public void auditPdpCustomAttrToggled(String attrName, boolean enabled) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.PDP_CUSTOM_ATTR_TOGGLED)
                                 .module(AuditModule.PDP)
                                 .status(AuditStatus.SUCCESS)
@@ -1245,7 +1245,7 @@ public class GatewayAuditService {
 
         @Async("auditExecutor")
         public void auditServerConfigCreated(String serverName, String url) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.SERVER_CONFIG_CREATED)
                                 .module(AuditModule.SERVER_CONFIG)
                                 .status(AuditStatus.SUCCESS)
@@ -1260,7 +1260,7 @@ public class GatewayAuditService {
 
         @Async("auditExecutor")
         public void auditServerConfigUpdated(String serverName, String url) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.SERVER_CONFIG_UPDATED)
                                 .module(AuditModule.SERVER_CONFIG)
                                 .status(AuditStatus.SUCCESS)
@@ -1275,7 +1275,7 @@ public class GatewayAuditService {
 
         @Async("auditExecutor")
         public void auditServerConfigDeleted(String serverName) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.SERVER_CONFIG_DELETED)
                                 .module(AuditModule.SERVER_CONFIG)
                                 .status(AuditStatus.SUCCESS)
@@ -1291,13 +1291,13 @@ public class GatewayAuditService {
                         String previousApprovalStatus,
                         String adminActor,
                         String adminIp) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.AGENT_APPROVED)
                                 .module(AuditModule.AGENT_REGISTRY)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.INFO)
                                 .agentName(agentName)
-                                .mcpMethod("admin/agents/approve")
+                                .protocolMethod("admin/agents/approve")
                                 .correlationId(generateCorrelationId())
                                 .requestPayload(toJson(Map.of(
                                                 "agentId", agentId != null ? agentId.toString() : "",
@@ -1331,13 +1331,13 @@ public class GatewayAuditService {
                 payload.put("sessionsTerminated", sessionsTerminated);
                 payload.put("affectedHumanUsers", affectedHumanUsers != null ? affectedHumanUsers : java.util.List.of());
                 payload.put("affectedNhis", affectedNhis != null ? affectedNhis : java.util.List.of());
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.AGENT_BLOCKED)
                                 .module(AuditModule.AGENT_REGISTRY)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.WARN)
                                 .agentName(agentName)
-                                .mcpMethod("admin/agents/block")
+                                .protocolMethod("admin/agents/block")
                                 .correlationId(generateCorrelationId())
                                 .requestPayload(toJson(payload))
                                 .build());
@@ -1359,13 +1359,13 @@ public class GatewayAuditService {
                 payload.put("adminActor", adminActor != null ? adminActor : "unknown");
                 payload.put("adminIp", adminIp != null ? adminIp : "unknown");
                 payload.put("sessionsTerminated", sessionsTerminated);
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.AGENT_DEPROVISIONED)
                                 .module(AuditModule.AGENT_REGISTRY)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.WARN)
                                 .agentName(agentName)
-                                .mcpMethod("admin/agents/deprovision")
+                                .protocolMethod("admin/agents/deprovision")
                                 .correlationId(generateCorrelationId())
                                 .requestPayload(toJson(payload))
                                 .build());
@@ -1378,7 +1378,7 @@ public class GatewayAuditService {
                         String method,
                         String transport,
                         String reason) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.AGENT_CONNECTION_REJECTED)
                                 .module(AuditModule.AGENT_REGISTRY)
                                 .status(AuditStatus.DENIED)
@@ -1386,7 +1386,7 @@ public class GatewayAuditService {
                                 .sessionId(sessionId)
                                 .requestId(requestId)
                                 .agentName(agentName)
-                                .mcpMethod(method != null ? method : "initialize")
+                                .protocolMethod(method != null ? method : "initialize")
                                 .correlationId(generateCorrelationId())
                                 .errorCode(GatewayErrorCode.AGENT_BLOCKED.getCode())
                                 .errorMessage(reason != null ? reason : "Agent rejected by admin policy")
@@ -1412,12 +1412,12 @@ public class GatewayAuditService {
                 payload.put("adminIp", adminIp != null ? adminIp : "unknown");
                 payload.put("sessionsTerminated", sessionsTerminated);
                 payload.put("affectedAgents", affectedAgents != null ? affectedAgents : java.util.List.of());
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.HUMAN_USER_BLOCKED)
                                 .module(AuditModule.AGENT_REGISTRY)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.WARN)
-                                .mcpMethod("admin/human-users/block")
+                                .protocolMethod("admin/human-users/block")
                                 .correlationId(generateCorrelationId())
                                 .requestPayload(toJson(payload))
                                 .build());
@@ -1426,12 +1426,12 @@ public class GatewayAuditService {
         @Async("auditExecutor")
         public void auditHumanUserUnblocked(UUID humanUserId, String preferredUsername, String idpSubject,
                         String adminActor, String adminIp) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.HUMAN_USER_UNBLOCKED)
                                 .module(AuditModule.AGENT_REGISTRY)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.INFO)
-                                .mcpMethod("admin/human-users/unblock")
+                                .protocolMethod("admin/human-users/unblock")
                                 .correlationId(generateCorrelationId())
                                 .requestPayload(toJson(Map.of(
                                                 "humanUserId", humanUserId != null ? humanUserId.toString() : "",
@@ -1445,12 +1445,12 @@ public class GatewayAuditService {
         @Async("auditExecutor")
         public void auditHumanUserApproved(UUID humanUserId, String preferredUsername, String idpSubject,
                         String previousStatus, String adminActor, String adminIp) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.HUMAN_USER_APPROVED)
                                 .module(AuditModule.AGENT_REGISTRY)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.INFO)
-                                .mcpMethod("admin/human-users/approve")
+                                .protocolMethod("admin/human-users/approve")
                                 .correlationId(generateCorrelationId())
                                 .requestPayload(toJson(Map.of(
                                                 "humanUserId", humanUserId != null ? humanUserId.toString() : "",
@@ -1479,12 +1479,12 @@ public class GatewayAuditService {
                 payload.put("adminIp", adminIp != null ? adminIp : "unknown");
                 payload.put("sessionsTerminated", sessionsTerminated);
                 payload.put("affectedAgents", affectedAgents != null ? affectedAgents : java.util.List.of());
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.NHI_IDENTITY_BLOCKED)
                                 .module(AuditModule.AGENT_REGISTRY)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.WARN)
-                                .mcpMethod("admin/nhis/block")
+                                .protocolMethod("admin/nhis/block")
                                 .correlationId(generateCorrelationId())
                                 .requestPayload(toJson(payload))
                                 .build());
@@ -1493,12 +1493,12 @@ public class GatewayAuditService {
         @Async("auditExecutor")
         public void auditNhiUnblocked(UUID nhiId, String serviceName, String clientId, String idpSubject,
                         String adminActor, String adminIp) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.NHI_IDENTITY_UNBLOCKED)
                                 .module(AuditModule.AGENT_REGISTRY)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.INFO)
-                                .mcpMethod("admin/nhis/unblock")
+                                .protocolMethod("admin/nhis/unblock")
                                 .correlationId(generateCorrelationId())
                                 .requestPayload(toJson(Map.of(
                                                 "nhiId", nhiId != null ? nhiId.toString() : "",
@@ -1513,12 +1513,12 @@ public class GatewayAuditService {
         @Async("auditExecutor")
         public void auditNhiApproved(UUID nhiId, String serviceName, String clientId, String idpSubject,
                         String previousStatus, String adminActor, String adminIp) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.NHI_IDENTITY_APPROVED)
                                 .module(AuditModule.AGENT_REGISTRY)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.INFO)
-                                .mcpMethod("admin/nhis/approve")
+                                .protocolMethod("admin/nhis/approve")
                                 .correlationId(generateCorrelationId())
                                 .requestPayload(toJson(Map.of(
                                                 "nhiId", nhiId != null ? nhiId.toString() : "",
@@ -1536,7 +1536,7 @@ public class GatewayAuditService {
         public void auditHumanConnectionRejected(String sessionId, String requestId,
                         String preferredUsername, String idpSubject,
                         String agentName, String method, String reason) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.HUMAN_CONNECTION_REJECTED)
                                 .module(AuditModule.AGENT_REGISTRY)
                                 .status(AuditStatus.DENIED)
@@ -1544,7 +1544,7 @@ public class GatewayAuditService {
                                 .sessionId(sessionId)
                                 .requestId(requestId)
                                 .agentName(agentName)
-                                .mcpMethod(method != null ? method : "unknown")
+                                .protocolMethod(method != null ? method : "unknown")
                                 .errorCode(GatewayErrorCode.HUMAN_BLOCKED.getCode())
                                 .errorMessage(reason)
                                 .correlationId(generateCorrelationId())
@@ -1559,7 +1559,7 @@ public class GatewayAuditService {
         public void auditNhiConnectionRejected(String sessionId, String requestId,
                         String serviceName, String clientId, String idpSubject,
                         String agentName, String method, String reason) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.NHI_CONNECTION_REJECTED)
                                 .module(AuditModule.AGENT_REGISTRY)
                                 .status(AuditStatus.DENIED)
@@ -1567,7 +1567,7 @@ public class GatewayAuditService {
                                 .sessionId(sessionId)
                                 .requestId(requestId)
                                 .agentName(agentName)
-                                .mcpMethod(method != null ? method : "unknown")
+                                .protocolMethod(method != null ? method : "unknown")
                                 .errorCode(GatewayErrorCode.NHI_BLOCKED.getCode())
                                 .errorMessage(reason)
                                 .correlationId(generateCorrelationId())
@@ -1582,14 +1582,14 @@ public class GatewayAuditService {
         @Async("auditExecutor")
         public void auditBlockedSessionTerminated(String sessionId, String agentName,
                         String identityType, String identityName, String reason) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.BLOCKED_SESSION_TERMINATED)
                                 .module(AuditModule.AGENT_REGISTRY)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.WARN)
                                 .sessionId(sessionId)
                                 .agentName(agentName)
-                                .mcpMethod("admin/block/session-terminate")
+                                .protocolMethod("admin/block/session-terminate")
                                 .correlationId(generateCorrelationId())
                                 .requestPayload(toJson(Map.of(
                                                 "identityType", identityType != null ? identityType : "unknown",
@@ -1632,7 +1632,7 @@ public class GatewayAuditService {
                 forensics.put("timestamp", java.time.LocalDateTime.now().toString());
                 forensics.put("action", "REQUEST_REJECTED");
 
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.SESSION_IDENTITY_MISMATCH)
                                 .module(AuditModule.AGENT_REGISTRY)
                                 .status(AuditStatus.DENIED)
@@ -1656,7 +1656,7 @@ public class GatewayAuditService {
         @Async("auditExecutor")
         public void auditCapabilityProfileCreated(String profileName, UUID profileId,
                         String description, int ruleCount) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.CAPABILITY_PROFILE_CREATED)
                                 .module(AuditModule.CAPABILITY_PROFILES)
                                 .status(AuditStatus.SUCCESS)
@@ -1674,7 +1674,7 @@ public class GatewayAuditService {
         @Async("auditExecutor")
         public void auditCapabilityProfileUpdated(String profileName, UUID profileId,
                         String changedFields) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.CAPABILITY_PROFILE_UPDATED)
                                 .module(AuditModule.CAPABILITY_PROFILES)
                                 .status(AuditStatus.SUCCESS)
@@ -1690,7 +1690,7 @@ public class GatewayAuditService {
 
         @Async("auditExecutor")
         public void auditCapabilityProfileDeleted(String profileName, UUID profileId) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.CAPABILITY_PROFILE_DELETED)
                                 .module(AuditModule.CAPABILITY_PROFILES)
                                 .status(AuditStatus.SUCCESS)
@@ -1706,7 +1706,7 @@ public class GatewayAuditService {
         @Async("auditExecutor")
         public void auditCapabilityProfileAssigned(String profileName, UUID profileId,
                         String agentName, UUID agentId) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.CAPABILITY_PROFILE_ASSIGNED)
                                 .module(AuditModule.CAPABILITY_PROFILES)
                                 .status(AuditStatus.SUCCESS)
@@ -1725,7 +1725,7 @@ public class GatewayAuditService {
         @Async("auditExecutor")
         public void auditCapabilityProfileUnassigned(String profileName, UUID profileId,
                         String agentName, UUID agentId) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.CAPABILITY_PROFILE_UNASSIGNED)
                                 .module(AuditModule.CAPABILITY_PROFILES)
                                 .status(AuditStatus.SUCCESS)
@@ -1745,7 +1745,7 @@ public class GatewayAuditService {
         public void auditCapabilityAccessDenied(String sessionId, String correlationId,
                         String agentName, String capabilityName, String capabilityType,
                         LocalDateTime firedAt, Integer eventSequence) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.CAPABILITY_ACCESS_DENIED)
                                 .module(AuditModule.CAPABILITY_PROFILES)
                                 .status(AuditStatus.FAILURE)
@@ -1765,7 +1765,7 @@ public class GatewayAuditService {
         public void auditCapabilityAccessGranted(String sessionId, String correlationId,
                         String agentName, String capabilityName, String capabilityType,
                         LocalDateTime firedAt, Integer eventSequence) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.CAPABILITY_ACCESS_GRANTED)
                                 .module(AuditModule.CAPABILITY_PROFILES)
                                 .status(AuditStatus.SUCCESS)
@@ -1784,9 +1784,9 @@ public class GatewayAuditService {
         public void auditOAuth2AuthSuccess(String sessionId, String agentClientId, String subject,
                         List<String> roles, String tokenType, String userIdentity,
                         Map<String, Object> rawClaims, String requestId) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.OAUTH2_AUTH_SUCCESS)
-                                .module(AuditModule.WS_SERVER)
+                                .module(AuditModule.MCP_INBOUND)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.INFO)
                                 .sessionId(sessionId)
@@ -1811,9 +1811,9 @@ public class GatewayAuditService {
                 String message = String.format(
                                 "Introspection overrode JWT signal: %s (%s) → %s (%s)",
                                 jwtSignalType, jwtSignal, introspectionType, introspectionSignal);
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.OAUTH2_TOKEN_CLASSIFICATION_OVERRIDE)
-                                .module(AuditModule.WS_SERVER)
+                                .module(AuditModule.MCP_INBOUND)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.WARN)
                                 .sessionId(sessionId)
@@ -1824,7 +1824,7 @@ public class GatewayAuditService {
                                 .build());
         }
 
-        private void persist(McpAuditLog auditLog) {
+        private void persist(GatewayAuditLog auditLog) {
                 try {
                         if (auditLog.getTimestamp() == null) {
                                 auditLog.setTimestamp(LocalDateTime.now());
@@ -1904,7 +1904,7 @@ public class GatewayAuditService {
         @Async("auditExecutor")
         public void auditAuthConfigCreated(String authMode, String issuerUri, String idpName,
                         String classificationMode, String adminIdentity, String sourceIp) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.AUTH_CONFIG_CREATED)
                                 .module(AuditModule.AUTH_CONFIG)
                                 .status(AuditStatus.SUCCESS)
@@ -1927,7 +1927,7 @@ public class GatewayAuditService {
                 Map<String, Object> payload = new java.util.LinkedHashMap<>(changedFields);
                 payload.put("adminIdentity", adminIdentity != null ? adminIdentity : "unknown");
                 payload.put("sourceIp", sourceIp != null ? sourceIp : "unknown");
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.AUTH_CONFIG_UPDATED)
                                 .module(AuditModule.AUTH_CONFIG)
                                 .status(AuditStatus.SUCCESS)
@@ -1941,7 +1941,7 @@ public class GatewayAuditService {
         @Async("auditExecutor")
         public void auditAuthConfigDeleted(String authMode, String issuerUri,
                         String adminIdentity, String sourceIp) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.AUTH_CONFIG_DELETED)
                                 .module(AuditModule.AUTH_CONFIG)
                                 .status(AuditStatus.SUCCESS)
@@ -1962,7 +1962,7 @@ public class GatewayAuditService {
                 AuditSeverity severity = "none".equals(newMode) && "oauth2".equals(previousMode)
                                 ? AuditSeverity.ERROR
                                 : AuditSeverity.WARN;
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.AUTH_MODE_CHANGED)
                                 .module(AuditModule.AUTH_CONFIG)
                                 .status(AuditStatus.SUCCESS)
@@ -1981,7 +1981,7 @@ public class GatewayAuditService {
         @Async("auditExecutor")
         public void auditAuthConfigValidated(String issuerUri, boolean jwksReachable,
                         long latencyMs, int keyCount, String adminIdentity, String sourceIp) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.AUTH_CONFIG_VALIDATED)
                                 .module(AuditModule.AUTH_CONFIG)
                                 .status(jwksReachable ? AuditStatus.SUCCESS : AuditStatus.FAILURE)
@@ -2002,7 +2002,7 @@ public class GatewayAuditService {
         @Async("auditExecutor")
         public void auditAuthConfigValidationFailed(String issuerUri, String errorMessage,
                         int httpStatus, long timeoutMs, String adminIdentity, String sourceIp) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.AUTH_CONFIG_VALIDATION_FAILED)
                                 .module(AuditModule.AUTH_CONFIG)
                                 .status(AuditStatus.FAILURE)
@@ -2025,7 +2025,7 @@ public class GatewayAuditService {
         @Async("auditExecutor")
         public void auditAuthJwksRefreshed(String issuerUri, int previousKeyCount,
                         int newKeyCount, String triggeredBy) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.AUTH_JWKS_REFRESHED)
                                 .module(AuditModule.AUTH_CONFIG)
                                 .status(AuditStatus.SUCCESS)
@@ -2042,7 +2042,7 @@ public class GatewayAuditService {
         @Async("auditExecutor")
         public void auditAuthGracePeriodStarted(String previousIssuer, String newIssuer,
                         int gracePeriodMinutes, int activeSessionCount) {
-                persist(McpAuditLog.builder()
+                persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.AUTH_GRACE_PERIOD_STARTED)
                                 .module(AuditModule.AUTH_CONFIG)
                                 .status(AuditStatus.SUCCESS)

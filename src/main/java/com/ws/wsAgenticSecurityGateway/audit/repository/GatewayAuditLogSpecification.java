@@ -4,7 +4,7 @@ import com.ws.wsAgenticSecurityGateway.audit.constants.AuditEventType;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditModule;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditSeverity;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditStatus;
-import com.ws.wsAgenticSecurityGateway.audit.entity.McpAuditLog;
+import com.ws.wsAgenticSecurityGateway.audit.entity.GatewayAuditLog;
 import org.springframework.data.jpa.domain.Specification;
 
 import java.time.LocalDateTime;
@@ -14,7 +14,7 @@ public class GatewayAuditLogSpecification {
     private GatewayAuditLogSpecification() {
     }
 
-    public static Specification<McpAuditLog> build(
+    public static Specification<GatewayAuditLog> build(
             AuditModule module,
             AuditEventType eventType,
             AuditStatus status,
@@ -36,7 +36,7 @@ public class GatewayAuditLogSpecification {
                 searchText, fromDate, toDate, null);
     }
 
-    public static Specification<McpAuditLog> build(
+    public static Specification<GatewayAuditLog> build(
             AuditModule module,
             AuditEventType eventType,
             AuditStatus status,
@@ -55,7 +55,7 @@ public class GatewayAuditLogSpecification {
             LocalDateTime toDate,
             String wsTenantName) {
 
-        Specification<McpAuditLog> spec = Specification.where(null);
+        Specification<GatewayAuditLog> spec = Specification.where(null);
 
         if (wsTenantName != null && !wsTenantName.isBlank()) {
             spec = spec.and((root, query, cb) -> cb.equal(root.get("wsTenantName"), wsTenantName));

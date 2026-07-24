@@ -150,7 +150,7 @@ ws:
       anthropic-api-key: ${WS_GATEWAY_ANTHROPIC_API_KEY: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}   # Anthropic API key for LLM policy generation
 
 # ─── NOTE ────────────────────────────────────────────────────────────
-# The audit table 'mcp_audit_log' lives in schema 'ws_agentic_security'.
+# The audit table 'gateway_audit_log' lives in schema 'ws_agentic_security'.
 # Ensure this schema exists in PostgreSQL before startup:
 #   CREATE SCHEMA IF NOT EXISTS ws_agentic_security;
 # Hibernate ddl-auto:update will create/update the table automatically.
