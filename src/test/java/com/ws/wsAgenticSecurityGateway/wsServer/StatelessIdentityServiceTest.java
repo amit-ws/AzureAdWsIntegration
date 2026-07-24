@@ -1,9 +1,9 @@
-package com.ws.wsAgenticSecurityGateway.wsServer;
+package com.ws.wsAgenticSecurityGateway.protocol.mcp.inbound;
 
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayHumanUserEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
-import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
+import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
 import com.ws.wsAgenticSecurityGateway.authConfig.repository.GatewayAuthConfigRepository;
 import io.modelcontextprotocol.common.McpTransportContext;
 import org.junit.jupiter.api.Test;
@@ -24,7 +24,7 @@ import static org.mockito.Mockito.when;
 class StatelessIdentityServiceTest {
 
     private final AgentRegistryService agentRegistry = mock(AgentRegistryService.class);
-    private final McpAuditService auditService = mock(McpAuditService.class);
+    private final GatewayAuditService auditService = mock(GatewayAuditService.class);
     private final GatewayAuthConfigRepository authConfigRepository = mock(GatewayAuthConfigRepository.class);
 
     private final StatelessIdentityService service =

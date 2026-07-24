@@ -2,8 +2,8 @@ package com.ws.wsAgenticSecurityGateway.orchestration;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.ws.wsAgenticSecurityGateway.audit.error.McpErrorCode;
-import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
+import com.ws.wsAgenticSecurityGateway.audit.error.GatewayErrorCode;
+import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentCapabilityFilterService;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.orchestration.adapter.ProtocolAdapter;
@@ -19,12 +19,12 @@ import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyEvaluationRequest;
 import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyEvaluationResult;
 import com.ws.wsAgenticSecurityGateway.pdp.service.CedarPolicyEngine;
 import com.ws.wsAgenticSecurityGateway.pdp.service.PolicyContextBuilder;
-import com.ws.wsAgenticSecurityGateway.wsClient.config.McpSession;
-import com.ws.wsAgenticSecurityGateway.wsClient.config.McpSessionManager;
+import com.ws.wsAgenticSecurityGateway.protocol.mcp.outbound.config.McpSession;
+import com.ws.wsAgenticSecurityGateway.protocol.mcp.outbound.config.McpSessionManager;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
-import com.ws.wsAgenticSecurityGateway.wsServer.session.ClientSession;
-import com.ws.wsAgenticSecurityGateway.wsServer.session.SessionManager;
+import com.ws.wsAgenticSecurityGateway.protocol.mcp.session.ClientSession;
+import com.ws.wsAgenticSecurityGateway.protocol.mcp.session.SessionManager;
 import io.modelcontextprotocol.server.McpSyncServerExchange;
 import io.modelcontextprotocol.spec.McpSchema;
 import lombok.extern.slf4j.Slf4j;
@@ -59,7 +59,7 @@ import java.util.UUID;
 public class HopOrchestrator {
 
     private final CapabilityRegistryService registryService;
-    private final McpAuditService auditService;
+    private final GatewayAuditService auditService;
     private final InFlightRequestRegistry inFlightRegistry;
     private final ObjectMapper objectMapper;
     private final McpSessionManager mcpSessionManager;
@@ -75,7 +75,7 @@ public class HopOrchestrator {
     private volatile SessionManager sessionManager;
 
     public HopOrchestrator(CapabilityRegistryService registryService,
-                           McpAuditService auditService,
+                           GatewayAuditService auditService,
                            InFlightRequestRegistry inFlightRegistry,
                            ObjectMapper objectMapper,
                            McpSessionManager mcpSessionManager,
@@ -151,7 +151,7 @@ public class HopOrchestrator {
 
         int seq = 0;
 
-        McpErrorCode denialCode = governanceDenial(sessionId);
+        GatewayErrorCode denialCode = governanceDenial(sessionId);
         if (denialCode != null) {
             log.warn("[{}] GOVERNANCE DENIED (defense-in-depth): session={}, tool={}, reason={}",
                     correlationId, sessionId, publicName, denialCode.getMessage());
@@ -168,14 +168,14 @@ public class HopOrchestrator {
                     correlationId, sessionId, publicName, clientName);
             auditService.auditOrchestrationError(
                     correlationId, sessionId, null, publicName,
-                    McpErrorCode.CAPABILITY_NOT_ALLOWED,
+                    GatewayErrorCode.CAPABILITY_NOT_ALLOWED,
                     "Tool '" + publicName + "' is not permitted for this agent. "
                             + "Contact your gateway administrator to assign a capability profile.",
                     requestId, clientName,
                     LocalDateTime.now(), ++seq);
             auditService.auditCapabilityAccessDenied(sessionId, correlationId, clientName, publicName, "TOOL",
                     LocalDateTime.now(), ++seq);
-            return buildErrorResult(McpErrorCode.CAPABILITY_NOT_ALLOWED, publicName);
+            return buildErrorResult(GatewayErrorCode.CAPABILITY_NOT_ALLOWED, publicName);
         }
         if (agentIdForAccess != null && capabilityFilterService.hasProfiles(agentIdForAccess)) {
             auditService.auditCapabilityAccessGranted(sessionId, correlationId, clientName, publicName, "TOOL",
@@ -202,11 +202,11 @@ public class HopOrchestrator {
             log.error("[{}] Tool '{}' NOT FOUND in capability registry", correlationId, publicName);
             auditService.auditOrchestrationError(
                     correlationId, sessionId, null, publicName,
-                    McpErrorCode.CAPABILITY_NOT_FOUND,
+                    GatewayErrorCode.CAPABILITY_NOT_FOUND,
                     "Tool '" + publicName + "' not found in capability registry",
                     requestId, clientName,
                     LocalDateTime.now(), ++seq);
-            return buildErrorResult(McpErrorCode.CAPABILITY_NOT_FOUND, publicName);
+            return buildErrorResult(GatewayErrorCode.CAPABILITY_NOT_FOUND, publicName);
         }
 
         CapabilityDescriptor descriptor = optDescriptor.get();
@@ -246,7 +246,7 @@ public class HopOrchestrator {
             if (pdpResult.isDenied()) {
                 log.warn("[{}] PDP DENIED: agent='{}', tool='{}', reason='{}'",
                         correlationId, pdpRequest.getAgentName(), publicName, pdpResult.getReason());
-                return buildErrorResult(McpErrorCode.PDP_DENIED,
+                return buildErrorResult(GatewayErrorCode.PDP_DENIED,
                         publicName, serverName,
                         "Policy violation: " + pdpResult.getReason());
             }
@@ -263,11 +263,11 @@ public class HopOrchestrator {
             log.error("[{}] Server '{}' is not connected — rejecting immediately", correlationId, serverName);
             auditService.auditOrchestrationError(
                     correlationId, sessionId, serverName, publicName,
-                    McpErrorCode.SERVER_UNAVAILABLE,
+                    GatewayErrorCode.SERVER_UNAVAILABLE,
                     "Server '" + serverName + "' is not connected",
                     requestId, clientName,
                     LocalDateTime.now(), ++seq);
-            return buildErrorResult(McpErrorCode.SERVER_UNAVAILABLE,
+            return buildErrorResult(GatewayErrorCode.SERVER_UNAVAILABLE,
                     publicName, serverName, "Server '" + serverName + "' is not connected");
         }
 
@@ -301,11 +301,11 @@ public class HopOrchestrator {
             inFlightRegistry.fail(correlationId, "Argument conversion failed: " + e.getMessage());
             auditService.auditOrchestrationError(
                     correlationId, sessionId, serverName, publicName,
-                    McpErrorCode.ORCHESTRATION_FAILURE,
+                    GatewayErrorCode.ORCHESTRATION_FAILURE,
                     "Argument conversion failed: " + e.getMessage(),
                     requestId, clientName,
                     LocalDateTime.now(), ++seq);
-            return buildErrorResult(McpErrorCode.ORCHESTRATION_FAILURE,
+            return buildErrorResult(GatewayErrorCode.ORCHESTRATION_FAILURE,
                     publicName, serverName, "Argument conversion failed: " + e.getMessage());
         }
 
@@ -322,9 +322,9 @@ public class HopOrchestrator {
             inFlightRegistry.fail(correlationId, "STS mint failed: " + e.getMessage());
             auditService.auditOrchestrationError(
                     correlationId, sessionId, serverName, publicName,
-                    McpErrorCode.PDP_DENIED, "Delegation token mint failed: " + e.getMessage(),
+                    GatewayErrorCode.PDP_DENIED, "Delegation token mint failed: " + e.getMessage(),
                     requestId, clientName, LocalDateTime.now(), ++seq);
-            return buildErrorResult(McpErrorCode.PDP_DENIED, publicName, serverName,
+            return buildErrorResult(GatewayErrorCode.PDP_DENIED, publicName, serverName,
                     "Delegation token unavailable");
         }
 
@@ -370,11 +370,11 @@ public class HopOrchestrator {
             inFlightRegistry.fail(correlationId, e.getMessage());
             auditService.auditOrchestrationError(
                     correlationId, sessionId, serverName, publicName,
-                    McpErrorCode.SERVER_UNAVAILABLE, e.getMessage(),
+                    GatewayErrorCode.SERVER_UNAVAILABLE, e.getMessage(),
                     requestId, clientName,
                     LocalDateTime.now(), ++seq);
 
-            return buildErrorResult(McpErrorCode.SERVER_UNAVAILABLE,
+            return buildErrorResult(GatewayErrorCode.SERVER_UNAVAILABLE,
                     publicName, serverName, e.getMessage());
 
         } catch (Exception e) {
@@ -384,11 +384,11 @@ public class HopOrchestrator {
             inFlightRegistry.fail(correlationId, e.getMessage());
             auditService.auditOrchestrationError(
                     correlationId, sessionId, serverName, publicName,
-                    McpErrorCode.ORCHESTRATION_FAILURE, e.getMessage(),
+                    GatewayErrorCode.ORCHESTRATION_FAILURE, e.getMessage(),
                     requestId, clientName,
                     LocalDateTime.now(), ++seq);
 
-            return buildErrorResult(McpErrorCode.ORCHESTRATION_FAILURE,
+            return buildErrorResult(GatewayErrorCode.ORCHESTRATION_FAILURE,
                     publicName, serverName, e.getMessage());
         } finally {
             if (usingAgentToken) {
@@ -414,7 +414,7 @@ public class HopOrchestrator {
         agentRegistryService.recordRequest(sessionId);
         int seq = 0;
 
-        McpErrorCode denialCode = governanceDenial(sessionId);
+        GatewayErrorCode denialCode = governanceDenial(sessionId);
         if (denialCode != null) {
             log.warn("[{}] GOVERNANCE DENIED (defense-in-depth): session={}, prompt={}, reason={}",
                     correlationId, sessionId, publicName, denialCode.getMessage());
@@ -432,15 +432,15 @@ public class HopOrchestrator {
                     correlationId, sessionId, publicName, clientName);
             auditService.auditOrchestrationError(
                     correlationId, sessionId, null, publicName,
-                    McpErrorCode.CAPABILITY_NOT_ALLOWED,
+                    GatewayErrorCode.CAPABILITY_NOT_ALLOWED,
                     "Prompt '" + publicName + "' is not permitted for this agent.",
                     requestId, clientName,
                     LocalDateTime.now(), ++seq);
             auditService.auditCapabilityAccessDenied(sessionId, correlationId, clientName, publicName, "PROMPT",
                     LocalDateTime.now(), ++seq);
             throw new RuntimeException(String.format("[%d] %s: prompt '%s'",
-                    McpErrorCode.CAPABILITY_NOT_ALLOWED.getCode(),
-                    McpErrorCode.CAPABILITY_NOT_ALLOWED.getMessage(), publicName));
+                    GatewayErrorCode.CAPABILITY_NOT_ALLOWED.getCode(),
+                    GatewayErrorCode.CAPABILITY_NOT_ALLOWED.getMessage(), publicName));
         }
         if (promptAgentId != null && capabilityFilterService.hasProfiles(promptAgentId)) {
             auditService.auditCapabilityAccessGranted(sessionId, correlationId, clientName, publicName, "PROMPT",
@@ -467,13 +467,13 @@ public class HopOrchestrator {
             log.error("[{}] Prompt '{}' NOT FOUND in capability registry", correlationId, publicName);
             auditService.auditOrchestrationError(
                     correlationId, sessionId, null, publicName,
-                    McpErrorCode.CAPABILITY_NOT_FOUND,
+                    GatewayErrorCode.CAPABILITY_NOT_FOUND,
                     "Prompt '" + publicName + "' not found in capability registry",
                     requestId, clientName,
                     LocalDateTime.now(), ++seq);
             throw new RuntimeException(String.format("[%d] %s: prompt '%s'",
-                    McpErrorCode.CAPABILITY_NOT_FOUND.getCode(),
-                    McpErrorCode.CAPABILITY_NOT_FOUND.getMessage(), publicName));
+                    GatewayErrorCode.CAPABILITY_NOT_FOUND.getCode(),
+                    GatewayErrorCode.CAPABILITY_NOT_FOUND.getMessage(), publicName));
         }
 
         CapabilityDescriptor descriptor = optDescriptor.get();
@@ -514,7 +514,7 @@ public class HopOrchestrator {
                 log.warn("[{}] PDP DENIED: agent='{}', prompt='{}', reason='{}'",
                         correlationId, pdpRequest.getAgentName(), publicName, pdpResult.getReason());
                 throw new RuntimeException(String.format("[%d] Policy violation: %s",
-                        McpErrorCode.PDP_DENIED.getCode(), pdpResult.getReason()));
+                        GatewayErrorCode.PDP_DENIED.getCode(), pdpResult.getReason()));
             }
 
             log.info("[{}] PDP ALLOWED: agent='{}', prompt='{}' ({}ms)",
@@ -531,13 +531,13 @@ public class HopOrchestrator {
             log.error("[{}] Server '{}' is not connected — rejecting prompt immediately", correlationId, serverName);
             auditService.auditOrchestrationError(
                     correlationId, sessionId, serverName, publicName,
-                    McpErrorCode.SERVER_UNAVAILABLE,
+                    GatewayErrorCode.SERVER_UNAVAILABLE,
                     "Server '" + serverName + "' is not connected",
                     requestId, clientName,
                     LocalDateTime.now(), ++seq);
             throw new RuntimeException(String.format("[%d] %s: server '%s' is not connected",
-                    McpErrorCode.SERVER_UNAVAILABLE.getCode(),
-                    McpErrorCode.SERVER_UNAVAILABLE.getMessage(), serverName));
+                    GatewayErrorCode.SERVER_UNAVAILABLE.getCode(),
+                    GatewayErrorCode.SERVER_UNAVAILABLE.getMessage(), serverName));
         }
 
         String pClientSessionId = null;
@@ -576,10 +576,10 @@ public class HopOrchestrator {
             inFlightRegistry.fail(correlationId, "STS mint failed: " + e.getMessage());
             auditService.auditOrchestrationError(
                     correlationId, sessionId, serverName, publicName,
-                    McpErrorCode.PDP_DENIED, "Delegation token mint failed: " + e.getMessage(),
+                    GatewayErrorCode.PDP_DENIED, "Delegation token mint failed: " + e.getMessage(),
                     requestId, clientName, LocalDateTime.now(), ++seq);
             throw new RuntimeException(String.format("[%d] %s: prompt '%s' — delegation token unavailable",
-                    McpErrorCode.PDP_DENIED.getCode(), McpErrorCode.PDP_DENIED.getMessage(), publicName));
+                    GatewayErrorCode.PDP_DENIED.getCode(), GatewayErrorCode.PDP_DENIED.getMessage(), publicName));
         }
 
         boolean usingAgentToken = adapter.applyCredentials(hop, correlationId);
@@ -622,12 +622,12 @@ public class HopOrchestrator {
             inFlightRegistry.fail(correlationId, e.getMessage());
             auditService.auditOrchestrationError(
                     correlationId, sessionId, serverName, publicName,
-                    McpErrorCode.SERVER_UNAVAILABLE, e.getMessage(),
+                    GatewayErrorCode.SERVER_UNAVAILABLE, e.getMessage(),
                     requestId, clientName,
                     LocalDateTime.now(), ++seq);
             throw new RuntimeException(String.format("[%d] %s: prompt '%s' on server '%s' — %s",
-                    McpErrorCode.SERVER_UNAVAILABLE.getCode(),
-                    McpErrorCode.SERVER_UNAVAILABLE.getMessage(),
+                    GatewayErrorCode.SERVER_UNAVAILABLE.getCode(),
+                    GatewayErrorCode.SERVER_UNAVAILABLE.getMessage(),
                     publicName, serverName, e.getMessage()), e);
 
         } catch (Exception e) {
@@ -636,12 +636,12 @@ public class HopOrchestrator {
             inFlightRegistry.fail(correlationId, e.getMessage());
             auditService.auditOrchestrationError(
                     correlationId, sessionId, serverName, publicName,
-                    McpErrorCode.ORCHESTRATION_FAILURE, e.getMessage(),
+                    GatewayErrorCode.ORCHESTRATION_FAILURE, e.getMessage(),
                     requestId, clientName,
                     LocalDateTime.now(), ++seq);
             throw new RuntimeException(String.format("[%d] %s: prompt '%s' on server '%s' — %s",
-                    McpErrorCode.ORCHESTRATION_FAILURE.getCode(),
-                    McpErrorCode.ORCHESTRATION_FAILURE.getMessage(),
+                    GatewayErrorCode.ORCHESTRATION_FAILURE.getCode(),
+                    GatewayErrorCode.ORCHESTRATION_FAILURE.getMessage(),
                     publicName, serverName, e.getMessage()), e);
         } finally {
             if (usingAgentToken) {
@@ -668,7 +668,7 @@ public class HopOrchestrator {
         agentRegistryService.recordRequest(sessionId);
         int seq = 0;
 
-        McpErrorCode denialCode = governanceDenial(sessionId);
+        GatewayErrorCode denialCode = governanceDenial(sessionId);
         if (denialCode != null) {
             log.warn("[{}] GOVERNANCE DENIED (defense-in-depth): session={}, resource={}, reason={}",
                     correlationId, sessionId, publicName, denialCode.getMessage());
@@ -686,15 +686,15 @@ public class HopOrchestrator {
                     correlationId, sessionId, publicName, clientName);
             auditService.auditOrchestrationError(
                     correlationId, sessionId, null, publicName,
-                    McpErrorCode.CAPABILITY_NOT_ALLOWED,
+                    GatewayErrorCode.CAPABILITY_NOT_ALLOWED,
                     "Resource '" + publicName + "' is not permitted for this agent.",
                     requestId, clientName,
                     LocalDateTime.now(), ++seq);
             auditService.auditCapabilityAccessDenied(sessionId, correlationId, clientName, publicName, "RESOURCE",
                     LocalDateTime.now(), ++seq);
             throw new RuntimeException(String.format("[%d] %s: resource '%s'",
-                    McpErrorCode.CAPABILITY_NOT_ALLOWED.getCode(),
-                    McpErrorCode.CAPABILITY_NOT_ALLOWED.getMessage(), publicName));
+                    GatewayErrorCode.CAPABILITY_NOT_ALLOWED.getCode(),
+                    GatewayErrorCode.CAPABILITY_NOT_ALLOWED.getMessage(), publicName));
         }
         if (resourceAgentId != null && capabilityFilterService.hasProfiles(resourceAgentId)) {
             auditService.auditCapabilityAccessGranted(sessionId, correlationId, clientName, publicName, "RESOURCE",
@@ -721,13 +721,13 @@ public class HopOrchestrator {
             log.error("[{}] Resource '{}' NOT FOUND in capability registry", correlationId, publicName);
             auditService.auditOrchestrationError(
                     correlationId, sessionId, null, publicName,
-                    McpErrorCode.CAPABILITY_NOT_FOUND,
+                    GatewayErrorCode.CAPABILITY_NOT_FOUND,
                     "Resource '" + publicName + "' not found in capability registry",
                     requestId, clientName,
                     LocalDateTime.now(), ++seq);
             throw new RuntimeException(String.format("[%d] %s: resource '%s'",
-                    McpErrorCode.CAPABILITY_NOT_FOUND.getCode(),
-                    McpErrorCode.CAPABILITY_NOT_FOUND.getMessage(), publicName));
+                    GatewayErrorCode.CAPABILITY_NOT_FOUND.getCode(),
+                    GatewayErrorCode.CAPABILITY_NOT_FOUND.getMessage(), publicName));
         }
 
         CapabilityDescriptor descriptor = optDescriptor.get();
@@ -768,7 +768,7 @@ public class HopOrchestrator {
                 log.warn("[{}] PDP DENIED: agent='{}', resource='{}', reason='{}'",
                         correlationId, pdpRequest.getAgentName(), publicName, pdpResult.getReason());
                 throw new RuntimeException(String.format("[%d] Policy violation: %s",
-                        McpErrorCode.PDP_DENIED.getCode(), pdpResult.getReason()));
+                        GatewayErrorCode.PDP_DENIED.getCode(), pdpResult.getReason()));
             }
 
             log.info("[{}] PDP ALLOWED: agent='{}', resource='{}' ({}ms)",
@@ -785,13 +785,13 @@ public class HopOrchestrator {
             log.error("[{}] Server '{}' is not connected — rejecting resource read immediately", correlationId, serverName);
             auditService.auditOrchestrationError(
                     correlationId, sessionId, serverName, publicName,
-                    McpErrorCode.SERVER_UNAVAILABLE,
+                    GatewayErrorCode.SERVER_UNAVAILABLE,
                     "Server '" + serverName + "' is not connected",
                     requestId, clientName,
                     LocalDateTime.now(), ++seq);
             throw new RuntimeException(String.format("[%d] %s: server '%s' is not connected",
-                    McpErrorCode.SERVER_UNAVAILABLE.getCode(),
-                    McpErrorCode.SERVER_UNAVAILABLE.getMessage(), serverName));
+                    GatewayErrorCode.SERVER_UNAVAILABLE.getCode(),
+                    GatewayErrorCode.SERVER_UNAVAILABLE.getMessage(), serverName));
         }
 
         String rClientSessionId = null;
@@ -826,10 +826,10 @@ public class HopOrchestrator {
             inFlightRegistry.fail(correlationId, "STS mint failed: " + e.getMessage());
             auditService.auditOrchestrationError(
                     correlationId, sessionId, serverName, publicName,
-                    McpErrorCode.PDP_DENIED, "Delegation token mint failed: " + e.getMessage(),
+                    GatewayErrorCode.PDP_DENIED, "Delegation token mint failed: " + e.getMessage(),
                     requestId, clientName, LocalDateTime.now(), ++seq);
             throw new RuntimeException(String.format("[%d] %s: resource '%s' — delegation token unavailable",
-                    McpErrorCode.PDP_DENIED.getCode(), McpErrorCode.PDP_DENIED.getMessage(), publicName));
+                    GatewayErrorCode.PDP_DENIED.getCode(), GatewayErrorCode.PDP_DENIED.getMessage(), publicName));
         }
 
         boolean usingAgentToken = adapter.applyCredentials(hop, correlationId);
@@ -872,12 +872,12 @@ public class HopOrchestrator {
             inFlightRegistry.fail(correlationId, e.getMessage());
             auditService.auditOrchestrationError(
                     correlationId, sessionId, serverName, publicName,
-                    McpErrorCode.SERVER_UNAVAILABLE, e.getMessage(),
+                    GatewayErrorCode.SERVER_UNAVAILABLE, e.getMessage(),
                     requestId, clientName,
                     LocalDateTime.now(), ++seq);
             throw new RuntimeException(String.format("[%d] %s: resource '%s' on server '%s' — %s",
-                    McpErrorCode.SERVER_UNAVAILABLE.getCode(),
-                    McpErrorCode.SERVER_UNAVAILABLE.getMessage(),
+                    GatewayErrorCode.SERVER_UNAVAILABLE.getCode(),
+                    GatewayErrorCode.SERVER_UNAVAILABLE.getMessage(),
                     publicName, serverName, e.getMessage()), e);
 
         } catch (Exception e) {
@@ -886,12 +886,12 @@ public class HopOrchestrator {
             inFlightRegistry.fail(correlationId, e.getMessage());
             auditService.auditOrchestrationError(
                     correlationId, sessionId, serverName, publicName,
-                    McpErrorCode.ORCHESTRATION_FAILURE, e.getMessage(),
+                    GatewayErrorCode.ORCHESTRATION_FAILURE, e.getMessage(),
                     requestId, clientName,
                     LocalDateTime.now(), ++seq);
             throw new RuntimeException(String.format("[%d] %s: resource '%s' on server '%s' — %s",
-                    McpErrorCode.ORCHESTRATION_FAILURE.getCode(),
-                    McpErrorCode.ORCHESTRATION_FAILURE.getMessage(),
+                    GatewayErrorCode.ORCHESTRATION_FAILURE.getCode(),
+                    GatewayErrorCode.ORCHESTRATION_FAILURE.getMessage(),
                     publicName, serverName, e.getMessage()), e);
         } finally {
             if (usingAgentToken) {
@@ -1046,28 +1046,28 @@ public class HopOrchestrator {
      * or {@code null} to proceed. Unknown/APPROVED status proceeds — the inbound filter is the primary gate,
      * so this secondary check never turns a missing status into a false denial.
      */
-    private McpErrorCode governanceDenial(String sessionId) {
+    private GatewayErrorCode governanceDenial(String sessionId) {
         if ("DEPROVISIONED".equals(agentRegistryService.getAgentLifecycleStatusForSession(sessionId))) {
-            return McpErrorCode.AGENT_DEPROVISIONED;
+            return GatewayErrorCode.AGENT_DEPROVISIONED;
         }
         String approval = agentRegistryService.getAgentStatusForSession(sessionId);
         if ("BLOCKED".equals(approval)) {
-            return McpErrorCode.AGENT_BLOCKED;
+            return GatewayErrorCode.AGENT_BLOCKED;
         }
         if ("PENDING".equals(approval)) {
-            return McpErrorCode.AGENT_PENDING_APPROVAL;
+            return GatewayErrorCode.AGENT_PENDING_APPROVAL;
         }
         return null;
     }
 
-    private McpSchema.CallToolResult buildErrorResult(McpErrorCode errorCode,
+    private McpSchema.CallToolResult buildErrorResult(GatewayErrorCode errorCode,
                                                       String publicName) {
         String message = String.format("[%d] %s: tool '%s'",
                 errorCode.getCode(), errorCode.getMessage(), publicName);
         return new McpSchema.CallToolResult(message, true);
     }
 
-    private McpSchema.CallToolResult buildErrorResult(McpErrorCode errorCode,
+    private McpSchema.CallToolResult buildErrorResult(GatewayErrorCode errorCode,
                                                       String publicName,
                                                       String serverName,
                                                       String detail) {

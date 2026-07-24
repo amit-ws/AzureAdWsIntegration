@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditStatus;
-import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
+import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.entity.McpPromptEntity;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.entity.McpResourceEntity;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.entity.McpServerEntity;
@@ -34,7 +34,7 @@ public class CapabilityRegistryService {
     private final McpResourceRepository resourceRepository;
     private final McpPromptRepository promptRepository;
 
-    private final McpAuditService auditService;
+    private final GatewayAuditService auditService;
 
     private final ConcurrentHashMap<String, CapabilityDescriptor> primaryIndex =
             new ConcurrentHashMap<>();
@@ -48,7 +48,7 @@ public class CapabilityRegistryService {
                                      McpToolRepository toolRepository,
                                      McpResourceRepository resourceRepository,
                                      McpPromptRepository promptRepository,
-                                     McpAuditService auditService) {
+                                     GatewayAuditService auditService) {
         this.serverRepository = serverRepository;
         this.toolRepository = toolRepository;
         this.resourceRepository = resourceRepository;

@@ -1,6 +1,6 @@
 package com.ws.wsAgenticSecurityGateway.pdp.service;
 
-import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
+import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
 import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyDto;
 import com.ws.wsAgenticSecurityGateway.pdp.entity.GatewayPolicyEntity;
@@ -36,12 +36,12 @@ public class PolicyService {
 
     private final GatewayPolicyRepository repository;
     private final CedarPolicyEngine cedarEngine;
-    private final McpAuditService auditService;
+    private final GatewayAuditService auditService;
     private final boolean seedDefaultLineage;
 
     public PolicyService(GatewayPolicyRepository repository,
                          CedarPolicyEngine cedarEngine,
-                         McpAuditService auditService,
+                         GatewayAuditService auditService,
                          @Value("${ws.gateway.policy.seed-default-lineage:true}") boolean seedDefaultLineage) {
         this.repository = repository;
         this.cedarEngine = cedarEngine;

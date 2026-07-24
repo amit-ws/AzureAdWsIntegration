@@ -13,13 +13,13 @@ import java.util.concurrent.Executor;
 @Slf4j
 public class AuditAsyncConfig {
 
-    @Bean(name = "mcpAuditExecutor")
-    public Executor mcpAuditExecutor() {
+    @Bean(name = "auditExecutor")
+    public Executor auditExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         executor.setCorePoolSize(4);
         executor.setMaxPoolSize(16);
         executor.setQueueCapacity(2000);
-        executor.setThreadNamePrefix("mcp-audit-");
+        executor.setThreadNamePrefix("gw-audit-");
         executor.setKeepAliveSeconds(60);
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(30);

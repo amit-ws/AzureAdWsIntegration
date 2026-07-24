@@ -8,8 +8,8 @@ import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayNhiReposi
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditEventType;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditStatus;
 import com.ws.wsAgenticSecurityGateway.audit.entity.McpAuditLog;
-import com.ws.wsAgenticSecurityGateway.audit.repository.McpAuditLogRepository;
-import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
+import com.ws.wsAgenticSecurityGateway.audit.repository.GatewayAuditLogRepository;
+import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
 import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -28,16 +28,16 @@ public class NhiService {
 
     private final GatewayNhiRepository nhiRepository;
     private final GatewayAgentSessionRepository sessionRepository;
-    private final McpAuditLogRepository auditLogRepository;
+    private final GatewayAuditLogRepository auditLogRepository;
     private final AgentRegistryService agentRegistryService;
-    private final McpAuditService auditService;
+    private final GatewayAuditService auditService;
     private final ApplicationEventPublisher eventPublisher;
 
     public NhiService(GatewayNhiRepository nhiRepository,
                       GatewayAgentSessionRepository sessionRepository,
-                      McpAuditLogRepository auditLogRepository,
+                      GatewayAuditLogRepository auditLogRepository,
                       AgentRegistryService agentRegistryService,
-                      McpAuditService auditService,
+                      GatewayAuditService auditService,
                       ApplicationEventPublisher eventPublisher) {
         this.nhiRepository = nhiRepository;
         this.sessionRepository = sessionRepository;

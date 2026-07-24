@@ -1,6 +1,6 @@
 package com.ws.wsAgenticSecurityGateway.pdp.service;
 
-import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
+import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
 import com.ws.wsAgenticSecurityGateway.pdp.entity.GatewayPolicyEntity;
 import com.ws.wsAgenticSecurityGateway.pdp.repository.GatewayPolicyRepository;
 import org.junit.jupiter.api.Test;
@@ -25,7 +25,7 @@ class PolicyServiceTest {
 
     private final GatewayPolicyRepository repository = mock(GatewayPolicyRepository.class);
     private final CedarPolicyEngine cedarEngine = mock(CedarPolicyEngine.class);
-    private final McpAuditService auditService = mock(McpAuditService.class);
+    private final GatewayAuditService auditService = mock(GatewayAuditService.class);
 
     private final PolicyService service = new PolicyService(repository, cedarEngine, auditService, true);
 

@@ -7,8 +7,8 @@ import com.ws.wsAgenticSecurityGateway.authConfig.dto.*;
 import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import com.ws.wsAgenticSecurityGateway.authConfig.entity.GatewayAuthConfigEntity;
 import com.ws.wsAgenticSecurityGateway.authConfig.repository.GatewayAuthConfigRepository;
-import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
-import com.ws.wsAgenticSecurityGateway.wsClient.service.ServerConfigCryptoService;
+import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
+import com.ws.wsAgenticSecurityGateway.common.crypto.SecretCryptoService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -47,8 +47,8 @@ public class AuthConfigService {
     private static final Duration HTTP_TIMEOUT = Duration.ofSeconds(10);
 
     private final GatewayAuthConfigRepository repository;
-    private final ServerConfigCryptoService cryptoService;
-    private final McpAuditService auditService;
+    private final SecretCryptoService cryptoService;
+    private final GatewayAuditService auditService;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
     private final RestTemplate trustAllRestTemplate;
@@ -67,8 +67,8 @@ public class AuthConfigService {
     private volatile DelegatingJwtDecoder delegatingJwtDecoder;
 
     public AuthConfigService(GatewayAuthConfigRepository repository,
-                             ServerConfigCryptoService cryptoService,
-                             McpAuditService auditService,
+                             SecretCryptoService cryptoService,
+                             GatewayAuditService auditService,
                              ObjectMapper objectMapper,
                              AgentRegistryService agentRegistryService) {
         this.repository = repository;

@@ -10,7 +10,7 @@ import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import com.ws.wsAgenticSecurityGateway.sts.entity.GatewayStsKeyEntity;
 import com.ws.wsAgenticSecurityGateway.sts.repository.GatewayStsKeyRepository;
-import com.ws.wsAgenticSecurityGateway.wsClient.service.ServerConfigCryptoService;
+import com.ws.wsAgenticSecurityGateway.common.crypto.SecretCryptoService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -35,7 +35,7 @@ import static org.mockito.Mockito.when;
 class StsKeyServiceTest {
 
     private final GatewayStsKeyRepository repo = mock(GatewayStsKeyRepository.class);
-    private final ServerConfigCryptoService crypto = mock(ServerConfigCryptoService.class);
+    private final SecretCryptoService crypto = mock(SecretCryptoService.class);
     private final List<GatewayStsKeyEntity> store = new ArrayList<>();
 
     private StsKeyService keyService;

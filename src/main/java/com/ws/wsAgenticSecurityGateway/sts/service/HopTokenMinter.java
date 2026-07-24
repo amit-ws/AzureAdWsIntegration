@@ -1,6 +1,6 @@
 package com.ws.wsAgenticSecurityGateway.sts.service;
 
-import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
+import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
 import com.ws.wsAgenticSecurityGateway.orchestration.model.Hop;
 import com.ws.wsAgenticSecurityGateway.sts.model.ActChain;
 import com.ws.wsAgenticSecurityGateway.sts.model.MintRequest;
@@ -34,11 +34,11 @@ public class HopTokenMinter {
 
     private final ScopeDeriver scopeDeriver;
     private final StsService stsService;
-    private final McpAuditService auditService;
+    private final GatewayAuditService auditService;
 
     public HopTokenMinter(ScopeDeriver scopeDeriver,
                           StsService stsService,
-                          McpAuditService auditService) {
+                          GatewayAuditService auditService) {
         this.scopeDeriver = scopeDeriver;
         this.stsService = stsService;
         this.auditService = auditService;

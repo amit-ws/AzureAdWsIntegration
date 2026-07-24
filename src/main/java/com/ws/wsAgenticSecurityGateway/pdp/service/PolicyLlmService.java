@@ -9,7 +9,7 @@ import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryServic
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayNhiEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.HumanUserService;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.NhiService;
-import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
+import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
 import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyChatRequest;
@@ -47,7 +47,7 @@ public class PolicyLlmService {
     private final PolicyService policyService;
     private final CedarPolicyEngine cedarEngine;
     private final CustomAttributeService customAttributeService;
-    private final McpAuditService auditService;
+    private final GatewayAuditService auditService;
     private final HumanUserService humanUserService;
     private final NhiService nhiService;
 
@@ -68,7 +68,7 @@ public class PolicyLlmService {
                              PolicyService policyService,
                              CedarPolicyEngine cedarEngine,
                              CustomAttributeService customAttributeService,
-                             McpAuditService auditService,
+                             GatewayAuditService auditService,
                              HumanUserService humanUserService,
                              NhiService nhiService) {
         this.objectMapper = objectMapper;

@@ -1,9 +1,10 @@
 package com.ws.wsAgenticSecurityGateway.orchestration;
+import com.ws.wsAgenticSecurityGateway.protocol.mcp.inbound.ToolCallOrchestrator;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentCapabilityFilterService;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
-import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
+import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
 import com.ws.wsAgenticSecurityGateway.orchestration.adapter.McpAdapter;
@@ -14,8 +15,8 @@ import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyEvaluationRequest;
 import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyEvaluationResult;
 import com.ws.wsAgenticSecurityGateway.pdp.service.CedarPolicyEngine;
 import com.ws.wsAgenticSecurityGateway.pdp.service.PolicyContextBuilder;
-import com.ws.wsAgenticSecurityGateway.wsClient.config.McpSessionManager;
-import com.ws.wsAgenticSecurityGateway.wsClient.service.McpClientService;
+import com.ws.wsAgenticSecurityGateway.protocol.mcp.outbound.config.McpSessionManager;
+import com.ws.wsAgenticSecurityGateway.protocol.mcp.outbound.service.McpClientService;
 import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.server.McpSyncServerExchange;
 import io.modelcontextprotocol.spec.McpSchema;
@@ -53,7 +54,7 @@ class ToolCallOrchestratorCharacterizationTest {
 
     private final CapabilityRegistryService registryService = mock(CapabilityRegistryService.class);
     private final McpClientService mcpClientService = mock(McpClientService.class);
-    private final McpAuditService auditService = mock(McpAuditService.class);
+    private final GatewayAuditService auditService = mock(GatewayAuditService.class);
     private final InFlightRequestRegistry inFlight = mock(InFlightRequestRegistry.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final McpSessionManager mcpSessionManager = mock(McpSessionManager.class);

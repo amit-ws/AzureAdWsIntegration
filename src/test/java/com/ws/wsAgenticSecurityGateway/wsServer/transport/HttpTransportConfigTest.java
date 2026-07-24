@@ -1,4 +1,4 @@
-package com.ws.wsAgenticSecurityGateway.wsServer.transport;
+package com.ws.wsAgenticSecurityGateway.protocol.mcp.transport;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;

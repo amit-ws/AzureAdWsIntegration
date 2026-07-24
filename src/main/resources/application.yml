@@ -114,7 +114,7 @@ github:
 
 logging:
   level:
-    com.ws.wsAgenticSecurityGateway.wsClient: INFO
+    com.ws.wsAgenticSecurityGateway.protocol.mcp.outbound: INFO
     com.ws.wsAgenticSecurityGateway.audit: DEBUG
     io.modelcontextprotocol: DEBUG
   pattern:

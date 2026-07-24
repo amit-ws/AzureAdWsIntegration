@@ -8,8 +8,8 @@ import com.ws.wsAgenticSecurityGateway.audit.dto.AgentActivity;
 import com.ws.wsAgenticSecurityGateway.audit.dto.IdentityGraph;
 import com.ws.wsAgenticSecurityGateway.audit.entity.McpAuditLog;
 import com.ws.wsAgenticSecurityGateway.audit.entity.PdpAuditLog;
-import com.ws.wsAgenticSecurityGateway.audit.repository.McpAuditLogRepository;
-import com.ws.wsAgenticSecurityGateway.audit.repository.McpAuditLogSpecification;
+import com.ws.wsAgenticSecurityGateway.audit.repository.GatewayAuditLogRepository;
+import com.ws.wsAgenticSecurityGateway.audit.repository.GatewayAuditLogSpecification;
 import com.ws.wsAgenticSecurityGateway.audit.repository.PdpAuditLogRepository;
 import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import lombok.extern.slf4j.Slf4j;
@@ -25,10 +25,10 @@ import java.util.stream.Collectors;
 @Slf4j
 public class AuditQueryService {
 
-    private final McpAuditLogRepository auditRepo;
+    private final GatewayAuditLogRepository auditRepo;
     private final PdpAuditLogRepository pdpAuditRepo;
 
-    public AuditQueryService(McpAuditLogRepository auditRepo,
+    public AuditQueryService(GatewayAuditLogRepository auditRepo,
                              PdpAuditLogRepository pdpAuditRepo) {
         this.auditRepo = auditRepo;
         this.pdpAuditRepo = pdpAuditRepo;
@@ -43,7 +43,7 @@ public class AuditQueryService {
                                         String search,
                                         LocalDateTime fromDate, LocalDateTime toDate,
                                         PageRequest pageRequest) {
-        var spec = McpAuditLogSpecification.build(
+        var spec = GatewayAuditLogSpecification.build(
                 module, eventType, status, severity,
                 serverName, capabilityName, correlationId, traceId, sessionId,
                 agentName, tokenType, userIdentity, sourceIp,

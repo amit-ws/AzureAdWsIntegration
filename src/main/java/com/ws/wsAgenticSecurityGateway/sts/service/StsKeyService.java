@@ -7,7 +7,7 @@ import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.gen.RSAKeyGenerator;
 import com.ws.wsAgenticSecurityGateway.sts.entity.GatewayStsKeyEntity;
 import com.ws.wsAgenticSecurityGateway.sts.repository.GatewayStsKeyRepository;
-import com.ws.wsAgenticSecurityGateway.wsClient.service.ServerConfigCryptoService;
+import com.ws.wsAgenticSecurityGateway.common.crypto.SecretCryptoService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -24,7 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>The ACTIVE private key signs; the public JWK is served at the JWKS endpoint so downstream /
  * JWKS-trusting parties can verify gateway-minted tokens. Private key material is stored
- * AES/GCM-encrypted ({@link ServerConfigCryptoService}). Keys are generated lazily on first use
+ * AES/GCM-encrypted ({@link SecretCryptoService}). Keys are generated lazily on first use
  * for a tenant. (Decision: per-tenant keys — a single global key would risk cross-tenant leakage.)
  */
 @Service
@@ -36,12 +36,12 @@ public class StsKeyService {
     private static final int KEY_SIZE = 2048;
 
     private final GatewayStsKeyRepository repository;
-    private final ServerConfigCryptoService crypto;
+    private final SecretCryptoService crypto;
 
     /** tenant -> active signing key (with private material), cached to avoid per-mint decrypt. */
     private final ConcurrentHashMap<String, RSAKey> signingCache = new ConcurrentHashMap<>();
 
-    public StsKeyService(GatewayStsKeyRepository repository, ServerConfigCryptoService crypto) {
+    public StsKeyService(GatewayStsKeyRepository repository, SecretCryptoService crypto) {
         this.repository = repository;
         this.crypto = crypto;
     }

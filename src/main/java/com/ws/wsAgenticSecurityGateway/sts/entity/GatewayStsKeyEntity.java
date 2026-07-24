@@ -18,7 +18,7 @@ import java.util.UUID;
 /**
  * A per-tenant RSA signing key for the STS. The ACTIVE key signs newly minted OBO tokens;
  * RETIRING keys stay in the JWKS during a rotation grace window so tokens they signed still verify.
- * The private key material is stored AES/GCM-encrypted (via ServerConfigCryptoService).
+ * The private key material is stored AES/GCM-encrypted (via SecretCryptoService).
  *
  * <p>Table auto-created by Hibernate {@code ddl-auto: update} in schema {@code ws_agentic_security}.
  */

@@ -10,7 +10,7 @@ import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayAgentSess
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayHumanUserRepository;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayNhiRepository;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.event.BlockedSessionEvent;
-import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
+import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
 import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationEventPublisher;
@@ -33,7 +33,7 @@ public class AgentRegistryService {
     private final GatewayAgentSessionRepository sessionRepository;
     private final GatewayHumanUserRepository humanUserRepository;
     private final GatewayNhiRepository nhiRepository;
-    private final McpAuditService auditService;
+    private final GatewayAuditService auditService;
     private final ApplicationEventPublisher eventPublisher;
 
     private final ConcurrentHashMap<String, GatewayAgentEntity> agentCache = new ConcurrentHashMap<>();
@@ -56,7 +56,7 @@ public class AgentRegistryService {
             GatewayAgentSessionRepository sessionRepository,
             GatewayHumanUserRepository humanUserRepository,
             GatewayNhiRepository nhiRepository,
-            McpAuditService auditService,
+            GatewayAuditService auditService,
             ApplicationEventPublisher eventPublisher) {
         this.agentRepository = agentRepository;
         this.sessionRepository = sessionRepository;
@@ -319,7 +319,7 @@ public class AgentRegistryService {
         return staleSessions.size();
     }
 
-    @Async("mcpAuditExecutor")
+    @Async("auditExecutor")
     @Transactional
     public void updateLastActivity(String sessionId) {
         try {
@@ -329,7 +329,7 @@ public class AgentRegistryService {
         }
     }
 
-    @Async("mcpAuditExecutor")
+    @Async("auditExecutor")
     @Transactional
     public void recordRequest(String sessionId) {
         try {

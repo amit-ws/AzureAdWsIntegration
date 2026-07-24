@@ -3,7 +3,7 @@ package com.ws.wsAgenticSecurityGateway.audit.service;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditEventType;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditModule;
 import com.ws.wsAgenticSecurityGateway.audit.entity.McpAuditLog;
-import com.ws.wsAgenticSecurityGateway.audit.repository.McpAuditLogRepository;
+import com.ws.wsAgenticSecurityGateway.audit.repository.GatewayAuditLogRepository;
 import com.ws.wsAgenticSecurityGateway.audit.repository.PdpAuditLogRepository;
 import org.junit.jupiter.api.Test;
 
@@ -21,7 +21,7 @@ import static org.mockito.Mockito.when;
  */
 class AuditQueryServiceTest {
 
-    private final McpAuditLogRepository auditRepo = mock(McpAuditLogRepository.class);
+    private final GatewayAuditLogRepository auditRepo = mock(GatewayAuditLogRepository.class);
     private final PdpAuditLogRepository pdpAuditRepo = mock(PdpAuditLogRepository.class);
     private final AuditQueryService service = new AuditQueryService(auditRepo, pdpAuditRepo);
 

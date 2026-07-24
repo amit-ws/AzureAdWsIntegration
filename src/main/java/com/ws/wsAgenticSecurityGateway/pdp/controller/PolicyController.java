@@ -1,6 +1,6 @@
 package com.ws.wsAgenticSecurityGateway.pdp.controller;
 
-import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
+import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
 import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyChatRequest;
 import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyChatResponse;
 import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyDto;
@@ -24,12 +24,12 @@ public class PolicyController {
     private final PolicyService policyService;
     private final PolicyLlmService llmService;
     private final CedarPolicyEngine cedarEngine;
-    private final McpAuditService auditService;
+    private final GatewayAuditService auditService;
 
     public PolicyController(PolicyService policyService,
                             PolicyLlmService llmService,
                             CedarPolicyEngine cedarEngine,
-                            McpAuditService auditService) {
+                            GatewayAuditService auditService) {
         this.policyService = policyService;
         this.llmService = llmService;
         this.cedarEngine = cedarEngine;

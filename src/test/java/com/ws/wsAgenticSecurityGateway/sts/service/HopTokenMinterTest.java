@@ -1,6 +1,6 @@
 package com.ws.wsAgenticSecurityGateway.sts.service;
 
-import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
+import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
 import com.ws.wsAgenticSecurityGateway.orchestration.model.CapabilityType;
 import com.ws.wsAgenticSecurityGateway.orchestration.model.Hop;
 import com.ws.wsAgenticSecurityGateway.sts.model.ActChain;
@@ -27,7 +27,7 @@ class HopTokenMinterTest {
 
     private final ScopeDeriver scopeDeriver = mock(ScopeDeriver.class);
     private final StsService stsService = mock(StsService.class);
-    private final McpAuditService auditService = mock(McpAuditService.class);
+    private final GatewayAuditService auditService = mock(GatewayAuditService.class);
 
     private final HopTokenMinter minter = new HopTokenMinter(scopeDeriver, stsService, auditService);
 

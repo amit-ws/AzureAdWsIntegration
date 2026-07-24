@@ -7,7 +7,7 @@ import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayAgentRepo
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayAgentSessionRepository;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayHumanUserRepository;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayNhiRepository;
-import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
+import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
 
@@ -34,7 +34,7 @@ class AgentRegistryServiceTest {
     private final GatewayAgentSessionRepository sessionRepository = mock(GatewayAgentSessionRepository.class);
     private final GatewayHumanUserRepository humanUserRepository = mock(GatewayHumanUserRepository.class);
     private final GatewayNhiRepository nhiRepository = mock(GatewayNhiRepository.class);
-    private final McpAuditService auditService = mock(McpAuditService.class);
+    private final GatewayAuditService auditService = mock(GatewayAuditService.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
 
     private final AgentRegistryService service = new AgentRegistryService(

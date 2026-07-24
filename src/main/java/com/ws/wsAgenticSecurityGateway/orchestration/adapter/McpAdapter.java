@@ -2,10 +2,10 @@ package com.ws.wsAgenticSecurityGateway.orchestration.adapter;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.ws.wsAgenticSecurityGateway.orchestration.model.Hop;
-import com.ws.wsAgenticSecurityGateway.wsClient.config.HttpMcpTransport;
-import com.ws.wsAgenticSecurityGateway.wsClient.service.McpClientService;
-import com.ws.wsAgenticSecurityGateway.wsServer.session.ClientSession;
-import com.ws.wsAgenticSecurityGateway.wsServer.session.SessionManager;
+import com.ws.wsAgenticSecurityGateway.protocol.mcp.outbound.config.HttpMcpTransport;
+import com.ws.wsAgenticSecurityGateway.protocol.mcp.outbound.service.McpClientService;
+import com.ws.wsAgenticSecurityGateway.protocol.mcp.session.ClientSession;
+import com.ws.wsAgenticSecurityGateway.protocol.mcp.session.SessionManager;
 import io.modelcontextprotocol.spec.McpSchema;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

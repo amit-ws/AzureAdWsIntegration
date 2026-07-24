@@ -3,7 +3,7 @@ package com.ws.wsAgenticSecurityGateway.agentRegistry.service;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentSessionEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayAgentSessionRepository;
-import com.ws.wsAgenticSecurityGateway.audit.repository.McpAuditLogRepository;
+import com.ws.wsAgenticSecurityGateway.audit.repository.GatewayAuditLogRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -17,11 +17,11 @@ public class AgentAnalyticsService {
 
     private final AgentRegistryService agentRegistryService;
     private final GatewayAgentSessionRepository sessionRepository;
-    private final McpAuditLogRepository auditLogRepository;
+    private final GatewayAuditLogRepository auditLogRepository;
 
     public AgentAnalyticsService(AgentRegistryService agentRegistryService,
                                   GatewayAgentSessionRepository sessionRepository,
-                                  McpAuditLogRepository auditLogRepository) {
+                                  GatewayAuditLogRepository auditLogRepository) {
         this.agentRegistryService = agentRegistryService;
         this.sessionRepository = sessionRepository;
         this.auditLogRepository = auditLogRepository;

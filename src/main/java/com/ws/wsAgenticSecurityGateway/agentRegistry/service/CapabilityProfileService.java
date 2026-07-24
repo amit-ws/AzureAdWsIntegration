@@ -7,7 +7,7 @@ import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.AgentCapabilityProfileAssignmentRepository;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.AgentCapabilityProfileRepository;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayAgentRepository;
-import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
+import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.event.CapabilityProfileChangedEvent;
 import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor;
@@ -29,7 +29,7 @@ public class CapabilityProfileService {
     private final AgentCapabilityFilterService filterService;
     private final CapabilityRegistryService registryService;
     private final GatewayAgentRepository agentRepository;
-    private final McpAuditService auditService;
+    private final GatewayAuditService auditService;
     private final ApplicationEventPublisher eventPublisher;
 
     public CapabilityProfileService(AgentCapabilityProfileRepository profileRepository,
@@ -37,7 +37,7 @@ public class CapabilityProfileService {
                                      AgentCapabilityFilterService filterService,
                                      CapabilityRegistryService registryService,
                                      GatewayAgentRepository agentRepository,
-                                     McpAuditService auditService,
+                                     GatewayAuditService auditService,
                                      ApplicationEventPublisher eventPublisher) {
         this.profileRepository = profileRepository;
         this.assignmentRepository = assignmentRepository;

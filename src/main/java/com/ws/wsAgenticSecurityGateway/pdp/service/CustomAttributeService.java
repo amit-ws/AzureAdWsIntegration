@@ -2,7 +2,7 @@ package com.ws.wsAgenticSecurityGateway.pdp.service;
 
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
-import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
+import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
 import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import com.ws.wsAgenticSecurityGateway.pdp.entity.GatewayCustomAttributeEntity;
 import com.ws.wsAgenticSecurityGateway.pdp.repository.GatewayCustomAttributeRepository;
@@ -28,14 +28,14 @@ public class CustomAttributeService {
 
     private final GatewayCustomAttributeRepository repository;
     private final AgentRegistryService agentRegistryService;
-    private final McpAuditService auditService;
+    private final GatewayAuditService auditService;
 
     private volatile List<GatewayCustomAttributeEntity> cachedAttributes;
     private volatile long cacheTimestamp = 0;
 
     public CustomAttributeService(GatewayCustomAttributeRepository repository,
                                    AgentRegistryService agentRegistryService,
-                                   McpAuditService auditService) {
+                                   GatewayAuditService auditService) {
         this.repository = repository;
         this.agentRegistryService = agentRegistryService;
         this.auditService = auditService;
