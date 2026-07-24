@@ -1,5 +1,6 @@
 package com.ws.wsAgenticSecurityGateway.protocol.mcp.transport;
 import com.ws.wsAgenticSecurityGateway.security.GatewayOAuth2Filter;
+import com.ws.wsAgenticSecurityGateway.security.ProtocolRouteRegistry;
 import com.ws.wsAgenticSecurityGateway.security.TokenClassificationService;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -27,6 +28,24 @@ public class HttpTransportConfig {
 
     @Value("${ws.gateway.auth.mode:none}")
     private String authMode;
+
+    private final ProtocolRouteRegistry protocolRoutes;
+
+    public HttpTransportConfig(ProtocolRouteRegistry protocolRoutes) {
+        this.protocolRoutes = protocolRoutes;
+    }
+
+    /**
+     * Declare the MCP data-plane prefixes so the security chain authenticates them without hardcoding.
+     * Runs at bean initialization — before the embedded server accepts requests — so there is no window
+     * where {@code /mcp} traffic is served while the security registry is still empty.
+     */
+    @jakarta.annotation.PostConstruct
+    void registerProtocolRoutes() {
+        protocolRoutes.registerProtectedPrefix("/mcp");
+        protocolRoutes.registerProtectedPrefix("/mcp-stateless");
+        log.info("Registered MCP data-plane routes for authentication: /mcp, /mcp-stateless");
+    }
 
     @Bean
     public HttpServletStreamableServerTransportProvider mcpStreamableTransport(

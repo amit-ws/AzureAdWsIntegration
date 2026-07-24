@@ -46,15 +46,17 @@ public class GatewaySecurityConfig {
 
     @Bean
     @Order(1)
-    public SecurityFilterChain mcpSecurityFilterChain(HttpSecurity http,
+    public SecurityFilterChain protocolDataPlaneSecurityFilterChain(HttpSecurity http,
                                                        DelegatingJwtDecoder delegatingJwtDecoder,
-                                                       AuthConfigService authConfigService) throws Exception {
-        log.info("Configuring dynamic MCP security filter chain (request-time auth mode check)");
+                                                       AuthConfigService authConfigService,
+                                                       ProtocolRouteRegistry protocolRoutes) throws Exception {
+        log.info("Configuring protocol data-plane security filter chain (adapter-registered routes, request-time auth mode check)");
 
         http
             .securityMatcher(request -> {
-                String path = request.getRequestURI();
-                if (!path.startsWith("/mcp")) return false;
+                // Any route an adapter registered as a protocol data plane (MCP: /mcp, /mcp-stateless;
+                // A2A later: its own) — not a hardcoded literal, so new adapters are authenticated by default.
+                if (!protocolRoutes.isProtected(request.getRequestURI())) return false;
                 return "oauth2".equals(authConfigService.getEffectiveMode());
             })
             .csrf(csrf -> csrf.disable())

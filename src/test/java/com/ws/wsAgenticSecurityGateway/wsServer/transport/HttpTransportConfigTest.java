@@ -2,6 +2,7 @@ package com.ws.wsAgenticSecurityGateway.protocol.mcp.transport;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
+import com.ws.wsAgenticSecurityGateway.security.ProtocolRouteRegistry;
 import io.modelcontextprotocol.server.transport.HttpServletStreamableServerTransportProvider;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.junit.jupiter.api.Test;
@@ -15,7 +16,7 @@ class HttpTransportConfigTest {
 
     @Test
     void transportMapper_acceptsUnknownInitializeCapabilityFields() throws Exception {
-        HttpTransportConfig config = new HttpTransportConfig();
+        HttpTransportConfig config = new HttpTransportConfig(new ProtocolRouteRegistry());
         ObjectMapper appMapper = new ObjectMapper();
         HttpServletStreamableServerTransportProvider transport = config.mcpStreamableTransport(
                 appMapper,
