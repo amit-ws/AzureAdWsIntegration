@@ -8,7 +8,7 @@ import java.util.concurrent.CopyOnWriteArraySet;
 /**
  * Registry of inbound route prefixes that carry protocol data-plane traffic and therefore require
  * authentication. Each protocol adapter's transport registers its own prefix(es) at startup — MCP declares
- * {@code /mcp} and {@code /mcp-stateless}; an A2A adapter will declare its own endpoint later — so
+ * {@code /mcp} and {@code /stateless/mcp}; an A2A adapter will declare its own endpoint later — so
  * {@link GatewaySecurityConfig} authenticates them <b>without hardcoding any single protocol's paths</b>.
  *
  * <p>This closes a real security gap: with the old literal {@code path.startsWith("/mcp")} matcher, a new

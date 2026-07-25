@@ -16,11 +16,11 @@ class ProtocolRouteRegistryTest {
     @Test
     void registeredPrefixMatchesItsPaths() {
         registry.registerProtectedPrefix("/mcp");
-        registry.registerProtectedPrefix("/mcp-stateless");
+        registry.registerProtectedPrefix("/stateless/mcp");
 
         assertThat(registry.isProtected("/mcp")).isTrue();
         assertThat(registry.isProtected("/mcp/anything")).isTrue();
-        assertThat(registry.isProtected("/mcp-stateless")).isTrue();
+        assertThat(registry.isProtected("/stateless/mcp")).isTrue();
     }
 
     @Test

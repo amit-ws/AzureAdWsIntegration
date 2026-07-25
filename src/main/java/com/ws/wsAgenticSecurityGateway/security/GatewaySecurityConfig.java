@@ -54,7 +54,7 @@ public class GatewaySecurityConfig {
 
         http
             .securityMatcher(request -> {
-                // Any route an adapter registered as a protocol data plane (MCP: /mcp, /mcp-stateless;
+                // Any route an adapter registered as a protocol data plane (MCP: /mcp, /stateless/mcp;
                 // A2A later: its own) — not a hardcoded literal, so new adapters are authenticated by default.
                 if (!protocolRoutes.isProtected(request.getRequestURI())) return false;
                 return "oauth2".equals(authConfigService.getEffectiveMode());

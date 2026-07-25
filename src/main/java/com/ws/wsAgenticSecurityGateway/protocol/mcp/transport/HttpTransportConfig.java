@@ -43,8 +43,8 @@ public class HttpTransportConfig {
     @jakarta.annotation.PostConstruct
     void registerProtocolRoutes() {
         protocolRoutes.registerProtectedPrefix("/mcp");
-        protocolRoutes.registerProtectedPrefix("/mcp-stateless");
-        log.info("Registered MCP data-plane routes for authentication: /mcp, /mcp-stateless");
+        protocolRoutes.registerProtectedPrefix("/stateless/mcp");
+        log.info("Registered MCP data-plane routes for authentication: /mcp, /stateless/mcp");
     }
 
     @Bean
@@ -92,11 +92,11 @@ public class HttpTransportConfig {
         HttpServletStatelessServerTransport transport =
                 HttpServletStatelessServerTransport.builder()
                         .objectMapper(mcpObjectMapper)
-                        .messageEndpoint("/mcp-stateless")
+                        .messageEndpoint("/stateless/mcp")
                         .contextExtractor(contextExtractor)
                         .build();
 
-        log.info("MCP HTTP Stateless transport created (endpoint: /mcp-stateless)");
+        log.info("MCP HTTP Stateless transport created (endpoint: /stateless/mcp)");
         return transport;
     }
 
@@ -105,11 +105,11 @@ public class HttpTransportConfig {
             HttpServletStatelessServerTransport transport) {
 
         ServletRegistrationBean<HttpServletStatelessServerTransport> registration =
-                new ServletRegistrationBean<>(transport, "/mcp-stateless/*");
+                new ServletRegistrationBean<>(transport, "/stateless/mcp/*");
         registration.setName("mcpStatelessServlet");
         registration.setLoadOnStartup(1);
 
-        log.info("MCP stateless servlet registered at /mcp-stateless/*");
+        log.info("MCP stateless servlet registered at /stateless/mcp/*");
         return registration;
     }
 
@@ -120,7 +120,7 @@ public class HttpTransportConfig {
             AuthConfigService authConfigService) {
         FilterRegistrationBean<GatewayOAuth2Filter> registration = new FilterRegistrationBean<>();
         registration.setFilter(new GatewayOAuth2Filter(auditService, tokenClassificationService, authConfigService));
-        registration.addUrlPatterns("/mcp/*", "/mcp-stateless/*");
+        registration.addUrlPatterns("/mcp/*", "/stateless/mcp/*");
         registration.setOrder(1);
         registration.setName("mcpOAuth2Filter");
 

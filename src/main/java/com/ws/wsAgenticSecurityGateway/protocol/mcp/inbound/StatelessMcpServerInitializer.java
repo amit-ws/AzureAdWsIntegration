@@ -34,7 +34,7 @@ import java.util.UUID;
 import java.util.function.Function;
 
 /**
- * Stateless MCP server (Delta 2) — serves the new spec model at {@code /mcp-stateless}: no
+ * Stateless MCP server (Delta 2) — serves the new spec model at {@code /stateless/mcp}: no
  * {@code initialize} handshake, no {@code Mcp-Session-Id}; identity/context ride per request on the
  * transport context ({@code _meta} + JWT).
  *
@@ -121,7 +121,7 @@ public class StatelessMcpServerInitializer implements ApplicationRunner {
             }
 
             server = builder.build();
- log.info("WS MCP STATELESS SERVER STARTED (HTTP MODE) — endpoint /mcp-stateless, {} tools, {} prompts, {} resources",
+ log.info("WS MCP STATELESS SERVER STARTED (HTTP MODE) — endpoint /stateless/mcp, {} tools, {} prompts, {} resources",
                     toolSpecs.size(), promptSpecs.size(), resourceSpecs.size());
         } catch (Exception e) {
  log.error("WS MCP STATELESS SERVER INITIALIZATION FAILED: {}", e.getMessage(), e);
