@@ -7,6 +7,7 @@ import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentCapabilityFilterService;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.orchestration.adapter.ProtocolAdapter;
+import com.ws.wsAgenticSecurityGateway.orchestration.model.CapabilityResult;
 import com.ws.wsAgenticSecurityGateway.orchestration.model.Hop;
 import com.ws.wsAgenticSecurityGateway.sts.model.ActChain;
 import com.ws.wsAgenticSecurityGateway.sts.model.MintedToken;
@@ -95,8 +96,11 @@ public class HopOrchestrator {
         this.actChainBuilder = actChainBuilder;
     }
 
-    /** Dispatch a hop through the lifecycle. Returns the MCP-typed result for the capability. */
-    public Object handle(Hop hop) {
+    /**
+     * Dispatch a hop through the governance lifecycle. Returns a protocol-neutral {@link CapabilityResult};
+     * the caller (the protocol's inbound facade) maps its {@code payload} back to its own wire type.
+     */
+    public CapabilityResult handle(Hop hop) {
         String traceId = resolveTraceId(hop);
         hop.setTraceId(traceId);
         hop.setProtocol(adapter.protocol());
@@ -130,7 +134,7 @@ public class HopOrchestrator {
     // TOOL
     // ---------------------------------------------------------------------
 
-    private McpSchema.CallToolResult handleToolCall(Hop hop) {
+    private CapabilityResult handleToolCall(Hop hop) {
         McpSyncServerExchange exchange = hop.exchange();
         String publicName = hop.publicName();
 
@@ -331,13 +335,13 @@ public class HopOrchestrator {
                     correlationId, serverName, originalName,
                     usingAgentToken ? "AGENT-PROVIDED" : "CONFIG");
 
-            List<McpSchema.Content> contentList =
+            CapabilityResult result =
                     adapter.callTool(hop, argsAsJson, correlationId, LocalDateTime.now(), ++seq);
 
             long callDuration = System.currentTimeMillis() - callStart;
             long totalDuration = System.currentTimeMillis() - orchestrationStart;
 
-            enrichResponseData(correlationId, contentList);
+            inFlightRegistry.updateResponse(correlationId, result.summary(), result.itemCount(), result.itemTypes());
             inFlightRegistry.updateTimings(correlationId, lookupDuration, callDuration);
 
             auditService.auditOrchestrationCallForwarded(
@@ -350,12 +354,12 @@ public class HopOrchestrator {
 
             log.info("ORCHESTRATION COMPLETE [{}]", correlationId);
             log.info("Tool: {} → {}.{}", publicName, serverName, originalName);
-            log.info("Response: {} content item(s)", contentList.size());
+            log.info("Response: {} content item(s)", result.itemCount());
             log.info("Forward: {}ms | Total: {}ms", callDuration, totalDuration);
             log.info("Token: {}", usingAgentToken ? "agent-provided" : "config-based");
             log.info("In-flight: {} active", inFlightRegistry.getActiveCount());
 
-            return new McpSchema.CallToolResult(contentList, false);
+            return result;
 
         } catch (IllegalArgumentException e) {
             log.error("[{}] Server '{}' unavailable: {}", correlationId, serverName, e.getMessage());
@@ -394,7 +398,7 @@ public class HopOrchestrator {
     // PROMPT
     // ---------------------------------------------------------------------
 
-    private McpSchema.GetPromptResult handleGetPrompt(Hop hop) {
+    private CapabilityResult handleGetPrompt(Hop hop) {
         McpSyncServerExchange exchange = hop.exchange();
         String publicName = hop.publicName();
 
@@ -582,12 +586,12 @@ public class HopOrchestrator {
                     correlationId, serverName, originalName,
                     usingAgentToken ? "AGENT-PROVIDED" : "CONFIG");
 
-            McpSchema.GetPromptResult result = adapter.getPrompt(hop);
+            CapabilityResult result = adapter.getPrompt(hop);
 
             long callDuration = System.currentTimeMillis() - callStart;
             long totalDuration = System.currentTimeMillis() - orchestrationStart;
 
-            enrichPromptResponseData(correlationId, result);
+            inFlightRegistry.updateResponse(correlationId, result.summary(), result.itemCount(), result.itemTypes());
             inFlightRegistry.updateTimings(correlationId, lookupDuration, callDuration);
 
             auditService.auditOrchestrationCallForwarded(
@@ -598,7 +602,7 @@ public class HopOrchestrator {
 
             agentRegistryService.updateLastActivity(sessionId);
 
-            int messageCount = result.messages() != null ? result.messages().size() : 0;
+            int messageCount = result.itemCount();
             log.info("PROMPT ORCHESTRATION COMPLETE [{}]", correlationId);
             log.info("Prompt: {} → {}.{}", publicName, serverName, originalName);
             log.info("Response: {} message(s)", messageCount);
@@ -644,7 +648,7 @@ public class HopOrchestrator {
     // RESOURCE
     // ---------------------------------------------------------------------
 
-    private McpSchema.ReadResourceResult handleReadResource(Hop hop) {
+    private CapabilityResult handleReadResource(Hop hop) {
         McpSyncServerExchange exchange = hop.exchange();
         String publicName = hop.publicName();
         String resourceUri = hop.resourceUri();
@@ -829,13 +833,13 @@ public class HopOrchestrator {
                     correlationId, serverName, originalUri,
                     usingAgentToken ? "AGENT-PROVIDED" : "CONFIG");
 
-            List<McpSchema.ResourceContents> contents =
+            CapabilityResult result =
                     adapter.readResource(hop, correlationId, LocalDateTime.now(), ++seq);
 
             long callDuration = System.currentTimeMillis() - callStart;
             long totalDuration = System.currentTimeMillis() - orchestrationStart;
 
-            enrichResourceResponseData(correlationId, contents);
+            inFlightRegistry.updateResponse(correlationId, result.summary(), result.itemCount(), result.itemTypes());
             inFlightRegistry.updateTimings(correlationId, lookupDuration, callDuration);
 
             auditService.auditOrchestrationCallForwarded(
@@ -848,11 +852,11 @@ public class HopOrchestrator {
 
             log.info("RESOURCE ORCHESTRATION COMPLETE [{}]", correlationId);
             log.info("Resource: {} → {}", publicName, originalUri);
-            log.info("Response: {} content item(s)", contents.size());
+            log.info("Response: {} content item(s)", result.itemCount());
             log.info("Forward: {}ms | Total: {}ms", callDuration, totalDuration);
             log.info("In-flight: {} active", inFlightRegistry.getActiveCount());
 
-            return new McpSchema.ReadResourceResult(contents);
+            return result;
 
         } catch (IllegalArgumentException e) {
             log.error("[{}] Server '{}' unavailable: {}", correlationId, serverName, e.getMessage());
@@ -968,64 +972,6 @@ public class HopOrchestrator {
         return ctx;
     }
 
-    private void enrichResponseData(String correlationId, List<McpSchema.Content> contentList) {
-        try {
-            String summary = "";
-            StringBuilder types = new StringBuilder();
-            for (McpSchema.Content c : contentList) {
-                if (c instanceof McpSchema.TextContent t) {
-                    if (summary.isEmpty()) {
-                        summary = t.text().length() > 2000 ? t.text().substring(0, 2000) + "..." : t.text();
-                    }
-                    types.append(types.length() > 0 ? "," : "").append("TEXT");
-                } else if (c instanceof McpSchema.ImageContent) {
-                    types.append(types.length() > 0 ? "," : "").append("IMAGE");
-                } else if (c instanceof McpSchema.AudioContent) {
-                    types.append(types.length() > 0 ? "," : "").append("AUDIO");
-                } else if (c instanceof McpSchema.EmbeddedResource) {
-                    types.append(types.length() > 0 ? "," : "").append("RESOURCE");
-                }
-            }
-            inFlightRegistry.updateResponse(correlationId, summary, contentList.size(), types.toString());
-        } catch (Exception e) {
-            log.debug("Could not enrich response data for {}: {}", correlationId, e.getMessage());
-        }
-    }
-
-    private void enrichPromptResponseData(String correlationId, McpSchema.GetPromptResult result) {
-        try {
-            int messageCount = result.messages() != null ? result.messages().size() : 0;
-            String summary = "";
-            if (result.description() != null && !result.description().isBlank()) {
-                summary = result.description().length() > 2000
-                        ? result.description().substring(0, 2000) + "..." : result.description();
-            }
-            inFlightRegistry.updateResponse(correlationId, summary, messageCount, "PROMPT");
-        } catch (Exception e) {
-            log.debug("Could not enrich prompt response data for {}: {}", correlationId, e.getMessage());
-        }
-    }
-
-    private void enrichResourceResponseData(String correlationId, List<McpSchema.ResourceContents> contents) {
-        try {
-            String summary = "";
-            StringBuilder types = new StringBuilder();
-            for (McpSchema.ResourceContents rc : contents) {
-                if (rc instanceof McpSchema.TextResourceContents t) {
-                    if (summary.isEmpty()) {
-                        summary = t.text().length() > 2000 ? t.text().substring(0, 2000) + "..." : t.text();
-                    }
-                    types.append(types.length() > 0 ? "," : "").append("TEXT");
-                } else if (rc instanceof McpSchema.BlobResourceContents) {
-                    types.append(types.length() > 0 ? "," : "").append("BLOB");
-                }
-            }
-            inFlightRegistry.updateResponse(correlationId, summary, contents.size(), types.toString());
-        } catch (Exception e) {
-            log.debug("Could not enrich resource response data for {}: {}", correlationId, e.getMessage());
-        }
-    }
-
     /**
      * Defense-in-depth governance gate (LD-5). The inbound {@code HttpMcpAuditFilter} already refuses blocked
      * / pending / deprovisioned agents; this is a second check at the orchestration layer so those agents are
@@ -1047,20 +993,20 @@ public class HopOrchestrator {
         return null;
     }
 
-    private McpSchema.CallToolResult buildErrorResult(GatewayErrorCode errorCode,
-                                                      String publicName) {
+    private CapabilityResult buildErrorResult(GatewayErrorCode errorCode,
+                                              String publicName) {
         String message = String.format("[%d] %s: tool '%s'",
                 errorCode.getCode(), errorCode.getMessage(), publicName);
-        return new McpSchema.CallToolResult(message, true);
+        return CapabilityResult.error(message);
     }
 
-    private McpSchema.CallToolResult buildErrorResult(GatewayErrorCode errorCode,
-                                                      String publicName,
-                                                      String serverName,
-                                                      String detail) {
+    private CapabilityResult buildErrorResult(GatewayErrorCode errorCode,
+                                              String publicName,
+                                              String serverName,
+                                              String detail) {
         String message = String.format("[%d] %s: tool '%s' on server '%s' — %s",
                 errorCode.getCode(), errorCode.getMessage(),
                 publicName, serverName, detail);
-        return new McpSchema.CallToolResult(message, true);
+        return CapabilityResult.error(message);
     }
 }

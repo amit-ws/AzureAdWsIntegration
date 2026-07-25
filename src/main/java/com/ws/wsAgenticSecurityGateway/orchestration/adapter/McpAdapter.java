@@ -1,6 +1,7 @@
 package com.ws.wsAgenticSecurityGateway.orchestration.adapter;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.ws.wsAgenticSecurityGateway.orchestration.model.CapabilityResult;
 import com.ws.wsAgenticSecurityGateway.orchestration.model.Hop;
 import com.ws.wsAgenticSecurityGateway.protocol.mcp.outbound.config.HttpMcpTransport;
 import com.ws.wsAgenticSecurityGateway.protocol.mcp.outbound.config.McpSession;
@@ -70,22 +71,106 @@ public class McpAdapter implements ProtocolAdapter {
     }
 
     @Override
-    public List<McpSchema.Content> callTool(Hop hop, JsonNode argsJson, String correlationId,
-                                            LocalDateTime firedAt, int eventSequence) {
-        return mcpClientService.callTool(correlationId, hop.serverName(), hop.originalName(),
-                argsJson, firedAt, eventSequence);
+    public CapabilityResult callTool(Hop hop, JsonNode argsJson, String correlationId,
+                                     LocalDateTime firedAt, int eventSequence) {
+        List<McpSchema.Content> content = mcpClientService.callTool(correlationId, hop.serverName(),
+                hop.originalName(), argsJson, firedAt, eventSequence);
+        return CapabilityResult.ok(content, summarize(content),
+                content != null ? content.size() : 0, typesOf(content));
     }
 
     @Override
-    public McpSchema.GetPromptResult getPrompt(Hop hop) {
-        return mcpClientService.getPrompt(hop.serverName(), hop.originalName(), hop.arguments());
+    public CapabilityResult getPrompt(Hop hop) {
+        McpSchema.GetPromptResult result =
+                mcpClientService.getPrompt(hop.serverName(), hop.originalName(), hop.arguments());
+        int messageCount = result != null && result.messages() != null ? result.messages().size() : 0;
+        return CapabilityResult.ok(result, summarizePrompt(result), messageCount, "PROMPT");
+    }
+
+    /** The prompt description, blank-checked and truncated — mirrors the spine's former {@code enrichPromptResponseData}. */
+    private static String summarizePrompt(McpSchema.GetPromptResult result) {
+        if (result == null || result.description() == null || result.description().isBlank()) {
+            return "";
+        }
+        String description = result.description();
+        return description.length() > 2000 ? description.substring(0, 2000) + "..." : description;
     }
 
     @Override
-    public List<McpSchema.ResourceContents> readResource(Hop hop, String correlationId,
-                                                         LocalDateTime firedAt, int eventSequence) {
-        return mcpClientService.readResource(correlationId, hop.serverName(), hop.originalName(),
-                firedAt, eventSequence);
+    public CapabilityResult readResource(Hop hop, String correlationId,
+                                         LocalDateTime firedAt, int eventSequence) {
+        List<McpSchema.ResourceContents> contents = mcpClientService.readResource(correlationId,
+                hop.serverName(), hop.originalName(), firedAt, eventSequence);
+        return CapabilityResult.ok(contents, summarizeResource(contents),
+                contents != null ? contents.size() : 0, typesOfResource(contents));
+    }
+
+    /**
+     * The first text content, truncated — the neutral audit / in-flight summary the spine records.
+     * Moved verbatim from the spine's former {@code enrichResponseData}: reading MCP content is the
+     * adapter's job, so the spine only ever sees the neutral summary string.
+     */
+    private static String summarize(List<McpSchema.Content> content) {
+        if (content == null) {
+            return "";
+        }
+        for (McpSchema.Content c : content) {
+            if (c instanceof McpSchema.TextContent t) {
+                String text = t.text() != null ? t.text() : "";
+                return text.length() > 2000 ? text.substring(0, 2000) + "..." : text;
+            }
+        }
+        return "";
+    }
+
+    /** Comma-joined content kinds (e.g. {@code "TEXT,IMAGE"}) for the in-flight display. */
+    private static String typesOf(List<McpSchema.Content> content) {
+        if (content == null) {
+            return "";
+        }
+        StringBuilder types = new StringBuilder();
+        for (McpSchema.Content c : content) {
+            String kind = c instanceof McpSchema.TextContent ? "TEXT"
+                    : c instanceof McpSchema.ImageContent ? "IMAGE"
+                    : c instanceof McpSchema.AudioContent ? "AUDIO"
+                    : c instanceof McpSchema.EmbeddedResource ? "RESOURCE"
+                    : null;
+            if (kind != null) {
+                types.append(types.length() > 0 ? "," : "").append(kind);
+            }
+        }
+        return types.toString();
+    }
+
+    /** The first text resource content, truncated — mirrors the spine's former {@code enrichResourceResponseData}. */
+    private static String summarizeResource(List<McpSchema.ResourceContents> contents) {
+        if (contents == null) {
+            return "";
+        }
+        for (McpSchema.ResourceContents rc : contents) {
+            if (rc instanceof McpSchema.TextResourceContents t) {
+                String text = t.text() != null ? t.text() : "";
+                return text.length() > 2000 ? text.substring(0, 2000) + "..." : text;
+            }
+        }
+        return "";
+    }
+
+    /** Comma-joined resource content kinds (e.g. {@code "TEXT,BLOB"}) for the in-flight display. */
+    private static String typesOfResource(List<McpSchema.ResourceContents> contents) {
+        if (contents == null) {
+            return "";
+        }
+        StringBuilder types = new StringBuilder();
+        for (McpSchema.ResourceContents rc : contents) {
+            String kind = rc instanceof McpSchema.TextResourceContents ? "TEXT"
+                    : rc instanceof McpSchema.BlobResourceContents ? "BLOB"
+                    : null;
+            if (kind != null) {
+                types.append(types.length() > 0 ? "," : "").append(kind);
+            }
+        }
+        return types.toString();
     }
 
     // ---------------------------------------------------------------------
