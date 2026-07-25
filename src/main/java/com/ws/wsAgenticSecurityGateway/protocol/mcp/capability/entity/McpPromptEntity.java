@@ -1,5 +1,7 @@
-package com.ws.wsAgenticSecurityGateway.capabilityRegistry.entity;
+package com.ws.wsAgenticSecurityGateway.protocol.mcp.capability.entity;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.ws.wsAgenticSecurityGateway.audit.converter.JsonNodeColumnConverter;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -11,21 +13,21 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "mcp_tool", schema = "ws_agentic_security",
+@Table(name = "mcp_prompt", schema = "ws_agentic_security",
         uniqueConstraints = {
-                @UniqueConstraint(name = "uq_mcp_tool_public_name",
+                @UniqueConstraint(name = "uq_mcp_prompt_public_name",
                         columnNames = {"public_name", "ws_tenant_name"})
         },
         indexes = {
-                @Index(name = "idx_mcp_tool_public_name", columnList = "public_name"),
-                @Index(name = "idx_mcp_tool_server_id", columnList = "server_id"),
-                @Index(name = "idx_mcp_tool_tool_name", columnList = "tool_name")
+                @Index(name = "idx_mcp_prompt_public_name", columnList = "public_name"),
+                @Index(name = "idx_mcp_prompt_server_id", columnList = "server_id"),
+                @Index(name = "idx_mcp_prompt_name", columnList = "prompt_name")
         })
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class McpToolEntity {
+public class McpPromptEntity {
 
     @Id
     @GeneratedValue(generator = "UUID")
@@ -38,8 +40,8 @@ public class McpToolEntity {
     @JoinColumn(name = "server_id", nullable = false)
     private McpServerEntity server;
 
-    @Column(name = "tool_name", nullable = false, length = 256)
-    private String toolName;
+    @Column(name = "prompt_name", nullable = false, length = 256)
+    private String promptName;
 
     @Column(name = "public_name", nullable = false, length = 512)
     private String publicName;
@@ -47,8 +49,9 @@ public class McpToolEntity {
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 
-    @Column(name = "input_schema", columnDefinition = "TEXT")
-    private String inputSchema;
+    @Convert(converter = JsonNodeColumnConverter.class)
+    @Column(name = "arguments", columnDefinition = "JSONB")
+    private JsonNode arguments;
 
     @CreationTimestamp
     @Column(name = "registered_at", nullable = false, updatable = false)

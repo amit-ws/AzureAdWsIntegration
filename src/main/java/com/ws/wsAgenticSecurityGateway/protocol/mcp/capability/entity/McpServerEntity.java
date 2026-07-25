@@ -1,4 +1,4 @@
-package com.ws.wsAgenticSecurityGateway.capabilityRegistry.entity;
+package com.ws.wsAgenticSecurityGateway.protocol.mcp.capability.entity;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.ws.wsAgenticSecurityGateway.audit.converter.JsonNodeColumnConverter;

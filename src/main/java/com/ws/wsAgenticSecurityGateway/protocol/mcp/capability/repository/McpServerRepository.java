@@ -1,6 +1,6 @@
-package com.ws.wsAgenticSecurityGateway.capabilityRegistry.repository;
+package com.ws.wsAgenticSecurityGateway.protocol.mcp.capability.repository;
 
-import com.ws.wsAgenticSecurityGateway.capabilityRegistry.entity.McpServerEntity;
+import com.ws.wsAgenticSecurityGateway.protocol.mcp.capability.entity.McpServerEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

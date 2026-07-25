@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.event.CapabilityRegistryChangedEvent;
-import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
+import com.ws.wsAgenticSecurityGateway.protocol.mcp.capability.service.McpCapabilityRegistrar;
 import com.ws.wsAgenticSecurityGateway.protocol.mcp.outbound.entity.GatewayMcpServerSessionEntity;
 import com.ws.wsAgenticSecurityGateway.protocol.mcp.outbound.repository.GatewayMcpServerSessionRepository;
 import io.modelcontextprotocol.client.McpClient;
@@ -31,7 +31,7 @@ public class McpSessionManager {
 
     private final GatewayAuditService auditService;
 
-    private final CapabilityRegistryService registryService;
+    private final McpCapabilityRegistrar capabilityRegistrar;
 
     private final ObjectMapper objectMapper;
 
@@ -39,11 +39,11 @@ public class McpSessionManager {
     private final ApplicationEventPublisher eventPublisher;
 
     public McpSessionManager(GatewayAuditService auditService,
-                             CapabilityRegistryService registryService,
+                             McpCapabilityRegistrar capabilityRegistrar,
                              GatewayMcpServerSessionRepository serverSessionRepository,
                              ApplicationEventPublisher eventPublisher) {
         this.auditService = auditService;
-        this.registryService = registryService;
+        this.capabilityRegistrar = capabilityRegistrar;
         this.serverSessionRepository = serverSessionRepository;
         this.eventPublisher = eventPublisher;
         this.objectMapper = new ObjectMapper();
@@ -135,7 +135,7 @@ public class McpSessionManager {
                     ));
                 }
 
-                registryService.registerServer(
+                capabilityRegistrar.registerServer(
                         session.getSessionId(),
                         serverName,
                         client.getServerInfo() != null ? client.getServerInfo().name() : serverName,
@@ -288,7 +288,7 @@ public class McpSessionManager {
                 ));
             }
 
-            registryService.registerServer(
+            capabilityRegistrar.registerServer(
                     session.getSessionId(),
                     serverName,
                     session.getServerInfo() != null ? session.getServerInfo().name() : serverName,
@@ -396,7 +396,7 @@ public class McpSessionManager {
                 }
 
                 try {
-                    registryService.removeServer(session.getSessionId(), serverName);
+                    capabilityRegistrar.removeServer(session.getSessionId(), serverName);
                     eventPublisher.publishEvent(new CapabilityRegistryChangedEvent("SERVER_DISCONNECTED", serverName));
                 } catch (Exception e) {
  log.error("⚠ Failed to remove server '{}' from registry: {}",

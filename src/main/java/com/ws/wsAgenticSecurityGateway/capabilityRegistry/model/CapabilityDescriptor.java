@@ -31,6 +31,15 @@ public class CapabilityDescriptor {
 
     private final UUID serverId;
 
+    /**
+     * The kind of capability. Protocol-neutral and intentionally extensible: a new protocol adds its own kind
+     * additively (e.g. an A2A adapter would add {@code SKILL}) without touching existing kinds or the spine.
+     * Query the index by kind via {@code CapabilityRegistryService.getByType(...)} rather than a bespoke
+     * per-kind method, so a new kind needs no new query method.
+     *
+     * <p>A protocol whose unit maps cleanly onto an existing kind may reuse it instead of adding one — e.g. an
+     * A2A skill is invocable like a {@link #TOOL}, so it can register as {@code TOOL} with no enum change.
+     */
     public enum CapabilityType {
         TOOL,
         RESOURCE,
