@@ -1,4 +1,5 @@
 package com.ws.wsAgenticSecurityGateway.protocol.mcp.transport;
+import com.ws.wsAgenticSecurityGateway.orchestration.model.RequestAttributeKeys;
 import com.ws.wsAgenticSecurityGateway.security.GatewayOAuth2Filter;
 
 import io.modelcontextprotocol.common.McpTransportContext;
@@ -28,7 +29,7 @@ public class McpGatewayContextExtractor implements McpTransportContextExtractor<
         if (traceId == null || traceId.isBlank()) {
             traceId = UUID.randomUUID().toString().replace("-", "");
         }
-        ctx.put("traceId", traceId);
+        ctx.put(RequestAttributeKeys.TRACE_ID, traceId);
 
         String auth = request.getHeader("Authorization");
         if (auth != null && !auth.isBlank()) {
@@ -37,24 +38,24 @@ public class McpGatewayContextExtractor implements McpTransportContextExtractor<
 
         String agentName = request.getHeader("X-Agent-Name");
         if (agentName != null && !agentName.isBlank()) {
-            ctx.put("agentName", agentName);
+            ctx.put(RequestAttributeKeys.AGENT_NAME, agentName);
         }
 
         String correlationId = request.getHeader("X-Correlation-Id");
         if (correlationId != null && !correlationId.isBlank()) {
-            ctx.put("correlationId", correlationId);
+            ctx.put(RequestAttributeKeys.CORRELATION_ID, correlationId);
         }
 
         String clientIp = request.getRemoteAddr();
         if (clientIp != null) {
-            ctx.put("clientIp", clientIp);
+            ctx.put(RequestAttributeKeys.CLIENT_IP, clientIp);
         }
 
         propagateJwtClaims(request, ctx);
 
         Map<String, String> httpHeaders = captureHttpHeaders(request);
         if (!httpHeaders.isEmpty()) {
-            ctx.put("_httpHeaders", Collections.unmodifiableMap(httpHeaders));
+            ctx.put(RequestAttributeKeys.HTTP_HEADERS, Collections.unmodifiableMap(httpHeaders));
         }
 
         if (!ctx.isEmpty()) {
@@ -70,23 +71,23 @@ public class McpGatewayContextExtractor implements McpTransportContextExtractor<
         Object clientId = request.getAttribute(GatewayOAuth2Filter.ATTR_CLIENT_ID);
         if (clientId == null) return;
 
-        ctx.put("agentClientId", clientId);
-        putIfPresent(ctx, "jwtSubject", request.getAttribute(GatewayOAuth2Filter.ATTR_SUBJECT));
-        putIfPresent(ctx, "userIdentity", request.getAttribute(GatewayOAuth2Filter.ATTR_PREFERRED_USERNAME));
+        ctx.put(RequestAttributeKeys.AGENT_CLIENT_ID, clientId);
+        putIfPresent(ctx, RequestAttributeKeys.JWT_SUBJECT, request.getAttribute(GatewayOAuth2Filter.ATTR_SUBJECT));
+        putIfPresent(ctx, RequestAttributeKeys.USER_IDENTITY, request.getAttribute(GatewayOAuth2Filter.ATTR_PREFERRED_USERNAME));
         putIfPresent(ctx, "userEmail", request.getAttribute(GatewayOAuth2Filter.ATTR_EMAIL));
         putIfPresent(ctx, "userFullName", request.getAttribute(GatewayOAuth2Filter.ATTR_FULL_NAME));
         putIfPresent(ctx, "userGivenName", request.getAttribute(GatewayOAuth2Filter.ATTR_GIVEN_NAME));
         putIfPresent(ctx, "userFamilyName", request.getAttribute(GatewayOAuth2Filter.ATTR_FAMILY_NAME));
         putIfPresent(ctx, "userEmailVerified", request.getAttribute(GatewayOAuth2Filter.ATTR_EMAIL_VERIFIED));
-        putIfPresent(ctx, "idpIssuer", request.getAttribute(GatewayOAuth2Filter.ATTR_ISSUER));
-        putIfPresent(ctx, "tokenType", request.getAttribute(GatewayOAuth2Filter.ATTR_TOKEN_TYPE));
+        putIfPresent(ctx, RequestAttributeKeys.IDP_ISSUER, request.getAttribute(GatewayOAuth2Filter.ATTR_ISSUER));
+        putIfPresent(ctx, RequestAttributeKeys.TOKEN_TYPE, request.getAttribute(GatewayOAuth2Filter.ATTR_TOKEN_TYPE));
         putIfPresent(ctx, "classificationSignal", request.getAttribute(GatewayOAuth2Filter.ATTR_CLASSIFICATION_SIGNAL));
         putIfPresent(ctx, "authMethod", request.getAttribute(GatewayOAuth2Filter.ATTR_AUTH_METHOD));
-        putIfPresent(ctx, "agentRoles", request.getAttribute(GatewayOAuth2Filter.ATTR_ALL_ROLES));
-        putIfPresent(ctx, "realmRoles", request.getAttribute(GatewayOAuth2Filter.ATTR_REALM_ROLES));
-        putIfPresent(ctx, "clientRoles", request.getAttribute(GatewayOAuth2Filter.ATTR_CLIENT_ROLES));
-        putIfPresent(ctx, "customClaims", request.getAttribute(GatewayOAuth2Filter.ATTR_CUSTOM_CLAIMS));
-        putIfPresent(ctx, "rawJwtClaims", request.getAttribute(GatewayOAuth2Filter.ATTR_RAW_CLAIMS));
+        putIfPresent(ctx, RequestAttributeKeys.AGENT_ROLES, request.getAttribute(GatewayOAuth2Filter.ATTR_ALL_ROLES));
+        putIfPresent(ctx, RequestAttributeKeys.REALM_ROLES, request.getAttribute(GatewayOAuth2Filter.ATTR_REALM_ROLES));
+        putIfPresent(ctx, RequestAttributeKeys.CLIENT_ROLES, request.getAttribute(GatewayOAuth2Filter.ATTR_CLIENT_ROLES));
+        putIfPresent(ctx, RequestAttributeKeys.CUSTOM_CLAIMS, request.getAttribute(GatewayOAuth2Filter.ATTR_CUSTOM_CLAIMS));
+        putIfPresent(ctx, RequestAttributeKeys.RAW_JWT_CLAIMS, request.getAttribute(GatewayOAuth2Filter.ATTR_RAW_CLAIMS));
     }
 
     private void putIfPresent(Map<String, Object> ctx, String key, Object value) {

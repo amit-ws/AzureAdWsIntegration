@@ -36,7 +36,8 @@ public class ToolCallOrchestrator {
     public McpSchema.CallToolResult orchestrate(McpSyncServerExchange exchange,
                                                 String publicName,
                                                 Map<String, Object> arguments) {
-        Hop hop = new Hop(CapabilityType.TOOL, publicName, arguments, null, exchange);
+        Hop hop = new Hop(CapabilityType.TOOL, publicName, arguments, null,
+                McpRequestContextFactory.from(exchange));
         CapabilityResult result = hopOrchestrator.handle(hop);
         if (result.error()) {
             return new McpSchema.CallToolResult(result.summary(), true);
@@ -47,7 +48,8 @@ public class ToolCallOrchestrator {
     public McpSchema.GetPromptResult orchestrateGetPrompt(McpSyncServerExchange exchange,
                                                           String publicName,
                                                           Map<String, Object> arguments) {
-        Hop hop = new Hop(CapabilityType.PROMPT, publicName, arguments, null, exchange);
+        Hop hop = new Hop(CapabilityType.PROMPT, publicName, arguments, null,
+                McpRequestContextFactory.from(exchange));
         // Prompt errors surface as exceptions from the spine (not error results), so a returned
         // result is always a successful GetPromptResult payload.
         return (McpSchema.GetPromptResult) hopOrchestrator.handle(hop).payload();
@@ -57,7 +59,8 @@ public class ToolCallOrchestrator {
     public McpSchema.ReadResourceResult orchestrateReadResource(McpSyncServerExchange exchange,
                                                                String publicName,
                                                                String resourceUri) {
-        Hop hop = new Hop(CapabilityType.RESOURCE, publicName, null, resourceUri, exchange);
+        Hop hop = new Hop(CapabilityType.RESOURCE, publicName, null, resourceUri,
+                McpRequestContextFactory.from(exchange));
         // Resource errors surface as exceptions from the spine (not error results).
         CapabilityResult result = hopOrchestrator.handle(hop);
         return new McpSchema.ReadResourceResult((List<McpSchema.ResourceContents>) result.payload());

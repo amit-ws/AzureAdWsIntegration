@@ -1,6 +1,7 @@
 package com.ws.wsAgenticSecurityGateway.protocol.mcp.transport;
 
 import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
+import com.ws.wsAgenticSecurityGateway.orchestration.model.RequestAttributeKeys;
 import com.ws.wsAgenticSecurityGateway.protocol.mcp.session.SessionManager;
 import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.spec.McpServerSession;
@@ -39,7 +40,7 @@ public class ServerTransportProvider implements McpServerTransportProvider {
                         Object jsonRpcId = stdioTransport.removeRequestId(message);
 
                         McpTransportContext transportContext = (jsonRpcId != null)
-                                ? McpTransportContext.create(Map.of("jsonRpcRequestId", jsonRpcId))
+                                ? McpTransportContext.create(Map.of(RequestAttributeKeys.REQUEST_ID, jsonRpcId))
                                 : McpTransportContext.EMPTY;
 
                         return session.handle(message)

@@ -8,7 +8,11 @@ import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentCapabilityFilt
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.orchestration.adapter.ProtocolAdapter;
 import com.ws.wsAgenticSecurityGateway.orchestration.model.CapabilityResult;
+import com.ws.wsAgenticSecurityGateway.orchestration.model.ClientInfo;
 import com.ws.wsAgenticSecurityGateway.orchestration.model.Hop;
+import com.ws.wsAgenticSecurityGateway.orchestration.model.RequestAttributeKeys;
+import com.ws.wsAgenticSecurityGateway.orchestration.model.RequestAttributes;
+import com.ws.wsAgenticSecurityGateway.orchestration.model.RequestContext;
 import com.ws.wsAgenticSecurityGateway.sts.model.ActChain;
 import com.ws.wsAgenticSecurityGateway.sts.model.MintedToken;
 import com.ws.wsAgenticSecurityGateway.sts.service.ActChainBuilder;
@@ -24,8 +28,6 @@ import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescri
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
 import com.ws.wsAgenticSecurityGateway.protocol.mcp.session.ClientSession;
 import com.ws.wsAgenticSecurityGateway.protocol.mcp.session.SessionManager;
-import io.modelcontextprotocol.server.McpSyncServerExchange;
-import io.modelcontextprotocol.spec.McpSchema;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -49,9 +51,10 @@ import java.util.UUID;
  * {@code ToolCallOrchestrator}; only the southbound call and credential handling now go
  * through the adapter.
  *
- * <p><b>Stage-0 scope:</b> this spine still references the MCP {@code exchange} (via the
- * {@link Hop}) and returns MCP-typed results. Neutralizing that is deferred to the A2A
- * phase — see {@code docs/stage-0-refactor-plan.md}.
+ * <p>The spine references no protocol SDK: it governs a neutral {@link RequestContext} on the way in
+ * (built by each protocol's inbound boundary) and returns a neutral {@link CapabilityResult} on the way
+ * out (mapped back to the wire type by that boundary). The MCP dependency lives entirely in the adapter
+ * and the {@code protocol/mcp} boundary classes.
  */
 @Service
 @Slf4j
@@ -119,11 +122,13 @@ public class HopOrchestrator {
 
     /**
      * The request-scoped trace id (umbrella over every leg). Honors an id the inbound request carried
-     * (X-Trace-Id, lifted onto the transport context by {@code McpGatewayContextExtractor}); otherwise
-     * generates one. Distinct from the per-leg {@code correlationId}, and identical across a multi-hop tree.
+     * (lifted onto the request attributes as {@link RequestAttributeKeys#TRACE_ID} by the protocol's inbound
+     * boundary); otherwise generates one. Distinct from the per-leg {@code correlationId}, and identical
+     * across a multi-hop tree.
      */
     private String resolveTraceId(Hop hop) {
-        Object fromCtx = hop.exchange() != null ? hop.exchange().transportContext().get("traceId") : null;
+        RequestContext rc = hop.requestContext();
+        Object fromCtx = rc != null ? rc.attributes().get(RequestAttributeKeys.TRACE_ID) : null;
         if (fromCtx != null && !String.valueOf(fromCtx).isBlank()) {
             return String.valueOf(fromCtx);
         }
@@ -135,17 +140,17 @@ public class HopOrchestrator {
     // ---------------------------------------------------------------------
 
     private CapabilityResult handleToolCall(Hop hop) {
-        McpSyncServerExchange exchange = hop.exchange();
+        RequestContext rc = hop.requestContext();
         String publicName = hop.publicName();
 
         String correlationId = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
         MDC.put("correlationId", correlationId);
 
-        Object rawJsonRpcId = exchange.transportContext().get("jsonRpcRequestId");
+        Object rawJsonRpcId = rc.attributes().get(RequestAttributeKeys.REQUEST_ID);
         String requestId = rawJsonRpcId != null ? String.valueOf(rawJsonRpcId) : null;
 
-        String sessionId = resolveSessionId(exchange);
-        String clientName = resolveClientName(exchange);
+        String sessionId = resolveSessionId(rc);
+        String clientName = resolveClientName(rc);
 
         agentRegistryService.recordRequest(sessionId);
 
@@ -221,11 +226,11 @@ public class HopOrchestrator {
                 correlationId, sessionId, publicName, serverName, lookupDuration, requestId, clientName,
                 LocalDateTime.now(), ++seq);
 
-        ActChain actChain = actChainBuilder.fromTransportContext(identityContext(exchange), sessionId);
+        ActChain actChain = actChainBuilder.fromTransportContext(identityContext(rc), sessionId);
 
         try {
             PolicyEvaluationRequest pdpRequest = policyContextBuilder.buildForToolCall(
-                    exchange, publicName, serverName, originalName,
+                    rc, publicName, serverName, originalName,
                     hop.arguments(), correlationId, sessionId);
             pdpRequest.setActChain(actChain.toClaim());
 
@@ -277,8 +282,8 @@ public class HopOrchestrator {
         String agentName = "unknown";
         String agentVersion = "";
         try {
-            if (exchange != null && exchange.getClientInfo() != null) {
-                McpSchema.Implementation ci = exchange.getClientInfo();
+            ClientInfo ci = rc.clientInfo();
+            if (ci != null) {
                 agentName = ci.name() != null ? ci.name() : "unknown";
                 agentVersion = ci.version() != null ? ci.version() : "";
             }
@@ -399,15 +404,15 @@ public class HopOrchestrator {
     // ---------------------------------------------------------------------
 
     private CapabilityResult handleGetPrompt(Hop hop) {
-        McpSyncServerExchange exchange = hop.exchange();
+        RequestContext rc = hop.requestContext();
         String publicName = hop.publicName();
 
         String correlationId = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
         MDC.put("correlationId", correlationId);
-        Object rawJsonRpcId = exchange.transportContext().get("jsonRpcRequestId");
+        Object rawJsonRpcId = rc.attributes().get(RequestAttributeKeys.REQUEST_ID);
         String requestId = rawJsonRpcId != null ? String.valueOf(rawJsonRpcId) : null;
-        String sessionId = resolveSessionId(exchange);
-        String clientName = resolveClientName(exchange);
+        String sessionId = resolveSessionId(rc);
+        String clientName = resolveClientName(rc);
         agentRegistryService.recordRequest(sessionId);
         int seq = 0;
 
@@ -485,11 +490,11 @@ public class HopOrchestrator {
                 correlationId, sessionId, publicName, serverName, lookupDuration, requestId, clientName,
                 LocalDateTime.now(), ++seq);
 
-        ActChain actChain = actChainBuilder.fromTransportContext(identityContext(exchange), sessionId);
+        ActChain actChain = actChainBuilder.fromTransportContext(identityContext(rc), sessionId);
 
         try {
             PolicyEvaluationRequest pdpRequest = policyContextBuilder.buildForPromptGet(
-                    exchange, publicName, serverName, originalName,
+                    rc, publicName, serverName, originalName,
                     correlationId, sessionId);
             pdpRequest.setActChain(actChain.toClaim());
 
@@ -543,8 +548,8 @@ public class HopOrchestrator {
         String pAgentName = "unknown";
         String pAgentVersion = "";
         try {
-            if (exchange != null && exchange.getClientInfo() != null) {
-                McpSchema.Implementation ci = exchange.getClientInfo();
+            ClientInfo ci = rc.clientInfo();
+            if (ci != null) {
                 pAgentName = ci.name() != null ? ci.name() : "unknown";
                 pAgentVersion = ci.version() != null ? ci.version() : "";
             }
@@ -649,16 +654,16 @@ public class HopOrchestrator {
     // ---------------------------------------------------------------------
 
     private CapabilityResult handleReadResource(Hop hop) {
-        McpSyncServerExchange exchange = hop.exchange();
+        RequestContext rc = hop.requestContext();
         String publicName = hop.publicName();
         String resourceUri = hop.resourceUri();
 
         String correlationId = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
         MDC.put("correlationId", correlationId);
-        Object rawJsonRpcId = exchange.transportContext().get("jsonRpcRequestId");
+        Object rawJsonRpcId = rc.attributes().get(RequestAttributeKeys.REQUEST_ID);
         String requestId = rawJsonRpcId != null ? String.valueOf(rawJsonRpcId) : null;
-        String sessionId = resolveSessionId(exchange);
-        String clientName = resolveClientName(exchange);
+        String sessionId = resolveSessionId(rc);
+        String clientName = resolveClientName(rc);
         agentRegistryService.recordRequest(sessionId);
         int seq = 0;
 
@@ -736,11 +741,11 @@ public class HopOrchestrator {
                 correlationId, sessionId, publicName, serverName, lookupDuration, requestId, clientName,
                 LocalDateTime.now(), ++seq);
 
-        ActChain actChain = actChainBuilder.fromTransportContext(identityContext(exchange), sessionId);
+        ActChain actChain = actChainBuilder.fromTransportContext(identityContext(rc), sessionId);
 
         try {
             PolicyEvaluationRequest pdpRequest = policyContextBuilder.buildForResourceRead(
-                    exchange, publicName, serverName, descriptor.getOriginalName(),
+                    rc, publicName, serverName, descriptor.getOriginalName(),
                     correlationId, sessionId);
             pdpRequest.setActChain(actChain.toClaim());
 
@@ -794,8 +799,8 @@ public class HopOrchestrator {
         String rAgentName = "unknown";
         String rAgentVersion = "";
         try {
-            if (exchange != null && exchange.getClientInfo() != null) {
-                McpSchema.Implementation ci = exchange.getClientInfo();
+            ClientInfo ci = rc.clientInfo();
+            if (ci != null) {
                 rAgentName = ci.name() != null ? ci.name() : "unknown";
                 rAgentVersion = ci.version() != null ? ci.version() : "";
             }
@@ -895,7 +900,7 @@ public class HopOrchestrator {
     // Shared helpers (moved verbatim from ToolCallOrchestrator)
     // ---------------------------------------------------------------------
 
-    private String resolveSessionId(McpSyncServerExchange exchange) {
+    private String resolveSessionId(RequestContext rc) {
         try {
             if (sessionManager != null) {
                 ClientSession cs = sessionManager.getCurrentSession();
@@ -911,63 +916,65 @@ public class HopOrchestrator {
         }
 
         try {
-            if (exchange != null) {
-                String id = exchange.sessionId();
+            if (rc != null) {
+                String id = rc.sessionId();
                 if (id != null && !id.isBlank()) {
                     return id;
                 }
             }
         } catch (Exception e) {
-            log.debug("Could not get session ID from exchange: {}", e.getMessage());
+            log.debug("Could not get session ID from request context: {}", e.getMessage());
         }
         return null;
     }
 
-    private String resolveClientName(McpSyncServerExchange exchange) {
+    private String resolveClientName(RequestContext rc) {
         try {
-            if (exchange != null) {
-                McpSchema.Implementation clientInfo = exchange.getClientInfo();
+            if (rc != null) {
+                ClientInfo clientInfo = rc.clientInfo();
                 if (clientInfo != null) {
                     String name = clientInfo.name() != null ? clientInfo.name() : "unknown";
                     String version = clientInfo.version() != null ? " v" + clientInfo.version() : "";
                     return name + version;
                 }
-                // Stateless bridge: no clientInfo on the synthetic exchange — fall back to the JWT client_id
+                // Stateless bridge: no clientInfo on the synthetic request — fall back to the JWT client_id
                 // so logs/audit name the caller instead of "unknown".
-                Object tcClientId = exchange.transportContext().get("agentClientId");
+                Object tcClientId = rc.attributes().get(RequestAttributeKeys.AGENT_CLIENT_ID);
                 if (tcClientId instanceof String s && !s.isBlank()) {
                     return s;
                 }
             }
         } catch (Exception e) {
-            log.debug("Could not resolve client info from exchange: {}", e.getMessage());
+            log.debug("Could not resolve client info from request context: {}", e.getMessage());
         }
         return "unknown";
     }
 
     private static final List<String> IDENTITY_KEYS = List.of(
-            "jwtSubject", "userIdentity", "agentClientId", "idpIssuer", "tokenType", "rawJwtClaims");
+            RequestAttributeKeys.JWT_SUBJECT, RequestAttributeKeys.USER_IDENTITY,
+            RequestAttributeKeys.AGENT_CLIENT_ID, RequestAttributeKeys.IDP_ISSUER,
+            RequestAttributeKeys.TOKEN_TYPE, RequestAttributeKeys.RAW_JWT_CLAIMS);
 
     /**
-     * Extract the per-exchange identity context — read from the exchange's transport context
+     * Extract the per-request identity context — read from the request's attribute bag
      * (captured once per request), NOT the shared-mutable {@code SessionManager.getCurrentSession()}
      * (a concurrency hazard). This is the identity source for the act_chain (Locked Decision 5).
      */
-    private Map<String, Object> identityContext(McpSyncServerExchange exchange) {
+    private Map<String, Object> identityContext(RequestContext rc) {
         Map<String, Object> ctx = new HashMap<>();
-        if (exchange == null) {
+        if (rc == null) {
             return ctx;
         }
         try {
-            var tc = exchange.transportContext();
+            RequestAttributes attributes = rc.attributes();
             for (String key : IDENTITY_KEYS) {
-                Object v = tc.get(key);
+                Object v = attributes.get(key);
                 if (v != null) {
                     ctx.put(key, v);
                 }
             }
         } catch (Exception e) {
-            log.debug("Could not read identity context from exchange: {}", e.getMessage());
+            log.debug("Could not read identity context from request context: {}", e.getMessage());
         }
         return ctx;
     }

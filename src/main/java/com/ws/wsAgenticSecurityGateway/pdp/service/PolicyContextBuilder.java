@@ -2,11 +2,12 @@ package com.ws.wsAgenticSecurityGateway.pdp.service;
 
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
+import com.ws.wsAgenticSecurityGateway.orchestration.model.ClientInfo;
+import com.ws.wsAgenticSecurityGateway.orchestration.model.RequestAttributeKeys;
+import com.ws.wsAgenticSecurityGateway.orchestration.model.RequestContext;
 import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyEvaluationRequest;
 import com.ws.wsAgenticSecurityGateway.protocol.mcp.session.ClientSession;
 import com.ws.wsAgenticSecurityGateway.protocol.mcp.session.SessionManager;
-import io.modelcontextprotocol.server.McpSyncServerExchange;
-import io.modelcontextprotocol.spec.McpSchema;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -48,7 +49,7 @@ public class PolicyContextBuilder {
     }
 
     public PolicyEvaluationRequest buildForToolCall(
-            McpSyncServerExchange exchange,
+            RequestContext requestContext,
             String publicName,
             String serverName,
             String originalName,
@@ -56,36 +57,36 @@ public class PolicyContextBuilder {
             String correlationId,
             String sessionId) {
 
-        return buildRequest(exchange, "toolCall", publicName, serverName,
+        return buildRequest(requestContext, "toolCall", publicName, serverName,
                 originalName, "TOOL", arguments, correlationId, sessionId);
     }
 
     public PolicyEvaluationRequest buildForPromptGet(
-            McpSyncServerExchange exchange,
+            RequestContext requestContext,
             String publicName,
             String serverName,
             String originalName,
             String correlationId,
             String sessionId) {
 
-        return buildRequest(exchange, "promptGet", publicName, serverName,
+        return buildRequest(requestContext, "promptGet", publicName, serverName,
                 originalName, "PROMPT", null, correlationId, sessionId);
     }
 
     public PolicyEvaluationRequest buildForResourceRead(
-            McpSyncServerExchange exchange,
+            RequestContext requestContext,
             String publicName,
             String serverName,
             String originalName,
             String correlationId,
             String sessionId) {
 
-        return buildRequest(exchange, "resourceRead", publicName, serverName,
+        return buildRequest(requestContext, "resourceRead", publicName, serverName,
                 originalName, "RESOURCE", null, correlationId, sessionId);
     }
 
     private PolicyEvaluationRequest buildRequest(
-            McpSyncServerExchange exchange,
+            RequestContext requestContext,
             String action,
             String publicName,
             String serverName,
@@ -98,21 +99,21 @@ public class PolicyContextBuilder {
         String agentName = "unknown";
         String agentVersion = null;
         try {
-            if (exchange != null && exchange.getClientInfo() != null) {
-                McpSchema.Implementation ci = exchange.getClientInfo();
+            ClientInfo ci = requestContext != null ? requestContext.clientInfo() : null;
+            if (ci != null) {
                 agentName = ci.name() != null ? ci.name() : "unknown";
                 agentVersion = ci.version();
             }
         } catch (Exception e) {
-            log.debug("Could not extract agent info from exchange: {}", e.getMessage());
+            log.debug("Could not extract agent info from request context: {}", e.getMessage());
         }
 
-        // Stateless bridge (Delta 2): the synthetic exchange carries no clientInfo — the authoritative caller
-        // identity rides on the transport context as the JWT client_id. Use it as the policy principal so a
+        // Stateless bridge (Delta 2): the synthetic request carries no clientInfo — the authoritative caller
+        // identity rides on the request attributes as the JWT client_id. Use it as the policy principal so a
         // stateless request matches the SAME agent policies as its session-mode counterpart.
-        if ("unknown".equals(agentName) && exchange != null) {
+        if ("unknown".equals(agentName) && requestContext != null) {
             try {
-                Object tcClientId = exchange.transportContext().get("agentClientId");
+                Object tcClientId = requestContext.attributes().get(RequestAttributeKeys.AGENT_CLIENT_ID);
                 if (tcClientId instanceof String s && !s.isBlank()) {
                     agentName = s;
                 }
@@ -135,18 +136,18 @@ public class PolicyContextBuilder {
         Map<String, String> httpHeaders = Collections.emptyMap();
         String sourceIp = null;
         try {
-            if (exchange != null) {
-                Object ip = exchange.transportContext().get("clientIp");
+            if (requestContext != null) {
+                Object ip = requestContext.attributes().get(RequestAttributeKeys.CLIENT_IP);
                 if (ip != null) {
                     sourceIp = String.valueOf(ip);
                     transportContext.put("clientIp", sourceIp);
                 }
-                Object tcAgentName = exchange.transportContext().get("agentName");
+                Object tcAgentName = requestContext.attributes().get(RequestAttributeKeys.AGENT_NAME);
                 if (tcAgentName != null) transportContext.put("agentName", tcAgentName);
-                Object tcCorrelation = exchange.transportContext().get("correlationId");
+                Object tcCorrelation = requestContext.attributes().get(RequestAttributeKeys.CORRELATION_ID);
                 if (tcCorrelation != null) transportContext.put("correlationId", tcCorrelation);
 
-                Object headersObj = exchange.transportContext().get("_httpHeaders");
+                Object headersObj = requestContext.attributes().get(RequestAttributeKeys.HTTP_HEADERS);
                 if (headersObj instanceof Map<?, ?> rawMap) {
                     @SuppressWarnings("unchecked")
                     Map<String, String> castHeaders = (Map<String, String>) rawMap;
@@ -170,23 +171,23 @@ public class PolicyContextBuilder {
         String tokenType = null;
         Map<String, Object> jwtCustomClaims = null;
         try {
-            if (exchange != null) {
+            if (requestContext != null) {
                 Object o;
-                o = exchange.transportContext().get("agentClientId");
+                o = requestContext.attributes().get(RequestAttributeKeys.AGENT_CLIENT_ID);
                 if (o instanceof String s) agentClientId = s;
-                o = exchange.transportContext().get("jwtSubject");
+                o = requestContext.attributes().get(RequestAttributeKeys.JWT_SUBJECT);
                 if (o instanceof String s) jwtSubject = s;
-                o = exchange.transportContext().get("userIdentity");
+                o = requestContext.attributes().get(RequestAttributeKeys.USER_IDENTITY);
                 if (o instanceof String s) userIdentity = s;
-                o = exchange.transportContext().get("tokenType");
+                o = requestContext.attributes().get(RequestAttributeKeys.TOKEN_TYPE);
                 if (o instanceof String s) tokenType = s;
-                o = exchange.transportContext().get("agentRoles");
+                o = requestContext.attributes().get(RequestAttributeKeys.AGENT_ROLES);
                 if (o instanceof List<?> l) agentRoles = l.stream().map(String::valueOf).toList();
-                o = exchange.transportContext().get("realmRoles");
+                o = requestContext.attributes().get(RequestAttributeKeys.REALM_ROLES);
                 if (o instanceof List<?> l) tcRealmRoles = l.stream().map(String::valueOf).toList();
-                o = exchange.transportContext().get("clientRoles");
+                o = requestContext.attributes().get(RequestAttributeKeys.CLIENT_ROLES);
                 if (o instanceof List<?> l) tcClientRoles = l.stream().map(String::valueOf).toList();
-                o = exchange.transportContext().get("customClaims");
+                o = requestContext.attributes().get(RequestAttributeKeys.CUSTOM_CLAIMS);
                 if (o instanceof Map<?, ?> m) {
                     @SuppressWarnings("unchecked")
                     Map<String, Object> cast = (Map<String, Object>) m;

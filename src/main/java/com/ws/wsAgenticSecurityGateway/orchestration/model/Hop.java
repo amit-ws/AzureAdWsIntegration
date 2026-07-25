@@ -1,18 +1,13 @@
 package com.ws.wsAgenticSecurityGateway.orchestration.model;
 
-import io.modelcontextprotocol.server.McpSyncServerExchange;
-
 import java.util.Map;
 
 /**
  * The protocol-agnostic unit of work the orchestration spine operates on.
  *
- * <p><b>Stage-0 scope decision (deliberate, not residue):</b> a {@code Hop} currently carries
- * the MCP {@link McpSyncServerExchange} as its request context. Fully neutralizing the exchange
- * into a protocol-independent {@code RequestContext} is intentionally deferred to the A2A phase,
- * when a second protocol's real requirements can shape that abstraction correctly — designing it
- * now, against MCP alone, would be guesswork that gets reworked. See
- * {@code docs/stage-0-refactor-plan.md} → "KEY SCOPE DECISION".
+ * <p>A {@code Hop} carries a protocol-neutral {@link RequestContext} as its request handle — each
+ * protocol's inbound boundary builds one from its own request object (MCP from the exchange, A2A from
+ * its request) — so the spine governs a hop without depending on any protocol SDK.
  *
  * <p>{@link #serverName} and {@link #originalName} are populated by the spine after the
  * capability-registry lookup via {@link #resolve(String, String)}.
@@ -23,7 +18,7 @@ public final class Hop {
     private final String publicName;
     private final Map<String, Object> arguments; // tool / prompt args; null for resource
     private final String resourceUri;            // resource only; null otherwise
-    private final McpSyncServerExchange exchange;
+    private final RequestContext requestContext;
 
     private String serverName;   // resolved after registry lookup
     private String originalName; // resolved (tool/prompt name); resource uri for RESOURCE
@@ -34,12 +29,12 @@ public final class Hop {
                String publicName,
                Map<String, Object> arguments,
                String resourceUri,
-               McpSyncServerExchange exchange) {
+               RequestContext requestContext) {
         this.capabilityType = capabilityType;
         this.publicName = publicName;
         this.arguments = arguments;
         this.resourceUri = resourceUri;
-        this.exchange = exchange;
+        this.requestContext = requestContext;
     }
 
     public CapabilityType capabilityType() { return capabilityType; }
@@ -50,7 +45,7 @@ public final class Hop {
 
     public String resourceUri() { return resourceUri; }
 
-    public McpSyncServerExchange exchange() { return exchange; }
+    public RequestContext requestContext() { return requestContext; }
 
     public String serverName() { return serverName; }
 
