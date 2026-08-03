@@ -55,6 +55,16 @@ class CedarPolicyEngineTenantPartitionTest {
     }
 
     @Test
+    void evaluateEntities_dryRunsAgainstExplicitSet_withoutTouchingSlots() {
+        // Powers the authoring-time "Test a policy" — evaluate an ad-hoc set, nothing loaded/persisted.
+        assertThat(engine.evaluateEntities(List.of(policy("allow", PERMIT_ALL, "PERMIT")), req()).isAllowed()).isTrue();
+        assertThat(engine.evaluateEntities(List.of(policy("block", FORBID_ALL, "FORBID")), req()).isDenied()).isTrue();
+        assertThat(engine.evaluateEntities(List.of(), req()).isDenied()).isTrue(); // no policies → default-deny
+        // the ad-hoc dry-run must not have populated any tenant slot
+        assertThat(engine.hasPolicies("test")).isFalse();
+    }
+
+    @Test
     void reloadingOneTenant_doesNotClobberAnother() {
         engine.reloadTenant("tenant-a", List.of(policy("allow", PERMIT_ALL, "PERMIT")));
         engine.reloadTenant("tenant-b", List.of(policy("allow", PERMIT_ALL, "PERMIT")));

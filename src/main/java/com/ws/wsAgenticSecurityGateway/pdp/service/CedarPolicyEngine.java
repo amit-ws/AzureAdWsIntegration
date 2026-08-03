@@ -251,9 +251,19 @@ public class CedarPolicyEngine {
 
     /** Evaluate the request against {@code tenant}'s isolated policy set (fallback set when tenant is null). */
     public PolicyEvaluationResult evaluate(String tenant, PolicyEvaluationRequest request) {
-        long startTime = System.currentTimeMillis();
+        return evaluateParsed(resolvePolicies(tenant), tenant, request);
+    }
 
-        List<ParsedPolicy> policies = resolvePolicies(tenant);
+    /**
+     * Dry-run the request against an explicit set of policy rows (authoring-time "test a policy") — e.g. the
+     * tenant's saved policies plus an unsaved draft. Parses on the fly; does not touch the loaded slots.
+     */
+    public PolicyEvaluationResult evaluateEntities(List<GatewayPolicyEntity> policies, PolicyEvaluationRequest request) {
+        return evaluateParsed(parse(policies), "test", request);
+    }
+
+    private PolicyEvaluationResult evaluateParsed(List<ParsedPolicy> policies, String tenant, PolicyEvaluationRequest request) {
+        long startTime = System.currentTimeMillis();
 
         if (policies.isEmpty()) {
  log.info("Cedar: tenant={}, agent={}, action={}, resource={} → DENY (no policies configured)",

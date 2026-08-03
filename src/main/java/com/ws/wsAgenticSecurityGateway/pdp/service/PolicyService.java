@@ -3,6 +3,8 @@ package com.ws.wsAgenticSecurityGateway.pdp.service;
 import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
 import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyDto;
+import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyEvaluationRequest;
+import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyEvaluationResult;
 import com.ws.wsAgenticSecurityGateway.pdp.entity.GatewayPolicyEntity;
 import com.ws.wsAgenticSecurityGateway.pdp.repository.GatewayPolicyRepository;
 import lombok.extern.slf4j.Slf4j;
@@ -129,6 +131,65 @@ public class PolicyService {
         return repository.findByIdAndWsTenantName(id, TenantContext.get());
     }
 
+    /**
+     * Author-time dry-run: evaluate {@code req} against the current tenant's enabled policies, optionally plus
+     * an unsaved {@code draftPolicyText}, without persisting anything. Powers the "Test a policy" panel.
+     */
+    public PolicyEvaluationResult testDecision(PolicyEvaluationRequest req, String draftPolicyText) {
+        String tenant = TenantContext.get();
+        List<GatewayPolicyEntity> policies = new ArrayList<>(
+                repository.findByEnabledTrueAndWsTenantNameOrderByPriorityAsc(tenant));
+        if (draftPolicyText != null && !draftPolicyText.isBlank()) {
+            // Insert the unsaved draft at the front (lowest priority number = evaluated first) so the author
+            // sees its effect layered over the saved set.
+            policies.add(0, GatewayPolicyEntity.builder()
+                    .policyName("__draft__")
+                    .policyText(draftPolicyText)
+                    .effect(detectEffect(draftPolicyText))
+                    .enabled(true)
+                    .priority(0)
+                    .wsTenantName(tenant)
+                    .build());
+        }
+        return cedarEngine.evaluateEntities(policies, req);
+    }
+
+    /** True when a policy is a system-seeded guardrail (read-only — must not be edited/deleted by tenants). */
+    private static boolean isProtected(GatewayPolicyEntity p) {
+        return p != null && "DEFAULT".equalsIgnoreCase(p.getSource());
+    }
+
+    private static final java.util.regex.Pattern CEDAR_ID = java.util.regex.Pattern.compile("@id\\(\"([^\"]+)\"\\)");
+
+    /** The Cedar {@code @id} annotation in the policy text — the policy's canonical identity — or null. */
+    private static String extractCedarId(String text) {
+        if (text == null) return null;
+        java.util.regex.Matcher m = CEDAR_ID.matcher(text);
+        return m.find() ? m.group(1) : null;
+    }
+
+    /** Existing policy (this tenant) that already uses the given Cedar {@code @id}, if any — for duplicate detection. */
+    public Optional<GatewayPolicyEntity> findByCedarId(String cedarId) {
+        if (cedarId == null || cedarId.isBlank()) {
+            return Optional.empty();
+        }
+        return repository.findByCedarPolicyIdAndWsTenantName(cedarId, TenantContext.get());
+    }
+
+    /**
+     * Baseline decision for {@code req} against the tenant's saved policies EXCLUDING the policy being authored
+     * (matched by {@code excludeCedarId}) and WITHOUT the draft — so a caller can compare "with vs without" the
+     * draft to detect that it overrides, or is redundant with, an existing policy.
+     */
+    public PolicyEvaluationResult testBaseline(PolicyEvaluationRequest req, String excludeCedarId) {
+        String tenant = TenantContext.get();
+        List<GatewayPolicyEntity> policies = repository
+                .findByEnabledTrueAndWsTenantNameOrderByPriorityAsc(tenant).stream()
+                .filter(p -> excludeCedarId == null || !excludeCedarId.equals(p.getCedarPolicyId()))
+                .toList();
+        return cedarEngine.evaluateEntities(policies, req);
+    }
+
     @Transactional
     public PolicyCreationResult createPolicy(PolicyDto dto) {
         String validationError = cedarEngine.validatePolicy(dto.getPolicyText());
@@ -141,11 +202,21 @@ public class PolicyService {
             return PolicyCreationResult.error("Policy with name '" + dto.getPolicyName() + "' already exists");
         }
 
-        String cedarId = dto.getCedarPolicyId();
+        // The Cedar @id is the policy's canonical identity — take it from the text, and enforce it unique so
+        // audit ("which policy decided this") is never ambiguous. Fall back to a name slug when there's no @id.
+        String cedarId = extractCedarId(dto.getPolicyText());
+        if (cedarId == null || cedarId.isBlank()) {
+            cedarId = dto.getCedarPolicyId();
+        }
         if (cedarId == null || cedarId.isBlank()) {
             cedarId = dto.getPolicyName().toLowerCase()
                     .replaceAll("[^a-z0-9]+", "-")
                     .replaceAll("^-|-$", "");
+        }
+        Optional<GatewayPolicyEntity> idClash = repository.findByCedarPolicyIdAndWsTenantName(cedarId, tenant);
+        if (idClash.isPresent()) {
+            return PolicyCreationResult.error("Policy id '" + cedarId + "' is already used by policy '"
+                    + idClash.get().getPolicyName() + "'. Give this policy a unique @id.");
         }
 
         GatewayPolicyEntity entity = GatewayPolicyEntity.builder()
@@ -181,6 +252,9 @@ public class PolicyService {
         if (existing.isEmpty()) {
             return PolicyCreationResult.error("Policy not found: " + id);
         }
+        if (isProtected(existing.get())) {
+            return PolicyCreationResult.error("This is a system guardrail policy (source=DEFAULT) and is read-only.");
+        }
 
         if (dto.getPolicyText() != null) {
             String validationError = cedarEngine.validatePolicy(dto.getPolicyText());
@@ -193,6 +267,17 @@ public class PolicyService {
         if (dto.getPolicyName() != null) entity.setPolicyName(dto.getPolicyName());
         if (dto.getDescription() != null) entity.setDescription(dto.getDescription());
         if (dto.getPolicyText() != null) {
+            // Keep the canonical id (@id) unique — reject if the edited text collides with a DIFFERENT policy.
+            String newCedarId = extractCedarId(dto.getPolicyText());
+            if (newCedarId != null && !newCedarId.isBlank()) {
+                Optional<GatewayPolicyEntity> clash =
+                        repository.findByCedarPolicyIdAndWsTenantName(newCedarId, TenantContext.get());
+                if (clash.isPresent() && !clash.get().getId().equals(id)) {
+                    return PolicyCreationResult.error("Policy id '" + newCedarId + "' is already used by policy '"
+                            + clash.get().getPolicyName() + "'. Give this policy a unique @id.");
+                }
+                entity.setCedarPolicyId(newCedarId);
+            }
             entity.setPolicyText(dto.getPolicyText());
             entity.setEffect(dto.getEffect() != null ? dto.getEffect().toUpperCase() : detectEffect(dto.getPolicyText()));
         }
@@ -215,6 +300,10 @@ public class PolicyService {
     public boolean deletePolicy(UUID id) {
         Optional<GatewayPolicyEntity> existing = repository.findByIdAndWsTenantName(id, TenantContext.get());
         if (existing.isPresent()) {
+            if (isProtected(existing.get())) {
+ log.warn("Refused to delete system guardrail policy '{}' (source=DEFAULT)", existing.get().getPolicyName());
+                return false;
+            }
             String policyName = existing.get().getPolicyName();
             repository.deleteById(id);
             reloadEngine();
@@ -227,7 +316,15 @@ public class PolicyService {
 
     @Transactional
     public Optional<GatewayPolicyEntity> toggleEnabled(UUID id) {
-        return repository.findByIdAndWsTenantName(id, TenantContext.get()).map(entity -> {
+        return repository.findByIdAndWsTenantName(id, TenantContext.get())
+                .filter(entity -> {
+                    if (isProtected(entity)) {
+ log.warn("Refused to toggle system guardrail policy '{}' (source=DEFAULT)", entity.getPolicyName());
+                        return false;
+                    }
+                    return true;
+                })
+                .map(entity -> {
             entity.setEnabled(!entity.getEnabled());
             GatewayPolicyEntity saved = repository.save(entity);
             reloadEngine();
