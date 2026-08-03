@@ -5,6 +5,7 @@ import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayHumanUserEnti
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
 import com.ws.wsAgenticSecurityGateway.authConfig.repository.GatewayAuthConfigRepository;
+import com.ws.wsAgenticSecurityGateway.sts.service.StsRevocationService;
 import io.modelcontextprotocol.common.McpTransportContext;
 import org.junit.jupiter.api.Test;
 
@@ -26,9 +27,11 @@ class StatelessIdentityServiceTest {
     private final AgentRegistryService agentRegistry = mock(AgentRegistryService.class);
     private final GatewayAuditService auditService = mock(GatewayAuditService.class);
     private final GatewayAuthConfigRepository authConfigRepository = mock(GatewayAuthConfigRepository.class);
+    // Nothing revoked by default (mock returns false) — these tests cover the identity-bootstrap paths.
+    private final StsRevocationService revocationService = mock(StsRevocationService.class);
 
     private final StatelessIdentityService service =
-            new StatelessIdentityService(agentRegistry, auditService, authConfigRepository);
+            new StatelessIdentityService(agentRegistry, auditService, authConfigRepository, revocationService);
 
     @Test
     void bootstrap_resolvesJwtIdentity_linksInMemory_withTenantFromHeader() {

@@ -27,7 +27,8 @@ public enum GatewayErrorCode {
     AGENT_PENDING_APPROVAL(-33011, "Agent is pending admin approval"),
     AGENT_DEPROVISIONED(-33012, "Agent has been deprovisioned by admin"),
     HUMAN_PENDING_APPROVAL(-33013, "Human user is pending admin approval"),
-    NHI_PENDING_APPROVAL(-33014, "Service identity is pending admin approval");
+    NHI_PENDING_APPROVAL(-33014, "Service identity is pending admin approval"),
+    TOKEN_REVOKED(-33015, "Delegation token or session has been revoked by admin");
 
     private final int code;
     private final String message;

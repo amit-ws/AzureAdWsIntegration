@@ -35,6 +35,8 @@ public class GatewayOAuth2Filter implements Filter {
     public static final String ATTR_RAW_CLAIMS = "jwt.raw_claims";
     public static final String ATTR_ACCESS_TOKEN = "jwt.access_token";
     public static final String ATTR_CLASSIFICATION_SIGNAL = "jwt.classification_signal";
+    /** The inbound token's {@code jti} — read by the honor-time revocation gate. */
+    public static final String ATTR_JTI = "jwt.jti";
 
     public static final String TOKEN_TYPE_AUTOMATED = "AUTOMATED_AGENT";
     public static final String TOKEN_TYPE_HUMAN = "HUMAN_DELEGATED";
@@ -99,6 +101,7 @@ public class GatewayOAuth2Filter implements Filter {
         request.setAttribute(ATTR_FAMILY_NAME, familyName);
         request.setAttribute(ATTR_EMAIL_VERIFIED, emailVerified);
         request.setAttribute(ATTR_ISSUER, issuer);
+        request.setAttribute(ATTR_JTI, jwt.getId());
 
         List<String> realmRoles = extractRealmRoles(jwt);
         List<String> clientRoles = extractClientRoles(jwt, clientId);

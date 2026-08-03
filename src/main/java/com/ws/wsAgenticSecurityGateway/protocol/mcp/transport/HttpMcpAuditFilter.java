@@ -14,6 +14,7 @@ import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentCapabilityFilt
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService.AgentBlockedException;
 import com.ws.wsAgenticSecurityGateway.audit.error.GatewayErrorCode;
+import com.ws.wsAgenticSecurityGateway.sts.service.StsRevocationService;
 import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
 import com.ws.wsAgenticSecurityGateway.authConfig.repository.GatewayAuthConfigRepository;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
@@ -46,6 +47,7 @@ public class HttpMcpAuditFilter implements Filter {
     private final GatewayAuthConfigRepository authConfigRepository;
     private final ObjectMapper objectMapper;
     private final TokenClassificationService tokenClassificationService;
+    private final StsRevocationService revocationService;
 
     private final ConcurrentHashMap<String, Boolean> registeredSessions = new ConcurrentHashMap<>();
 
@@ -73,7 +75,8 @@ public class HttpMcpAuditFilter implements Filter {
             CapabilityRegistryService registryService,
             GatewayAuthConfigRepository authConfigRepository,
             ObjectMapper objectMapper,
-            TokenClassificationService tokenClassificationService) {
+            TokenClassificationService tokenClassificationService,
+            StsRevocationService revocationService) {
         this.agentRegistryService = agentRegistryService;
         this.capabilityFilterService = capabilityFilterService;
         this.auditService = auditService;
@@ -81,6 +84,7 @@ public class HttpMcpAuditFilter implements Filter {
         this.authConfigRepository = authConfigRepository;
         this.objectMapper = objectMapper;
         this.tokenClassificationService = tokenClassificationService;
+        this.revocationService = revocationService;
     }
 
     public String resolveTenant(String sessionId) {
@@ -133,6 +137,22 @@ public class HttpMcpAuditFilter implements Filter {
                     "Blocked session attempted request; reconnect after admin approval.");
             rejectBlocked(httpResponse, requestIdRaw, GatewayErrorCode.AGENT_BLOCKED,
                     "Agent '" + (blockedAgentName != null ? blockedAgentName : "unknown") + "' is blocked by admin. Reconnect after approval.");
+            return;
+        }
+
+        // Honor-time revocation gate (runs for ALL methods, including initialize): reject at the door if this
+        // session was revoked, or if the inbound gateway-minted OBO token's jti was revoked. The jti check
+        // bites on a later hop in a multi-hop / A2A flow, when a previously-minted token is presented back.
+        String inboundJti = (String) wrappedRequest.getAttribute(GatewayOAuth2Filter.ATTR_JTI);
+        if ((sessionId != null && revocationService.isSessionRevoked(sessionId))
+                || revocationService.isRevoked(inboundJti)) {
+            log.warn("Request rejected — revoked delegation (session={}, jti={}, method={})",
+                    sessionId, inboundJti, protocolMethod);
+            auditService.auditAgentConnectionRejected(sessionId, requestId, resolveAgentName(sessionId),
+                    null, protocolMethod, "HTTP",
+                    "Delegation revoked by admin (session or token jti on the revocation list)");
+            rejectBlocked(httpResponse, requestIdRaw, GatewayErrorCode.TOKEN_REVOKED,
+                    "This delegation has been revoked by an administrator. Reconnect with a fresh token or session.");
             return;
         }
 

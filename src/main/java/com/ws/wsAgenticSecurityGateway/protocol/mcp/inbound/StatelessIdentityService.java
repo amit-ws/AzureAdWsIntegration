@@ -3,6 +3,7 @@ package com.ws.wsAgenticSecurityGateway.protocol.mcp.inbound;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayHumanUserEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
+import com.ws.wsAgenticSecurityGateway.sts.service.StsRevocationService;
 import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
 import com.ws.wsAgenticSecurityGateway.authConfig.repository.GatewayAuthConfigRepository;
 import io.modelcontextprotocol.common.McpTransportContext;
@@ -36,6 +37,7 @@ public class StatelessIdentityService {
     private final AgentRegistryService agentRegistry;
     private final GatewayAuditService auditService;
     private final GatewayAuthConfigRepository authConfigRepository;
+    private final StsRevocationService revocationService;
 
     /**
      * Grace before a per-request identity is evicted from the audit cache. The identity must outlive the
@@ -55,10 +57,12 @@ public class StatelessIdentityService {
 
     public StatelessIdentityService(AgentRegistryService agentRegistry,
                                     GatewayAuditService auditService,
-                                    GatewayAuthConfigRepository authConfigRepository) {
+                                    GatewayAuthConfigRepository authConfigRepository,
+                                    StsRevocationService revocationService) {
         this.agentRegistry = agentRegistry;
         this.auditService = auditService;
         this.authConfigRepository = authConfigRepository;
+        this.revocationService = revocationService;
     }
 
     @PreDestroy
@@ -76,6 +80,17 @@ public class StatelessIdentityService {
         String tokenType = str(ctx.get("tokenType"));
         String idpIssuer = str(ctx.get("idpIssuer"));
         String tenant = resolveTenant(ctx, idpIssuer);
+
+        // Honor-time revocation gate (governance at the door): refuse a revoked session, or a revoked inbound
+        // OBO token jti (the jti check bites on a later hop in a multi-hop / A2A flow). Reuses the blocked-at-
+        // the-door path so tool calls return an error result and prompts/resources surface a JSON-RPC error.
+        Map<String, Object> rawClaims = objMap(ctx.get("rawJwtClaims"));
+        String inboundJti = rawClaims != null ? str(rawClaims.get("jti")) : null;
+        if (revocationService.isSessionRevoked(sessionId) || revocationService.isRevoked(inboundJti)) {
+            log.warn("Stateless request rejected — revoked delegation (session={}, jti={})", sessionId, inboundJti);
+            throw new AgentRegistryService.AgentBlockedException(
+                    "This delegation has been revoked by an administrator.");
+        }
 
         // Carry the tenant in MDC so async audit rows can resolve it even after cleanup() evicts the
         // per-request identity: the audit executor's TaskDecorator snapshots MDC at submission time, and

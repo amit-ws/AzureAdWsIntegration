@@ -28,8 +28,11 @@ class HopTokenMinterTest {
     private final ScopeDeriver scopeDeriver = mock(ScopeDeriver.class);
     private final StsService stsService = mock(StsService.class);
     private final GatewayAuditService auditService = mock(GatewayAuditService.class);
+    // Not revoked by default (mock returns false) — these tests cover the happy/open-mode paths.
+    private final StsRevocationService revocationService = mock(StsRevocationService.class);
 
-    private final HopTokenMinter minter = new HopTokenMinter(scopeDeriver, stsService, auditService);
+    private final HopTokenMinter minter =
+            new HopTokenMinter(scopeDeriver, stsService, auditService, revocationService);
 
     private Hop hop;
     private ActChain chain;

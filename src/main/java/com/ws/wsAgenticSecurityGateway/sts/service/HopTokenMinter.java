@@ -35,13 +35,16 @@ public class HopTokenMinter {
     private final ScopeDeriver scopeDeriver;
     private final StsService stsService;
     private final GatewayAuditService auditService;
+    private final StsRevocationService revocationService;
 
     public HopTokenMinter(ScopeDeriver scopeDeriver,
                           StsService stsService,
-                          GatewayAuditService auditService) {
+                          GatewayAuditService auditService,
+                          StsRevocationService revocationService) {
         this.scopeDeriver = scopeDeriver;
         this.stsService = stsService;
         this.auditService = auditService;
+        this.revocationService = revocationService;
     }
 
     /**
@@ -50,6 +53,16 @@ public class HopTokenMinter {
      */
     public MintedToken mintForHop(Hop hop, String sessionId, ActChain chain,
                                   String requestId, String correlationId, int eventSequence) {
+        // Session revocation is enforced here (fail-closed) BEFORE the open-mode skip, so it is mode-independent
+        // and still bites on transports that have no door filter (stdio / internal hops): once an admin revokes
+        // a live session, the gateway refuses to mint any further OBO token for it, denying the current hop and
+        // every later hop. This is the mint-time half of the kill switch; the honor-time filters reject at the
+        // HTTP door too.
+        if (revocationService.isSessionRevoked(sessionId)) {
+            log.warn("[{}] Refusing to mint — agent session {} has been revoked by admin", correlationId, sessionId);
+            throw new StsMintException("Agent session has been revoked");
+        }
+
         String tenant = auditService.resolveTenant(sessionId);
         if (tenant == null || tenant.isBlank() || "unknown".equals(tenant)) {
             return null; // open mode / no tenant resolved — skip minting

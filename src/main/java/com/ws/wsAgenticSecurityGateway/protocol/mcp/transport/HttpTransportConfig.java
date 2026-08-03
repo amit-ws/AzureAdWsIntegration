@@ -2,6 +2,7 @@ package com.ws.wsAgenticSecurityGateway.protocol.mcp.transport;
 import com.ws.wsAgenticSecurityGateway.security.GatewayOAuth2Filter;
 import com.ws.wsAgenticSecurityGateway.security.ProtocolRouteRegistry;
 import com.ws.wsAgenticSecurityGateway.security.TokenClassificationService;
+import com.ws.wsAgenticSecurityGateway.sts.service.StsRevocationService;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.DeserializationFeature;
@@ -136,12 +137,13 @@ public class HttpTransportConfig {
             CapabilityRegistryService registryService,
             GatewayAuthConfigRepository authConfigRepository,
             ObjectMapper objectMapper,
-            TokenClassificationService tokenClassificationService) {
+            TokenClassificationService tokenClassificationService,
+            StsRevocationService revocationService) {
 
         FilterRegistrationBean<HttpMcpAuditFilter> registration = new FilterRegistrationBean<>();
         registration.setFilter(new HttpMcpAuditFilter(
                 agentRegistryService, capabilityFilterService, auditService, registryService,
-                authConfigRepository, objectMapper, tokenClassificationService));
+                authConfigRepository, objectMapper, tokenClassificationService, revocationService));
         registration.addUrlPatterns("/mcp/*");
         registration.setOrder(2);
         registration.setName("mcpAuditFilter");
