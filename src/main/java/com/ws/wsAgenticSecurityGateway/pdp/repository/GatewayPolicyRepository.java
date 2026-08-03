@@ -32,6 +32,9 @@ public interface GatewayPolicyRepository extends JpaRepository<GatewayPolicyEnti
 
     Optional<GatewayPolicyEntity> findByPolicyNameAndWsTenantName(String policyName, String wsTenantName);
 
+    /** Tenant-scoped lookup by id — closes the cross-tenant IDOR on read/update/delete/toggle. */
+    Optional<GatewayPolicyEntity> findByIdAndWsTenantName(UUID id, String wsTenantName);
+
     Optional<GatewayPolicyEntity> findByCedarPolicyIdAndWsTenantName(String cedarPolicyId, String wsTenantName);
 
     List<GatewayPolicyEntity> findByEffectAndWsTenantName(String effect, String wsTenantName);

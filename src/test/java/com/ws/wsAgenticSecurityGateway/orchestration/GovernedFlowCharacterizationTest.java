@@ -115,7 +115,7 @@ class GovernedFlowCharacterizationTest {
                 .thenReturn(request);
         when(policyContextBuilder.buildForResourceRead(any(), any(), any(), any(), any(), any()))
                 .thenReturn(request);
-        when(cedarPolicyEngine.evaluate(any()))
+        when(cedarPolicyEngine.evaluate(any(), any()))
                 .thenReturn(PolicyEvaluationResult.allow(Set.of("test-policy"), 1L));
     }
 
@@ -201,7 +201,7 @@ class GovernedFlowCharacterizationTest {
     @DisplayName("prompt: PDP denied → throws, southbound call never made")
     void promptGet_pdpDenied() {
         givenPrompt();
-        when(cedarPolicyEngine.evaluate(any()))
+        when(cedarPolicyEngine.evaluate(any(), any()))
                 .thenReturn(PolicyEvaluationResult.deny(Set.of("blocking-policy"), "not permitted", 1L));
 
         assertThatThrownBy(() -> orchestrator.orchestrateGetPrompt(exchange, PROMPT_PUBLIC, Map.of()))
@@ -214,7 +214,7 @@ class GovernedFlowCharacterizationTest {
     @DisplayName("resource: PDP denied → throws, southbound call never made")
     void resourceRead_pdpDenied() {
         givenResource();
-        when(cedarPolicyEngine.evaluate(any()))
+        when(cedarPolicyEngine.evaluate(any(), any()))
                 .thenReturn(PolicyEvaluationResult.deny(Set.of("blocking-policy"), "not permitted", 1L));
 
         assertThatThrownBy(() -> orchestrator.orchestrateReadResource(exchange, RESOURCE_PUBLIC, RESOURCE_URI))

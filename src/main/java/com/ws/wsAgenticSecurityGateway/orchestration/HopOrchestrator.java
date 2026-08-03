@@ -239,7 +239,8 @@ public class HopOrchestrator {
                     publicName, "toolCall", serverName, pdpRequest, requestId, clientName,
                     LocalDateTime.now(), ++seq);
 
-            PolicyEvaluationResult pdpResult = cedarPolicyEngine.evaluate(pdpRequest);
+            PolicyEvaluationResult pdpResult = cedarPolicyEngine.evaluate(
+                    auditService.resolveTenant(sessionId), pdpRequest);
 
             auditService.auditPdpDecisionRendered(
                     correlationId, sessionId, pdpRequest.getAgentName(),
@@ -503,7 +504,8 @@ public class HopOrchestrator {
                     publicName, "promptGet", serverName, pdpRequest, requestId, clientName,
                     LocalDateTime.now(), ++seq);
 
-            PolicyEvaluationResult pdpResult = cedarPolicyEngine.evaluate(pdpRequest);
+            PolicyEvaluationResult pdpResult = cedarPolicyEngine.evaluate(
+                    auditService.resolveTenant(sessionId), pdpRequest);
 
             auditService.auditPdpDecisionRendered(
                     correlationId, sessionId, pdpRequest.getAgentName(),
@@ -754,7 +756,8 @@ public class HopOrchestrator {
                     publicName, "resourceRead", serverName, pdpRequest, requestId, clientName,
                     LocalDateTime.now(), ++seq);
 
-            PolicyEvaluationResult pdpResult = cedarPolicyEngine.evaluate(pdpRequest);
+            PolicyEvaluationResult pdpResult = cedarPolicyEngine.evaluate(
+                    auditService.resolveTenant(sessionId), pdpRequest);
 
             auditService.auditPdpDecisionRendered(
                     correlationId, sessionId, pdpRequest.getAgentName(),

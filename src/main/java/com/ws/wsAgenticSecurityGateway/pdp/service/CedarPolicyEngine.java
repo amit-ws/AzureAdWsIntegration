@@ -10,8 +10,7 @@ import java.time.DayOfWeek;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.*;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -117,61 +116,103 @@ public class CedarPolicyEngine {
 
     private static final Pattern ATTR_EQ_LONG = Pattern.compile("(context|principal|resource)\\.(\\w+)\\s*==\\s*(-?\\d+)");
 
-    private volatile List<ParsedPolicy> currentPolicies = Collections.emptyList();
+    /**
+     * Per-tenant compiled policy sets — the isolated slots that make the PDP tenant-partitioned. Each value is
+     * an immutable snapshot swapped atomically, so evaluation reads a consistent set with no lock.
+     */
+    private final Map<String, List<ParsedPolicy>> policiesByTenant = new ConcurrentHashMap<>();
 
-    private final ReadWriteLock policyLock = new ReentrantReadWriteLock();
+    /**
+     * Combined fallback set, used ONLY for requests with no resolvable tenant (open mode / pre-auth). Real
+     * tenants are isolated in {@link #policiesByTenant}; this preserves prior behavior for the null-tenant edge.
+     */
+    private volatile List<ParsedPolicy> globalPolicies = Collections.emptyList();
 
-    private volatile boolean policiesLoaded = false;
+    /** Lazily populates an unseen tenant's slot on first evaluation (and seeds its baseline guardrails). */
+    private volatile TenantPolicyLoader tenantLoader;
 
-    public CedarPolicyEngine() {
- log.info("Cedar Policy Engine initialized (pure-Java evaluator — dynamic ABAC)");
+    /** Supplies a tenant's enabled policy rows on demand; set by {@link PolicyService} after construction. */
+    public interface TenantPolicyLoader {
+        List<GatewayPolicyEntity> load(String tenant);
     }
 
+    public void setTenantLoader(TenantPolicyLoader loader) {
+        this.tenantLoader = loader;
+    }
+
+    public CedarPolicyEngine() {
+ log.info("Cedar Policy Engine initialized (pure-Java evaluator — dynamic ABAC, tenant-partitioned)");
+    }
+
+    /** Backward-compatible: loads into the combined fallback set (null-tenant requests + tests). */
     public int reloadPolicies(List<GatewayPolicyEntity> policies) {
+        return reloadGlobal(policies);
+    }
+
+    /** Load/replace the combined fallback policy set (used for requests with no resolvable tenant). */
+    public int reloadGlobal(List<GatewayPolicyEntity> policies) {
+        List<ParsedPolicy> parsed = parse(policies);
+        globalPolicies = parsed;
+ log.info("Cedar: loaded {} policy(ies) into the combined fallback set", parsed.size());
+        return parsed.size();
+    }
+
+    /** Load/replace one tenant's isolated policy set (blank tenant → the fallback set). */
+    public int reloadTenant(String tenant, List<GatewayPolicyEntity> policies) {
+        if (tenant == null || tenant.isBlank()) {
+            return reloadGlobal(policies);
+        }
+        List<ParsedPolicy> parsed = parse(policies);
+        policiesByTenant.put(tenant, parsed);
+ log.info("Cedar: loaded {} policy(ies) for tenant '{}'", parsed.size(), tenant);
+        return parsed.size();
+    }
+
+    /** Parse policy rows into the compiled form; returns an immutable (possibly empty) list. */
+    private List<ParsedPolicy> parse(List<GatewayPolicyEntity> policies) {
         if (policies == null || policies.isEmpty()) {
-            policyLock.writeLock().lock();
-            try {
-                currentPolicies = Collections.emptyList();
-                policiesLoaded = false;
- log.info("Cedar: No policies to load — all requests will be DENIED (default-deny, no permits)");
-                return 0;
-            } finally {
-                policyLock.writeLock().unlock();
-            }
+            return Collections.emptyList();
         }
-
-        try {
-            List<ParsedPolicy> parsed = new ArrayList<>();
-            for (GatewayPolicyEntity entity : policies) {
-                ParsedPolicy pp = parsePolicy(entity.getPolicyText(), entity.getPolicyName());
-                if (pp != null) {
-                    parsed.add(pp);
- log.info("Cedar PARSED: name='{}', id='{}', effect={}, principalType={}, principalId='{}', actionId='{}', resourceType={}, resourceId='{}', whenConds={}, unlessConds={}",
-                            pp.name, pp.id, pp.effect, pp.principalType, pp.principalEntityId,
-                            pp.actionId, pp.resourceType, pp.resourceEntityId,
-                            pp.whenConditions.size(), pp.unlessConditions.size());
-                } else {
+        List<ParsedPolicy> parsed = new ArrayList<>();
+        for (GatewayPolicyEntity entity : policies) {
+            ParsedPolicy pp = parsePolicy(entity.getPolicyText(), entity.getPolicyName());
+            if (pp != null) {
+                parsed.add(pp);
+            } else {
  log.warn("Cedar: Skipped unparseable policy: {} | text='{}'",
-                            entity.getPolicyName(), entity.getPolicyText());
-                }
+                        entity.getPolicyName(), entity.getPolicyText());
             }
-
-            policyLock.writeLock().lock();
-            try {
-                currentPolicies = Collections.unmodifiableList(parsed);
-                policiesLoaded = !parsed.isEmpty();
-            } finally {
-                policyLock.writeLock().unlock();
-            }
-
- log.info("Cedar: Loaded {} policies successfully (parsed {} of {})",
-                    parsed.size(), parsed.size(), policies.size());
-            return parsed.size();
-
-        } catch (Exception e) {
- log.error("Cedar: Failed to parse policies: {}", e.getMessage(), e);
-            return -1;
         }
+        return Collections.unmodifiableList(parsed);
+    }
+
+    /**
+     * The compiled policy set that applies to {@code tenant}: the tenant's isolated slot (lazily loaded +
+     * seeded on first use), or the combined fallback set when the tenant is unresolved.
+     */
+    private List<ParsedPolicy> resolvePolicies(String tenant) {
+        if (tenant == null || tenant.isBlank()) {
+            return globalPolicies;
+        }
+        List<ParsedPolicy> pols = policiesByTenant.get(tenant);
+        if (pols != null) {
+            return pols;
+        }
+        TenantPolicyLoader loader = this.tenantLoader;
+        if (loader == null) {
+            return globalPolicies; // loader not wired yet — fall back rather than deny
+        }
+        return policiesByTenant.computeIfAbsent(tenant, t -> {
+            try {
+                List<ParsedPolicy> parsed = parse(loader.load(t));
+ log.info("Cedar: lazily loaded {} policy(ies) for tenant '{}' on first use", parsed.size(), t);
+                return parsed;
+            } catch (Exception e) {
+ log.error("Cedar: lazy policy load for tenant '{}' failed — treating as no policies (deny): {}",
+                        t, e.getMessage());
+                return Collections.emptyList();
+            }
+        });
     }
 
     public String validatePolicy(String policyText) {
@@ -192,31 +233,45 @@ public class CedarPolicyEngine {
         }
     }
 
+    /** True if ANY tenant slot or the fallback set has policies (used for coarse status/stats). */
     public boolean hasPolicies() {
-        return policiesLoaded;
+        return !globalPolicies.isEmpty() || policiesByTenant.values().stream().anyMatch(l -> !l.isEmpty());
     }
 
+    /** True if the given tenant has policies loaded (no lazy-load side effect — for stats). */
+    public boolean hasPolicies(String tenant) {
+        List<ParsedPolicy> p = (tenant == null || tenant.isBlank()) ? globalPolicies : policiesByTenant.get(tenant);
+        return p != null && !p.isEmpty();
+    }
+
+    /** Backward-compatible: evaluate against the combined fallback set (null tenant). */
     public PolicyEvaluationResult evaluate(PolicyEvaluationRequest request) {
+        return evaluate(null, request);
+    }
+
+    /** Evaluate the request against {@code tenant}'s isolated policy set (fallback set when tenant is null). */
+    public PolicyEvaluationResult evaluate(String tenant, PolicyEvaluationRequest request) {
         long startTime = System.currentTimeMillis();
 
-        if (!policiesLoaded || currentPolicies.isEmpty()) {
- log.info("Cedar: agent={}, action={}, resource={} → DENY (no policies configured)",
-                    request.getAgentName(), request.getAction(), request.getResourceName());
+        List<ParsedPolicy> policies = resolvePolicies(tenant);
+
+        if (policies.isEmpty()) {
+ log.info("Cedar: tenant={}, agent={}, action={}, resource={} → DENY (no policies configured)",
+                    tenant, request.getAgentName(), request.getAction(), request.getResourceName());
             long duration = System.currentTimeMillis() - startTime;
             return PolicyEvaluationResult.noPolicies(duration);
         }
 
-        policyLock.readLock().lock();
         try {
             EvalContext ctx = buildEvalContext(request);
 
- log.info("Cedar EVAL: principalType='{}', principalId='{}', action='{}', resourceType='{}', resourceId='{}', policiesCount={}",
-                    ctx.principalType, ctx.principalId, ctx.action, ctx.resourceType, ctx.resourceId, currentPolicies.size());
+ log.info("Cedar EVAL: tenant='{}', principalType='{}', principalId='{}', action='{}', resourceType='{}', resourceId='{}', policiesCount={}",
+                    tenant, ctx.principalType, ctx.principalId, ctx.action, ctx.resourceType, ctx.resourceId, policies.size());
 
             Set<String> matchedPermitPolicies = new LinkedHashSet<>();
             Set<String> matchedForbidPolicies = new LinkedHashSet<>();
 
-            for (ParsedPolicy policy : currentPolicies) {
+            for (ParsedPolicy policy : policies) {
  log.info("Cedar MATCH CHECK: policy='{}' effect={} | principal: policy='{}' vs ctx='{}' ({}), action: policy='{}' vs ctx='{}' ({}), resource: policy='{}'/'{}' vs ctx='{}'/'{}' ({})",
                         policy.id != null ? policy.id : policy.name, policy.effect,
                         policy.principalEntityId, ctx.principalId,
@@ -252,7 +307,7 @@ public class CedarPolicyEngine {
             }
 
             String diagnostic = null;
-            for (ParsedPolicy policy : currentPolicies) {
+            for (ParsedPolicy policy : policies) {
                 if ("forbid".equals(policy.effect)
                         && !policy.unlessConditions.isEmpty()
                         && matchesIgnoringUnless(policy, ctx)) {
@@ -299,9 +354,6 @@ public class CedarPolicyEngine {
                     .hasErrors(true)
                     .diagnostics(e.getMessage())
                     .build();
-
-        } finally {
-            policyLock.readLock().unlock();
         }
     }
 

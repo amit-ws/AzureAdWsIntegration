@@ -1,5 +1,6 @@
 package com.ws.wsAgenticSecurityGateway.sts.web;
 
+import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import com.ws.wsAgenticSecurityGateway.sts.entity.GatewayStsRotationPolicyEntity;
 import com.ws.wsAgenticSecurityGateway.sts.service.StsKeyService;
@@ -34,13 +35,16 @@ public class StsAdminController {
     private final StsKeyService keyService;
     private final StsRotationService rotationService;
     private final StsRevocationService revocationService;
+    private final AgentRegistryService agentRegistryService;
 
     public StsAdminController(StsKeyService keyService,
                              StsRotationService rotationService,
-                             StsRevocationService revocationService) {
+                             StsRevocationService revocationService,
+                             AgentRegistryService agentRegistryService) {
         this.keyService = keyService;
         this.rotationService = rotationService;
         this.revocationService = revocationService;
+        this.agentRegistryService = agentRegistryService;
     }
 
     @GetMapping("/keys")
@@ -141,6 +145,9 @@ public class StsAdminController {
         LocalDateTime expiresAt = parseExpiry(req.get("expiresAt"));
  log.info("POST /api/admin/sts/revocations/session (tenant={}, sessionId={})", tenant, sessionId);
         var saved = revocationService.revokeSession(tenant, sessionId, expiresAt, reason);
+        // Tear the session down too, so a "kill" actually removes it from the live-sessions list — not just
+        // block its future actions. The revocation keeps the kill enforced even if the agent reconnects.
+        agentRegistryService.disconnectSession(sessionId);
         return ResponseEntity.ok(Map.of("revoked", true, "sessionId", sessionId,
                 "expiresAt", String.valueOf(saved.getExpiresAt())));
     }

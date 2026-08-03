@@ -97,7 +97,7 @@ class ToolCallOrchestratorCharacterizationTest {
                 .thenReturn(request);
         when(policyContextBuilder.buildForResourceRead(any(), any(), any(), any(), any(), any()))
                 .thenReturn(request);
-        when(cedarPolicyEngine.evaluate(any()))
+        when(cedarPolicyEngine.evaluate(any(), any()))
                 .thenReturn(PolicyEvaluationResult.allow(Set.of("test-policy"), 1L));
     }
 
@@ -152,7 +152,7 @@ class ToolCallOrchestratorCharacterizationTest {
     @DisplayName("tool PDP denied → error result, no southbound call")
     void toolCall_pdpDenied() {
         when(registryService.lookupByPublicName(TOOL_PUBLIC)).thenReturn(Optional.of(toolDescriptor()));
-        when(cedarPolicyEngine.evaluate(any()))
+        when(cedarPolicyEngine.evaluate(any(), any()))
                 .thenReturn(PolicyEvaluationResult.deny(Set.of("blocking-policy"), "not permitted", 1L));
 
         McpSchema.CallToolResult result =

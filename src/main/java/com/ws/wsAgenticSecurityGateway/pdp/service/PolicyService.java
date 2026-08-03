@@ -52,6 +52,10 @@ public class PolicyService {
     @EventListener(ApplicationReadyEvent.class)
     @Transactional
     public void onStartup() {
+        // Wire the engine's lazy-load hook so a tenant first seen at request time gets its slot populated
+        // (and its baseline guardrails seeded) without a restart.
+        cedarEngine.setTenantLoader(this::loadEnabledForTenant);
+
         if (seedDefaultLineage) {
             List<String> tenants = repository.findDistinctWsTenantName();
             int totalSeeded = 0;
@@ -67,6 +71,18 @@ public class PolicyService {
  log.info("No policies in DB — use the LLM chatbot or REST API to create policies");
         }
         reloadEngine();
+    }
+
+    /**
+     * Engine lazy-load hook (invoked on the first evaluation for an unseen tenant): idempotently seed the
+     * tenant's baseline guardrails, then return its enabled policies. Keeps a brand-new tenant from silently
+     * running with zero guardrails — and, crucially, from falling through to another tenant's policies.
+     */
+    private List<GatewayPolicyEntity> loadEnabledForTenant(String tenant) {
+        if (seedDefaultLineage) {
+            seedDefaultLineagePolicies(tenant);
+        }
+        return repository.findByEnabledTrueAndWsTenantNameOrderByPriorityAsc(tenant);
     }
 
     /**
@@ -110,7 +126,7 @@ public class PolicyService {
     }
 
     public Optional<GatewayPolicyEntity> getById(UUID id) {
-        return repository.findById(id);
+        return repository.findByIdAndWsTenantName(id, TenantContext.get());
     }
 
     @Transactional
@@ -161,7 +177,7 @@ public class PolicyService {
 
     @Transactional
     public PolicyCreationResult updatePolicy(UUID id, PolicyDto dto) {
-        Optional<GatewayPolicyEntity> existing = repository.findById(id);
+        Optional<GatewayPolicyEntity> existing = repository.findByIdAndWsTenantName(id, TenantContext.get());
         if (existing.isEmpty()) {
             return PolicyCreationResult.error("Policy not found: " + id);
         }
@@ -197,7 +213,7 @@ public class PolicyService {
 
     @Transactional
     public boolean deletePolicy(UUID id) {
-        Optional<GatewayPolicyEntity> existing = repository.findById(id);
+        Optional<GatewayPolicyEntity> existing = repository.findByIdAndWsTenantName(id, TenantContext.get());
         if (existing.isPresent()) {
             String policyName = existing.get().getPolicyName();
             repository.deleteById(id);
@@ -211,7 +227,7 @@ public class PolicyService {
 
     @Transactional
     public Optional<GatewayPolicyEntity> toggleEnabled(UUID id) {
-        return repository.findById(id).map(entity -> {
+        return repository.findByIdAndWsTenantName(id, TenantContext.get()).map(entity -> {
             entity.setEnabled(!entity.getEnabled());
             GatewayPolicyEntity saved = repository.save(entity);
             reloadEngine();
@@ -221,17 +237,28 @@ public class PolicyService {
         });
     }
 
+    /**
+     * Reload the engine's compiled policy sets. A tenant-scoped call (admin CRUD) reloads ONLY that tenant's
+     * isolated slot and refreshes the fallback set — it never clobbers other tenants' slots. A no-tenant call
+     * (startup) loads the fallback set plus every known tenant's slot. This is the fix for the old
+     * single-shared-list, last-writer-wins behavior.
+     */
     public int reloadEngine() {
         String tenant = TenantContext.get();
-        List<GatewayPolicyEntity> enabledPolicies;
-        if (tenant != null) {
-            enabledPolicies = repository.findByEnabledTrueAndWsTenantNameOrderByPriorityAsc(tenant);
-        } else {
-            enabledPolicies = repository.findByEnabledTrueOrderByPriorityAsc();
+        if (tenant != null && !tenant.isBlank()) {
+            int count = cedarEngine.reloadTenant(tenant,
+                    repository.findByEnabledTrueAndWsTenantNameOrderByPriorityAsc(tenant));
+            cedarEngine.reloadGlobal(repository.findByEnabledTrueOrderByPriorityAsc());
+            auditService.auditPdpEngineReloaded(Math.max(count, 0));
+            return count;
         }
-        int count = cedarEngine.reloadPolicies(enabledPolicies);
-        auditService.auditPdpEngineReloaded(Math.max(count, 0));
-        return count;
+        // Startup / no tenant context: load the fallback set + each tenant's isolated slot.
+        int globalCount = cedarEngine.reloadGlobal(repository.findByEnabledTrueOrderByPriorityAsc());
+        for (String t : repository.findDistinctWsTenantName()) {
+            cedarEngine.reloadTenant(t, repository.findByEnabledTrueAndWsTenantNameOrderByPriorityAsc(t));
+        }
+        auditService.auditPdpEngineReloaded(Math.max(globalCount, 0));
+        return globalCount;
     }
 
     public Map<String, Object> getStats() {
@@ -248,7 +275,7 @@ public class PolicyService {
             stats.put("permitPolicies", repository.countByEffect("PERMIT"));
             stats.put("forbidPolicies", repository.countByEffect("FORBID"));
         }
-        stats.put("engineLoaded", cedarEngine.hasPolicies());
+        stats.put("engineLoaded", cedarEngine.hasPolicies(tenant));
         return stats;
     }
 
