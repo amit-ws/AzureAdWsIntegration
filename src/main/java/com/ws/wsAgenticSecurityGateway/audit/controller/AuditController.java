@@ -1,5 +1,6 @@
 package com.ws.wsAgenticSecurityGateway.audit.controller;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditEventType;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditModule;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditSeverity;
@@ -86,6 +87,15 @@ public class AuditController {
  log.info("GET /api/admin/audit/logs/correlation/{}", correlationId);
         List<GatewayAuditLog> records = auditQueryService.getCorrelationChain(correlationId);
         return ResponseEntity.ok(records);
+    }
+
+    /** The full OBO token receipt (jti, aud, scope, ttl, act_chain, …) for a leg's minted delegation token. */
+    @GetMapping("/logs/correlation/{correlationId}/obo-receipt")
+    public ResponseEntity<JsonNode> getOboReceipt(@PathVariable String correlationId) {
+        log.info("GET /api/admin/audit/logs/correlation/{}/obo-receipt", correlationId);
+        return auditQueryService.getOboReceipt(correlationId)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     @GetMapping("/logs/trace/{traceId}")

@@ -1,5 +1,6 @@
 package com.ws.wsAgenticSecurityGateway.audit.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditEventType;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditModule;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditSeverity;
@@ -81,6 +82,20 @@ public class AuditQueryService {
                         Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(GatewayAuditLog::getTimestamp));
         return records;
+    }
+
+    /**
+     * The full OBO (on-behalf-of) token receipt for a leg — the response payload of the
+     * {@code STS_TOKEN_MINTED} event for the given {@code correlationId} (jti, aud, scope, ttl, act_chain,
+     * issued/expiry, …). Empty when no OBO token was minted for that leg (e.g. an agent-provided or
+     * config-based token was used instead).
+     */
+    public Optional<JsonNode> getOboReceipt(String correlationId) {
+        return auditRepo.findByCorrelationId(correlationId).stream()
+                .filter(r -> r.getEventType() == AuditEventType.STS_TOKEN_MINTED)
+                .map(GatewayAuditLog::getResponsePayload)
+                .filter(Objects::nonNull)
+                .findFirst();
     }
 
     /**
