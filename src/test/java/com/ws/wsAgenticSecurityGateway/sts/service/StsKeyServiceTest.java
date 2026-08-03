@@ -14,6 +14,8 @@ import com.ws.wsAgenticSecurityGateway.common.crypto.SecretCryptoService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +25,7 @@ import static org.mockito.AdditionalAnswers.returnsFirstArg;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -99,6 +102,61 @@ class StsKeyServiceTest {
         assertThat(k).containsKeys("kid", "status", "createdAt", "publicJwk");
         assertThat(k).doesNotContainKey("privateKeyEnc");
         assertThat(k.values()).doesNotContain("SECRET-ENCRYPTED-PRIVATE"); // private material never leaks
+    }
+
+    @Test
+    void rotate_demotesCurrentActiveToRetiring_installsNewActive_andJwksKeepsBoth() throws Exception {
+        RSAKey original = keyService.activeSigningKey("acme");
+        String originalKid = original.getKeyID();
+        assertThat(store).hasSize(1);
+
+        when(repo.findByWsTenantNameAndStatus(eq("acme"), eq("ACTIVE")))
+                .thenAnswer(inv -> store.stream()
+                        .filter(k -> "acme".equals(k.getWsTenantName()) && "ACTIVE".equals(k.getStatus()))
+                        .toList());
+        when(repo.saveAll(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        String newKid = keyService.rotate("acme");
+
+        // new active key differs from the old one
+        assertThat(newKid).isNotEqualTo(originalKid);
+        // the previous key is now RETIRING, with a grace-window start stamped
+        GatewayStsKeyEntity old = store.stream()
+                .filter(k -> originalKid.equals(k.getKid())).findFirst().orElseThrow();
+        assertThat(old.getStatus()).isEqualTo("RETIRING");
+        assertThat(old.getRetiredAt()).isNotNull();
+        // exactly one ACTIVE key now, and it is the new one
+        assertThat(store.stream().filter(k -> "ACTIVE".equals(k.getStatus())).count()).isEqualTo(1);
+        assertThat(keyService.activeSigningKey("acme").getKeyID()).isEqualTo(newKid);
+        // JWKS keeps BOTH during the grace window, so tokens signed by the old key still verify
+        JWKSet jwks = keyService.jwks("acme");
+        assertThat(jwks.getKeyByKeyId(originalKid)).isNotNull();
+        assertThat(jwks.getKeyByKeyId(newKid)).isNotNull();
+    }
+
+    @Test
+    void purge_removesRetiringKeysPastGrace_keepsRecentOnes() {
+        LocalDateTime now = LocalDateTime.now();
+        GatewayStsKeyEntity stale = GatewayStsKeyEntity.builder()
+                .kid("old").status("RETIRING").retiredAt(now.minusHours(2))
+                .publicJwk("{}").privateKeyEnc("x").wsTenantName("acme").build();
+        GatewayStsKeyEntity recent = GatewayStsKeyEntity.builder()
+                .kid("recent").status("RETIRING").retiredAt(now.minusMinutes(5))
+                .publicJwk("{}").privateKeyEnc("x").wsTenantName("acme").build();
+
+        when(repo.findByStatusAndRetiredAtBefore(eq("RETIRING"), any())).thenAnswer(inv -> {
+            LocalDateTime cutoff = inv.getArgument(1);
+            return List.of(stale, recent).stream()
+                    .filter(k -> k.getRetiredAt().isBefore(cutoff))
+                    .toList();
+        });
+        List<GatewayStsKeyEntity> deleted = new ArrayList<>();
+        doAnswer(inv -> { deleted.addAll(inv.getArgument(0)); return null; }).when(repo).deleteAll(any());
+
+        int purged = keyService.purgeExpiredRetiringKeys(Duration.ofHours(1));
+
+        assertThat(purged).isEqualTo(1);
+        assertThat(deleted).extracting(GatewayStsKeyEntity::getKid).containsExactly("old");
     }
 
     @Test

@@ -56,4 +56,8 @@ public class GatewayStsKeyEntity {
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    /** When this key was demoted to RETIRING (start of the JWKS grace window); null while ACTIVE. */
+    @Column(name = "retired_at")
+    private LocalDateTime retiredAt;
 }

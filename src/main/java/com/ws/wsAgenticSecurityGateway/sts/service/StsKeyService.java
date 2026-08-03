@@ -9,8 +9,13 @@ import com.ws.wsAgenticSecurityGateway.sts.entity.GatewayStsKeyEntity;
 import com.ws.wsAgenticSecurityGateway.sts.repository.GatewayStsKeyRepository;
 import com.ws.wsAgenticSecurityGateway.common.crypto.SecretCryptoService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +45,13 @@ public class StsKeyService {
 
     /** tenant -> active signing key (with private material), cached to avoid per-mint decrypt. */
     private final ConcurrentHashMap<String, RSAKey> signingCache = new ConcurrentHashMap<>();
+
+    /**
+     * A RETIRING key is purged once retired longer ago than this. MUST exceed the max OBO token TTL so no
+     * still-valid token loses its verifier during the grace window. Default 1h ≫ the minutes-scale OBO TTL.
+     */
+    @Value("${ws.sts.key.grace-window:PT1H}")
+    private Duration graceWindow;
 
     public StsKeyService(GatewayStsKeyRepository repository, SecretCryptoService crypto) {
         this.repository = repository;
@@ -76,6 +88,61 @@ public class StsKeyService {
                     return m;
                 })
                 .toList();
+    }
+
+    /**
+     * Rotate a tenant's STS signing key: demote the current ACTIVE key(s) to RETIRING (kept in the JWKS
+     * during the grace window so already-minted tokens still verify), mint a fresh ACTIVE key, and refresh
+     * the signing cache so the next mint uses the new key. Returns the new key's {@code kid}.
+     */
+    @Transactional
+    public String rotate(String tenant) {
+        List<GatewayStsKeyEntity> current = repository.findByWsTenantNameAndStatus(tenant, ACTIVE);
+        LocalDateTime now = LocalDateTime.now();
+        for (GatewayStsKeyEntity key : current) {
+            key.setStatus(RETIRING);
+            key.setRetiredAt(now);
+        }
+        if (!current.isEmpty()) {
+            repository.saveAll(current);
+        }
+        signingCache.remove(tenant);
+        RSAKey fresh = generateAndPersist(tenant);
+        signingCache.put(tenant, fresh);
+        log.info("Rotated STS signing key for tenant '{}': {} key(s) retired, new active kid={}",
+                tenant, current.size(), fresh.getKeyID());
+        return fresh.getKeyID();
+    }
+
+    /**
+     * Remove RETIRING keys retired longer ago than {@code grace} (across all tenants). The grace window must
+     * exceed the max OBO token TTL so no still-valid token loses its verifier. Returns the number purged.
+     */
+    @Transactional
+    public int purgeExpiredRetiringKeys(Duration grace) {
+        LocalDateTime cutoff = LocalDateTime.now().minus(grace);
+        List<GatewayStsKeyEntity> expired = repository.findByStatusAndRetiredAtBefore(RETIRING, cutoff);
+        if (!expired.isEmpty()) {
+            repository.deleteAll(expired);
+            log.info("Purged {} expired RETIRING STS key(s) (retired before {})", expired.size(), cutoff);
+        }
+        return expired.size();
+    }
+
+    /** Periodic sweep that purges RETIRING keys past the configured grace window. */
+    @Scheduled(fixedDelayString = "${ws.sts.key.purge-interval-ms:3600000}")
+    public void scheduledPurge() {
+        try {
+            purgeExpiredRetiringKeys(graceWindow);
+        } catch (Exception e) {
+            log.warn("STS key purge sweep failed: {}", e.getMessage());
+        }
+    }
+
+    /** The {@code createdAt} of a tenant's ACTIVE signing key, or empty if none has been minted yet. */
+    public Optional<LocalDateTime> activeKeyCreatedAt(String tenant) {
+        return repository.findFirstByWsTenantNameAndStatus(tenant, ACTIVE)
+                .map(GatewayStsKeyEntity::getCreatedAt);
     }
 
     private RSAKey loadOrCreateActive(String tenant) {
