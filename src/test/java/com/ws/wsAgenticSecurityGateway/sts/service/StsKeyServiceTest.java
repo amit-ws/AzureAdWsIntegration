@@ -8,6 +8,7 @@ import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
+import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
 import com.ws.wsAgenticSecurityGateway.sts.entity.GatewayStsKeyEntity;
 import com.ws.wsAgenticSecurityGateway.sts.repository.GatewayStsKeyRepository;
 import com.ws.wsAgenticSecurityGateway.common.crypto.SecretCryptoService;
@@ -39,13 +40,14 @@ class StsKeyServiceTest {
 
     private final GatewayStsKeyRepository repo = mock(GatewayStsKeyRepository.class);
     private final SecretCryptoService crypto = mock(SecretCryptoService.class);
+    private final GatewayAuditService audit = mock(GatewayAuditService.class);
     private final List<GatewayStsKeyEntity> store = new ArrayList<>();
 
     private StsKeyService keyService;
 
     @BeforeEach
     void setUp() {
-        keyService = new StsKeyService(repo, crypto);
+        keyService = new StsKeyService(repo, crypto, audit);
 
         // crypto is a pass-through in the test (no real key material needed)
         when(crypto.encrypt(anyString())).thenAnswer(returnsFirstArg());
@@ -116,7 +118,7 @@ class StsKeyServiceTest {
                         .toList());
         when(repo.saveAll(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        String newKid = keyService.rotate("acme");
+        String newKid = keyService.rotate("acme", "manual");
 
         // new active key differs from the old one
         assertThat(newKid).isNotEqualTo(originalKid);
@@ -132,17 +134,19 @@ class StsKeyServiceTest {
         JWKSet jwks = keyService.jwks("acme");
         assertThat(jwks.getKeyByKeyId(originalKid)).isNotNull();
         assertThat(jwks.getKeyByKeyId(newKid)).isNotNull();
+        // the rotation is captured in the audit trail (manual trigger)
+        verify(audit).auditStsKeyRotated(eq("acme"), eq(newKid), any(), eq("manual"));
     }
 
     @Test
-    void purge_removesRetiringKeysPastGrace_keepsRecentOnes() {
+    void retire_movesRetiringPastGraceToRetired_scrubsPrivateKey_leavesInGraceUntouched() {
         LocalDateTime now = LocalDateTime.now();
         GatewayStsKeyEntity stale = GatewayStsKeyEntity.builder()
                 .kid("old").status("RETIRING").retiredAt(now.minusHours(2))
-                .publicJwk("{}").privateKeyEnc("x").wsTenantName("acme").build();
+                .publicJwk("{}").privateKeyEnc("SECRET").wsTenantName("acme").build();
         GatewayStsKeyEntity recent = GatewayStsKeyEntity.builder()
                 .kid("recent").status("RETIRING").retiredAt(now.minusMinutes(5))
-                .publicJwk("{}").privateKeyEnc("x").wsTenantName("acme").build();
+                .publicJwk("{}").privateKeyEnc("SECRET").wsTenantName("acme").build();
 
         when(repo.findByStatusAndRetiredAtBefore(eq("RETIRING"), any())).thenAnswer(inv -> {
             LocalDateTime cutoff = inv.getArgument(1);
@@ -150,13 +154,46 @@ class StsKeyServiceTest {
                     .filter(k -> k.getRetiredAt().isBefore(cutoff))
                     .toList();
         });
+        when(repo.findByWsTenantNameAndStatusOrderByRetiredAtDesc(eq("acme"), eq("RETIRED")))
+                .thenReturn(List.of(stale)); // one retired record → within the history cap, no trim
+
+        int retired = keyService.retireExpiredKeys(Duration.ofHours(1));
+
+        assertThat(retired).isEqualTo(1);
+        // the stale key is now terminal RETIRED, with its private material scrubbed
+        assertThat(stale.getStatus()).isEqualTo("RETIRED");
+        assertThat(stale.getPrivateKeyEnc()).isEmpty();
+        // the in-grace key is untouched — still RETIRING, private key intact for JWKS verification
+        assertThat(recent.getStatus()).isEqualTo("RETIRING");
+        assertThat(recent.getPrivateKeyEnc()).isEqualTo("SECRET");
+        // the terminal retirement is captured per-kid in the audit trail
+        verify(audit).auditStsKeyRetired("acme", "old");
+    }
+
+    @Test
+    void retire_trimsRetiredHistoryBeyondCap() {
+        LocalDateTime now = LocalDateTime.now();
+        GatewayStsKeyEntity expiring = GatewayStsKeyEntity.builder()
+                .kid("just-retired").status("RETIRING").retiredAt(now.minusHours(2))
+                .publicJwk("{}").privateKeyEnc("SECRET").wsTenantName("acme").build();
+        when(repo.findByStatusAndRetiredAtBefore(eq("RETIRING"), any())).thenReturn(List.of(expiring));
+
+        // 7 RETIRED records already exist (newest-first); cap is 5 → the 2 oldest must be deleted
+        List<GatewayStsKeyEntity> history = new ArrayList<>();
+        for (int i = 0; i < 7; i++) {
+            history.add(GatewayStsKeyEntity.builder()
+                    .kid("r" + i).status("RETIRED").retiredAt(now.minusDays(i + 1))
+                    .publicJwk("{}").privateKeyEnc("").wsTenantName("acme").build());
+        }
+        when(repo.findByWsTenantNameAndStatusOrderByRetiredAtDesc(eq("acme"), eq("RETIRED")))
+                .thenReturn(history);
         List<GatewayStsKeyEntity> deleted = new ArrayList<>();
         doAnswer(inv -> { deleted.addAll(inv.getArgument(0)); return null; }).when(repo).deleteAll(any());
 
-        int purged = keyService.purgeExpiredRetiringKeys(Duration.ofHours(1));
+        keyService.retireExpiredKeys(Duration.ofHours(1));
 
-        assertThat(purged).isEqualTo(1);
-        assertThat(deleted).extracting(GatewayStsKeyEntity::getKid).containsExactly("old");
+        // keeps the 5 most recent (r0..r4), deletes the 2 oldest (r5, r6)
+        assertThat(deleted).extracting(GatewayStsKeyEntity::getKid).containsExactly("r5", "r6");
     }
 
     @Test
@@ -164,7 +201,7 @@ class StsKeyServiceTest {
         RSAKey first = keyService.activeSigningKey("acme");
 
         // a fresh service (empty in-memory cache) must reload the SAME key from the store, not mint a new one
-        StsKeyService reloaded = new StsKeyService(repo, crypto);
+        StsKeyService reloaded = new StsKeyService(repo, crypto, audit);
         RSAKey second = reloaded.activeSigningKey("acme");
 
         assertThat(second.getKeyID()).isEqualTo(first.getKeyID());

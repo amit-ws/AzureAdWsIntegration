@@ -53,7 +53,7 @@ public class StsRotationService {
             try {
                 keyService.activeKeyCreatedAt(policy.getWsTenantName()).ifPresent(created -> {
                     if (created.plusDays(policy.getIntervalDays()).isBefore(now)) {
-                        keyService.rotate(policy.getWsTenantName());
+                        keyService.rotate(policy.getWsTenantName(), "auto");
                         log.info("Auto-rotated STS key for tenant '{}' ({}-day interval elapsed)",
                                 policy.getWsTenantName(), policy.getIntervalDays());
                     }

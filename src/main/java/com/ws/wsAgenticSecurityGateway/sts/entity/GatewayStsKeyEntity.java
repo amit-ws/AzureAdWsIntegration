@@ -18,7 +18,9 @@ import java.util.UUID;
 /**
  * A per-tenant RSA signing key for the STS. The ACTIVE key signs newly minted OBO tokens;
  * RETIRING keys stay in the JWKS during a rotation grace window so tokens they signed still verify.
- * The private key material is stored AES/GCM-encrypted (via SecretCryptoService).
+ * Once the grace window elapses they become RETIRED — dropped from the JWKS, private material scrubbed,
+ * kept only as bounded rotation history. The private key material is stored AES/GCM-encrypted
+ * (via SecretCryptoService).
  *
  * <p>Table auto-created by Hibernate {@code ddl-auto: update} in schema {@code ws_agentic_security}.
  */
@@ -48,7 +50,10 @@ public class GatewayStsKeyEntity {
     @Column(name = "private_key_enc", nullable = false, columnDefinition = "text")
     private String privateKeyEnc;
 
-    /** ACTIVE (signs new tokens) or RETIRING (served in JWKS during rotation grace). */
+    /**
+     * ACTIVE (signs new tokens), RETIRING (served in JWKS during the rotation grace window), or RETIRED
+     * (terminal: dropped from the JWKS, private key material scrubbed, retained only as rotation history).
+     */
     @Column(name = "status", nullable = false, length = 20)
     @Builder.Default
     private String status = "ACTIVE";

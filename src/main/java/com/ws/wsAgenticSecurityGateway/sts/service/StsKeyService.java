@@ -5,6 +5,7 @@ import com.nimbusds.jose.jwk.JWK;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.gen.RSAKeyGenerator;
+import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
 import com.ws.wsAgenticSecurityGateway.sts.entity.GatewayStsKeyEntity;
 import com.ws.wsAgenticSecurityGateway.sts.repository.GatewayStsKeyRepository;
 import com.ws.wsAgenticSecurityGateway.common.crypto.SecretCryptoService;
@@ -16,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,24 +40,31 @@ public class StsKeyService {
 
     static final String ACTIVE = "ACTIVE";
     static final String RETIRING = "RETIRING";
+    static final String RETIRED = "RETIRED";
     private static final int KEY_SIZE = 2048;
+
+    /** How many RETIRED keys to retain per tenant as rotation history; older records are deleted. */
+    static final int RETIRED_HISTORY_KEEP = 5;
 
     private final GatewayStsKeyRepository repository;
     private final SecretCryptoService crypto;
+    private final GatewayAuditService auditService;
 
     /** tenant -> active signing key (with private material), cached to avoid per-mint decrypt. */
     private final ConcurrentHashMap<String, RSAKey> signingCache = new ConcurrentHashMap<>();
 
     /**
-     * A RETIRING key is purged once retired longer ago than this. MUST exceed the max OBO token TTL so no
-     * still-valid token loses its verifier during the grace window. Default 1h ≫ the minutes-scale OBO TTL.
+     * A RETIRING key becomes terminal RETIRED once retired longer ago than this. MUST exceed the max OBO token
+     * TTL so no still-valid token loses its verifier during the grace window. Default 1h ≫ the minutes-scale OBO TTL.
      */
     @Value("${ws.sts.key.grace-window:PT1H}")
     private Duration graceWindow;
 
-    public StsKeyService(GatewayStsKeyRepository repository, SecretCryptoService crypto) {
+    public StsKeyService(GatewayStsKeyRepository repository, SecretCryptoService crypto,
+                         GatewayAuditService auditService) {
         this.repository = repository;
         this.crypto = crypto;
+        this.auditService = auditService;
     }
 
     /** The ACTIVE RSA signing key (with private) for a tenant; generated + persisted on first use. */
@@ -75,7 +84,9 @@ public class StsKeyService {
 
     /**
      * Public metadata for a tenant's STS signing keys — {@code kid / status / createdAt / publicJwk}, never
-     * the encrypted private material. Backs the admin "STS status" panel (newest key first).
+     * the encrypted private material. Backs the admin "STS status" panel (newest key first). Returns every
+     * live key (ACTIVE + RETIRING) plus the retained RETIRED history (bounded by {@link #RETIRED_HISTORY_KEEP});
+     * the dashboard collapses this to the most recent few and offers a "load more".
      */
     public List<Map<String, Object>> listPublicKeys(String tenant) {
         return repository.findByWsTenantNameOrderByCreatedAtDesc(tenant).stream()
@@ -96,12 +107,14 @@ public class StsKeyService {
      * the signing cache so the next mint uses the new key. Returns the new key's {@code kid}.
      */
     @Transactional
-    public String rotate(String tenant) {
+    public String rotate(String tenant, String trigger) {
         List<GatewayStsKeyEntity> current = repository.findByWsTenantNameAndStatus(tenant, ACTIVE);
         LocalDateTime now = LocalDateTime.now();
+        List<String> retiredKids = new ArrayList<>();
         for (GatewayStsKeyEntity key : current) {
             key.setStatus(RETIRING);
             key.setRetiredAt(now);
+            retiredKids.add(key.getKid());
         }
         if (!current.isEmpty()) {
             repository.saveAll(current);
@@ -109,33 +122,62 @@ public class StsKeyService {
         signingCache.remove(tenant);
         RSAKey fresh = generateAndPersist(tenant);
         signingCache.put(tenant, fresh);
-        log.info("Rotated STS signing key for tenant '{}': {} key(s) retired, new active kid={}",
-                tenant, current.size(), fresh.getKeyID());
+        log.info("Rotated STS signing key for tenant '{}': {} key(s) retired, new active kid={} (trigger={})",
+                tenant, current.size(), fresh.getKeyID(), trigger);
+        auditService.auditStsKeyRotated(tenant, fresh.getKeyID(), retiredKids, trigger);
         return fresh.getKeyID();
     }
 
     /**
-     * Remove RETIRING keys retired longer ago than {@code grace} (across all tenants). The grace window must
-     * exceed the max OBO token TTL so no still-valid token loses its verifier. Returns the number purged.
+     * Move RETIRING keys retired longer ago than {@code grace} to the terminal RETIRED state (across all
+     * tenants): they drop out of the JWKS (RETIRED is not served), their private key material is scrubbed —
+     * a RETIRED key is never used to sign — and the record is kept as rotation history (trimmed per tenant to
+     * {@link #RETIRED_HISTORY_KEEP}). The grace window must exceed the max OBO token TTL so no still-valid token
+     * loses its verifier. Returns the number newly retired.
      */
     @Transactional
-    public int purgeExpiredRetiringKeys(Duration grace) {
+    public int retireExpiredKeys(Duration grace) {
         LocalDateTime cutoff = LocalDateTime.now().minus(grace);
-        List<GatewayStsKeyEntity> expired = repository.findByStatusAndRetiredAtBefore(RETIRING, cutoff);
-        if (!expired.isEmpty()) {
-            repository.deleteAll(expired);
-            log.info("Purged {} expired RETIRING STS key(s) (retired before {})", expired.size(), cutoff);
+        List<GatewayStsKeyEntity> expiring = repository.findByStatusAndRetiredAtBefore(RETIRING, cutoff);
+        if (expiring.isEmpty()) {
+            return 0;
         }
-        return expired.size();
+        for (GatewayStsKeyEntity key : expiring) {
+            key.setStatus(RETIRED);
+            key.setPrivateKeyEnc(""); // scrub: the private half is no longer retained once out of the grace window
+        }
+        repository.saveAll(expiring);
+        for (GatewayStsKeyEntity key : expiring) {
+            auditService.auditStsKeyRetired(key.getWsTenantName(), key.getKid());
+        }
+        log.info("Retired {} STS key(s) past grace (dropped from JWKS, private material scrubbed, retired before {})",
+                expiring.size(), cutoff);
+        expiring.stream()
+                .map(GatewayStsKeyEntity::getWsTenantName)
+                .distinct()
+                .forEach(this::trimRetiredHistory);
+        return expiring.size();
     }
 
-    /** Periodic sweep that purges RETIRING keys past the configured grace window. */
+    /** Keep only the most-recently-retired {@link #RETIRED_HISTORY_KEEP} RETIRED keys for a tenant; delete older. */
+    private void trimRetiredHistory(String tenant) {
+        List<GatewayStsKeyEntity> retired =
+                repository.findByWsTenantNameAndStatusOrderByRetiredAtDesc(tenant, RETIRED);
+        if (retired.size() > RETIRED_HISTORY_KEEP) {
+            List<GatewayStsKeyEntity> excess = new ArrayList<>(retired.subList(RETIRED_HISTORY_KEEP, retired.size()));
+            repository.deleteAll(excess);
+            log.info("Trimmed {} old RETIRED STS key record(s) for tenant '{}' (history cap {})",
+                    excess.size(), tenant, RETIRED_HISTORY_KEEP);
+        }
+    }
+
+    /** Periodic sweep: retire RETIRING keys past the grace window and trim RETIRED history to the cap. */
     @Scheduled(fixedDelayString = "${ws.sts.key.purge-interval-ms:3600000}")
-    public void scheduledPurge() {
+    public void scheduledRetireSweep() {
         try {
-            purgeExpiredRetiringKeys(graceWindow);
+            retireExpiredKeys(graceWindow);
         } catch (Exception e) {
-            log.warn("STS key purge sweep failed: {}", e.getMessage());
+            log.warn("STS key retire sweep failed: {}", e.getMessage());
         }
     }
 

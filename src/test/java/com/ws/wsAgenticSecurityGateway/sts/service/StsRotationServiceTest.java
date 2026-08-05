@@ -65,7 +65,7 @@ class StsRotationServiceTest {
 
         service.autoRotateDue();
 
-        verify(keyService).rotate("acme");
+        verify(keyService).rotate("acme", "auto");
     }
 
     @Test
@@ -77,6 +77,6 @@ class StsRotationServiceTest {
 
         service.autoRotateDue();
 
-        verify(keyService, never()).rotate(anyString());
+        verify(keyService, never()).rotate(anyString(), anyString());
     }
 }

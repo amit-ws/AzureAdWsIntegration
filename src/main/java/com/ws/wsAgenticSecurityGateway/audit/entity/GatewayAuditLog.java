@@ -48,6 +48,14 @@ public class GatewayAuditLog {
     @Builder.Default
     private String protocol = "MCP";
 
+    /**
+     * View-only flag (NOT persisted): true when this row's leg ({@code correlationId}) minted an OBO token, so
+     * the dashboard can surface the "OBO Receipt" button on every event of a leg that has a receipt — not just
+     * the mint row. Populated by the query service for the returned page.
+     */
+    @Transient
+    private boolean hasOboReceipt;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "event_type", nullable = false, length = 60)
     private AuditEventType eventType;

@@ -62,7 +62,7 @@ public class StsAdminController {
     public ResponseEntity<Map<String, Object>> rotate() {
         String tenant = TenantContext.get();
  log.info("POST /api/admin/sts/keys/rotate (tenant={})", tenant);
-        String newKid = keyService.rotate(tenant);
+        String newKid = keyService.rotate(tenant, "manual");
         return ResponseEntity.ok(Map.of("rotated", true, "newKid", newKid));
     }
 

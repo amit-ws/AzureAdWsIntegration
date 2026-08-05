@@ -20,6 +20,9 @@ public interface GatewayStsKeyRepository extends JpaRepository<GatewayStsKeyEnti
     /** All keys of a status for a tenant — used to demote the current ACTIVE key(s) on rotation. */
     List<GatewayStsKeyEntity> findByWsTenantNameAndStatus(String wsTenantName, String status);
 
-    /** RETIRING keys whose grace window has elapsed (across all tenants) — used by the purge sweep. */
+    /** RETIRING keys whose grace window has elapsed (across all tenants) — used by the retire sweep. */
     List<GatewayStsKeyEntity> findByStatusAndRetiredAtBefore(String status, LocalDateTime cutoff);
+
+    /** A tenant's keys of a status, most-recently-retired first — used to trim RETIRED history to the cap. */
+    List<GatewayStsKeyEntity> findByWsTenantNameAndStatusOrderByRetiredAtDesc(String wsTenantName, String status);
 }

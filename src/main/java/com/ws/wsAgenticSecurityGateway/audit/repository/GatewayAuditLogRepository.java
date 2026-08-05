@@ -14,6 +14,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -30,6 +31,16 @@ public interface GatewayAuditLogRepository
     Page<GatewayAuditLog> findByServerName(String serverName, Pageable pageable);
 
     List<GatewayAuditLog> findByCorrelationId(String correlationId);
+
+    /**
+     * Of the given correlation ids, the distinct ones that have an event of {@code eventType} — used to flag
+     * which legs on a returned audit page have an OBO receipt (a {@code STS_TOKEN_MINTED} row), so the button
+     * can show on every event of that leg. The id set is already tenant-scoped by the page it came from.
+     */
+    @Query("SELECT DISTINCT a.correlationId FROM GatewayAuditLog a "
+            + "WHERE a.eventType = :eventType AND a.correlationId IN :correlationIds")
+    List<String> findCorrelationIdsWithEventType(@Param("eventType") AuditEventType eventType,
+                                                 @Param("correlationIds") Collection<String> correlationIds);
 
     List<GatewayAuditLog> findByTraceId(String traceId);
 

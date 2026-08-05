@@ -889,7 +889,7 @@ public class GatewayAuditService {
                 }
                 persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.STS_TOKEN_MINTED)
-                                .module(AuditModule.ORCHESTRATION_LAYER)
+                                .module(AuditModule.STS)
                                 .status(AuditStatus.SUCCESS)
                                 .severity(AuditSeverity.INFO)
                                 .correlationId(correlationId)
@@ -903,6 +903,54 @@ public class GatewayAuditService {
                                 .responsePayload(objectMapper.valueToTree(payload))
                                 .timestamp(firedAt)
                                 .eventSequence(eventSequence)
+                                .build());
+        }
+
+        /**
+         * A per-tenant STS signing key was rotated: a fresh ACTIVE key now signs OBO tokens and the previous
+         * key(s) were demoted to RETIRING. {@code trigger} is {@code "manual"} (admin) or {@code "auto"} (policy
+         * sweep). Non-request-scoped — tenant is passed explicitly (the sweep has no {@code TenantContext}).
+         */
+        @Async("auditExecutor")
+        public void auditStsKeyRotated(String tenant, String newKid,
+                        List<String> retiredKids, String trigger) {
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("newKid", newKid != null ? newKid : "");
+                payload.put("retiredKids", retiredKids != null ? retiredKids : List.of());
+                payload.put("trigger", trigger != null ? trigger : "manual");
+                persist(GatewayAuditLog.builder()
+                                .eventType(AuditEventType.STS_KEY_ROTATED)
+                                .module(AuditModule.STS)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.WARN)
+                                .wsTenantName(tenant)
+                                .capabilityName(newKid)
+                                .protocolMethod("sts/keys/rotate")
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(payload))
+                                .build());
+        }
+
+        /**
+         * An STS signing key reached the terminal RETIRED state after its JWKS grace window: dropped from the
+         * JWKS and its private material scrubbed. One row per retired {@code kid}. Non-request-scoped — the
+         * retire sweep has no {@code TenantContext}, so tenant is passed explicitly.
+         */
+        @Async("auditExecutor")
+        public void auditStsKeyRetired(String tenant, String kid) {
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("kid", kid != null ? kid : "");
+                payload.put("note", "Dropped from JWKS; private key material scrubbed; kept as bounded rotation history.");
+                persist(GatewayAuditLog.builder()
+                                .eventType(AuditEventType.STS_KEY_RETIRED)
+                                .module(AuditModule.STS)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .wsTenantName(tenant)
+                                .capabilityName(kid)
+                                .protocolMethod("sts/keys/retire")
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(payload))
                                 .build());
         }
 

@@ -49,7 +49,32 @@ public class AuditQueryService {
                 serverName, capabilityName, correlationId, traceId, sessionId,
                 agentName, tokenType, userIdentity, sourceIp,
                 search, fromDate, toDate, TenantContext.get());
-        return auditRepo.findAll(spec, pageRequest);
+        Page<GatewayAuditLog> page = auditRepo.findAll(spec, pageRequest);
+        flagOboReceipts(page.getContent());
+        return page;
+    }
+
+    /**
+     * Mark every row whose leg ({@code correlationId}) minted an OBO token, so the dashboard shows the "OBO
+     * Receipt" button on all events of that leg — not only the mint row. One batched query over the page's
+     * correlation ids (already tenant-scoped by the page they came from).
+     */
+    private void flagOboReceipts(List<GatewayAuditLog> rows) {
+        List<String> correlationIds = rows.stream()
+                .map(GatewayAuditLog::getCorrelationId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (correlationIds.isEmpty()) {
+            return;
+        }
+        Set<String> mintedLegs = new HashSet<>(
+                auditRepo.findCorrelationIdsWithEventType(AuditEventType.STS_TOKEN_MINTED, correlationIds));
+        for (GatewayAuditLog row : rows) {
+            if (row.getCorrelationId() != null && mintedLegs.contains(row.getCorrelationId())) {
+                row.setHasOboReceipt(true);
+            }
+        }
     }
 
     public Optional<GatewayAuditLog> findById(UUID id) {

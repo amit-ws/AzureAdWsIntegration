@@ -9,6 +9,8 @@ public enum AuditModule {
 
     ORCHESTRATION_LAYER,
 
+    STS,
+
     PDP,
 
     SERVER_CONFIG,
