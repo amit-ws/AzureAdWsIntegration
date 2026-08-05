@@ -334,6 +334,24 @@
             <scope>compile</scope>
         </dependency>
 
+        <!-- A2A (Agent2Agent) — Linux Foundation SDK 1.0 (versions managed by a2a-java-sdk-bom). The spec
+             type records (AgentCard, Message, Task, …) plus the framework-agnostic JSON-RPC client. The SDK's
+             server reference impls are Quarkus/CDI-coupled, so the protocol/a2a inbound boundary is a thin
+             Spring MVC binding over these spec types; outbound goes through the a2a client. -->
+        <dependency>
+            <groupId>org.a2aproject.sdk</groupId>
+            <artifactId>a2a-java-sdk-spec</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.a2aproject.sdk</groupId>
+            <artifactId>a2a-java-sdk-client</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.a2aproject.sdk</groupId>
+            <artifactId>a2a-java-sdk-client-transport-jsonrpc</artifactId>
+        </dependency>
+
+
         <!-- Source: https://mvnrepository.com/artifact/org.springframework.boot/spring-boot-starter-webflux -->
         <!--        <dependency>-->
         <!--            <groupId>org.springframework.boot</groupId>-->
@@ -372,6 +390,26 @@
                 <version>0.12.1</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+
+            <!-- A2A (Agent2Agent) — Linux Foundation SDK 1.0 -->
+            <dependency>
+                <groupId>org.a2aproject.sdk</groupId>
+                <artifactId>a2a-java-sdk-bom</artifactId>
+                <version>1.0.0.Final</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!--
+              The a2a-java SDK's JSON-RPC transport uses Gson >= 2.11 (needs com.google.gson.Strictness),
+              but other deps drag in Gson 2.10.1, which lacks that class. Pin Gson to 2.11.0 so the A2A
+              card resolver / client don't hit NoClassDefFoundError at runtime.
+            -->
+            <dependency>
+                <groupId>com.google.code.gson</groupId>
+                <artifactId>gson</artifactId>
+                <version>2.11.0</version>
             </dependency>
 
         </dependencies>

@@ -6,6 +6,7 @@ import com.ws.wsAgenticSecurityGateway.audit.error.GatewayErrorCode;
 import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentCapabilityFilterService;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
+import com.ws.wsAgenticSecurityGateway.orchestration.adapter.OboTokenHolder;
 import com.ws.wsAgenticSecurityGateway.orchestration.adapter.ProtocolAdapter;
 import com.ws.wsAgenticSecurityGateway.orchestration.model.CapabilityResult;
 import com.ws.wsAgenticSecurityGateway.orchestration.model.ClientInfo;
@@ -68,7 +69,9 @@ public class HopOrchestrator {
     private final AgentCapabilityFilterService capabilityFilterService;
     private final CedarPolicyEngine cedarPolicyEngine;
     private final PolicyContextBuilder policyContextBuilder;
-    private final ProtocolAdapter adapter;
+    /** The protocol dispatch seam: adapters keyed by {@link ProtocolAdapter#protocol()} — one entry per
+     *  registered protocol (MCP today; A2A and partner connectors add themselves here with no spine change). */
+    private final Map<String, ProtocolAdapter> adapterByProtocol;
     private final HopTokenMinter hopTokenMinter;
     private final ActChainBuilder actChainBuilder;
 
@@ -83,7 +86,7 @@ public class HopOrchestrator {
                            AgentCapabilityFilterService capabilityFilterService,
                            CedarPolicyEngine cedarPolicyEngine,
                            PolicyContextBuilder policyContextBuilder,
-                           ProtocolAdapter adapter,
+                           List<ProtocolAdapter> adapters,
                            HopTokenMinter hopTokenMinter,
                            ActChainBuilder actChainBuilder) {
         this.registryService = registryService;
@@ -94,7 +97,11 @@ public class HopOrchestrator {
         this.capabilityFilterService = capabilityFilterService;
         this.cedarPolicyEngine = cedarPolicyEngine;
         this.policyContextBuilder = policyContextBuilder;
-        this.adapter = adapter;
+        Map<String, ProtocolAdapter> byProtocol = new HashMap<>();
+        for (ProtocolAdapter a : adapters) {
+            byProtocol.put(a.protocol(), a);
+        }
+        this.adapterByProtocol = byProtocol;
         this.hopTokenMinter = hopTokenMinter;
         this.actChainBuilder = actChainBuilder;
     }
@@ -106,13 +113,13 @@ public class HopOrchestrator {
     public CapabilityResult handle(Hop hop) {
         String traceId = resolveTraceId(hop);
         hop.setTraceId(traceId);
-        hop.setProtocol(adapter.protocol());
         MDC.put("traceId", traceId);
         try {
             return switch (hop.capabilityType()) {
                 case TOOL -> handleToolCall(hop);
                 case PROMPT -> handleGetPrompt(hop);
                 case RESOURCE -> handleReadResource(hop);
+                case SKILL -> handleSkillInvocation(hop);
             };
         } finally {
             MDC.remove("traceId");
@@ -133,6 +140,25 @@ public class HopOrchestrator {
             return String.valueOf(fromCtx);
         }
         return UUID.randomUUID().toString().replace("-", "");
+    }
+
+    /**
+     * The protocol dispatch seam. Selects the {@link ProtocolAdapter} for a hop by its resolved target protocol
+     * ({@code MCP} / {@code A2A} / a partner-connector key). A new protocol registers its adapter (keyed by
+     * {@link ProtocolAdapter#protocol()}) and is dispatched here with <em>no</em> change to the spine — this is
+     * what lets A2A, gRPC, or a platform connector ride the same governance core. Falls back to the sole adapter
+     * when only one is registered, so a single-protocol deployment needs no protocol stamped on its targets.
+     */
+    private ProtocolAdapter resolveAdapter(String protocol) {
+        ProtocolAdapter adapter = protocol != null ? adapterByProtocol.get(protocol) : null;
+        if (adapter != null) {
+            return adapter;
+        }
+        if (adapterByProtocol.size() == 1) {
+            return adapterByProtocol.values().iterator().next();
+        }
+        throw new IllegalStateException("No protocol adapter registered for '" + protocol
+                + "' (registered: " + adapterByProtocol.keySet() + ")");
     }
 
     // ---------------------------------------------------------------------
@@ -264,6 +290,9 @@ public class HopOrchestrator {
         } catch (Exception e) {
             log.error("[{}] PDP evaluation error (fail-open): {}", correlationId, e.getMessage());
         }
+
+        hop.setProtocol(descriptor.getProtocol());
+        ProtocolAdapter adapter = resolveAdapter(hop.protocol());
 
         if (!adapter.isTargetConnected(serverName)) {
             log.error("[{}] Server '{}' is not connected — rejecting immediately", correlationId, serverName);
@@ -401,6 +430,279 @@ public class HopOrchestrator {
     }
 
     // ---------------------------------------------------------------------
+    // SKILL (A2A agent→agent) — mirrors TOOL: args in, result out, error-as-result
+    // ---------------------------------------------------------------------
+
+    private CapabilityResult handleSkillInvocation(Hop hop) {
+        RequestContext rc = hop.requestContext();
+        String publicName = hop.publicName();
+
+        String correlationId = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+        MDC.put("correlationId", correlationId);
+
+        Object rawJsonRpcId = rc.attributes().get(RequestAttributeKeys.REQUEST_ID);
+        String requestId = rawJsonRpcId != null ? String.valueOf(rawJsonRpcId) : null;
+
+        String sessionId = resolveSessionId(rc);
+        String clientName = resolveClientName(rc);
+
+        agentRegistryService.recordRequest(sessionId);
+
+        int seq = 0;
+
+        GatewayErrorCode denialCode = governanceDenial(sessionId);
+        if (denialCode != null) {
+            log.warn("[{}] GOVERNANCE DENIED (defense-in-depth): session={}, skill={}, reason={}",
+                    correlationId, sessionId, publicName, denialCode.getMessage());
+            auditService.auditOrchestrationError(correlationId, sessionId, null, publicName,
+                    denialCode, denialCode.getMessage(), requestId, clientName,
+                    LocalDateTime.now(), ++seq);
+            return buildSkillError(denialCode, publicName);
+        }
+
+        UUID agentIdForAccess = agentRegistryService.getAgentIdForSession(sessionId);
+        if (agentIdForAccess != null
+                && !capabilityFilterService.isCapabilityAllowed(agentIdForAccess, publicName, "SKILL")) {
+            log.warn("[{}] CAPABILITY ACCESS DENIED: session={}, skill={}, agent={}",
+                    correlationId, sessionId, publicName, clientName);
+            auditService.auditOrchestrationError(
+                    correlationId, sessionId, null, publicName,
+                    GatewayErrorCode.CAPABILITY_NOT_ALLOWED,
+                    "Skill '" + publicName + "' is not permitted for this agent. "
+                            + "Contact your gateway administrator to assign a capability profile.",
+                    requestId, clientName,
+                    LocalDateTime.now(), ++seq);
+            auditService.auditCapabilityAccessDenied(sessionId, correlationId, clientName, publicName, "SKILL",
+                    LocalDateTime.now(), ++seq);
+            return buildSkillError(GatewayErrorCode.CAPABILITY_NOT_ALLOWED, publicName);
+        }
+        if (agentIdForAccess != null && capabilityFilterService.hasProfiles(agentIdForAccess)) {
+            auditService.auditCapabilityAccessGranted(sessionId, correlationId, clientName, publicName, "SKILL",
+                    LocalDateTime.now(), ++seq);
+        }
+
+        log.info("Skill ORCHESTRATION START [{}]", correlationId);
+        log.info("Skill: {}", publicName);
+        log.info("Args: {}", hop.arguments() != null ? hop.arguments().keySet() : "null");
+        log.info("Session: {}", sessionId != null ? sessionId : "unknown");
+        log.info("Agent: {}", clientName);
+        log.info("JSON-RPC ID: {}", requestId != null ? requestId : "n/a");
+
+        long orchestrationStart = System.currentTimeMillis();
+
+        auditService.auditOrchestrationToolExtracted(correlationId, publicName, sessionId, requestId, clientName,
+                LocalDateTime.now(), ++seq);
+
+        long lookupStart = System.currentTimeMillis();
+        Optional<CapabilityDescriptor> optDescriptor = registryService.lookupByPublicName(publicName);
+        long lookupDuration = System.currentTimeMillis() - lookupStart;
+
+        if (optDescriptor.isEmpty()) {
+            log.error("[{}] Skill '{}' NOT FOUND in capability registry", correlationId, publicName);
+            auditService.auditOrchestrationError(
+                    correlationId, sessionId, null, publicName,
+                    GatewayErrorCode.CAPABILITY_NOT_FOUND,
+                    "Skill '" + publicName + "' not found in capability registry",
+                    requestId, clientName,
+                    LocalDateTime.now(), ++seq);
+            return buildSkillError(GatewayErrorCode.CAPABILITY_NOT_FOUND, publicName);
+        }
+
+        CapabilityDescriptor descriptor = optDescriptor.get();
+        String serverName = descriptor.getServerConfigName();
+        String originalName = descriptor.getOriginalName();
+        hop.resolve(serverName, originalName);
+
+        log.info("[{}] Registry resolved: {} → agent='{}', skill='{}'",
+                correlationId, publicName, serverName, originalName);
+
+        auditService.auditOrchestrationRegistryLookup(
+                correlationId, sessionId, publicName, serverName, lookupDuration, requestId, clientName,
+                LocalDateTime.now(), ++seq);
+
+        ActChain actChain = actChainBuilder.fromTransportContext(identityContext(rc), sessionId);
+
+        try {
+            PolicyEvaluationRequest pdpRequest = policyContextBuilder.buildForSkillInvocation(
+                    rc, publicName, serverName, originalName,
+                    hop.arguments(), correlationId, sessionId);
+            pdpRequest.setActChain(actChain.toClaim());
+
+            auditService.auditPdpEvaluationRequested(
+                    correlationId, sessionId, pdpRequest.getAgentName(),
+                    publicName, "skillInvocation", serverName, pdpRequest, requestId, clientName,
+                    LocalDateTime.now(), ++seq);
+
+            PolicyEvaluationResult pdpResult = cedarPolicyEngine.evaluate(
+                    auditService.resolveTenant(sessionId), pdpRequest);
+
+            auditService.auditPdpDecisionRendered(
+                    correlationId, sessionId, pdpRequest.getAgentName(),
+                    publicName, "skillInvocation", pdpResult.getDecision(),
+                    serverName, pdpResult, pdpResult.getEvaluationDurationMs(),
+                    requestId, clientName,
+                    LocalDateTime.now(), ++seq);
+
+            if (pdpResult.isDenied()) {
+                log.warn("[{}] PDP DENIED: agent='{}', skill='{}', reason='{}'",
+                        correlationId, pdpRequest.getAgentName(), publicName, pdpResult.getReason());
+                return buildSkillError(GatewayErrorCode.PDP_DENIED,
+                        publicName, serverName,
+                        "Policy violation: " + pdpResult.getReason());
+            }
+
+            log.info("[{}] PDP ALLOWED: agent='{}', skill='{}' ({}ms)",
+                    correlationId, pdpRequest.getAgentName(), publicName,
+                    pdpResult.getEvaluationDurationMs());
+
+        } catch (Exception e) {
+            log.error("[{}] PDP evaluation error (fail-open): {}", correlationId, e.getMessage());
+        }
+
+        hop.setProtocol(descriptor.getProtocol());
+        ProtocolAdapter adapter = resolveAdapter(hop.protocol());
+
+        if (!adapter.isTargetConnected(serverName)) {
+            log.error("[{}] Agent '{}' is not connected — rejecting skill immediately", correlationId, serverName);
+            auditService.auditOrchestrationError(
+                    correlationId, sessionId, serverName, publicName,
+                    GatewayErrorCode.SERVER_UNAVAILABLE,
+                    "Agent '" + serverName + "' is not connected",
+                    requestId, clientName,
+                    LocalDateTime.now(), ++seq);
+            return buildSkillError(GatewayErrorCode.SERVER_UNAVAILABLE,
+                    publicName, serverName, "Agent '" + serverName + "' is not connected");
+        }
+
+        String clientSessionId = null;
+        clientSessionId = adapter.downstreamSessionId(serverName);
+
+        String agentName = "unknown";
+        String agentVersion = "";
+        try {
+            ClientInfo ci = rc.clientInfo();
+            if (ci != null) {
+                agentName = ci.name() != null ? ci.name() : "unknown";
+                agentVersion = ci.version() != null ? ci.version() : "";
+            }
+        } catch (Exception ignored) {}
+        inFlightRegistry.register(correlationId, publicName, serverName, originalName,
+                sessionId, requestId, agentName, agentVersion);
+        if (clientSessionId != null) {
+            inFlightRegistry.updateClientSession(correlationId, clientSessionId);
+        }
+
+        JsonNode argsAsJson;
+        try {
+            argsAsJson = objectMapper.valueToTree(
+                    hop.arguments() != null ? hop.arguments() : java.util.Map.of());
+        } catch (Exception e) {
+            log.error("[{}] Failed to convert arguments: {}", correlationId, e.getMessage());
+            inFlightRegistry.fail(correlationId, "Argument conversion failed: " + e.getMessage());
+            auditService.auditOrchestrationError(
+                    correlationId, sessionId, serverName, publicName,
+                    GatewayErrorCode.ORCHESTRATION_FAILURE,
+                    "Argument conversion failed: " + e.getMessage(),
+                    requestId, clientName,
+                    LocalDateTime.now(), ++seq);
+            return buildSkillError(GatewayErrorCode.ORCHESTRATION_FAILURE,
+                    publicName, serverName, "Argument conversion failed: " + e.getMessage());
+        }
+
+        String argsStr = argsAsJson.toString();
+        inFlightRegistry.updateRequest(correlationId,
+                argsStr.length() > 2000 ? argsStr.substring(0, 2000) + "..." : argsStr);
+
+        MintedToken minted;
+        try {
+            minted = hopTokenMinter.mintForHop(hop, sessionId, actChain,
+                    requestId, correlationId, ++seq);
+        } catch (StsMintException e) {
+            log.error("[{}] STS mint failed — denying skill (fail-closed): {}", correlationId, e.getMessage());
+            inFlightRegistry.fail(correlationId, "STS mint failed: " + e.getMessage());
+            auditService.auditOrchestrationError(
+                    correlationId, sessionId, serverName, publicName,
+                    GatewayErrorCode.PDP_DENIED, "Delegation token mint failed: " + e.getMessage(),
+                    requestId, clientName, LocalDateTime.now(), ++seq);
+            return buildSkillError(GatewayErrorCode.PDP_DENIED, publicName, serverName,
+                    "Delegation token unavailable");
+        }
+
+        // A2A puts the OBO token on the wire (agent→agent) — the adapter reads it from the holder at dispatch,
+        // attaching it as the outbound bearer so the downstream agent gets a scoped delegation credential.
+        OboTokenHolder.set(minted != null ? minted.token() : null);
+
+        boolean usingAgentToken = adapter.applyCredentials(hop, correlationId);
+        inFlightRegistry.updateTokenMode(correlationId,
+                minted != null ? "STS-OBO" : (usingAgentToken ? "AGENT-PROVIDED" : "CONFIG"));
+
+        long callStart = System.currentTimeMillis();
+        try {
+            log.info("[{}] Forwarding to downstream agent '{}' → skill '{}' (token: {})",
+                    correlationId, serverName, originalName,
+                    usingAgentToken ? "AGENT-PROVIDED" : "CONFIG");
+
+            CapabilityResult result =
+                    adapter.invokeSkill(hop, argsAsJson, correlationId, LocalDateTime.now(), ++seq);
+
+            long callDuration = System.currentTimeMillis() - callStart;
+            long totalDuration = System.currentTimeMillis() - orchestrationStart;
+
+            inFlightRegistry.updateResponse(correlationId, result.summary(), result.itemCount(), result.itemTypes());
+            inFlightRegistry.updateTimings(correlationId, lookupDuration, callDuration);
+
+            auditService.auditOrchestrationCallForwarded(
+                    correlationId, sessionId, serverName, originalName, callDuration, requestId, clientName,
+                    LocalDateTime.now(), ++seq);
+
+            inFlightRegistry.complete(correlationId);
+
+            agentRegistryService.updateLastActivity(sessionId);
+
+            log.info("SKILL ORCHESTRATION COMPLETE [{}]", correlationId);
+            log.info("Skill: {} → {}.{}", publicName, serverName, originalName);
+            log.info("Response: {} content item(s)", result.itemCount());
+            log.info("Forward: {}ms | Total: {}ms", callDuration, totalDuration);
+            log.info("Token: {}", usingAgentToken ? "agent-provided" : "config-based");
+            log.info("In-flight: {} active", inFlightRegistry.getActiveCount());
+
+            return result;
+
+        } catch (IllegalArgumentException e) {
+            log.error("[{}] Agent '{}' unavailable: {}", correlationId, serverName, e.getMessage());
+
+            inFlightRegistry.fail(correlationId, e.getMessage());
+            auditService.auditOrchestrationError(
+                    correlationId, sessionId, serverName, publicName,
+                    GatewayErrorCode.SERVER_UNAVAILABLE, e.getMessage(),
+                    requestId, clientName,
+                    LocalDateTime.now(), ++seq);
+
+            return buildSkillError(GatewayErrorCode.SERVER_UNAVAILABLE,
+                    publicName, serverName, e.getMessage());
+
+        } catch (Exception e) {
+            log.error("[{}] Orchestration failure for skill '{}' on '{}': {}",
+                    correlationId, publicName, serverName, e.getMessage(), e);
+
+            inFlightRegistry.fail(correlationId, e.getMessage());
+            auditService.auditOrchestrationError(
+                    correlationId, sessionId, serverName, publicName,
+                    GatewayErrorCode.ORCHESTRATION_FAILURE, e.getMessage(),
+                    requestId, clientName,
+                    LocalDateTime.now(), ++seq);
+
+            return buildSkillError(GatewayErrorCode.ORCHESTRATION_FAILURE,
+                    publicName, serverName, e.getMessage());
+        } finally {
+            OboTokenHolder.clear();
+            if (usingAgentToken) {
+                adapter.clearCredentials(correlationId);
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------------
     // PROMPT
     // ---------------------------------------------------------------------
 
@@ -530,6 +832,9 @@ public class HopOrchestrator {
         } catch (Exception e) {
             log.error("[{}] PDP evaluation error (fail-open): {}", correlationId, e.getMessage());
         }
+
+        hop.setProtocol(descriptor.getProtocol());
+        ProtocolAdapter adapter = resolveAdapter(hop.protocol());
 
         if (!adapter.isTargetConnected(serverName)) {
             log.error("[{}] Server '{}' is not connected — rejecting prompt immediately", correlationId, serverName);
@@ -783,6 +1088,9 @@ public class HopOrchestrator {
             log.error("[{}] PDP evaluation error (fail-open): {}", correlationId, e.getMessage());
         }
 
+        hop.setProtocol(descriptor.getProtocol());
+        ProtocolAdapter adapter = resolveAdapter(hop.protocol());
+
         if (!adapter.isTargetConnected(serverName)) {
             log.error("[{}] Server '{}' is not connected — rejecting resource read immediately", correlationId, serverName);
             auditService.auditOrchestrationError(
@@ -1005,18 +1313,36 @@ public class HopOrchestrator {
 
     private CapabilityResult buildErrorResult(GatewayErrorCode errorCode,
                                               String publicName) {
-        String message = String.format("[%d] %s: tool '%s'",
-                errorCode.getCode(), errorCode.getMessage(), publicName);
-        return CapabilityResult.error(message);
+        return capabilityError(errorCode, "tool", publicName, null, null);
     }
 
     private CapabilityResult buildErrorResult(GatewayErrorCode errorCode,
                                               String publicName,
                                               String serverName,
                                               String detail) {
-        String message = String.format("[%d] %s: tool '%s' on server '%s' — %s",
-                errorCode.getCode(), errorCode.getMessage(),
-                publicName, serverName, detail);
+        return capabilityError(errorCode, "tool", publicName, serverName, detail);
+    }
+
+    private CapabilityResult buildSkillError(GatewayErrorCode errorCode,
+                                             String publicName) {
+        return capabilityError(errorCode, "skill", publicName, null, null);
+    }
+
+    private CapabilityResult buildSkillError(GatewayErrorCode errorCode,
+                                             String publicName,
+                                             String serverName,
+                                             String detail) {
+        return capabilityError(errorCode, "skill", publicName, serverName, detail);
+    }
+
+    /** Neutral error-result string for a failed capability dispatch, worded by {@code kind} ({@code tool}/{@code skill}). */
+    private CapabilityResult capabilityError(GatewayErrorCode errorCode, String kind,
+                                             String publicName, String serverName, String detail) {
+        String message = serverName == null
+                ? String.format("[%d] %s: %s '%s'",
+                        errorCode.getCode(), errorCode.getMessage(), kind, publicName)
+                : String.format("[%d] %s: %s '%s' on server '%s' — %s",
+                        errorCode.getCode(), errorCode.getMessage(), kind, publicName, serverName, detail);
         return CapabilityResult.error(message);
     }
 }

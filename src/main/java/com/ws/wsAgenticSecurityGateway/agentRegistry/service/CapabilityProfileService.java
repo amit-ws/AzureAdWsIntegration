@@ -213,6 +213,7 @@ public class CapabilityProfileService {
         Set<String> allowedTools = new HashSet<>();
         Set<String> allowedPrompts = new HashSet<>();
         Set<String> allowedResources = new HashSet<>();
+        Set<String> allowedSkills = new HashSet<>();
 
         for (AgentCapabilityProfileRule rule : profile.getRules()) {
             List<CapabilityDescriptor> serverCaps = registryService.getCapabilitiesByServer(
@@ -254,6 +255,7 @@ public class CapabilityProfileService {
                         case TOOL -> allowedTools.add(name);
                         case PROMPT -> allowedPrompts.add(name);
                         case RESOURCE -> allowedResources.add(name);
+                        case SKILL -> allowedSkills.add(name);
                     }
                 });
             }
@@ -268,6 +270,7 @@ public class CapabilityProfileService {
         allAllowed.addAll(allowedTools);
         allAllowed.addAll(allowedPrompts);
         allAllowed.addAll(allowedResources);
+        allAllowed.addAll(allowedSkills);
 
         Map<String, Map<String, Object>> serverBreakdown = new LinkedHashMap<>();
         for (Map.Entry<String, Map<String, List<CapabilityDescriptor>>> entry : byServer.entrySet()) {
@@ -276,14 +279,17 @@ public class CapabilityProfileService {
             List<CapabilityDescriptor> sTools = byType.getOrDefault("TOOL", List.of());
             List<CapabilityDescriptor> sPrompts = byType.getOrDefault("PROMPT", List.of());
             List<CapabilityDescriptor> sResources = byType.getOrDefault("RESOURCE", List.of());
+            List<CapabilityDescriptor> sSkills = byType.getOrDefault("SKILL", List.of());
 
             Map<String, Object> bd = new LinkedHashMap<>();
             bd.put("totalTools", sTools.size());
             bd.put("totalPrompts", sPrompts.size());
             bd.put("totalResources", sResources.size());
+            bd.put("totalSkills", sSkills.size());
             bd.put("allowedTools", sTools.stream().filter(d -> allAllowed.contains(d.getPublicName())).count());
             bd.put("allowedPrompts", sPrompts.stream().filter(d -> allAllowed.contains(d.getPublicName())).count());
             bd.put("allowedResources", sResources.stream().filter(d -> allAllowed.contains(d.getPublicName())).count());
+            bd.put("allowedSkills", sSkills.stream().filter(d -> allAllowed.contains(d.getPublicName())).count());
             serverBreakdown.put(server, bd);
         }
 
@@ -293,6 +299,7 @@ public class CapabilityProfileService {
         preview.put("toolCount", allowedTools.size());
         preview.put("promptCount", allowedPrompts.size());
         preview.put("resourceCount", allowedResources.size());
+        preview.put("skillCount", allowedSkills.size());
         return preview;
     }
 
@@ -300,6 +307,7 @@ public class CapabilityProfileService {
         Set<String> allowedTools = filterService.getAllowedCapabilities(agentId, "TOOL");
         Set<String> allowedPrompts = filterService.getAllowedCapabilities(agentId, "PROMPT");
         Set<String> allowedResources = filterService.getAllowedCapabilities(agentId, "RESOURCE");
+        Set<String> allowedSkills = filterService.getAllowedCapabilities(agentId, "SKILL");
 
         List<AgentCapabilityProfileAssignment> assignments = assignmentRepository.findByAgentId(agentId);
         List<Map<String, String>> assignedProfiles = assignments.stream()
@@ -323,6 +331,7 @@ public class CapabilityProfileService {
         allAllowed.addAll(allowedTools);
         allAllowed.addAll(allowedPrompts);
         allAllowed.addAll(allowedResources);
+        allAllowed.addAll(allowedSkills);
 
         Map<String, Map<String, Object>> serverBreakdown = new LinkedHashMap<>();
         for (Map.Entry<String, Map<String, List<CapabilityDescriptor>>> entry : byServer.entrySet()) {
@@ -331,14 +340,17 @@ public class CapabilityProfileService {
             List<CapabilityDescriptor> sTools = byType.getOrDefault("TOOL", List.of());
             List<CapabilityDescriptor> sPrompts = byType.getOrDefault("PROMPT", List.of());
             List<CapabilityDescriptor> sResources = byType.getOrDefault("RESOURCE", List.of());
+            List<CapabilityDescriptor> sSkills = byType.getOrDefault("SKILL", List.of());
 
             Map<String, Object> bd = new LinkedHashMap<>();
             bd.put("totalTools", sTools.size());
             bd.put("totalPrompts", sPrompts.size());
             bd.put("totalResources", sResources.size());
+            bd.put("totalSkills", sSkills.size());
             bd.put("allowedTools", sTools.stream().filter(d -> allAllowed.contains(d.getPublicName())).count());
             bd.put("allowedPrompts", sPrompts.stream().filter(d -> allAllowed.contains(d.getPublicName())).count());
             bd.put("allowedResources", sResources.stream().filter(d -> allAllowed.contains(d.getPublicName())).count());
+            bd.put("allowedSkills", sSkills.stream().filter(d -> allAllowed.contains(d.getPublicName())).count());
             serverBreakdown.put(server, bd);
         }
 
@@ -349,7 +361,8 @@ public class CapabilityProfileService {
         result.put("summary", Map.of(
                 "allowedTools", allowedTools.size(),
                 "allowedPrompts", allowedPrompts.size(),
-                "allowedResources", allowedResources.size()));
+                "allowedResources", allowedResources.size(),
+                "allowedSkills", allowedSkills.size()));
         return result;
     }
 

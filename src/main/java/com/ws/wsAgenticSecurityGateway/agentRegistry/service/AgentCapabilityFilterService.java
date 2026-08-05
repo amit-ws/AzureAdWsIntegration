@@ -135,6 +135,7 @@ public class AgentCapabilityFilterService {
         Set<String> allowedTools = new HashSet<>();
         Set<String> allowedPrompts = new HashSet<>();
         Set<String> allowedResources = new HashSet<>();
+        Set<String> allowedSkills = new HashSet<>();
 
         for (UUID profileId : profileIds) {
             Optional<AgentCapabilityProfile> optProfile = profileRepository.findById(profileId);
@@ -191,6 +192,7 @@ public class AgentCapabilityFilterService {
                         case TOOL -> allowedTools.add(publicName);
                         case PROMPT -> allowedPrompts.add(publicName);
                         case RESOURCE -> allowedResources.add(publicName);
+                        case SKILL -> allowedSkills.add(publicName);
                     }
                 }
             }
@@ -200,6 +202,7 @@ public class AgentCapabilityFilterService {
         result.put("TOOL", Collections.unmodifiableSet(allowedTools));
         result.put("PROMPT", Collections.unmodifiableSet(allowedPrompts));
         result.put("RESOURCE", Collections.unmodifiableSet(allowedResources));
+        result.put("SKILL", Collections.unmodifiableSet(allowedSkills));
         return result;
     }
 

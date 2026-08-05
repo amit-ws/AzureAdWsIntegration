@@ -59,6 +59,41 @@ class ActChainBuilderTest {
     }
 
     @Test
+    void sessionlessValidatedHumanToken_verifiesRootAndActor_forA2a() {
+        // A2A / stateless: no server-side session, so no registry agentId/humanId — identity rides on the
+        // validated token (HUMAN_DELEGATED is only assigned after the resource server validated it, and the
+        // IdP-asserted username identifies a known human).
+        when(registry.getHumanUserIdForSession(SID)).thenReturn(null);
+        when(registry.getAgentIdForSession(SID)).thenReturn(null);
+
+        ActChain chain = builder.fromTransportContext(
+                ctx("HUMAN_DELEGATED", "689d-sub", "amit-prakash", "claude-desktop"), SID);
+
+        assertThat(chain.principals()).hasSize(2);
+        Principal root = chain.root();
+        assertThat(root.type()).isEqualTo(Principal.PrincipalType.HUMAN);
+        assertThat(root.id()).isEqualTo("689d-sub");
+        assertThat(root.verified()).isTrue();
+        Principal actor = chain.actor();
+        assertThat(actor.type()).isEqualTo(Principal.PrincipalType.AGENT);
+        assertThat(actor.id()).isEqualTo("claude-desktop");
+        assertThat(actor.verified()).isTrue();
+    }
+
+    @Test
+    void sessionlessWithoutValidatedToken_leavesRootAndActorUnverified() {
+        // auth-mode=none (no tokenType) → not a validated token: never fabricate verification.
+        when(registry.getHumanUserIdForSession(SID)).thenReturn(null);
+        when(registry.getAgentIdForSession(SID)).thenReturn(null);
+
+        ActChain chain = builder.fromTransportContext(
+                ctx(null, "sub-x", "someone", "some-client"), SID);
+
+        assertThat(chain.root().verified()).isFalse();
+        assertThat(chain.actor().verified()).isFalse();
+    }
+
+    @Test
     void automated_producesNhiRoot() {
         when(registry.getNhiIdForSession(SID)).thenReturn(nhiId);
         when(registry.getAgentIdForSession(SID)).thenReturn(agentId);

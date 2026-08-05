@@ -47,7 +47,7 @@ public class GatewaySecurityConfig {
     @Bean
     @Order(1)
     public SecurityFilterChain protocolDataPlaneSecurityFilterChain(HttpSecurity http,
-                                                       DelegatingJwtDecoder delegatingJwtDecoder,
+                                                       MultiIssuerJwtDecoder multiIssuerJwtDecoder,
                                                        AuthConfigService authConfigService,
                                                        ProtocolRouteRegistry protocolRoutes) throws Exception {
         log.info("Configuring protocol data-plane security filter chain (adapter-registered routes, request-time auth mode check)");
@@ -64,7 +64,7 @@ public class GatewaySecurityConfig {
             .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
             .oauth2ResourceServer(oauth2 -> oauth2
                 .jwt(jwt -> jwt
-                    .decoder(delegatingJwtDecoder)
+                    .decoder(multiIssuerJwtDecoder)
                     .jwtAuthenticationConverter(jwtAuthenticationConverter()))
             );
 

@@ -43,4 +43,32 @@ public record Principal(String id, PrincipalType type, boolean verified,
         if (clientId != null) m.put("clientId", clientId);
         return m;
     }
+
+    /** Rebuild a principal from its {@link #toClaim()} form (reading an inbound token's {@code act_chain}). */
+    public static Principal fromClaim(Map<String, Object> m) {
+        if (m == null) {
+            return null;
+        }
+        String id = strOrNull(m.get("id"));
+        if (id == null) {
+            return null;
+        }
+        return new Principal(id, parseType(m.get("type")), Boolean.TRUE.equals(m.get("verified")),
+                strOrNull(m.get("idp")), strOrNull(m.get("username")), strOrNull(m.get("clientId")));
+    }
+
+    private static PrincipalType parseType(Object type) {
+        if (type != null) {
+            try {
+                return PrincipalType.valueOf(String.valueOf(type).toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException ignored) {
+                // fall through to the default
+            }
+        }
+        return PrincipalType.AGENT;
+    }
+
+    private static String strOrNull(Object o) {
+        return o != null && !String.valueOf(o).isBlank() ? String.valueOf(o) : null;
+    }
 }

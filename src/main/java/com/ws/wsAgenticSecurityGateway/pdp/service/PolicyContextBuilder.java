@@ -61,6 +61,19 @@ public class PolicyContextBuilder {
                 originalName, "TOOL", arguments, correlationId, sessionId);
     }
 
+    public PolicyEvaluationRequest buildForSkillInvocation(
+            RequestContext requestContext,
+            String publicName,
+            String serverName,
+            String originalName,
+            Map<String, Object> arguments,
+            String correlationId,
+            String sessionId) {
+
+        return buildRequest(requestContext, "skillInvocation", publicName, serverName,
+                originalName, "SKILL", arguments, correlationId, sessionId);
+    }
+
     public PolicyEvaluationRequest buildForPromptGet(
             RequestContext requestContext,
             String publicName,

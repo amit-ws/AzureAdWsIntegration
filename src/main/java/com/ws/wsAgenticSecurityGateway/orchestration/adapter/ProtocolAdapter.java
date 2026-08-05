@@ -24,6 +24,14 @@ public interface ProtocolAdapter {
     CapabilityResult callTool(Hop hop, JsonNode argsJson, String correlationId,
                               LocalDateTime firedAt, int eventSequence);
 
+    /**
+     * Invoke a skill on the resolved downstream agent (A2A) — the agent→agent analogue of {@link #callTool}:
+     * {@code argsJson} carries the skill input, and the returned payload carries the agent's task result. An
+     * adapter whose protocol has no agent-skill concept (e.g. MCP) throws {@link UnsupportedOperationException}.
+     */
+    CapabilityResult invokeSkill(Hop hop, JsonNode argsJson, String correlationId,
+                                 LocalDateTime firedAt, int eventSequence);
+
     /** Fetch a prompt from the resolved downstream target; payload carries the protocol's prompt result. */
     CapabilityResult getPrompt(Hop hop);
 

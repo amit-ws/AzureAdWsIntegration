@@ -80,6 +80,13 @@ public class McpAdapter implements ProtocolAdapter {
     }
 
     @Override
+    public CapabilityResult invokeSkill(Hop hop, JsonNode argsJson, String correlationId,
+                                        LocalDateTime firedAt, int eventSequence) {
+        throw new UnsupportedOperationException(
+                "MCP adapter does not support agent SKILL invocation — skills are an A2A capability");
+    }
+
+    @Override
     public CapabilityResult getPrompt(Hop hop) {
         McpSchema.GetPromptResult result =
                 mcpClientService.getPrompt(hop.serverName(), hop.originalName(), hop.arguments());

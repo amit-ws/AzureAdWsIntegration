@@ -1,5 +1,6 @@
 package com.ws.wsAgenticSecurityGateway.sts.model;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,6 +39,26 @@ public final class ActChain {
     /** The {@code act_chain} claim value: ordered principal claim maps (root first, actor last). */
     public List<Map<String, Object>> toClaim() {
         return principals.stream().map(Principal::toClaim).toList();
+    }
+
+    /**
+     * Rebuild a chain from an inbound token's {@code act_chain} claim (the inverse of {@link #toClaim()}) — used
+     * to extend the lineage across a multi-hop A2A leg. A null / non-list / empty claim yields an empty chain.
+     */
+    @SuppressWarnings("unchecked")
+    public static ActChain fromClaim(Object claim) {
+        List<Principal> principals = new ArrayList<>();
+        if (claim instanceof List<?> list) {
+            for (Object element : list) {
+                if (element instanceof Map<?, ?> map) {
+                    Principal p = Principal.fromClaim((Map<String, Object>) map);
+                    if (p != null) {
+                        principals.add(p);
+                    }
+                }
+            }
+        }
+        return new ActChain(principals);
     }
 
     /**

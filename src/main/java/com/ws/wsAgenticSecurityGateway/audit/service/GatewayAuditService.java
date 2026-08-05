@@ -831,13 +831,17 @@ public class GatewayAuditService {
                                 .build());
         }
 
-        /** Resolve the tenant recorded for a session (from the per-session identity context), or null. */
+        /** Resolve the tenant for a request: the per-session identity context, else the request-thread tenant. */
         public String resolveTenant(String sessionId) {
-                if (sessionId == null) {
-                        return null;
+                if (sessionId != null) {
+                        AuditIdentityContext ctx = sessionIdentityCache.get(sessionId);
+                        if (ctx != null && ctx.wsTenantName() != null) {
+                                return ctx.wsTenantName();
+                        }
                 }
-                AuditIdentityContext ctx = sessionIdentityCache.get(sessionId);
-                return ctx != null ? ctx.wsTenantName() : null;
+                // Session-less data planes (A2A) carry the tenant on the request thread (TenantContext), not a
+                // per-session cache — so fall back to it. MCP sessions hit the cache above and are unaffected.
+                return TenantContext.get();
         }
 
         /**
