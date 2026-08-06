@@ -1,6 +1,7 @@
 package com.ws.wsAgenticSecurityGateway.protocol.mcp.outbound.config;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.modelcontextprotocol.spec.McpClientTransport;
 import io.modelcontextprotocol.spec.McpSchema;
@@ -31,12 +32,21 @@ public class HttpMcpTransport implements McpClientTransport {
     private Thread sseThread;
     private volatile HttpURLConnection sseConnection;
     private volatile boolean closed = false;
+    // Streamable-HTTP session id: session-strict servers (e.g. Alpha Vantage) hand this back on
+    // initialize and require it echoed on every follow-up. Session-lax servers (e.g. github) omit it.
+    private volatile String mcpSessionId;
     private Function<Mono<McpSchema.JSONRPCMessage>, Mono<McpSchema.JSONRPCMessage>> messageHandler;
 
     public HttpMcpTransport(String baseUrl, Map<String, String> headers, int timeout) {
-        this.baseUrl = baseUrl.endsWith("/") ? baseUrl : baseUrl + "/";
+        // Only normalize a trailing slash for path-style base URLs. A URL carrying a query string
+        // (e.g. ...?apikey=KEY) must be left intact — appending "/" would corrupt the query value.
+        this.baseUrl = (baseUrl.endsWith("/") || baseUrl.contains("?")) ? baseUrl : baseUrl + "/";
         this.headers = headers;
-        this.mapper = new ObjectMapper();
+        // Be lenient in what we accept: real-world MCP servers (e.g. Alpha Vantage) add non-spec
+        // capability fields like tools.{list,call}. Ignore unknown JSON fields so an extra property
+        // never aborts the whole initialize handshake.
+        this.mapper = new ObjectMapper()
+                .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         this.connected = new AtomicBoolean(false);
         this.timeout = timeout;
 
@@ -66,6 +76,10 @@ public class HttpMcpTransport implements McpClientTransport {
                 conn.setRequestProperty("Accept", "application/json, text/event-stream");
                 conn.setRequestProperty("Content-Type", "application/json");
                 conn.setRequestProperty("Cache-Control", "no-cache");
+                // Carry the negotiated streamable-HTTP session on every follow-up request.
+                if (mcpSessionId != null) {
+                    conn.setRequestProperty("mcp-session-id", mcpSessionId);
+                }
 
                 Map<String, String> overrides = requestOverrideHeaders.get();
                 if (overrides != null && !overrides.isEmpty()) {
@@ -92,6 +106,13 @@ public class HttpMcpTransport implements McpClientTransport {
                         }
                     }
                     throw new RuntimeException(error);
+                }
+
+                // Capture (or refresh) the server-assigned session id from the initialize response
+                // so subsequent requests stay in the same session. Header name is case-insensitive.
+                String sid = conn.getHeaderField("mcp-session-id");
+                if (sid != null && !sid.isBlank()) {
+                    mcpSessionId = sid;
                 }
 
                 String ct = conn.getHeaderField("Content-Type");
