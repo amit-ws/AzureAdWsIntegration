@@ -61,7 +61,9 @@ class PolicyContextBuilderTest {
         PolicyEvaluationRequest req = builder.buildForToolCall(
                 rc, "github_get_me", "github", "get_me", Map.of("a", 1), "corr-1", "sess-1");
 
-        assertThat(req.getAgentName()).isEqualTo("agent-x");
+        // Hardening 1 (proven identity): the VERIFIED credential (client_id "client-9") is the principal,
+        // NOT the self-asserted clientInfo.name "agent-x" — a client cannot spoof its identity via clientInfo.
+        assertThat(req.getAgentName()).isEqualTo("client-9");
         assertThat(req.getAgentVersion()).isEqualTo("2.1");
         assertThat(req.getAgentClientId()).isEqualTo("client-9");
         assertThat(req.getJwtSubject()).isEqualTo("sub-1");

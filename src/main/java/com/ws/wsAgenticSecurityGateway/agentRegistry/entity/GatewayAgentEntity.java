@@ -79,4 +79,16 @@ public class GatewayAgentEntity {
 
     @Column(name = "token_type", length = 32)
     private String tokenType;
+
+    // HOW this agent proves its identity — the WorkloadIdentitySource method. "KEYCLOAK" today (OIDC
+    // client-credentials); "SPIFFE" once SVID/mTLS is deployed. Lets the registry carry multiple identity
+    // roots side by side and makes the SPIFFE swap a data change, not a schema change.
+    @Column(name = "identity_source", length = 32)
+    private String identitySource;
+
+    // The source-specific verified identifier: the Keycloak client_id today; the SPIFFE ID
+    // (spiffe://<trust-domain>/...) once SPIFFE is the source. This is the id we bind a sender-constrained
+    // OBO to (its `cnf`), and the id the honor-time check matches the presenter's credential against.
+    @Column(name = "workload_id", length = 512)
+    private String workloadId;
 }

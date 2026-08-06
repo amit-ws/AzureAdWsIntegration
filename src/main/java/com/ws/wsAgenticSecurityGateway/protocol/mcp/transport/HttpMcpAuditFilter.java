@@ -16,7 +16,8 @@ import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryServic
 import com.ws.wsAgenticSecurityGateway.audit.error.GatewayErrorCode;
 import com.ws.wsAgenticSecurityGateway.sts.service.StsRevocationService;
 import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
-import com.ws.wsAgenticSecurityGateway.authConfig.repository.GatewayAuthConfigRepository;
+import com.ws.wsAgenticSecurityGateway.security.TenantResolver;
+import com.ws.wsAgenticSecurityGateway.security.AgentAssertionVerifier;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
 import jakarta.servlet.*;
 import jakarta.servlet.http.HttpServletRequest;
@@ -44,10 +45,11 @@ public class HttpMcpAuditFilter implements Filter {
     private final AgentCapabilityFilterService capabilityFilterService;
     private final GatewayAuditService auditService;
     private final CapabilityRegistryService registryService;
-    private final GatewayAuthConfigRepository authConfigRepository;
     private final ObjectMapper objectMapper;
     private final TokenClassificationService tokenClassificationService;
     private final StsRevocationService revocationService;
+    private final TenantResolver tenantResolver;
+    private final AgentAssertionVerifier assertionVerifier;
 
     private final ConcurrentHashMap<String, Boolean> registeredSessions = new ConcurrentHashMap<>();
 
@@ -73,18 +75,36 @@ public class HttpMcpAuditFilter implements Filter {
             AgentCapabilityFilterService capabilityFilterService,
             GatewayAuditService auditService,
             CapabilityRegistryService registryService,
-            GatewayAuthConfigRepository authConfigRepository,
             ObjectMapper objectMapper,
             TokenClassificationService tokenClassificationService,
-            StsRevocationService revocationService) {
+            StsRevocationService revocationService,
+            TenantResolver tenantResolver,
+            AgentAssertionVerifier assertionVerifier) {
         this.agentRegistryService = agentRegistryService;
         this.capabilityFilterService = capabilityFilterService;
         this.auditService = auditService;
         this.registryService = registryService;
-        this.authConfigRepository = authConfigRepository;
         this.objectMapper = objectMapper;
         this.tokenClassificationService = tokenClassificationService;
         this.revocationService = revocationService;
+        this.tenantResolver = tenantResolver;
+        this.assertionVerifier = assertionVerifier;
+    }
+
+    /** The workload id a presented OBO is sender-bound to (its {@code cnf.workload_id}), or null if none. */
+    @SuppressWarnings("unchecked")
+    private String oboCnfWorkloadId(HttpServletRequest req) {
+        Object raw = req.getAttribute(GatewayOAuth2Filter.ATTR_RAW_CLAIMS);
+        if (raw instanceof Map<?, ?> claims) {
+            Object cnf = claims.get("cnf");
+            if (cnf instanceof Map<?, ?> c) {
+                Object wid = c.get("workload_id");
+                if (wid instanceof String s && !s.isBlank()) {
+                    return s;
+                }
+            }
+        }
+        return null;
     }
 
     public String resolveTenant(String sessionId) {
@@ -154,6 +174,36 @@ public class HttpMcpAuditFilter implements Filter {
             rejectBlocked(httpResponse, requestIdRaw, GatewayErrorCode.TOKEN_REVOKED,
                     "This delegation has been revoked by an administrator. Reconnect with a fresh token or session.");
             return;
+        }
+
+        // Sender-constraint honor gate (#41): a gateway-minted OBO that carries a `cnf` is bound to ONE agent
+        // identity — the recipient it was minted for. The presenter must prove that same identity with its own
+        // X-Agent-Assertion, or the token is refused. A stolen/leaked bearer OBO is therefore useless without
+        // the matching credential. Fail-SAFE: an OBO with no cnf (human root / legacy) is unaffected.
+        // Verify the agent's OWN credential (X-Agent-Assertion) once — it drives BOTH the sender-constraint
+        // (#41) and, since a delegated OBO carries no roles/groups, the agent's own roles/groups for RBAC (#5).
+        AgentAssertionVerifier.VerifiedAgent presenter = assertionVerifier.verify(wrappedRequest);
+        String presenterId = presenter != null ? presenter.workloadId() : null;
+        String boundWorkloadId = oboCnfWorkloadId(wrappedRequest);
+        if (boundWorkloadId != null && !boundWorkloadId.equals(presenterId)) {
+            log.warn("Request rejected — sender-constraint: OBO bound to '{}' but presenter proved '{}' (session={}, method={})",
+                    boundWorkloadId, presenterId, sessionId, protocolMethod);
+            auditService.auditAgentConnectionRejected(sessionId, requestId, resolveAgentName(sessionId),
+                    null, protocolMethod, "HTTP",
+                    "Sender-constraint violation: token bound to '" + boundWorkloadId
+                            + "', presenter proved '" + (presenterId != null ? presenterId : "none") + "'");
+            rejectBlocked(httpResponse, requestIdRaw, GatewayErrorCode.SENDER_CONSTRAINT_VIOLATION,
+                    "This delegation token is bound to agent '" + boundWorkloadId
+                            + "'. It must be presented with that agent's own credential (X-Agent-Assertion).");
+            return;
+        }
+        if (presenter != null) {
+            // The delegated OBO carries no roles/groups; the agent's OWN verified assertion supplies them so
+            // role/group policies evaluate the CALLING agent. (No assertion → the inbound token's own roles
+            // stand — e.g. a human root on the first hop.)
+            wrappedRequest.setAttribute(GatewayOAuth2Filter.ATTR_ALL_ROLES, presenter.roles());
+            wrappedRequest.setAttribute(GatewayOAuth2Filter.ATTR_REALM_ROLES, presenter.roles());
+            wrappedRequest.setAttribute(GatewayOAuth2Filter.ATTR_GROUPS, presenter.groups());
         }
 
         boolean isExecutionMethod = EXECUTION_METHODS.contains(protocolMethod);
@@ -399,23 +449,38 @@ public class HttpMcpAuditFilter implements Filter {
         }
     }
 
+    /**
+     * The agent's PROVEN identity for registration/approval — a verified credential ({@code azp}/
+     * {@code client_id}) or the gateway-signed OBO {@code actor} — falling back to the self-asserted
+     * MCP {@code clientInfo.name} only when neither is present. Mirrors the PDP's principal resolution so
+     * an agent is registered, approved, and policy-checked under ONE identity it cannot spoof.
+     */
+    @SuppressWarnings("unchecked")
+    private String resolveVerifiedAgentName(HttpServletRequest req, String assertedName) {
+        Object clientId = req.getAttribute(GatewayOAuth2Filter.ATTR_CLIENT_ID);
+        if (clientId instanceof String s && !s.isBlank()) return s;
+        Object raw = req.getAttribute(GatewayOAuth2Filter.ATTR_RAW_CLAIMS);
+        if (raw instanceof Map<?, ?> claims) {
+            Object actor = claims.get("actor");
+            if (actor instanceof Map<?, ?> a) {
+                Object cid = a.get("clientId");
+                if (cid instanceof String s && !s.isBlank()) return s;
+                Object id = a.get("id");
+                if (id instanceof String s && !s.isBlank()) return s;
+            }
+        }
+        return assertedName;
+    }
+
     @SuppressWarnings("unchecked")
     private void handleInitialize(JsonNode json, String sessionId, String requestId,
                                   HttpServletRequest httpRequest) {
         knownSessionIds.add(sessionId);
 
-        String wsTenantName = httpRequest.getHeader("X-WS-Tenant");
-        if (wsTenantName == null || wsTenantName.isBlank()) {
-            String jwtIssuer = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_ISSUER);
-            if (jwtIssuer != null) {
-                wsTenantName = authConfigRepository.findFirstByIssuerUri(jwtIssuer)
-                        .map(config -> config.getWsTenantName())
-                        .orElse("default");
-                log.info("Tenant resolved from JWT issuer: {} -> {}", jwtIssuer, wsTenantName);
-            } else {
-                wsTenantName = "default";
-            }
-        }
+        // Reuse the shared resolver: header → gateway-OBO ws_tenant claim → IdP issuer (auth-config) → default.
+        // The ws_tenant-claim step is what lets a gateway-minted OBO (e.g. a specialist agent forwarding its
+        // delegation token on the MCP leg) resolve to its true tenant instead of falling through to "default".
+        String wsTenantName = tenantResolver.resolve(httpRequest);
         sessionToTenant.put(sessionId, wsTenantName);
 
         String authClientId = (String) httpRequest.getAttribute(GatewayOAuth2Filter.ATTR_CLIENT_ID);
@@ -441,7 +506,8 @@ public class HttpMcpAuditFilter implements Filter {
 
         String earlyAgentName = "unknown";
         try {
-            earlyAgentName = json.path("params").path("clientInfo").path("name").asText("unknown");
+            String asserted = json.path("params").path("clientInfo").path("name").asText("unknown");
+            earlyAgentName = resolveVerifiedAgentName(httpRequest, asserted);
         } catch (Exception ignored) {
         }
         String resolvedAgentName = earlyAgentName;
@@ -459,7 +525,7 @@ public class HttpMcpAuditFilter implements Filter {
         try {
             JsonNode params = json.path("params");
             JsonNode clientInfoNode = params.path("clientInfo");
-            agentName = clientInfoNode.path("name").asText("unknown");
+            agentName = resolveVerifiedAgentName(httpRequest, clientInfoNode.path("name").asText("unknown"));
             agentVersion = clientInfoNode.path("version").asText(null);
             protocolVersion = params.path("protocolVersion").asText(null);
             JsonNode capabilities = params.path("capabilities");

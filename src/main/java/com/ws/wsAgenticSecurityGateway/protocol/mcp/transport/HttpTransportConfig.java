@@ -8,7 +8,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentCapabilityFilterService;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
-import com.ws.wsAgenticSecurityGateway.authConfig.repository.GatewayAuthConfigRepository;
+import com.ws.wsAgenticSecurityGateway.security.TenantResolver;
+import com.ws.wsAgenticSecurityGateway.security.AgentAssertionVerifier;
 import com.ws.wsAgenticSecurityGateway.authConfig.service.AuthConfigService;
 import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
@@ -135,15 +136,16 @@ public class HttpTransportConfig {
             AgentCapabilityFilterService capabilityFilterService,
             GatewayAuditService auditService,
             CapabilityRegistryService registryService,
-            GatewayAuthConfigRepository authConfigRepository,
             ObjectMapper objectMapper,
             TokenClassificationService tokenClassificationService,
-            StsRevocationService revocationService) {
+            StsRevocationService revocationService,
+            TenantResolver tenantResolver,
+            AgentAssertionVerifier assertionVerifier) {
 
         FilterRegistrationBean<HttpMcpAuditFilter> registration = new FilterRegistrationBean<>();
         registration.setFilter(new HttpMcpAuditFilter(
                 agentRegistryService, capabilityFilterService, auditService, registryService,
-                authConfigRepository, objectMapper, tokenClassificationService, revocationService));
+                objectMapper, tokenClassificationService, revocationService, tenantResolver, assertionVerifier));
         registration.addUrlPatterns("/mcp/*");
         registration.setOrder(2);
         registration.setName("mcpAuditFilter");

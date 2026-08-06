@@ -166,6 +166,7 @@ public class PolicyController {
                 .resourceName(resourceName)
                 .serverName(serverName)
                 .agentRoles(strList(body.get("roles")))
+                .agentGroups(strList(body.get("groups")))
                 .build();
 
         // Minimal delegation lineage from the verified flags, so the baseline guardrails can be exercised.

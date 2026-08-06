@@ -28,7 +28,8 @@ public enum GatewayErrorCode {
     AGENT_DEPROVISIONED(-33012, "Agent has been deprovisioned by admin"),
     HUMAN_PENDING_APPROVAL(-33013, "Human user is pending admin approval"),
     NHI_PENDING_APPROVAL(-33014, "Service identity is pending admin approval"),
-    TOKEN_REVOKED(-33015, "Delegation token or session has been revoked by admin");
+    TOKEN_REVOKED(-33015, "Delegation token or session has been revoked by admin"),
+    SENDER_CONSTRAINT_VIOLATION(-33016, "Delegation token is bound to a different agent — presenter identity does not match its cnf");
 
     private final int code;
     private final String message;

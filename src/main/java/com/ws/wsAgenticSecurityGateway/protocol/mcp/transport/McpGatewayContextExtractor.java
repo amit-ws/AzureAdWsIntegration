@@ -24,8 +24,13 @@ public class McpGatewayContextExtractor implements McpTransportContextExtractor<
         Map<String, Object> ctx = new HashMap<>();
 
         // Request-scoped trace id (umbrella over every leg): honor an inbound X-Trace-Id for cross-service
-        // continuity, otherwise mint one here — the earliest per-request point that reaches the orchestrator.
+        // continuity; else CONTINUE the journey from the inbound OBO's trace_id claim (a specialist agent
+        // forwarding its delegation token on the MCP leg carries the same trace as the A2A hops — this keeps
+        // the tool call on the same governance journey instead of orphaning it under a fresh trace); else mint one.
         String traceId = request.getHeader("X-Trace-Id");
+        if (traceId == null || traceId.isBlank()) {
+            traceId = oboTraceId(request);
+        }
         if (traceId == null || traceId.isBlank()) {
             traceId = UUID.randomUUID().toString().replace("-", "");
         }
@@ -69,9 +74,13 @@ public class McpGatewayContextExtractor implements McpTransportContextExtractor<
     @SuppressWarnings("unchecked")
     private void propagateJwtClaims(HttpServletRequest request, Map<String, Object> ctx) {
         Object clientId = request.getAttribute(GatewayOAuth2Filter.ATTR_CLIENT_ID);
-        if (clientId == null) return;
+        Object subject = request.getAttribute(GatewayOAuth2Filter.ATTR_SUBJECT);
+        // A gateway-minted OBO carries no azp/client_id but IS an authenticated identity (its signed
+        // `sub` + `actor`). Propagate its claims too — otherwise downstream identity resolution can't
+        // read the verified OBO actor and is forced back onto the self-asserted MCP clientInfo.name.
+        if (clientId == null && subject == null) return;
 
-        ctx.put(RequestAttributeKeys.AGENT_CLIENT_ID, clientId);
+        if (clientId != null) ctx.put(RequestAttributeKeys.AGENT_CLIENT_ID, clientId);
         putIfPresent(ctx, RequestAttributeKeys.JWT_SUBJECT, request.getAttribute(GatewayOAuth2Filter.ATTR_SUBJECT));
         putIfPresent(ctx, RequestAttributeKeys.USER_IDENTITY, request.getAttribute(GatewayOAuth2Filter.ATTR_PREFERRED_USERNAME));
         putIfPresent(ctx, "userEmail", request.getAttribute(GatewayOAuth2Filter.ATTR_EMAIL));
@@ -86,6 +95,7 @@ public class McpGatewayContextExtractor implements McpTransportContextExtractor<
         putIfPresent(ctx, RequestAttributeKeys.AGENT_ROLES, request.getAttribute(GatewayOAuth2Filter.ATTR_ALL_ROLES));
         putIfPresent(ctx, RequestAttributeKeys.REALM_ROLES, request.getAttribute(GatewayOAuth2Filter.ATTR_REALM_ROLES));
         putIfPresent(ctx, RequestAttributeKeys.CLIENT_ROLES, request.getAttribute(GatewayOAuth2Filter.ATTR_CLIENT_ROLES));
+        putIfPresent(ctx, RequestAttributeKeys.GROUPS, request.getAttribute(GatewayOAuth2Filter.ATTR_GROUPS));
         putIfPresent(ctx, RequestAttributeKeys.CUSTOM_CLAIMS, request.getAttribute(GatewayOAuth2Filter.ATTR_CUSTOM_CLAIMS));
         putIfPresent(ctx, RequestAttributeKeys.RAW_JWT_CLAIMS, request.getAttribute(GatewayOAuth2Filter.ATTR_RAW_CLAIMS));
     }
@@ -94,6 +104,20 @@ public class McpGatewayContextExtractor implements McpTransportContextExtractor<
         if (value != null) {
             ctx.put(key, value);
         }
+    }
+
+    /** The {@code trace_id} claim of the validated inbound token — a gateway-minted OBO carries the
+     *  journey's umbrella trace, letting an A2A specialist's downstream MCP tool call stay on one trace. */
+    @SuppressWarnings("unchecked")
+    private static String oboTraceId(HttpServletRequest request) {
+        Object raw = request.getAttribute(GatewayOAuth2Filter.ATTR_RAW_CLAIMS);
+        if (raw instanceof Map<?, ?> claims) {
+            Object trace = claims.get("trace_id");
+            if (trace instanceof String s && !s.isBlank()) {
+                return s;
+            }
+        }
+        return null;
     }
 
     private Map<String, String> captureHttpHeaders(HttpServletRequest request) {

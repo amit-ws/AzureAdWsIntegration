@@ -24,6 +24,7 @@ public class PolicyEvaluationRequest {
     private List<String> agentRoles;
     private List<String> realmRoles;
     private List<String> clientRoles;
+    private List<String> agentGroups;
     private String userIdentity;
     private String tokenType;
     private Map<String, Object> jwtCustomClaims;

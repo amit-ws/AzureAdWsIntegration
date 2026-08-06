@@ -76,7 +76,7 @@ public class AgentRegistryService {
 
         List<GatewayAgentEntity> agents = agentRepository.findAll();
         for (GatewayAgentEntity agent : agents) {
-            String key = cacheKey(agent.getAgentName(), agent.getAgentVersion());
+            String key = cacheKey(agent.getAgentName(), agent.getAgentVersion(), agent.getWsTenantName());
             agentCache.put(key, agent);
             agentStatusById.put(agent.getId(), agent.getApprovalStatus());
         }
@@ -122,7 +122,10 @@ public class AgentRegistryService {
             JsonNode capabilities,
             String authClientId, String tokenType,
             String wsTenantName) {
-        String key = cacheKey(name, version);
+        // Resolve the tenant this identity belongs to (arg → thread-bound request tenant). Identity is keyed
+        // by (tenant, name, version) so two tenants can't collide on a shared agent name.
+        String tenant = (wsTenantName != null && !wsTenantName.isBlank()) ? wsTenantName : TenantContext.get();
+        String key = cacheKey(name, version, tenant);
 
         GatewayAgentEntity cached = agentCache.get(key);
         if (cached != null) {
@@ -141,7 +144,11 @@ public class AgentRegistryService {
             cached.setProtocolVersion(protocolVersion);
             cached.setCapabilities(capabilities);
             cached.setStatus("ACTIVE");
-            if (authClientId != null) cached.setAuthClientId(authClientId);
+            if (authClientId != null) {
+                cached.setAuthClientId(authClientId);
+                cached.setWorkloadId(authClientId);      // verified id we bind sender-constrained OBOs to
+                cached.setIdentitySource("KEYCLOAK");     // OIDC client-credentials today; SPIFFE later
+            }
             if (tokenType != null) cached.setTokenType(tokenType);
             if (wsTenantName != null) cached.setWsTenantName(wsTenantName);
             GatewayAgentEntity updated = agentRepository.saveAndFlush(cached);
@@ -152,7 +159,11 @@ public class AgentRegistryService {
             return updated;
         }
 
-        Optional<GatewayAgentEntity> existing = agentRepository.findByAgentNameAndAgentVersion(name, version);
+        // Tenant-scoped lookup when the tenant is known (the normal path); degrade to the legacy global
+        // lookup only when no tenant could be resolved, so pre-tenant callers keep working unchanged.
+        Optional<GatewayAgentEntity> existing = (tenant != null && !tenant.isBlank())
+                ? agentRepository.findByAgentNameAndAgentVersionAndWsTenantName(name, version, tenant)
+                : agentRepository.findByAgentNameAndAgentVersion(name, version);
 
         if (existing.isPresent()) {
             GatewayAgentEntity entity = existing.get();
@@ -172,7 +183,11 @@ public class AgentRegistryService {
             entity.setProtocolVersion(protocolVersion);
             entity.setCapabilities(capabilities);
             entity.setStatus("ACTIVE");
-            if (authClientId != null) entity.setAuthClientId(authClientId);
+            if (authClientId != null) {
+                entity.setAuthClientId(authClientId);
+                entity.setWorkloadId(authClientId);
+                entity.setIdentitySource("KEYCLOAK");
+            }
             if (tokenType != null) entity.setTokenType(tokenType);
             if (wsTenantName != null) entity.setWsTenantName(wsTenantName);
             GatewayAgentEntity updated = agentRepository.saveAndFlush(entity);
@@ -191,6 +206,8 @@ public class AgentRegistryService {
                 .status("ACTIVE")
                 .approvalStatus("PENDING")
                 .authClientId(authClientId)
+                .workloadId(authClientId)
+                .identitySource(authClientId != null ? "KEYCLOAK" : null)
                 .tokenType(tokenType)
                 .totalSessions(0)
                 .totalRequests(0L)
@@ -257,7 +274,7 @@ public class AgentRegistryService {
 
         GatewayAgentEntity refreshed = agentRepository.findById(agentId).orElse(null);
         if (refreshed != null) {
-            agentCache.put(cacheKey(refreshed.getAgentName(), refreshed.getAgentVersion()), refreshed);
+            agentCache.put(cacheKey(refreshed.getAgentName(), refreshed.getAgentVersion(), refreshed.getWsTenantName()), refreshed);
         }
 
         sessionToAgentId.put(sessionId, agentId);
@@ -576,7 +593,7 @@ public class AgentRegistryService {
         String previousApprovalStatus = agent.getApprovalStatus();
         agent.setApprovalStatus("APPROVED");
         GatewayAgentEntity updated = agentRepository.saveAndFlush(agent);
-        String key = cacheKey(agent.getAgentName(), agent.getAgentVersion());
+        String key = cacheKey(agent.getAgentName(), agent.getAgentVersion(), agent.getWsTenantName());
         agentCache.put(key, updated);
         agentStatusById.put(agentId, "APPROVED");
         auditService.auditAgentApproved(
@@ -598,7 +615,7 @@ public class AgentRegistryService {
         String previousApprovalStatus = agent.getApprovalStatus();
         agent.setApprovalStatus("BLOCKED");
         GatewayAgentEntity updated = agentRepository.saveAndFlush(agent);
-        String key = cacheKey(agent.getAgentName(), agent.getAgentVersion());
+        String key = cacheKey(agent.getAgentName(), agent.getAgentVersion(), agent.getWsTenantName());
         agentCache.put(key, updated);
         agentStatusById.put(agentId, "BLOCKED");
 
@@ -677,7 +694,7 @@ public class AgentRegistryService {
         String previousStatus = agent.getStatus();
         agent.setStatus("DEPROVISIONED");
         GatewayAgentEntity updated = agentRepository.saveAndFlush(agent);
-        String key = cacheKey(agent.getAgentName(), agent.getAgentVersion());
+        String key = cacheKey(agent.getAgentName(), agent.getAgentVersion(), agent.getWsTenantName());
         agentCache.put(key, updated);
 
         List<GatewayAgentSessionEntity> activeSessions = sessionRepository.findConnectedByAgentId(agentId);
@@ -868,8 +885,12 @@ public class AgentRegistryService {
                 .orElse(false);
     }
 
-    private String cacheKey(String name, String version) {
-        return (name != null ? name : "unknown") + ":" + (version != null ? version : "?");
+    // Identity key is (tenant, name, version) — NOT (name, version). Two tenants may each register an agent
+    // named "market-data"; keying globally would collide them onto one entity (and leak approval/policy
+    // across tenants). A null/blank tenant degrades to a legacy global key so pre-tenant callers still work.
+    private String cacheKey(String name, String version, String tenant) {
+        String t = (tenant != null && !tenant.isBlank()) ? tenant : "-";
+        return t + "|" + (name != null ? name : "unknown") + ":" + (version != null ? version : "?");
     }
 
     public static class AgentBlockedException extends RuntimeException {

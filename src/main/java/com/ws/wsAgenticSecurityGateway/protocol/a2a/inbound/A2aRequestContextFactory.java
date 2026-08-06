@@ -48,6 +48,7 @@ final class A2aRequestContextFactory {
         put(attrs, RequestAttributeKeys.AGENT_ROLES, request.getAttribute(GatewayOAuth2Filter.ATTR_ALL_ROLES));
         put(attrs, RequestAttributeKeys.REALM_ROLES, request.getAttribute(GatewayOAuth2Filter.ATTR_REALM_ROLES));
         put(attrs, RequestAttributeKeys.CLIENT_ROLES, request.getAttribute(GatewayOAuth2Filter.ATTR_CLIENT_ROLES));
+        put(attrs, RequestAttributeKeys.GROUPS, request.getAttribute(GatewayOAuth2Filter.ATTR_GROUPS));
         put(attrs, RequestAttributeKeys.CLIENT_IP, request.getRemoteAddr());
         if (message != null) {
             put(attrs, RequestAttributeKeys.REQUEST_ID, message.messageId());

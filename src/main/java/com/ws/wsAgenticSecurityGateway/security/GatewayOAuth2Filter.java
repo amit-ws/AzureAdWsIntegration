@@ -29,6 +29,7 @@ public class GatewayOAuth2Filter implements Filter {
     public static final String ATTR_REALM_ROLES = "jwt.realm_roles";
     public static final String ATTR_CLIENT_ROLES = "jwt.client_roles";
     public static final String ATTR_ALL_ROLES = "jwt.all_roles";
+    public static final String ATTR_GROUPS = "jwt.groups";
     public static final String ATTR_TOKEN_TYPE = "jwt.token_type";
     public static final String ATTR_AUTH_METHOD = "jwt.auth_method";
     public static final String ATTR_CUSTOM_CLAIMS = "jwt.custom_claims";
@@ -110,6 +111,7 @@ public class GatewayOAuth2Filter implements Filter {
         request.setAttribute(ATTR_REALM_ROLES, realmRoles);
         request.setAttribute(ATTR_CLIENT_ROLES, clientRoles);
         request.setAttribute(ATTR_ALL_ROLES, allRoles);
+        request.setAttribute(ATTR_GROUPS, extractGroups(jwt));
 
         Map<String, Object> customClaims = extractCustomClaims(jwt);
         request.setAttribute(ATTR_CUSTOM_CLAIMS, customClaims);
@@ -161,6 +163,22 @@ public class GatewayOAuth2Filter implements Filter {
         if (groups != null) return new ArrayList<>(groups);
 
         return List.of();
+    }
+
+    /**
+     * The agent's group memberships from the JWT {@code groups} claim, normalized by stripping the leading
+     * '/' so a Keycloak group path {@code "/financial-agents"} matches a policy's
+     * {@code principal in AgentGroup::"financial-agents"}.
+     */
+    private List<String> extractGroups(Jwt jwt) {
+        List<String> groups = jwt.getClaimAsStringList("groups");
+        if (groups == null) {
+            return List.of();
+        }
+        return groups.stream()
+                .filter(g -> g != null && !g.isBlank())
+                .map(g -> g.startsWith("/") ? g.substring(1) : g)
+                .collect(Collectors.toList());
     }
 
     @SuppressWarnings("unchecked")

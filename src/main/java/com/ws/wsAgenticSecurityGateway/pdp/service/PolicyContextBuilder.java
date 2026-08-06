@@ -98,6 +98,39 @@ public class PolicyContextBuilder {
                 originalName, "RESOURCE", null, correlationId, sessionId);
     }
 
+    /**
+     * The caller's PROVEN identity, or {@code null} if none is present. Priority:
+     * <ol>
+     *   <li>the agent's own verified credential — {@code client_id}/{@code azp} from a validated
+     *       client-credentials token (the KC workload identity);</li>
+     *   <li>the gateway-SIGNED OBO {@code actor} (its {@code clientId}, else {@code id}) — the verified
+     *       delegatee on a delegation token the gateway itself minted.</li>
+     * </ol>
+     * Never the self-asserted MCP {@code clientInfo.name}. This is the seam a SPIFFE/SVID source would
+     * later feed identically.
+     */
+    @SuppressWarnings("unchecked")
+    private String resolveVerifiedAgentId(RequestContext rc) {
+        if (rc == null) return null;
+        try {
+            Object clientId = rc.attributes().get(RequestAttributeKeys.AGENT_CLIENT_ID);
+            if (clientId instanceof String s && !s.isBlank()) return s;
+            Object raw = rc.attributes().get(RequestAttributeKeys.RAW_JWT_CLAIMS);
+            if (raw instanceof Map<?, ?> claims) {
+                Object actor = claims.get("actor");
+                if (actor instanceof Map<?, ?> a) {
+                    Object cid = a.get("clientId");
+                    if (cid instanceof String s && !s.isBlank()) return s;
+                    Object id = a.get("id");
+                    if (id instanceof String s && !s.isBlank()) return s;
+                }
+            }
+        } catch (Exception e) {
+            log.debug("verified agent id resolution failed: {}", e.getMessage());
+        }
+        return null;
+    }
+
     private PolicyEvaluationRequest buildRequest(
             RequestContext requestContext,
             String action,
@@ -113,26 +146,18 @@ public class PolicyContextBuilder {
         String agentVersion = null;
         try {
             ClientInfo ci = requestContext != null ? requestContext.clientInfo() : null;
+            String asserted = (ci != null && ci.name() != null && !ci.name().isBlank()) ? ci.name() : null;
             if (ci != null) {
-                agentName = ci.name() != null ? ci.name() : "unknown";
                 agentVersion = ci.version();
             }
+            // PROVEN IDENTITY FIRST (Hardening 1): a verified credential — the agent's own KC
+            // client_id/azp (client-credentials) or the gateway-SIGNED OBO actor — outranks the
+            // self-asserted MCP clientInfo.name, which any client can set to anything. Also covers the
+            // stateless bridge (no clientInfo → identity rides on the verified client_id).
+            String verified = resolveVerifiedAgentId(requestContext);
+            agentName = verified != null ? verified : (asserted != null ? asserted : "unknown");
         } catch (Exception e) {
-            log.debug("Could not extract agent info from request context: {}", e.getMessage());
-        }
-
-        // Stateless bridge (Delta 2): the synthetic request carries no clientInfo — the authoritative caller
-        // identity rides on the request attributes as the JWT client_id. Use it as the policy principal so a
-        // stateless request matches the SAME agent policies as its session-mode counterpart.
-        if ("unknown".equals(agentName) && requestContext != null) {
-            try {
-                Object tcClientId = requestContext.attributes().get(RequestAttributeKeys.AGENT_CLIENT_ID);
-                if (tcClientId instanceof String s && !s.isBlank()) {
-                    agentName = s;
-                }
-            } catch (Exception e) {
-                log.debug("Could not resolve stateless agent client id: {}", e.getMessage());
-            }
+            log.debug("Could not extract agent identity from request context: {}", e.getMessage());
         }
 
         String approvalStatus = "UNKNOWN";
@@ -180,6 +205,7 @@ public class PolicyContextBuilder {
         List<String> agentRoles = null;
         List<String> tcRealmRoles = null;
         List<String> tcClientRoles = null;
+        List<String> tcGroups = null;
         String userIdentity = null;
         String tokenType = null;
         Map<String, Object> jwtCustomClaims = null;
@@ -200,6 +226,8 @@ public class PolicyContextBuilder {
                 if (o instanceof List<?> l) tcRealmRoles = l.stream().map(String::valueOf).toList();
                 o = requestContext.attributes().get(RequestAttributeKeys.CLIENT_ROLES);
                 if (o instanceof List<?> l) tcClientRoles = l.stream().map(String::valueOf).toList();
+                o = requestContext.attributes().get(RequestAttributeKeys.GROUPS);
+                if (o instanceof List<?> l) tcGroups = l.stream().map(String::valueOf).toList();
                 o = requestContext.attributes().get(RequestAttributeKeys.CUSTOM_CLAIMS);
                 if (o instanceof Map<?, ?> m) {
                     @SuppressWarnings("unchecked")
@@ -221,6 +249,7 @@ public class PolicyContextBuilder {
                 .agentRoles(agentRoles)
                 .realmRoles(tcRealmRoles)
                 .clientRoles(tcClientRoles)
+                .agentGroups(tcGroups)
                 .userIdentity(userIdentity)
                 .tokenType(tokenType)
                 .jwtCustomClaims(jwtCustomClaims)

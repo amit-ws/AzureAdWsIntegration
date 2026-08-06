@@ -9,8 +9,11 @@ import com.ws.wsAgenticSecurityGateway.orchestration.model.CapabilityType;
 import com.ws.wsAgenticSecurityGateway.orchestration.model.Hop;
 import com.ws.wsAgenticSecurityGateway.orchestration.model.RequestContext;
 import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
+import com.ws.wsAgenticSecurityGateway.audit.error.GatewayErrorCode;
 import com.ws.wsAgenticSecurityGateway.protocol.a2a.wire.A2aRoleWire;
 import com.ws.wsAgenticSecurityGateway.security.TenantResolver;
+import com.ws.wsAgenticSecurityGateway.security.AgentAssertionVerifier;
+import com.ws.wsAgenticSecurityGateway.security.GatewayOAuth2Filter;
 import com.ws.wsAgenticSecurityGateway.security.workload.WorkloadIdentity;
 import com.ws.wsAgenticSecurityGateway.security.workload.WorkloadIdentitySource;
 import jakarta.servlet.http.HttpServletRequest;
@@ -48,17 +51,20 @@ public class A2aInboundController {
     private final A2aAgentCardService agentCardService;
     private final WorkloadIdentitySource workloadIdentitySource;
     private final TenantResolver tenantResolver;
+    private final AgentAssertionVerifier assertionVerifier;
     private final ObjectMapper objectMapper;
 
     public A2aInboundController(HopOrchestrator hopOrchestrator,
                                A2aAgentCardService agentCardService,
                                WorkloadIdentitySource workloadIdentitySource,
                                TenantResolver tenantResolver,
+                               AgentAssertionVerifier assertionVerifier,
                                ObjectMapper objectMapper) {
         this.hopOrchestrator = hopOrchestrator;
         this.agentCardService = agentCardService;
         this.workloadIdentitySource = workloadIdentitySource;
         this.tenantResolver = tenantResolver;
+        this.assertionVerifier = assertionVerifier;
         this.objectMapper = objectMapper;
     }
 
@@ -82,6 +88,27 @@ public class A2aInboundController {
             JsonNode envelope = objectMapper.readTree(body);
             JsonNode idNode = envelope.get("id");
             String method = envelope.path("method").asText("");
+
+            // Sender-constraint honor gate — symmetric with the MCP leg. An inbound OBO that carries a `cnf`
+            // is bound to ONE agent (its recipient); the presenter must prove that same identity with its own
+            // X-Agent-Assertion, or the hop is refused. Fail-safe: an OBO with no cnf (human root) is unaffected.
+            AgentAssertionVerifier.VerifiedAgent presenter = assertionVerifier.verify(request);
+            String presenterId = presenter != null ? presenter.workloadId() : null;
+            String boundWorkloadId = oboCnfWorkloadId(request);
+            if (boundWorkloadId != null && !boundWorkloadId.equals(presenterId)) {
+                log.warn("A2A rejected — sender-constraint: OBO bound to '{}' but presenter proved '{}'",
+                        boundWorkloadId, presenterId);
+                return jsonRpcError(idNode, GatewayErrorCode.SENDER_CONSTRAINT_VIOLATION.getCode(),
+                        "This delegation token is bound to agent '" + boundWorkloadId
+                                + "'. It must be presented with that agent's own credential (X-Agent-Assertion).");
+            }
+            if (presenter != null) {
+                // The delegated OBO carries no roles/groups; the calling agent's OWN verified assertion supplies
+                // them so role/group policies evaluate the caller. Set before the RequestContext is built below.
+                request.setAttribute(GatewayOAuth2Filter.ATTR_ALL_ROLES, presenter.roles());
+                request.setAttribute(GatewayOAuth2Filter.ATTR_REALM_ROLES, presenter.roles());
+                request.setAttribute(GatewayOAuth2Filter.ATTR_GROUPS, presenter.groups());
+            }
 
             if (!METHOD_MESSAGE_SEND.equals(method)) {
                 log.warn("A2A: unsupported method '{}'", method);
@@ -121,6 +148,22 @@ public class A2aInboundController {
         } finally {
             TenantContext.clear();
         }
+    }
+
+    /** The workload id a presented OBO is sender-bound to (its {@code cnf.workload_id}), or null if none. */
+    @SuppressWarnings("unchecked")
+    private String oboCnfWorkloadId(HttpServletRequest req) {
+        Object raw = req.getAttribute(GatewayOAuth2Filter.ATTR_RAW_CLAIMS);
+        if (raw instanceof Map<?, ?> claims) {
+            Object cnf = claims.get("cnf");
+            if (cnf instanceof Map<?, ?> c) {
+                Object wid = c.get("workload_id");
+                if (wid instanceof String s && !s.isBlank()) {
+                    return s;
+                }
+            }
+        }
+        return null;
     }
 
     private String jsonRpcResult(JsonNode id, String resultJson) throws Exception {

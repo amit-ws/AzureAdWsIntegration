@@ -32,6 +32,7 @@ public class CedarPolicyEngine {
 
         String resourceType;
         String resourceEntityId;
+        List<String> resourceEntityIds;   // resource in [ X::"a", X::"b" ] — any listed resource is allowed
 
         List<Condition> whenConditions = new ArrayList<>();
         List<Condition> unlessConditions = new ArrayList<>();
@@ -82,7 +83,11 @@ public class CedarPolicyEngine {
 
     private static final Pattern RESOURCE_IS = Pattern.compile("resource\\s+is\\s+(\\w+)");
 
-    private static final Pattern RESOURCE_EQ = Pattern.compile("resource\\s*==\\s*(Tool|Prompt|Resource)::\"([^\"]+)\"");
+    private static final Pattern RESOURCE_EQ = Pattern.compile("resource\\s*==\\s*(Tool|Prompt|Resource|Skill)::\"([^\"]+)\"");
+
+    // resource in [ Type::"a", Type::"b", ... ] — a set of allowed resources (any resource entity type).
+    private static final Pattern RESOURCE_IN_SET = Pattern.compile("resource\\s+in\\s+\\[([^\\]]+)\\]");
+    private static final Pattern RESOURCE_ITEM = Pattern.compile("(Tool|Prompt|Resource|Skill)::\"([^\"]+)\"");
 
     private static final Pattern PRINCIPAL_IN_GROUP = Pattern.compile("principal\\s+in\\s+AgentGroup::\"([^\"]+)\"");
 
@@ -90,7 +95,7 @@ public class CedarPolicyEngine {
 
     private static final Pattern COND_PRINCIPAL_EQ = Pattern.compile("principal\\s*==\\s*Agent::\"([^\"]+)\"");
 
-    private static final Pattern COND_RESOURCE_EQ = Pattern.compile("resource\\s*==\\s*(Tool|Prompt|Resource)::\"([^\"]+)\"");
+    private static final Pattern COND_RESOURCE_EQ = Pattern.compile("resource\\s*==\\s*(Tool|Prompt|Resource|Skill)::\"([^\"]+)\"");
 
     private static final Pattern ATTR_GTE = Pattern.compile("(context|principal|resource)\\.(\\w+)\\s*>=\\s*(-?\\d+)");
 
@@ -427,9 +432,20 @@ public class CedarPolicyEngine {
         }
 
         Matcher resourceEqMatch = RESOURCE_EQ.matcher(headClause);
+        Matcher resourceInSetMatch = RESOURCE_IN_SET.matcher(headClause);
         if (resourceEqMatch.find()) {
             pp.resourceType = resourceEqMatch.group(1);
             pp.resourceEntityId = resourceEqMatch.group(2);
+        } else if (resourceInSetMatch.find()) {
+            // resource in [ Type::"a", Type::"b", ... ] — allowed iff the request resource is one of the listed.
+            pp.resourceEntityIds = new ArrayList<>();
+            Matcher itemMatch = RESOURCE_ITEM.matcher(resourceInSetMatch.group(1));
+            while (itemMatch.find()) {
+                if (pp.resourceType == null) {
+                    pp.resourceType = itemMatch.group(1);   // homogeneous sets: type from the first entry
+                }
+                pp.resourceEntityIds.add(itemMatch.group(2));
+            }
         } else {
             Matcher resourceIsMatch = RESOURCE_IS.matcher(headClause);
             if (resourceIsMatch.find()) {
@@ -620,6 +636,7 @@ public class CedarPolicyEngine {
         Map<String, Object> principalAttrs = new HashMap<>();
         Map<String, Object> resourceAttrs = new HashMap<>();
         Map<String, Object> contextAttrs = new HashMap<>();
+        java.util.Set<String> principalGroups = new java.util.HashSet<>();
     }
 
     private EvalContext buildEvalContext(PolicyEvaluationRequest request) {
@@ -643,6 +660,12 @@ public class CedarPolicyEngine {
         ctx.principalAttrs.put("roles", joinValues(request.getAgentRoles()));
         ctx.principalAttrs.put("realmRoles", joinValues(request.getRealmRoles()));
         ctx.principalAttrs.put("clientRoles", joinValues(request.getClientRoles()));
+        // Group memberships (Keycloak groups, normalized) — the set backs `principal in AgentGroup::"..."`,
+        // and the space-joined attr backs `principal.groups.contains("...")` for attribute-style policies.
+        ctx.principalAttrs.put("groups", joinValues(request.getAgentGroups()));
+        if (request.getAgentGroups() != null) {
+            ctx.principalGroups.addAll(request.getAgentGroups());
+        }
 
         putIfNotNull(ctx.resourceAttrs, "name", request.getResourceName());
         putIfNotNull(ctx.resourceAttrs, "serverName", request.getServerName());
@@ -727,6 +750,10 @@ public class CedarPolicyEngine {
         if (policy.resourceEntityId != null && !policy.resourceEntityId.equals(ctx.resourceId)) {
             return false;
         }
+        if (policy.resourceEntityIds != null && !policy.resourceEntityIds.isEmpty()
+                && policy.resourceEntityIds.stream().noneMatch(r -> r.equals(ctx.resourceId))) {
+            return false;
+        }
 
         for (Condition cond : policy.whenConditions) {
             if (!evaluateCondition(cond, ctx)) {
@@ -751,6 +778,8 @@ public class CedarPolicyEngine {
                 && policy.actionIds.stream().noneMatch(a -> a.equalsIgnoreCase(ctx.action))) return false;
         if (policy.resourceType != null && !policy.resourceType.equalsIgnoreCase(ctx.resourceType)) return false;
         if (policy.resourceEntityId != null && !policy.resourceEntityId.equals(ctx.resourceId)) return false;
+        if (policy.resourceEntityIds != null && !policy.resourceEntityIds.isEmpty()
+                && policy.resourceEntityIds.stream().noneMatch(r -> r.equals(ctx.resourceId))) return false;
         for (Condition cond : policy.whenConditions) {
             if (!evaluateCondition(cond, ctx)) return false;
         }
@@ -815,8 +844,8 @@ public class CedarPolicyEngine {
     private boolean evaluateCondition(Condition cond, EvalContext ctx) {
 
         if (cond.operator == Condition.Operator.IN_GROUP) {
-            Object status = ctx.principalAttrs.get("approvalStatus");
-            return status != null && cond.field.equals(String.valueOf(status));
+            // principal in AgentGroup::"<name>" — true iff the caller is a member of that group.
+            return ctx.principalGroups.contains(cond.field);
         }
 
         if (cond.operator == Condition.Operator.IN_SERVER) {

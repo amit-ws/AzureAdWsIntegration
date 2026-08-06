@@ -65,6 +65,9 @@ public final class RequestAttributeKeys {
     /** Client-scoped roles. */
     public static final String CLIENT_ROLES = "clientRoles";
 
+    /** The caller's group memberships (Keycloak groups, leading '/' stripped) — for AgentGroup policies. */
+    public static final String GROUPS = "groups";
+
     /** Custom JWT claims surfaced for policy evaluation. */
     public static final String CUSTOM_CLAIMS = "customClaims";
 }

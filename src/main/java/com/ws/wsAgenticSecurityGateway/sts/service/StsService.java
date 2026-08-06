@@ -83,6 +83,16 @@ public class StsService {
             claims.claim("act", actClaim); // RFC 8693 nested actor claim (standards interop)
         }
 
+        // Sender-constraint (cnf): bind an agent-to-agent OBO to its RECIPIENT — the target agent (the token's
+        // audience) that receives it and presents it back on its next hop. At honor time the presenter must
+        // prove that same identity (its X-Agent-Assertion), so a stolen/leaked bearer OBO is useless. Only A2A
+        // hops hand a token to an agent that presents it back; an MCP-scoped token is spent by the gateway on an
+        // external server that never presents it, so it carries no cnf.
+        if (req.scope() != null && req.scope().startsWith("a2a:")
+                && req.targetServer() != null && !req.targetServer().isBlank()) {
+            claims.claim("cnf", Map.of("workload_id", req.targetServer()));
+        }
+
         try {
             SignedJWT jwt = new SignedJWT(
                     new JWSHeader.Builder(JWSAlgorithm.RS256)
