@@ -43,12 +43,23 @@ public class AuditQueryService {
                                         String userIdentity, String sourceIp,
                                         String search,
                                         LocalDateTime fromDate, LocalDateTime toDate,
+                                        String protocol, String capabilityType,
                                         PageRequest pageRequest) {
         var spec = GatewayAuditLogSpecification.build(
                 module, eventType, status, severity,
                 serverName, capabilityName, correlationId, traceId, sessionId,
                 agentName, tokenType, userIdentity, sourceIp,
                 search, fromDate, toDate, TenantContext.get());
+        // protocol + capabilityType columns exist on the row (A2A vs MCP, SKILL vs TOOL) — filter
+        // case-insensitively so ?protocol=a2a and ?protocol=A2A both work.
+        if (protocol != null && !protocol.isBlank()) {
+            String p = protocol.trim().toUpperCase();
+            spec = spec.and((root, q, cb) -> cb.equal(cb.upper(root.get("protocol")), p));
+        }
+        if (capabilityType != null && !capabilityType.isBlank()) {
+            String ct = capabilityType.trim().toUpperCase();
+            spec = spec.and((root, q, cb) -> cb.equal(cb.upper(root.get("capabilityType")), ct));
+        }
         Page<GatewayAuditLog> page = auditRepo.findAll(spec, pageRequest);
         flagOboReceipts(page.getContent());
         return page;

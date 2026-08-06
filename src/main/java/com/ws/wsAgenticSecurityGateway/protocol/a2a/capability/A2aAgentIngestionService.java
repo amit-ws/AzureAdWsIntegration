@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Ingests downstream A2A agents into the gateway. Two entry points serve the two sides of the AgentSource
@@ -83,6 +84,25 @@ public class A2aAgentIngestionService {
     public List<A2aAgentEntity> list() {
         String tenant = TenantContext.get();
         return tenant != null && !tenant.isBlank() ? repository.findByWsTenantName(tenant) : repository.findAll();
+    }
+
+    /** A single registered agent for the current tenant, by gateway name. */
+    public Optional<A2aAgentEntity> find(String agentName) {
+        return repository.findByNameAndWsTenantName(agentName, TenantContext.get());
+    }
+
+    /**
+     * Best-effort fetch of an agent's current Agent Card — empty if the agent is unreachable or the card
+     * cannot be parsed. Used by the admin detail/health reads, where a down agent is a reported state,
+     * not an error.
+     */
+    public Optional<AgentCard> tryFetchCard(String baseUrl) {
+        try {
+            return Optional.of(resolveCard(baseUrl));
+        } catch (Exception e) {
+            log.debug("A2A card fetch failed for {}: {}", baseUrl, e.getMessage());
+            return Optional.empty();
+        }
     }
 
     /**

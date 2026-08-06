@@ -46,6 +46,8 @@ public class AuditController {
             @RequestParam(required = false) String tokenType,
             @RequestParam(required = false) String userIdentity,
             @RequestParam(required = false) String sourceIp,
+            @RequestParam(required = false) String protocol,
+            @RequestParam(required = false) String capabilityType,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fromDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime toDate,
@@ -70,7 +72,7 @@ public class AuditController {
                 moduleEnum, eventTypeEnum, statusEnum, severityEnum,
                 serverName, capabilityName, correlationId, traceId, sessionId,
                 agentName, tokenType, userIdentity, sourceIp,
-                search, fromDate, toDate, pageRequest);
+                search, fromDate, toDate, protocol, capabilityType, pageRequest);
         return ResponseEntity.ok(results);
     }
 

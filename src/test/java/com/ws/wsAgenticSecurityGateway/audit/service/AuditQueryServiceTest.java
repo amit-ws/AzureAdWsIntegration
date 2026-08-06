@@ -69,7 +69,7 @@ class AuditQueryServiceTest {
 
         Page<GatewayAuditLog> result = service.queryLogs(
                 null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-                null, null, PageRequest.of(0, 20));
+                null, null, null, null, PageRequest.of(0, 20));
 
         // every event of the minted leg is flagged (not just the mint row); the non-minting leg is not
         assertThat(result.getContent()).filteredOn(r -> "leg-A".equals(r.getCorrelationId()))

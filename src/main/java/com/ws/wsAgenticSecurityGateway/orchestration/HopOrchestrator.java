@@ -124,6 +124,7 @@ public class HopOrchestrator {
         } finally {
             MDC.remove("traceId");
             MDC.remove("correlationId");
+            MDC.remove("protocol");
         }
     }
 
@@ -292,6 +293,7 @@ public class HopOrchestrator {
         }
 
         hop.setProtocol(descriptor.getProtocol());
+        MDC.put("protocol", hop.protocol()); // stamp the leg's protocol so audit rows record A2A vs MCP
         ProtocolAdapter adapter = resolveAdapter(hop.protocol());
 
         if (!adapter.isTargetConnected(serverName)) {
@@ -560,6 +562,7 @@ public class HopOrchestrator {
         }
 
         hop.setProtocol(descriptor.getProtocol());
+        MDC.put("protocol", hop.protocol()); // stamp the leg's protocol so audit rows record A2A vs MCP
         ProtocolAdapter adapter = resolveAdapter(hop.protocol());
 
         if (!adapter.isTargetConnected(serverName)) {
@@ -834,6 +837,7 @@ public class HopOrchestrator {
         }
 
         hop.setProtocol(descriptor.getProtocol());
+        MDC.put("protocol", hop.protocol()); // stamp the leg's protocol so audit rows record A2A vs MCP
         ProtocolAdapter adapter = resolveAdapter(hop.protocol());
 
         if (!adapter.isTargetConnected(serverName)) {
@@ -1089,6 +1093,7 @@ public class HopOrchestrator {
         }
 
         hop.setProtocol(descriptor.getProtocol());
+        MDC.put("protocol", hop.protocol()); // stamp the leg's protocol so audit rows record A2A vs MCP
         ProtocolAdapter adapter = resolveAdapter(hop.protocol());
 
         if (!adapter.isTargetConnected(serverName)) {

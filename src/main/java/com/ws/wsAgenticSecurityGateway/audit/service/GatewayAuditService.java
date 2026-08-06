@@ -1919,6 +1919,11 @@ public class GatewayAuditService {
                                 auditLog.setWsTenantName(tenant != null ? tenant : "system");
                         }
 
+                        // Stamp the leg's protocol (A2A vs MCP) from MDC so the dashboard can filter/badge by protocol.
+                        String legProtocol = org.slf4j.MDC.get("protocol");
+                        if (legProtocol != null && !legProtocol.isBlank()) {
+                        	auditLog.setProtocol(legProtocol);
+                        }
                         repository.save(auditLog);
                         log.debug("Audit [{}] {} — {} | server={} capability={}",
                                         auditLog.getModule(),

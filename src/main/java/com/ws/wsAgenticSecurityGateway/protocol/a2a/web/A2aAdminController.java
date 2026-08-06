@@ -1,7 +1,12 @@
 package com.ws.wsAgenticSecurityGateway.protocol.a2a.web;
 
+import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor;
+import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor.CapabilityType;
+import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
 import com.ws.wsAgenticSecurityGateway.protocol.a2a.capability.A2aAgentIngestionService;
+import com.ws.wsAgenticSecurityGateway.protocol.a2a.capability.entity.A2aAgentEntity;
 import lombok.extern.slf4j.Slf4j;
+import org.a2aproject.sdk.spec.AgentCard;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -14,25 +19,32 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Admin API for the downstream A2A agents the gateway fronts: ingest an agent by URL (fetch its Agent Card,
- * register its skills), list the registered agents, and remove one. Mirrors the MCP server-config admin API's
- * shape and, like it, sits behind the permissive admin plane (tenant via the {@code X-WS-Tenant} header).
+ * register its skills), list agents, read one agent's detail (card + skills) or health, list all registered
+ * skills, and remove an agent. Mirrors the MCP server-config admin API's shape and, like it, sits behind the
+ * permissive admin plane (tenant via the {@code X-WS-Tenant} header).
  */
 @RestController
-@RequestMapping("/api/admin/a2a/agents")
+@RequestMapping("/api/admin/a2a")
 @Slf4j
 public class A2aAdminController {
 
     private final A2aAgentIngestionService ingestionService;
+    private final CapabilityRegistryService registryService;
 
-    public A2aAdminController(A2aAgentIngestionService ingestionService) {
+    public A2aAdminController(A2aAgentIngestionService ingestionService,
+                             CapabilityRegistryService registryService) {
         this.ingestionService = ingestionService;
+        this.registryService = registryService;
     }
 
     /** Ingest (or refresh) a downstream agent. Body: {@code {name, baseUrl}}. */
-    @PostMapping
+    @PostMapping("/agents")
     public ResponseEntity<Map<String, Object>> ingest(@RequestBody Map<String, Object> body) {
         String name = str(body.get("name"));
         String baseUrl = str(body.get("baseUrl"));
@@ -54,8 +66,8 @@ public class A2aAdminController {
         }
     }
 
-    /** The registered downstream agents for the tenant. */
-    @GetMapping
+    /** The registered downstream agents for the tenant, each with its skill count. */
+    @GetMapping("/agents")
     public ResponseEntity<List<Map<String, Object>>> list() {
         List<Map<String, Object>> out = ingestionService.list().stream()
                 .map(a -> {
@@ -63,18 +75,86 @@ public class A2aAdminController {
                     m.put("name", a.getName());
                     m.put("baseUrl", a.getBaseUrl());
                     m.put("createdAt", a.getCreatedAt());
+                    m.put("skillCount", skillsOf(a.getName()).size());
                     return m;
                 })
                 .toList();
         return ResponseEntity.ok(out);
     }
 
+    /** One agent's detail: its persisted config, live card name/reachability, and its registered skills. */
+    @GetMapping("/agents/{name}")
+    public ResponseEntity<Map<String, Object>> detail(@PathVariable String name) {
+        log.info("GET /api/admin/a2a/agents/{}", name);
+        Optional<A2aAgentEntity> agent = ingestionService.find(name);
+        if (agent.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        A2aAgentEntity a = agent.get();
+        Optional<AgentCard> card = ingestionService.tryFetchCard(a.getBaseUrl());
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("name", a.getName());
+        out.put("baseUrl", a.getBaseUrl());
+        out.put("createdAt", a.getCreatedAt());
+        out.put("tenant", a.getWsTenantName());
+        out.put("cardName", card.map(AgentCard::name).orElse(null));
+        out.put("reachable", card.isPresent());
+        out.put("skills", skillsOf(name).stream().map(A2aAdminController::skillView).toList());
+        return ResponseEntity.ok(out);
+    }
+
+    /** Reachability check: can the agent's card be fetched right now? */
+    @GetMapping("/agents/{name}/health")
+    public ResponseEntity<Map<String, Object>> health(@PathVariable String name) {
+        Optional<A2aAgentEntity> agent = ingestionService.find(name);
+        if (agent.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        Optional<AgentCard> card = ingestionService.tryFetchCard(agent.get().getBaseUrl());
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("reachable", card.isPresent());
+        out.put("cardName", card.map(AgentCard::name).orElse(null));
+        return ResponseEntity.ok(out);
+    }
+
+    /** All registered SKILL capabilities for the tenant's agents. */
+    @GetMapping("/skills")
+    public ResponseEntity<List<Map<String, Object>>> skills() {
+        Set<String> tenantAgents = ingestionService.list().stream()
+                .map(A2aAgentEntity::getName)
+                .collect(Collectors.toSet());
+        List<Map<String, Object>> out = registryService.getByType(CapabilityType.SKILL).stream()
+                .filter(d -> tenantAgents.contains(d.getServerConfigName()))
+                .map(A2aAdminController::skillView)
+                .toList();
+        return ResponseEntity.ok(out);
+    }
+
     /** Remove a downstream agent (drops its skills, endpoint, and persisted config). */
-    @DeleteMapping("/{name}")
+    @DeleteMapping("/agents/{name}")
     public ResponseEntity<Map<String, Object>> remove(@PathVariable String name) {
         log.info("DELETE /api/admin/a2a/agents/{}", name);
         ingestionService.remove(name);
         return ResponseEntity.ok(Map.of("removed", true, "agentName", name));
+    }
+
+    /** The SKILL capabilities registered for one agent (serverConfigName == agent name). */
+    private List<CapabilityDescriptor> skillsOf(String agentName) {
+        return registryService.getCapabilitiesByServer(agentName).stream()
+                .filter(d -> d.getType() == CapabilityType.SKILL)
+                .toList();
+    }
+
+    /** A skill capability as a dashboard-friendly map. */
+    private static Map<String, Object> skillView(CapabilityDescriptor d) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("publicName", d.getPublicName());      // "<agent>.<skill>"
+        m.put("skillId", d.getOriginalName());        // the raw skill id
+        m.put("agent", d.getServerConfigName());
+        m.put("description", d.getDescription());
+        m.put("protocol", d.getProtocol());           // "A2A"
+        return m;
     }
 
     private static String str(Object value) {
