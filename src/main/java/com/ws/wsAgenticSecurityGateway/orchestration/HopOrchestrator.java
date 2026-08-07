@@ -463,6 +463,11 @@ public class HopOrchestrator {
         }
 
         UUID agentIdForAccess = agentRegistryService.getAgentIdForSession(sessionId);
+        if (agentIdForAccess == null && clientName != null && !"unknown".equals(clientName)) {
+            // A2A is session-less, so there is no session to resolve the agent from — resolve by the caller's
+            // verified identity instead, so skill-exposure capability profiles (#6) are enforced here too.
+            agentIdForAccess = agentRegistryService.resolveAgentIdByName(clientName);
+        }
         if (agentIdForAccess != null
                 && !capabilityFilterService.isCapabilityAllowed(agentIdForAccess, publicName, "SKILL")) {
             log.warn("[{}] CAPABILITY ACCESS DENIED: session={}, skill={}, agent={}",

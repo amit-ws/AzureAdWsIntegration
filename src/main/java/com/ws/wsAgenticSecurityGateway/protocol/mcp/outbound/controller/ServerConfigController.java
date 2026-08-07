@@ -146,6 +146,54 @@ public class ServerConfigController {
         }
     }
 
+    @PostMapping("/test")
+    public ResponseEntity<?> testUnsavedConfig(@Valid @RequestBody ServerConfigRequest request) {
+        log.info("POST /api/admin/mcp-servers/test — probing '{}' ({})", request.getServerName(), request.getUrl());
+        try {
+            return ResponseEntity.ok(serverConfigService.testConnection(request));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(errorMap(e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error testing server config '{}': {}", request.getServerName(), e.getMessage());
+            return ResponseEntity.internalServerError().body(errorMap(e.getMessage()));
+        }
+    }
+
+    @PostMapping("/{name}/test")
+    public ResponseEntity<?> testSavedConfig(@PathVariable String name) {
+        log.info("POST /api/admin/mcp-servers/{}/test", name);
+        try {
+            return ResponseEntity.ok(serverConfigService.testConnection(name));
+        } catch (NoSuchElementException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorMap(e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error testing server '{}': {}", name, e.getMessage());
+            return ResponseEntity.internalServerError().body(errorMap(e.getMessage()));
+        }
+    }
+
+    @PostMapping("/{name}/enable")
+    public ResponseEntity<?> enableServer(@PathVariable String name) {
+        return toggleEnabled(name, true);
+    }
+
+    @PostMapping("/{name}/disable")
+    public ResponseEntity<?> disableServer(@PathVariable String name) {
+        return toggleEnabled(name, false);
+    }
+
+    private ResponseEntity<?> toggleEnabled(String name, boolean enabled) {
+        log.info("POST /api/admin/mcp-servers/{}/{}", name, enabled ? "enable" : "disable");
+        try {
+            return ResponseEntity.ok(serverConfigService.setEnabled(name, enabled));
+        } catch (NoSuchElementException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorMap(e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error toggling server '{}' enabled={}: {}", name, enabled, e.getMessage());
+            return ResponseEntity.internalServerError().body(errorMap(e.getMessage()));
+        }
+    }
+
     private Map<String, Object> errorMap(String message) {
         Map<String, Object> error = new LinkedHashMap<>();
         error.put("status", "error");

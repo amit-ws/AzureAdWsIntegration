@@ -206,6 +206,59 @@ public class McpSessionManager {
         }
     }
 
+    /**
+     * Dry-run connectivity probe for a candidate MCP server config used by the admin "Test Connection" flow.
+     * Builds a transport + client, performs the MCP initialize handshake, counts advertised capabilities, then
+     * tears everything down — WITHOUT storing a session, registering capabilities, persisting a session row, or
+     * emitting connect audit events. This is deliberately NOT {@code synchronized} (it touches no shared state)
+     * so a slow probe never blocks real connect/disconnect traffic. Throws with a human-readable message on any
+     * failure (validation, handshake, or I/O); the caller turns that into a test result.
+     */
+    public ProbeResult probe(McpServerConfig config) throws Exception {
+        config.validate();
+        HttpMcpTransport.clearRequestOverrideHeaders();
+        long start = System.currentTimeMillis();
+
+        HttpMcpTransport transport = new HttpMcpTransport(
+                config.getUrl(), config.getHeaders(), config.getTimeout());
+        McpSyncClient client = McpClient.sync(transport)
+                .clientInfo(new McpSchema.Implementation("ws-agentic-gateway-probe", "1.0.0"))
+                .capabilities(new McpSchema.ClientCapabilities(Map.of(), null, null, null))
+                .build();
+        try {
+            client.initialize();
+            if (!client.isInitialized()) {
+                throw new RuntimeException("MCP initialize handshake did not complete");
+            }
+
+            McpSchema.ServerCapabilities caps = client.getServerCapabilities();
+            int tools = (caps != null && caps.tools() != null) ? client.listTools().tools().size() : 0;
+            int resources = (caps != null && caps.resources() != null) ? client.listResources().resources().size() : 0;
+            int prompts = (caps != null && caps.prompts() != null) ? client.listPrompts().prompts().size() : 0;
+
+            long latency = System.currentTimeMillis() - start;
+            McpSchema.Implementation info = client.getServerInfo();
+            log.info("Probe OK for {} — {} tool(s), {} resource(s), {} prompt(s) in {}ms",
+                    config.getUrl(), tools, resources, prompts, latency);
+            return new ProbeResult(
+                    latency,
+                    info != null ? info.name() : null,
+                    info != null ? info.version() : null,
+                    tools, resources, prompts);
+        } finally {
+            try {
+                transport.closeGracefully().block();
+            } catch (Exception ignore) {
+                // best-effort teardown; the probe result is already computed
+            }
+            HttpMcpTransport.clearRequestOverrideHeaders();
+        }
+    }
+
+    /** Successful {@link #probe} outcome — server identity + advertised capability counts + handshake latency. */
+    public record ProbeResult(long latencyMs, String serverInfoName, String serverInfoVersion,
+                              int toolCount, int resourceCount, int promptCount) {}
+
     private void fetchAndCacheTools(String serverName, McpSession session) {
         try {
             McpSyncClient client = session.getClient();

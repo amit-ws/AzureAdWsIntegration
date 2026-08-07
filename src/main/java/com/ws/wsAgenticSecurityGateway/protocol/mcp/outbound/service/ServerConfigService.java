@@ -9,6 +9,7 @@ import com.ws.wsAgenticSecurityGateway.protocol.mcp.outbound.config.McpSession;
 import com.ws.wsAgenticSecurityGateway.protocol.mcp.outbound.config.McpSessionManager;
 import com.ws.wsAgenticSecurityGateway.protocol.mcp.outbound.dto.ServerConfigRequest;
 import com.ws.wsAgenticSecurityGateway.protocol.mcp.outbound.dto.ServerConfigResponse;
+import com.ws.wsAgenticSecurityGateway.protocol.mcp.outbound.dto.ServerConfigTestResponse;
 import com.ws.wsAgenticSecurityGateway.protocol.mcp.outbound.entity.GatewayServerConfigEntity;
 import com.ws.wsAgenticSecurityGateway.protocol.mcp.outbound.repository.GatewayServerConfigRepository;
 import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
@@ -220,6 +221,115 @@ public class ServerConfigService {
     @Transactional(readOnly = true)
     public List<GatewayServerConfigEntity> getStartupConfigs() {
         return configRepository.findByEnabledTrueAndAutoConnectTrue();
+    }
+
+    /**
+     * Dry-run "Test Connection" for an UNSAVED config (the add/edit form). Probes the given URL + headers
+     * without persisting anything. Env-var placeholders are resolved; a still-masked secret is rejected up front
+     * (testing with a redacted value is meaningless — the caller should re-enter it or test the saved server).
+     * Not {@code @Transactional} — it does no DB work and must not hold a connection across the network probe.
+     */
+    public ServerConfigTestResponse testConnection(ServerConfigRequest request) {
+        Map<String, String> headers = resolveEnvVars(request.getHeaders());
+        assertNoMaskedSecret(headers);
+
+        McpServerConfig cfg = new McpServerConfig();
+        cfg.setType(request.getType() != null ? request.getType() : "http");
+        cfg.setUrl(request.getUrl());
+        cfg.setHeaders(headers);
+        cfg.setConfig(request.getServerConfig());
+        cfg.setTimeout(request.getTimeoutSeconds() != null ? request.getTimeoutSeconds() : 30);
+        return runProbe(request.getServerName(), request.getUrl(), cfg);
+    }
+
+    /**
+     * Dry-run "Test Connection" for a SAVED config (re-validate an existing server). Loads the tenant-scoped
+     * config, decrypts its stored secret headers + resolves env vars, and probes. Reads the entity in its own
+     * short transaction, then probes outside any transaction.
+     */
+    public ServerConfigTestResponse testConnection(String serverName) {
+        GatewayServerConfigEntity entity = loadForTenant(serverName);
+        Map<String, String> resolvedHeaders = buildRuntimeHeaders(jsonNodeToStringMap(entity.getHeaders()));
+
+        McpServerConfig cfg = new McpServerConfig();
+        cfg.setType(entity.getType());
+        cfg.setUrl(entity.getUrl());
+        cfg.setHeaders(resolvedHeaders);
+        cfg.setConfig(jsonNodeToObjectMap(entity.getServerConfig()));
+        cfg.setTimeout(entity.getTimeoutSeconds());
+        return runProbe(serverName, entity.getUrl(), cfg);
+    }
+
+    /**
+     * Flip a server's {@code enabled} flag without a full edit. Disabling a currently-connected server also
+     * disconnects it (a disabled server must not keep a live session); enabling does NOT auto-connect — the
+     * admin drives the explicit connect. No-op if already in the requested state.
+     */
+    @Transactional
+    public ServerConfigResponse setEnabled(String serverName, boolean enabled) {
+        GatewayServerConfigEntity entity = loadForTenant(serverName);
+
+        if (Boolean.valueOf(enabled).equals(entity.getEnabled())) {
+            return toResponse(entity);
+        }
+
+        if (!enabled && sessionManager.isConnected(serverName)) {
+            try {
+                sessionManager.disconnect(serverName);
+                log.info("Server '{}' disconnected because it was disabled", serverName);
+            } catch (Exception e) {
+                log.warn("Error disconnecting '{}' while disabling: {}", serverName, e.getMessage());
+            }
+        }
+
+        entity.setEnabled(enabled);
+        entity = configRepository.save(entity);
+        auditService.auditServerConfigUpdated(serverName, entity.getUrl());
+        log.info("Server config '{}' {}", serverName, enabled ? "enabled" : "disabled");
+        return toResponse(entity);
+    }
+
+    private GatewayServerConfigEntity loadForTenant(String serverName) {
+        return configRepository.findByServerNameAndWsTenantName(serverName, TenantContext.get())
+                .orElseThrow(() -> new NoSuchElementException(
+                        "Server config '" + serverName + "' not found"));
+    }
+
+    private ServerConfigTestResponse runProbe(String serverName, String url, McpServerConfig cfg) {
+        try {
+            McpSessionManager.ProbeResult r = sessionManager.probe(cfg);
+            return ServerConfigTestResponse.builder()
+                    .ok(true)
+                    .serverName(serverName)
+                    .url(url)
+                    .latencyMs(r.latencyMs())
+                    .serverInfoName(r.serverInfoName())
+                    .serverInfoVersion(r.serverInfoVersion())
+                    .toolCount(r.toolCount())
+                    .resourceCount(r.resourceCount())
+                    .promptCount(r.promptCount())
+                    .build();
+        } catch (Exception e) {
+            String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            log.info("Test-connection failed for '{}' ({}): {}", serverName, url, msg);
+            return ServerConfigTestResponse.builder()
+                    .ok(false)
+                    .serverName(serverName)
+                    .url(url)
+                    .error(msg)
+                    .build();
+        }
+    }
+
+    private void assertNoMaskedSecret(Map<String, String> headers) {
+        if (headers == null) return;
+        for (Map.Entry<String, String> entry : headers.entrySet()) {
+            if (isMaskedPlaceholder(entry.getValue())) {
+                throw new IllegalArgumentException(
+                        "Header '" + entry.getKey() + "' still holds a masked secret. Re-enter its real value to "
+                                + "test, or use Test on the saved server.");
+            }
+        }
     }
 
     public void connectFromConfig(GatewayServerConfigEntity entity) {

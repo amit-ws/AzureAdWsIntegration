@@ -4,6 +4,7 @@ import com.ws.wsAgenticSecurityGateway.protocol.a2a.capability.A2aAgentIngestion
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -30,8 +31,16 @@ public class AgentSourceReconciler {
         this.ingestionService = ingestionService;
     }
 
-    /** Reconcile every source once the context is ready (all beans, DB, and transport wiring are up). */
+    /**
+     * Reconcile every source once the context is ready (all beans, DB, and transport wiring are up).
+     *
+     * <p>{@code @Order(10)} runs this before {@code AgentCapabilityFilterService.warmCache()} ({@code @Order(100)}),
+     * so a downstream agent's skills are registered in the capability registry <em>before</em> the filter cache
+     * resolves each agent's skill-exposure profile — otherwise the skill sets would warm empty and every A2A
+     * skill invocation would fail-closed after a restart.
+     */
     @EventListener(ApplicationReadyEvent.class)
+    @Order(10)
     public void reconcileOnStartup() {
         int activated = reconcile();
         if (activated > 0) {

@@ -497,6 +497,22 @@ public class AgentRegistryService {
                 .orElse("unknown");
     }
 
+    /**
+     * The agent id for a verified agent NAME in the current tenant, or null. Used by the session-less A2A
+     * path so skill capability profiles (#6) can be enforced there — MCP resolves the id from its session,
+     * but A2A has none, so we resolve it from the caller's verified identity instead.
+     */
+    public UUID resolveAgentIdByName(String agentName) {
+        if (agentName == null || agentName.isBlank()) {
+            return null;
+        }
+        String tenant = TenantContext.get();
+        List<GatewayAgentEntity> agents = (tenant != null && !tenant.isBlank())
+                ? agentRepository.findByAgentNameAndWsTenantName(agentName, tenant)
+                : agentRepository.findByAgentName(agentName);
+        return agents.isEmpty() ? null : agents.get(0).getId();
+    }
+
     public List<GatewayAgentEntity> getAllAgents() {
         return agentRepository.findAllByWsTenantName(TenantContext.get());
     }

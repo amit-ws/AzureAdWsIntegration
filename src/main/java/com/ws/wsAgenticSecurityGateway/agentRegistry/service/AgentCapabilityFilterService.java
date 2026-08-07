@@ -11,6 +11,7 @@ import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegi
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,7 +41,12 @@ public class AgentCapabilityFilterService {
         this.agentRegistryService = agentRegistryService;
     }
 
+    // @Order(100) runs this AFTER AgentSourceReconciler (@Order(10)) has registered downstream A2A skills into
+    // the capability registry, so SKILL-exposure profiles resolve against a populated registry rather than
+    // warming empty and fail-closing every A2A skill hop. MCP tools register at @PostConstruct (earlier phase),
+    // so TOOL profiles are already safe regardless of this ordering.
     @EventListener(ApplicationReadyEvent.class)
+    @Order(100)
     @Transactional(readOnly = true)
     public void warmCache() {
  log.info("CAPABILITY FILTER — Warming cache from database");
@@ -65,8 +71,9 @@ public class AgentCapabilityFilterService {
             int tools = byType.getOrDefault("TOOL", Set.of()).size();
             int prompts = byType.getOrDefault("PROMPT", Set.of()).size();
             int resources = byType.getOrDefault("RESOURCE", Set.of()).size();
-            log.info("- Agent {}: {} tools, {} prompts, {} resources",
-                    entry.getKey(), tools, prompts, resources);
+            int skills = byType.getOrDefault("SKILL", Set.of()).size();
+            log.info("- Agent {}: {} tools, {} prompts, {} resources, {} skills",
+                    entry.getKey(), tools, prompts, resources, skills);
         }
 
     }
