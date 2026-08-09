@@ -2,6 +2,7 @@ package com.ws.wsAgenticSecurityGateway.sts.service;
 
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.sts.model.ActChain;
+import com.ws.wsAgenticSecurityGateway.sts.model.OboInvariants;
 import com.ws.wsAgenticSecurityGateway.sts.model.Principal;
 import org.springframework.stereotype.Component;
 
@@ -50,7 +51,16 @@ public class ActChainBuilder {
         if (!inboundChain.isEmpty()) {
             List<Principal> extended = new ArrayList<>(inboundChain.principals());
             appendActor(extended, agentId, clientId, tokenValidated);
-            return new ActChain(extended);
+            ActChain grown = new ActChain(extended);
+            // Hardening 10: auto-check the delegation-chain integrity invariants at the point of growth. A hop may
+            // only APPEND this agent to the verified inbound lineage — never rewrite its prefix or change the root.
+            // Fail-closed: a structural break is a corrupted/forged chain and must not be forwarded.
+            OboInvariants.Result inv = OboInvariants.check(inboundChain, grown, null);
+            if (!inv.structurallyValid()) {
+                throw new OboIntegrityException(
+                        "OBO delegation-chain integrity violated extending the lineage: " + inv.violations());
+            }
+            return grown;
         }
 
         List<Principal> chain = new ArrayList<>();

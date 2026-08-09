@@ -11,6 +11,7 @@ import com.nimbusds.jwt.SignedJWT;
 import com.ws.wsAgenticSecurityGateway.sts.model.ActChain;
 import com.ws.wsAgenticSecurityGateway.sts.model.MintRequest;
 import com.ws.wsAgenticSecurityGateway.sts.model.MintedToken;
+import com.ws.wsAgenticSecurityGateway.sts.model.OboInvariants;
 import com.ws.wsAgenticSecurityGateway.sts.model.Principal;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -62,6 +63,15 @@ public class StsService {
         ActChain chain = req.actChain();
         Principal root = chain != null ? chain.root() : null;
 
+        // Hardening 10: codified OBO delegation-chain invariants. The result is embedded in the token below
+        // (obo_invariants claim) so the audit receipt is faithful to the token it represents. Fail-closed when a
+        // present chain is structurally corrupt (roles out of order) — such a token must never be minted.
+        // all-verified / scope stay reported (the PDP lineage guardrails own the deny for an unverified chain).
+        OboInvariants.Result invariants = OboInvariants.check(null, chain, req.scope());
+        if (chain != null && !chain.isEmpty() && !invariants.structurallyValid()) {
+            throw new StsMintException("OBO token invariants violated (fail-closed): " + invariants.violations());
+        }
+
         String issuer = issuerBase + "/sts/" + req.tenant();
         String subject = root != null ? root.id() : "unknown";
 
@@ -77,7 +87,8 @@ public class StsService {
                 .claim("scope", req.scope())
                 .claim("trace_id", req.traceId())
                 .claim("corr_id", req.correlationId())
-                .claim("ws_tenant", req.tenant());
+                .claim("ws_tenant", req.tenant())
+                .claim("obo_invariants", invariants.toClaim());
         Map<String, Object> actClaim = chain != null ? chain.toActClaim() : null;
         if (actClaim != null) {
             claims.claim("act", actClaim); // RFC 8693 nested actor claim (standards interop)
