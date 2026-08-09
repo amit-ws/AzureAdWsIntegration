@@ -2,9 +2,10 @@ package com.ws.wsAgenticSecurityGateway.protocol.a2a.web;
 
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor.CapabilityType;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
 import com.ws.wsAgenticSecurityGateway.protocol.a2a.capability.A2aAgentIngestionService;
-import com.ws.wsAgenticSecurityGateway.protocol.a2a.capability.entity.A2aAgentEntity;
 import lombok.extern.slf4j.Slf4j;
 import org.a2aproject.sdk.spec.AgentCard;
 import org.springframework.http.ResponseEntity;
@@ -36,11 +37,14 @@ public class A2aAdminController {
 
     private final A2aAgentIngestionService ingestionService;
     private final CapabilityRegistryService registryService;
+    private final AgentRegistryService agentRegistryService;
 
     public A2aAdminController(A2aAgentIngestionService ingestionService,
-                             CapabilityRegistryService registryService) {
+                             CapabilityRegistryService registryService,
+                             AgentRegistryService agentRegistryService) {
         this.ingestionService = ingestionService;
         this.registryService = registryService;
+        this.agentRegistryService = agentRegistryService;
     }
 
     /** Ingest (or refresh) a downstream agent. Body: {@code {name, baseUrl}}. */
@@ -69,13 +73,13 @@ public class A2aAdminController {
     /** The registered downstream agents for the tenant, each with its skill count. */
     @GetMapping("/agents")
     public ResponseEntity<List<Map<String, Object>>> list() {
-        List<Map<String, Object>> out = ingestionService.list().stream()
+        List<Map<String, Object>> out = agentRegistryService.getA2aAgents().stream()
                 .map(a -> {
                     Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("name", a.getName());
-                    m.put("baseUrl", a.getBaseUrl());
-                    m.put("createdAt", a.getCreatedAt());
-                    m.put("skillCount", skillsOf(a.getName()).size());
+                    m.put("name", a.getAgentName());
+                    m.put("baseUrl", a.getA2aBaseUrl());
+                    m.put("createdAt", a.getFirstSeenAt());
+                    m.put("skillCount", skillsOf(a.getAgentName()).size());
                     return m;
                 })
                 .toList();
@@ -86,17 +90,17 @@ public class A2aAdminController {
     @GetMapping("/agents/{name}")
     public ResponseEntity<Map<String, Object>> detail(@PathVariable String name) {
         log.info("GET /api/admin/a2a/agents/{}", name);
-        Optional<A2aAgentEntity> agent = ingestionService.find(name);
+        Optional<GatewayAgentEntity> agent = agentRegistryService.getA2aAgent(name);
         if (agent.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
-        A2aAgentEntity a = agent.get();
-        Optional<AgentCard> card = ingestionService.tryFetchCard(a.getBaseUrl());
+        GatewayAgentEntity a = agent.get();
+        Optional<AgentCard> card = ingestionService.tryFetchCard(a.getA2aBaseUrl());
 
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("name", a.getName());
-        out.put("baseUrl", a.getBaseUrl());
-        out.put("createdAt", a.getCreatedAt());
+        out.put("name", a.getAgentName());
+        out.put("baseUrl", a.getA2aBaseUrl());
+        out.put("createdAt", a.getFirstSeenAt());
         out.put("tenant", a.getWsTenantName());
         out.put("cardName", card.map(AgentCard::name).orElse(null));
         out.put("reachable", card.isPresent());
@@ -107,11 +111,11 @@ public class A2aAdminController {
     /** Reachability check: can the agent's card be fetched right now? */
     @GetMapping("/agents/{name}/health")
     public ResponseEntity<Map<String, Object>> health(@PathVariable String name) {
-        Optional<A2aAgentEntity> agent = ingestionService.find(name);
+        Optional<GatewayAgentEntity> agent = agentRegistryService.getA2aAgent(name);
         if (agent.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
-        Optional<AgentCard> card = ingestionService.tryFetchCard(agent.get().getBaseUrl());
+        Optional<AgentCard> card = ingestionService.tryFetchCard(agent.get().getA2aBaseUrl());
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("reachable", card.isPresent());
         out.put("cardName", card.map(AgentCard::name).orElse(null));
@@ -121,8 +125,8 @@ public class A2aAdminController {
     /** All registered SKILL capabilities for the tenant's agents. */
     @GetMapping("/skills")
     public ResponseEntity<List<Map<String, Object>>> skills() {
-        Set<String> tenantAgents = ingestionService.list().stream()
-                .map(A2aAgentEntity::getName)
+        Set<String> tenantAgents = agentRegistryService.getA2aAgents().stream()
+                .map(GatewayAgentEntity::getAgentName)
                 .collect(Collectors.toSet());
         List<Map<String, Object>> out = registryService.getByType(CapabilityType.SKILL).stream()
                 .filter(d -> tenantAgents.contains(d.getServerConfigName()))

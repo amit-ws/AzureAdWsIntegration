@@ -7,7 +7,6 @@ import com.ws.wsAgenticSecurityGateway.audit.service.AuditQueryService;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor.CapabilityType;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
 import com.ws.wsAgenticSecurityGateway.orchestration.InFlightRequestRegistry;
-import com.ws.wsAgenticSecurityGateway.protocol.a2a.capability.A2aAgentIngestionService;
 import com.ws.wsAgenticSecurityGateway.pdp.service.CustomAttributeService;
 import com.ws.wsAgenticSecurityGateway.pdp.service.PolicyLlmService;
 import com.ws.wsAgenticSecurityGateway.pdp.service.PolicyService;
@@ -38,7 +37,6 @@ public class DashboardController {
     private final CustomAttributeService customAttributeService;
     private final PolicyLlmService policyLlmService;
     private final HumanUserService humanUserService;
-    private final A2aAgentIngestionService a2aIngestionService;
 
     public DashboardController(McpSessionManager sessionManager,
                                CapabilityRegistryService registryService,
@@ -48,8 +46,7 @@ public class DashboardController {
                                PolicyService policyService,
                                CustomAttributeService customAttributeService,
                                PolicyLlmService policyLlmService,
-                               HumanUserService humanUserService,
-                               A2aAgentIngestionService a2aIngestionService) {
+                               HumanUserService humanUserService) {
         this.sessionManager = sessionManager;
         this.registryService = registryService;
         this.auditQueryService = auditQueryService;
@@ -59,7 +56,6 @@ public class DashboardController {
         this.customAttributeService = customAttributeService;
         this.policyLlmService = policyLlmService;
         this.humanUserService = humanUserService;
-        this.a2aIngestionService = a2aIngestionService;
     }
 
     @GetMapping("/summary")
@@ -82,7 +78,7 @@ public class DashboardController {
         summary.put("totalPrompts", registryService.getPromptDescriptors().size());
         summary.put("totalSkills", registryService.getByType(CapabilityType.SKILL).size());
         summary.put("totalCapabilities", registryService.getTotalCapabilityCount());
-        summary.put("totalA2aAgents", a2aIngestionService.list().size());
+        summary.put("totalA2aAgents", agentRegistryService.getA2aAgents().size());
 
         LocalDateTime last24h = LocalDateTime.now().minusHours(24);
         summary.put("recentEventCount", auditQueryService.countRecentEvents(last24h));

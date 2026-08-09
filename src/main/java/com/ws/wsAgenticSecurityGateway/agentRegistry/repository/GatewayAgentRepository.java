@@ -43,4 +43,10 @@ public interface GatewayAgentRepository extends JpaRepository<GatewayAgentEntity
     List<GatewayAgentEntity> findAllByWsTenantName(String wsTenantName);
 
     long countByWsTenantName(String wsTenantName);
+
+    // A2A-endpoint agents (the canonical replacement for the former gateway_a2a_agent store). The no-tenant
+    // variant feeds the startup AgentSource reconcile (which runs without a tenant context).
+    List<GatewayAgentEntity> findBySpeaksA2aTrue();
+
+    List<GatewayAgentEntity> findByWsTenantNameAndSpeaksA2aTrue(String wsTenantName);
 }

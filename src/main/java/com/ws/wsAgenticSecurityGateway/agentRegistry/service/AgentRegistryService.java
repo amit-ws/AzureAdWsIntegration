@@ -306,6 +306,31 @@ public class AgentRegistryService {
         agentCache.put(cacheKey(saved.getAgentName(), saved.getWsTenantName()), saved);
     }
 
+    // ── A2A-endpoint reads (canonical replacement for the former gateway_a2a_agent store) ────────────────
+
+    /** All A2A-endpoint agents across ALL tenants — for the startup AgentSource reconcile (no tenant context). */
+    public List<GatewayAgentEntity> getAllA2aEndpoints() {
+        return agentRepository.findBySpeaksA2aTrue();
+    }
+
+    /** A2A-endpoint agents for the current tenant (admin surface). */
+    public List<GatewayAgentEntity> getA2aAgents() {
+        String tenant = TenantContext.get();
+        return (tenant != null && !tenant.isBlank())
+                ? agentRepository.findByWsTenantNameAndSpeaksA2aTrue(tenant)
+                : agentRepository.findBySpeaksA2aTrue();
+    }
+
+    /** One A2A-endpoint agent by name for the current tenant. */
+    public Optional<GatewayAgentEntity> getA2aAgent(String name) {
+        String tenant = TenantContext.get();
+        return ((tenant != null && !tenant.isBlank())
+                ? agentRepository.findByAgentNameAndWsTenantName(name, tenant).stream()
+                : agentRepository.findByAgentName(name).stream())
+                .filter(a -> Boolean.TRUE.equals(a.getSpeaksA2a()))
+                .findFirst();
+    }
+
     @Transactional
     public GatewayAgentSessionEntity registerSession(UUID agentId, String sessionId,
             String authMethod,
