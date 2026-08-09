@@ -8,13 +8,10 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 @Repository
 public interface GatewayAgentRepository extends JpaRepository<GatewayAgentEntity, UUID> {
-
-    Optional<GatewayAgentEntity> findByAgentNameAndAgentVersion(String agentName, String agentVersion);
 
     List<GatewayAgentEntity> findByStatus(String status);
 
@@ -31,8 +28,6 @@ public interface GatewayAgentRepository extends JpaRepository<GatewayAgentEntity
     @Query("UPDATE GatewayAgentEntity a SET a.totalRequests = a.totalRequests + 1, " +
             "a.lastSeenAt = CURRENT_TIMESTAMP WHERE a.id = :agentId")
     void incrementRequestCount(@Param("agentId") UUID agentId);
-
-    Optional<GatewayAgentEntity> findByAgentNameAndAgentVersionAndWsTenantName(String agentName, String agentVersion, String wsTenantName);
 
     List<GatewayAgentEntity> findByStatusAndWsTenantName(String status, String wsTenantName);
 

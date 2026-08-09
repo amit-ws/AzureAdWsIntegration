@@ -45,7 +45,9 @@ public class A2aAdapter implements ProtocolAdapter {
     private final ObjectMapper mapper;
     private final HttpClient httpClient;
 
-    @Value("${ws.a2a.outbound.timeout-seconds:30}")
+    // A2A hop timeout. Raised from 30s because an orchestrator agent's hop (e.g. advisor.analyze) can legitimately
+    // take longer than 30s — it fans out to sub-agents (each doing its own LLM + tool calls) and then synthesises.
+    @Value("${ws.a2a.outbound.timeout-seconds:120}")
     private long timeoutSeconds;
 
     public A2aAdapter(A2aAgentDirectory directory, ObjectMapper mapper) {
