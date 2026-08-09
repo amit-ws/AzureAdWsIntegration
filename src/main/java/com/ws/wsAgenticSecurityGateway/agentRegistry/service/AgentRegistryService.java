@@ -10,10 +10,15 @@ import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayAgentSess
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayHumanUserRepository;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayNhiRepository;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.event.BlockedSessionEvent;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.dto.AgentDto;
 import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
+import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor;
+import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor.CapabilityType;
+import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
 import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.context.event.EventListener;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -24,6 +29,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -35,6 +41,13 @@ public class AgentRegistryService {
     private final GatewayNhiRepository nhiRepository;
     private final GatewayAuditService auditService;
     private final ApplicationEventPublisher eventPublisher;
+
+    // Read-model collaborators for the agent view (protocols + identity + capabilities in one shape). The
+    // capability FILTER already depends on this service (it resolves agent ids), so it is injected @Lazy to
+    // keep the agent view inside the one agent service without a bean cycle. The capability REGISTRY has no
+    // back-dependency, so it is a plain injection.
+    private final CapabilityRegistryService capabilityRegistryService;
+    private final AgentCapabilityFilterService capabilityFilterService;
 
     private final ConcurrentHashMap<String, GatewayAgentEntity> agentCache = new ConcurrentHashMap<>();
 
@@ -57,13 +70,17 @@ public class AgentRegistryService {
             GatewayHumanUserRepository humanUserRepository,
             GatewayNhiRepository nhiRepository,
             GatewayAuditService auditService,
-            ApplicationEventPublisher eventPublisher) {
+            ApplicationEventPublisher eventPublisher,
+            CapabilityRegistryService capabilityRegistryService,
+            @Lazy AgentCapabilityFilterService capabilityFilterService) {
         this.agentRepository = agentRepository;
         this.sessionRepository = sessionRepository;
         this.humanUserRepository = humanUserRepository;
         this.nhiRepository = nhiRepository;
         this.auditService = auditService;
         this.eventPublisher = eventPublisher;
+        this.capabilityRegistryService = capabilityRegistryService;
+        this.capabilityFilterService = capabilityFilterService;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -582,6 +599,72 @@ public class AgentRegistryService {
 
     public List<GatewayAgentEntity> getAllAgents() {
         return agentRepository.findAllByWsTenantName(TenantContext.get());
+    }
+
+    /**
+     * The unified agent VIEW for the admin surface (#2/#3): each canonical agent projected into one {@link
+     * AgentDto} — protocols + identity + A2A endpoint + capabilities. Exposed skills come from the capability
+     * registry (by name); provisioned tools + invokable skills come from capability profiles (by id).
+     * Tenant-scoped. This is a straight per-row projection — the identity table is already deduped, so there is
+     * no cross-store merge or version collapse to do here.
+     */
+    @Transactional(readOnly = true)
+    public List<AgentDto> getAgentViews() {
+        List<GatewayAgentEntity> agents = getAllAgents();
+        Map<UUID, Long> sessionCounts = countSessionsByAgent();
+        Map<UUID, Long> connectedCounts = getConnectedSessions().stream()
+                .collect(Collectors.groupingBy(s -> s.getAgent().getId(), Collectors.counting()));
+        return agents.stream()
+                .map(a -> toAgentView(a, sessionCounts, connectedCounts))
+                .sorted(Comparator.comparing(d -> d.agentName() == null ? "" : d.agentName().toLowerCase(Locale.ROOT)))
+                .collect(Collectors.toList());
+    }
+
+    /** The agent view for a single canonical agent by id (tenant-scoped). */
+    @Transactional(readOnly = true)
+    public Optional<AgentDto> getAgentView(UUID id) {
+        Optional<GatewayAgentEntity> agent = getAgent(id);
+        if (agent.isEmpty()) return Optional.empty();
+        Map<UUID, Long> sessionCounts = countSessionsByAgent();
+        Map<UUID, Long> connectedCounts = getConnectedSessions().stream()
+                .collect(Collectors.groupingBy(s -> s.getAgent().getId(), Collectors.counting()));
+        return Optional.of(toAgentView(agent.get(), sessionCounts, connectedCounts));
+    }
+
+    private AgentDto toAgentView(GatewayAgentEntity a,
+                                 Map<UUID, Long> sessionCounts,
+                                 Map<UUID, Long> connectedCounts) {
+        List<String> protocols = new ArrayList<>();
+        if (Boolean.TRUE.equals(a.getSpeaksMcp())) protocols.add("MCP");
+        if (Boolean.TRUE.equals(a.getSpeaksA2a())) protocols.add("A2A");
+
+        // Skills this agent EXPOSES (its own), from the capability registry keyed by name.
+        List<String> exposedSkills = capabilityRegistryService.getCapabilitiesByServer(a.getAgentName()).stream()
+                .filter(c -> c.getType() == CapabilityType.SKILL)
+                .map(CapabilityDescriptor::getPublicName)
+                .filter(Objects::nonNull).distinct().sorted().collect(Collectors.toList());
+
+        // Tools it may CALL + skills it may INVOKE, from its capability profile (resolved allow-sets).
+        List<String> tools = new ArrayList<>(capabilityFilterService.getAllowedCapabilities(a.getId(), "TOOL"));
+        Collections.sort(tools);
+        List<String> invokableSkills = new ArrayList<>(capabilityFilterService.getAllowedCapabilities(a.getId(), "SKILL"));
+        Collections.sort(invokableSkills);
+
+        boolean verified = a.getWorkloadId() != null && !a.getWorkloadId().isBlank()
+                && a.getIdentitySource() != null && !a.getIdentitySource().isBlank();
+        long sessions = sessionCounts.getOrDefault(a.getId(), 0L);
+        long connected = connectedCounts.getOrDefault(a.getId(), 0L);
+        long requests = a.getTotalRequests() != null ? a.getTotalRequests() : 0L;
+
+        return new AgentDto(
+                a.getId(), a.getAgentName(), a.getAgentVersion(), a.getProtocolVersion(),
+                a.getStatus(), a.getApprovalStatus(),
+                protocols,
+                a.getWorkloadId(), a.getAuthClientId(), a.getIdentitySource(), verified,
+                a.getA2aBaseUrl(),
+                tools.size(), tools, exposedSkills.size(), exposedSkills, invokableSkills,
+                sessions, requests, connected, a.getFirstSeenAt(), a.getLastSeenAt(),
+                a.getCapabilities());
     }
 
     public Optional<GatewayAgentEntity> getAgent(UUID id) {

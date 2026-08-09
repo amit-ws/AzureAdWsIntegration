@@ -4,6 +4,7 @@ import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentSessionEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayHumanUserEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayNhiEntity;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.dto.AgentDto;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.HumanUserService;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.NhiService;
@@ -42,61 +43,17 @@ public class AgentController {
         this.nhiService = nhiService;
     }
 
+    // Unified Agent Model (#2/#3): one canonical row per agent enriched with protocols + identity +
+    // capabilities. The response is a superset of the old shape, so existing consumers keep working.
     @GetMapping
-    public ResponseEntity<List<Map<String, Object>>> listAgents() {
-        List<GatewayAgentEntity> agents = agentRegistryService.getAllAgents();
-        List<GatewayAgentSessionEntity> connectedSessions = agentRegistryService.getConnectedSessions();
-
-        Map<UUID, Long> connectedCountByAgent = connectedSessions.stream()
-                .collect(Collectors.groupingBy(
-                        s -> s.getAgent().getId(),
-                        Collectors.counting()));
-
-        Map<UUID, Long> totalSessionsByAgent = agentRegistryService.countSessionsByAgent();
-
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (GatewayAgentEntity agent : agents) {
-            Map<String, Object> map = new LinkedHashMap<>();
-            map.put("id", agent.getId());
-            map.put("agentName", agent.getAgentName());
-            map.put("agentVersion", agent.getAgentVersion());
-            map.put("protocolVersion", agent.getProtocolVersion());
-            map.put("status", agent.getStatus());
-            map.put("approvalStatus", agent.getApprovalStatus());
-            map.put("firstSeenAt", agent.getFirstSeenAt());
-            map.put("lastSeenAt", agent.getLastSeenAt());
-            map.put("totalSessions",
-                    totalSessionsByAgent.getOrDefault(agent.getId(), 0L));
-            map.put("totalRequests", agent.getTotalRequests());
-            map.put("connectedSessions",
-                    connectedCountByAgent.getOrDefault(agent.getId(), 0L));
-            result.add(map);
-        }
-
-        return ResponseEntity.ok(result);
+    public ResponseEntity<List<AgentDto>> listAgents() {
+        return ResponseEntity.ok(agentRegistryService.getAgentViews());
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Map<String, Object>> getAgent(@PathVariable UUID id) {
-        return agentRegistryService.getAgent(id)
-                .map(agent -> {
-                    long totalSessions = agentRegistryService.countSessionsForAgent(id);
-
-                    Map<String, Object> map = new LinkedHashMap<>();
-                    map.put("id", agent.getId());
-                    map.put("agentName", agent.getAgentName());
-                    map.put("authClientId", agent.getAuthClientId());
-                    map.put("agentVersion", agent.getAgentVersion());
-                    map.put("protocolVersion", agent.getProtocolVersion());
-                    map.put("capabilities", agent.getCapabilities());
-                    map.put("status", agent.getStatus());
-                    map.put("approvalStatus", agent.getApprovalStatus());
-                    map.put("firstSeenAt", agent.getFirstSeenAt());
-                    map.put("lastSeenAt", agent.getLastSeenAt());
-                    map.put("totalSessions", totalSessions);
-                    map.put("totalRequests", agent.getTotalRequests());
-                    return ResponseEntity.ok(map);
-                })
+    public ResponseEntity<AgentDto> getAgent(@PathVariable UUID id) {
+        return agentRegistryService.getAgentView(id)
+                .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
 
