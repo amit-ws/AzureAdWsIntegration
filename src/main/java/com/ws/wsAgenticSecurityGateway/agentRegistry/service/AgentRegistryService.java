@@ -919,22 +919,33 @@ public class AgentRegistryService {
 
         if (existing.isPresent()) {
             GatewayHumanUserEntity user = existing.get();
-            user.setPreferredUsername(preferredUsername);
-            user.setEmail(email);
-            user.setFullName(fullName);
-            user.setGivenName(givenName);
-            user.setFamilyName(familyName);
-            user.setIdpIssuer(idpIssuer);
-            user.setEmailVerified(emailVerified);
-            user.setRealmRoles(realmRoles);
-            user.setClientRoles(clientRoles);
-            user.setCustomClaims(customClaims);
+            // A gateway-minted OBO / delegated token (carries `act`/`act_chain`) proves the human's identity
+            // and the delegation chain, but is NOT an authoritative source of PROFILE: it has no
+            // preferred_username/email, and the roles in context belong to the PRESENTING agent. It must never
+            // overwrite the profile captured at the real IdP login — otherwise a downstream hop rewrites the
+            // human as "Unknown" with the agent's roles. Source-of-truth: profile ← IdP login; delegation ← OBO.
+            // On a delegated hop we only refresh liveness (last seen / ip) and preserve everything else.
+            boolean delegated = rawJwtClaims != null
+                    && (rawJwtClaims.containsKey("act") || rawJwtClaims.containsKey("act_chain"));
+            if (!delegated) {
+                user.setPreferredUsername(preferredUsername);
+                user.setEmail(email);
+                user.setFullName(fullName);
+                user.setGivenName(givenName);
+                user.setFamilyName(familyName);
+                user.setIdpIssuer(idpIssuer);
+                user.setEmailVerified(emailVerified);
+                user.setRealmRoles(realmRoles);
+                user.setClientRoles(clientRoles);
+                user.setCustomClaims(customClaims);
+                user.setLastJwtClaims(rawJwtClaims);
+            }
             user.setLastSeenAt(now);
-            user.setLastJwtClaims(rawJwtClaims);
             user.setLastIpAddress(ipAddress);
             GatewayHumanUserEntity updated = humanUserRepository.saveAndFlush(user);
- log.info("Human user updated: {} (sub={}, email={}, ip={})",
-                    preferredUsername, idpSubject, email, ipAddress);
+            log.info("Human user {}: {} (sub={}, ip={})",
+                    delegated ? "seen — delegated hop, profile preserved" : "updated",
+                    updated.getPreferredUsername(), idpSubject, ipAddress);
             return updated;
         }
 

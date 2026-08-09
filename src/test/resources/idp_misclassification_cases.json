@@ -1,0 +1,395 @@
+[
+  {
+    "label": "[okta] Okta custom auth server \u2014 client_credentials (machine app, no user)",
+    "claims": {
+      "ver": 1,
+      "jti": "AT.3f9k2mXbQ7pL0wRcVdEf1hJnKgTq8sYz",
+      "iss": "https://acme.okta.com/oauth2/aus1a2b3c4D5e6F7g8",
+      "aud": "api://payments",
+      "iat": 1754700000,
+      "exp": 1754703600,
+      "cid": "0oa9zXyWv8uT7sR6q5P4",
+      "scp": [
+        "payments.process"
+      ],
+      "sub": "0oa9zXyWv8uT7sR6q5P4"
+    },
+    "trueType": "AUTOMATED_AGENT"
+  },
+  {
+    "label": "[okta] Okta org authorization server \u2014 client_credentials (API service integr",
+    "claims": {
+      "ver": 1,
+      "jti": "AT.9dLpQ2rStUvWxYz0aBcDeFgHiJkLmNoP",
+      "iss": "https://acme.okta.com",
+      "aud": "https://acme.okta.com",
+      "iat": 1754700000,
+      "exp": 1754703600,
+      "cid": "0oa2b3c4D5e6F7g8h9I0",
+      "scp": [
+        "okta.users.read",
+        "okta.groups.read"
+      ],
+      "sub": "0oa2b3c4D5e6F7g8h9I0"
+    },
+    "trueType": "AUTOMATED_AGENT"
+  },
+  {
+    "label": "[google-gcp] Self-signed SA JWT used as bearer to a custom service (google-auth jwt",
+    "claims": {
+      "iss": "runtime-agent@ml-platform-905.iam.gserviceaccount.com",
+      "sub": "runtime-agent@ml-platform-905.iam.gserviceaccount.com",
+      "aud": "https://gateway.internal.acme.dev",
+      "iat": 1754738400,
+      "exp": 1754742000
+    },
+    "trueType": "AUTOMATED_AGENT"
+  },
+  {
+    "label": "[google-gcp] Self-signed SA JWT scoped for direct Google API access (scope + oauth2",
+    "claims": {
+      "iss": "batch-etl@data-warehouse-11.iam.gserviceaccount.com",
+      "sub": "batch-etl@data-warehouse-11.iam.gserviceaccount.com",
+      "scope": "https://www.googleapis.com/auth/cloud-platform",
+      "aud": "https://oauth2.googleapis.com/token",
+      "iat": 1754738400,
+      "exp": 1754742000
+    },
+    "trueType": "AUTOMATED_AGENT"
+  },
+  {
+    "label": "[Auth0] Human SPA token minted via refresh_token grant (silent renewal) \u2014 the ",
+    "claims": {
+      "iss": "https://acme.us.auth0.com/",
+      "sub": "auth0|63f8a1b2c4d5e6f7a8b9c0d1",
+      "aud": [
+        "https://api.acme.com",
+        "https://acme.us.auth0.com/userinfo"
+      ],
+      "azp": "kBxQ2mVn8pLrT3wYsZ9cHdFj4Ng7aUeI",
+      "scope": "openid profile email read:reports write:reports",
+      "gty": "refresh_token",
+      "iat": 1754700000,
+      "exp": 1754786400,
+      "jti": "b1f3c9a7e2d84f16"
+    },
+    "trueType": "HUMAN_DELEGATED"
+  },
+  {
+    "label": "[Auth0] Human token from Resource Owner Password grant (native/first-party log",
+    "claims": {
+      "iss": "https://acme.us.auth0.com/",
+      "sub": "auth0|63f8a1b2c4d5e6f7a8b9c0d1",
+      "aud": "https://api.acme.com",
+      "azp": "kBxQ2mVn8pLrT3wYsZ9cHdFj4Ng7aUeI",
+      "scope": "openid read:reports",
+      "gty": "password",
+      "iat": 1754700000,
+      "exp": 1754786400
+    },
+    "trueType": "HUMAN_DELEGATED"
+  },
+  {
+    "label": "[Auth0] Human interactive login (Universal Login / authorization_code), defaul",
+    "claims": {
+      "iss": "https://acme.us.auth0.com/",
+      "sub": "google-oauth2|108451097156357295390",
+      "aud": [
+        "https://api.acme.com",
+        "https://acme.us.auth0.com/userinfo"
+      ],
+      "azp": "kBxQ2mVn8pLrT3wYsZ9cHdFj4Ng7aUeI",
+      "scope": "openid profile email read:reports",
+      "iat": 1754700000,
+      "exp": 1754786400
+    },
+    "trueType": "HUMAN_DELEGATED"
+  },
+  {
+    "label": "[Auth0] Human authorization_code token enriched by an Auth0 Action with NAMESP",
+    "claims": {
+      "iss": "https://acme.us.auth0.com/",
+      "sub": "auth0|63f8a1b2c4d5e6f7a8b9c0d1",
+      "aud": [
+        "https://api.acme.com"
+      ],
+      "azp": "kBxQ2mVn8pLrT3wYsZ9cHdFj4Ng7aUeI",
+      "scope": "openid profile email read:reports",
+      "https://acme.com/email": "jane.doe@acme.com",
+      "https://acme.com/name": "Jane Doe",
+      "https://acme.com/roles": [
+        "analyst",
+        "approver"
+      ],
+      "iat": 1754700000,
+      "exp": 1754786400
+    },
+    "trueType": "HUMAN_DELEGATED"
+  },
+  {
+    "label": "[azure-ad] Entra v1.0 app-only (client credentials) token to Microsoft Graph",
+    "claims": {
+      "aud": "https://graph.microsoft.com",
+      "iss": "https://sts.windows.net/72f988bf-86f1-41af-91ab-2d7cd011db47/",
+      "iat": 1754697600,
+      "nbf": 1754697600,
+      "exp": 1754701500,
+      "aio": "E2VgYPjw1cW8b9k0hV=",
+      "app_displayname": "Nightly Invoice Sync",
+      "appid": "5f8a1b2c-9d3e-4a7f-8b6c-0e1d2f3a4b5c",
+      "appidacr": "1",
+      "idp": "https://sts.windows.net/72f988bf-86f1-41af-91ab-2d7cd011db47/",
+      "oid": "b7e4c1a0-3f92-4d55-9a1e-6c8b2d4f7a90",
+      "rh": "0.AR0AbYP5cvGGr0GRqy181BHbRw...",
+      "roles": [
+        "Mail.Read",
+        "User.Read.All"
+      ],
+      "sub": "b7e4c1a0-3f92-4d55-9a1e-6c8b2d4f7a90",
+      "tenant_region_scope": "NA",
+      "tid": "72f988bf-86f1-41af-91ab-2d7cd011db47",
+      "uti": "aBcDeFgHiJkKlMnOpQ",
+      "ver": "1.0",
+      "xms_tcdt": 1289241547
+    },
+    "trueType": "AUTOMATED_AGENT"
+  },
+  {
+    "label": "[azure-ad] Azure user-assigned Managed Identity token to Key Vault (v1.0)",
+    "claims": {
+      "aud": "https://vault.azure.net",
+      "iss": "https://sts.windows.net/72f988bf-86f1-41af-91ab-2d7cd011db47/",
+      "iat": 1754697600,
+      "nbf": 1754697600,
+      "exp": 1754784000,
+      "appid": "0c9e6d51-7a2b-4c3d-8e4f-1a2b3c4d5e6f",
+      "appidacr": "2",
+      "idp": "https://sts.windows.net/72f988bf-86f1-41af-91ab-2d7cd011db47/",
+      "oid": "3d2c1b0a-9f8e-7d6c-5b4a-3928170615fe",
+      "sub": "3d2c1b0a-9f8e-7d6c-5b4a-3928170615fe",
+      "tid": "72f988bf-86f1-41af-91ab-2d7cd011db47",
+      "ver": "1.0",
+      "xms_mirid": "/subscriptions/2f8d.../resourcegroups/prod-rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/etl-runner-mi",
+      "xms_az_rid": "/subscriptions/2f8d.../resourcegroups/prod-rg/providers/Microsoft.Compute/virtualMachines/etl-vm01"
+    },
+    "trueType": "AUTOMATED_AGENT"
+  },
+  {
+    "label": "[Microsoft Entra ID (Azure AD)] v2.0 delegated user access token to a custom API, thin (resource scope",
+    "claims": {
+      "aud": "api://8a7b9c1d-2e3f-40a1-9b2c-6d5e4f3a2b1c",
+      "iss": "https://login.microsoftonline.com/00b1d06b-e316-45af-a6d2-2734f62a5acd/v2.0",
+      "iat": 1786287600,
+      "nbf": 1786287600,
+      "exp": 1786291500,
+      "aio": "AXQAi/8ZAAAA9k3f...",
+      "azp": "9acacaf6-02e1-4e06-84d9-5da4a7ffd2aa",
+      "azpacr": "1",
+      "oid": "3c9e7a12-5b44-4a9c-8f21-9d0e2b7c4f10",
+      "rh": "0.AR0AawbRALbjr0Wm0ic0...",
+      "scp": "Files.Read Tasks.ReadWrite",
+      "sub": "pQrS9tuVwXyz0123AbCdEfGhIjKlMnOpQrStUvWx",
+      "tid": "00b1d06b-e316-45af-a6d2-2734f62a5acd",
+      "uti": "6k3l9mNpQ0aBcDeFgHiJ",
+      "ver": "2.0"
+    },
+    "trueType": "HUMAN_DELEGATED"
+  },
+  {
+    "label": "[Microsoft Entra ID (Azure AD)] Device-code flow (public client, e.g. Azure CLI 04b07795-...) v2.0 acc",
+    "claims": {
+      "aud": "api://8a7b9c1d-2e3f-40a1-9b2c-6d5e4f3a2b1c",
+      "iss": "https://login.microsoftonline.com/00b1d06b-e316-45af-a6d2-2734f62a5acd/v2.0",
+      "iat": 1786287600,
+      "nbf": 1786287600,
+      "exp": 1786291500,
+      "aio": "AXQAi/8ZAAAAT4pC2r...",
+      "azp": "04b07795-8ddb-461a-bbee-02f9e1bf7b46",
+      "azpacr": "0",
+      "oid": "7f2a6b90-1c34-4de5-8a12-b3c4d5e6f708",
+      "rh": "0.AR0AawbRALbjr0Wm0ic0YwVa...",
+      "scp": "user_impersonation",
+      "sub": "Zx9Yw8Vu7Ts6Rq5Po4Nm3Lk2Ji1Hg0Fe",
+      "tid": "00b1d06b-e316-45af-a6d2-2734f62a5acd",
+      "uti": "Ab3Cd5Ef7Gh9",
+      "ver": "2.0"
+    },
+    "trueType": "HUMAN_DELEGATED"
+  },
+  {
+    "label": "[Microsoft Entra ID (Azure AD)] v1.0 app-only client-credentials token to ARM (default accessTokenAcce",
+    "claims": {
+      "aud": "https://management.azure.com/",
+      "iss": "https://sts.windows.net/00b1d06b-e316-45af-a6d2-2734f62a5acd/",
+      "iat": 1786287600,
+      "nbf": 1786287600,
+      "exp": 1786291500,
+      "aio": "E2ZgY...",
+      "appid": "9acacaf6-02e1-4e06-84d9-5da4a7ffd2aa",
+      "appidacr": "1",
+      "idp": "https://sts.windows.net/00b1d06b-e316-45af-a6d2-2734f62a5acd/",
+      "idtyp": "app",
+      "oid": "b5d1f0c2-3a4e-4f6b-9c8d-1e2f3a4b5c6d",
+      "rh": "0.AR0AawbRALbjr0Wm0ic0...",
+      "roles": [
+        "Resource.Reader"
+      ],
+      "sub": "b5d1f0c2-3a4e-4f6b-9c8d-1e2f3a4b5c6d",
+      "tid": "00b1d06b-e316-45af-a6d2-2734f62a5acd",
+      "uti": "Kp9Lm2Nq4rStUvWx",
+      "ver": "1.0"
+    },
+    "trueType": "AUTOMATED_AGENT"
+  },
+  {
+    "label": "[Microsoft Entra ID (Azure AD)] Managed Identity (user-assigned) access token to ARM \u2014 always v1, appi",
+    "claims": {
+      "aud": "https://management.azure.com/",
+      "iss": "https://sts.windows.net/00b1d06b-e316-45af-a6d2-2734f62a5acd/",
+      "iat": 1786287600,
+      "nbf": 1786287595,
+      "exp": 1786291500,
+      "aio": "k2BgY...",
+      "appid": "6a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d",
+      "appidacr": "2",
+      "idp": "https://sts.windows.net/00b1d06b-e316-45af-a6d2-2734f62a5acd/",
+      "oid": "c0ffee00-1234-5678-9abc-def012345678",
+      "sub": "c0ffee00-1234-5678-9abc-def012345678",
+      "tid": "00b1d06b-e316-45af-a6d2-2734f62a5acd",
+      "xms_mirid": "/subscriptions/2f8e77a1-0d3c-4b6a-9e21-abc123def456/resourcegroups/rg-agents/providers/Microsoft.ManagedIdentity/userAssignedIdentities/agent-runner",
+      "xms_az_rid": "/subscriptions/2f8e77a1-0d3c-4b6a-9e21-abc123def456/resourcegroups/rg-agents/providers/Microsoft.Web/sites/agent-func",
+      "ver": "1.0"
+    },
+    "trueType": "AUTOMATED_AGENT"
+  },
+  {
+    "label": "[Keycloak] Service account with a hardcoded human-looking preferred_username (mac",
+    "claims": {
+      "exp": 1786291219,
+      "iat": 1786290919,
+      "jti": "3f1c8a2e-5d47-4b19-9e0a-2c6b1d8f4a30",
+      "iss": "https://sso.corp.example/realms/production",
+      "aud": "account",
+      "sub": "c2a1f9e4-7b3d-4e6a-9c11-8d2f5b0a1e77",
+      "typ": "Bearer",
+      "azp": "etl-orchestrator",
+      "acr": "1",
+      "realm_access": {
+        "roles": [
+          "offline_access",
+          "default-roles-production"
+        ]
+      },
+      "resource_access": {
+        "etl-orchestrator": {
+          "roles": [
+            "batch-runner"
+          ]
+        }
+      },
+      "scope": "profile email",
+      "clientHost": "10.42.7.19",
+      "clientId": "etl-orchestrator",
+      "clientAddress": "10.42.7.19",
+      "preferred_username": "maria.chen"
+    },
+    "trueType": "AUTOMATED_AGENT"
+  },
+  {
+    "label": "[Keycloak] Regular Keycloak user account driven as a bot via Direct Access Grant ",
+    "claims": {
+      "exp": 1786291219,
+      "iat": 1786290919,
+      "jti": "7c9d1b53-2a84-4f61-b0d2-6e3a9c5f8127",
+      "iss": "https://sso.corp.example/realms/production",
+      "aud": "account",
+      "sub": "9d55b8a0-1f2e-4c3b-a6d7-0e9f8c7b6a54",
+      "typ": "Bearer",
+      "azp": "integration-svc",
+      "session_state": "b1f7c0a2-8d3e-4a15-9c6b-2f0e7d1a3b4c",
+      "acr": "1",
+      "sid": "b1f7c0a2-8d3e-4a15-9c6b-2f0e7d1a3b4c",
+      "scope": "openid profile email",
+      "email_verified": true,
+      "preferred_username": "svc-billing",
+      "email": "svc-billing@corp.example"
+    },
+    "trueType": "HUMAN_DELEGATED",
+    "policyNote": "Group E policy: a real HUMAN account (email, sid, openid) driven by a script is a human identity at the token layer — classify HUMAN and govern via human controls. To treat it as a workload, provision it AS a service account (client-credentials)."
+  },
+  {
+    "label": "[Keycloak] Token-exchange impersonation for an unattended job; Keycloak omits the",
+    "claims": {
+      "exp": 1786298400,
+      "iat": 1786298100,
+      "jti": "a4e2f7c9-0b61-4d38-8a2c-9f5e1b7d63a0",
+      "iss": "https://sso.corp.example/realms/production",
+      "aud": "account",
+      "sub": "7a0c3d21-9e88-4b12-bc3a-1f2e3d4c5b6a",
+      "typ": "Bearer",
+      "azp": "batch-runner",
+      "acr": "0",
+      "scope": "openid profile email",
+      "email_verified": true,
+      "name": "Amit Prakash",
+      "preferred_username": "amit.prakash",
+      "given_name": "Amit",
+      "family_name": "Prakash",
+      "email": "amit.prakash@corp.example"
+    },
+    "trueType": "HUMAN_DELEGATED",
+    "policyNote": "Group E policy: a token bearing a full verified human identity with NO delegation marker is, to any relying party, a human. Unattended impersonation must be signalled at the IdP via act (RFC 8693) or ws_gateway_token_type — which the chain already honours (Signals 1–2)."
+  },
+  {
+    "label": "[Keycloak] Human interactively logs into a shared account whose username starts w",
+    "claims": {
+      "exp": 1786291500,
+      "iat": 1786291200,
+      "jti": "d0c9b8a7-6f5e-4d3c-b2a1-0e9f8d7c6b5a",
+      "iss": "https://sso.corp.example/realms/production",
+      "aud": "account",
+      "sub": "e3b0c442-98fc-4c14-9af6-7a1b2c3d4e5f",
+      "typ": "Bearer",
+      "azp": "ops-dashboard",
+      "session_state": "5c4b3a29-1d0e-4f8a-9b6c-7d2e1f0a3b4c",
+      "acr": "1",
+      "sid": "5c4b3a29-1d0e-4f8a-9b6c-7d2e1f0a3b4c",
+      "auth_time": 1786290900,
+      "scope": "openid profile email",
+      "email_verified": true,
+      "name": "On-Call Desk",
+      "preferred_username": "service-account-oncall",
+      "given_name": "On-Call",
+      "family_name": "Desk",
+      "email": "oncall@corp.example"
+    },
+    "trueType": "HUMAN_DELEGATED"
+  },
+  {
+    "label": "[AWS Cognito + Ping/ForgeRock (PingAM / PingOne Advanced Identity Cloud) generic OIDC] ForgeRock AM / PingAM stateless-JWT access token, client_credentials (",
+    "claims": {
+      "sub": "svc-payments-worker",
+      "cts": "OAUTH2_STATELESS_GRANT",
+      "auth_level": 0,
+      "auditTrackingId": "9f2a1c33-7b6e-4a2d-9f11-0c1a2b3c4d5e-482",
+      "subname": "svc-payments-worker",
+      "iss": "https://openam-acme.forgeblocks.com/am/oauth2/realms/root/realms/alpha",
+      "tokenName": "access_token",
+      "token_type": "Bearer",
+      "authGrantId": "vljMAP4gfmnl9DSTUDvbrEFsNdY",
+      "aud": "svc-payments-worker",
+      "nbf": 1754745600,
+      "grant_type": "client_credentials",
+      "scope": [
+        "fr:idm:*"
+      ],
+      "auth_time": 1754745600,
+      "realm": "/alpha",
+      "exp": 1754749200,
+      "iat": 1754745600,
+      "expires_in": 3599,
+      "jti": "pcaZ3HezeqGjH4hJLluQle6nr6o"
+    },
+    "trueType": "AUTOMATED_AGENT"
+  }
+]

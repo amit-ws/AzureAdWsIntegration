@@ -3,6 +3,7 @@ package com.ws.wsAgenticSecurityGateway.pdp.service;
 import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
 import com.ws.wsAgenticSecurityGateway.pdp.entity.GatewayPolicyEntity;
 import com.ws.wsAgenticSecurityGateway.pdp.repository.GatewayPolicyRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -30,6 +31,14 @@ class PolicyServiceTest {
     private final PolicyService service = new PolicyService(repository, cedarEngine, auditService, true);
 
     private static final String TENANT = "amitdev.local";
+
+    @BeforeEach
+    void stubPrincipalExtraction() {
+        // The seeder now derives the principal read-model from each policy's Cedar text before saving. The
+        // baseline guardrails are principal-agnostic, so the real engine returns ANY — stub the mock to match.
+        when(cedarEngine.extractPrincipal(any()))
+                .thenReturn(new CedarPolicyEngine.PolicyPrincipal("ANY", null));
+    }
 
     @Test
     void seedsBothGuardrails_whenAbsent() {
