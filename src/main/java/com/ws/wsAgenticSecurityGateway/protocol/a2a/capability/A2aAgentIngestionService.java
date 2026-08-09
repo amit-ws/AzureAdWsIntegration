@@ -1,5 +1,6 @@
 package com.ws.wsAgenticSecurityGateway.protocol.a2a.capability;
 
+import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import com.ws.wsAgenticSecurityGateway.protocol.a2a.capability.entity.A2aAgentEntity;
 import com.ws.wsAgenticSecurityGateway.protocol.a2a.capability.repository.A2aAgentRepository;
@@ -37,13 +38,16 @@ public class A2aAgentIngestionService {
     private final A2aAgentDirectory directory;
     private final A2aCapabilityRegistrar registrar;
     private final A2aAgentRepository repository;
+    private final AgentRegistryService agentRegistryService;
 
     public A2aAgentIngestionService(A2aAgentDirectory directory,
                                     A2aCapabilityRegistrar registrar,
-                                    A2aAgentRepository repository) {
+                                    A2aAgentRepository repository,
+                                    AgentRegistryService agentRegistryService) {
         this.directory = directory;
         this.registrar = registrar;
         this.repository = repository;
+        this.agentRegistryService = agentRegistryService;
     }
 
     /** Ingest (or refresh) a downstream agent: fetch its Agent Card, register its skills + endpoint, persist it. */
@@ -66,6 +70,11 @@ public class A2aAgentIngestionService {
         }
         repository.save(entity);
 
+        // Unified Agent Model (#2): also record the A2A facet on the canonical agent (gateway_agent). The
+        // gateway_a2a_agent write above is kept during the transition so the existing A2A admin reads stay
+        // green; the canonical row is what the unified dashboard reads (and the only record after Stage 6).
+        agentRegistryService.registerA2aEndpoint(agentName, baseUrl);
+
         log.info("A2A agent ingested: name='{}', card='{}', skills={}", agentName, card.name(), skills);
         return new IngestResult(agentName, card.name(), skills);
     }
@@ -77,6 +86,8 @@ public class A2aAgentIngestionService {
         registrar.deregister(agentName);
         repository.findByNameAndWsTenantName(agentName, TenantContext.get())
                 .ifPresent(repository::delete);
+        // Drop the A2A facet on the canonical agent (keeps the identity row if it still speaks MCP).
+        agentRegistryService.clearA2aEndpoint(agentName);
         log.info("A2A agent removed: '{}'", agentName);
     }
 

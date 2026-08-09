@@ -76,7 +76,7 @@ public class AgentRegistryService {
 
         List<GatewayAgentEntity> agents = agentRepository.findAll();
         for (GatewayAgentEntity agent : agents) {
-            String key = cacheKey(agent.getAgentName(), agent.getAgentVersion(), agent.getWsTenantName());
+            String key = cacheKey(agent.getAgentName(), agent.getWsTenantName());
             agentCache.put(key, agent);
             agentStatusById.put(agent.getId(), agent.getApprovalStatus());
         }
@@ -123,9 +123,10 @@ public class AgentRegistryService {
             String authClientId, String tokenType,
             String wsTenantName) {
         // Resolve the tenant this identity belongs to (arg → thread-bound request tenant). Identity is keyed
-        // by (tenant, name, version) so two tenants can't collide on a shared agent name.
+        // by (tenant, name) — one canonical agent per name per tenant (#2); the version reported at connect is
+        // recorded as the latest-seen attribute, not part of the identity.
         String tenant = (wsTenantName != null && !wsTenantName.isBlank()) ? wsTenantName : TenantContext.get();
-        String key = cacheKey(name, version, tenant);
+        String key = cacheKey(name, tenant);
 
         GatewayAgentEntity cached = agentCache.get(key);
         if (cached != null) {
@@ -141,9 +142,11 @@ public class AgentRegistryService {
                         "Agent '" + name + "' v" + version
                                 + " has been deprovisioned and can no longer connect.");
             }
+            cached.setAgentVersion(version);          // latest-seen version (identity is (tenant,name))
             cached.setProtocolVersion(protocolVersion);
             cached.setCapabilities(capabilities);
             cached.setStatus("ACTIVE");
+            cached.setSpeaksMcp(true);                // reached us over MCP (this is the MCP discovery path)
             if (authClientId != null) {
                 cached.setAuthClientId(authClientId);
                 cached.setWorkloadId(authClientId);      // verified id we bind sender-constrained OBOs to
@@ -159,11 +162,11 @@ public class AgentRegistryService {
             return updated;
         }
 
-        // Tenant-scoped lookup when the tenant is known (the normal path); degrade to the legacy global
-        // lookup only when no tenant could be resolved, so pre-tenant callers keep working unchanged.
+        // Tenant-scoped lookup by (tenant, name) — the canonical identity (#2). Degrade to the legacy global
+        // by-name lookup only when no tenant could be resolved, so pre-tenant callers keep working unchanged.
         Optional<GatewayAgentEntity> existing = (tenant != null && !tenant.isBlank())
-                ? agentRepository.findByAgentNameAndAgentVersionAndWsTenantName(name, version, tenant)
-                : agentRepository.findByAgentNameAndAgentVersion(name, version);
+                ? agentRepository.findByAgentNameAndWsTenantName(name, tenant).stream().findFirst()
+                : agentRepository.findByAgentName(name).stream().findFirst();
 
         if (existing.isPresent()) {
             GatewayAgentEntity entity = existing.get();
@@ -180,9 +183,11 @@ public class AgentRegistryService {
                         "Agent '" + name + "' v" + version
                                 + " has been deprovisioned and can no longer connect.");
             }
+            entity.setAgentVersion(version);          // latest-seen version (identity is (tenant,name))
             entity.setProtocolVersion(protocolVersion);
             entity.setCapabilities(capabilities);
             entity.setStatus("ACTIVE");
+            entity.setSpeaksMcp(true);                // reached us over MCP (this is the MCP discovery path)
             if (authClientId != null) {
                 entity.setAuthClientId(authClientId);
                 entity.setWorkloadId(authClientId);
@@ -211,6 +216,7 @@ public class AgentRegistryService {
                 .tokenType(tokenType)
                 .totalSessions(0)
                 .totalRequests(0L)
+                .speaksMcp(true)                          // discovered via the MCP path
                 .wsTenantName(wsTenantName)
                 .build();
 
@@ -220,6 +226,67 @@ public class AgentRegistryService {
  log.info("NEW agent discovered (PENDING approval): {} v{} (id={})",
                 name, version, saved.getId());
         return saved;
+    }
+
+    /**
+     * Upsert the A2A facet of the canonical agent (#2): mark it an A2A endpoint and record its base URL. Called
+     * by A2A ingestion (which runs inside a tenant-scoped admin request). If no identity row exists yet for
+     * (tenant, name) — a pure A2A agent that never connected over MCP — one is created (A2A-only, PENDING). An
+     * agent that already exists (e.g. an MCP client that is ALSO an A2A endpoint) keeps its identity/approval;
+     * only its A2A facet is (re)set.
+     */
+    @Transactional
+    public GatewayAgentEntity registerA2aEndpoint(String agentName, String baseUrl) {
+        String tenant = TenantContext.get();
+        GatewayAgentEntity agent = agentCache.get(cacheKey(agentName, tenant));
+        if (agent == null) {
+            agent = ((tenant != null && !tenant.isBlank())
+                    ? agentRepository.findByAgentNameAndWsTenantName(agentName, tenant).stream().findFirst()
+                    : agentRepository.findByAgentName(agentName).stream().findFirst())
+                    .orElse(null);
+        }
+        if (agent == null) {
+            agent = GatewayAgentEntity.builder()
+                    .agentName(agentName)
+                    .agentVersion("1.0.0")
+                    .status("ACTIVE")
+                    .approvalStatus("PENDING")
+                    .totalSessions(0)
+                    .totalRequests(0L)
+                    .speaksMcp(false)
+                    .speaksA2a(true)
+                    .a2aBaseUrl(baseUrl)
+                    .wsTenantName(tenant)
+                    .build();
+        } else {
+            agent.setSpeaksA2a(true);
+            agent.setA2aBaseUrl(baseUrl);
+        }
+        GatewayAgentEntity saved = agentRepository.saveAndFlush(agent);
+        agentCache.put(cacheKey(saved.getAgentName(), saved.getWsTenantName()), saved);
+        agentStatusById.put(saved.getId(), saved.getApprovalStatus());
+        log.info("A2A endpoint registered on canonical agent '{}' (id={}, url={})",
+                agentName, saved.getId(), baseUrl);
+        return saved;
+    }
+
+    /**
+     * Drop the A2A facet when a downstream A2A agent is removed: clear its base URL + speaks_a2a. The identity
+     * row is kept (it may still speak MCP or carry session/profile history); it simply no longer advertises an
+     * A2A endpoint.
+     */
+    @Transactional
+    public void clearA2aEndpoint(String agentName) {
+        String tenant = TenantContext.get();
+        GatewayAgentEntity agent = ((tenant != null && !tenant.isBlank())
+                ? agentRepository.findByAgentNameAndWsTenantName(agentName, tenant).stream().findFirst()
+                : agentRepository.findByAgentName(agentName).stream().findFirst())
+                .orElse(null);
+        if (agent == null) return;
+        agent.setSpeaksA2a(false);
+        agent.setA2aBaseUrl(null);
+        GatewayAgentEntity saved = agentRepository.saveAndFlush(agent);
+        agentCache.put(cacheKey(saved.getAgentName(), saved.getWsTenantName()), saved);
     }
 
     @Transactional
@@ -274,7 +341,7 @@ public class AgentRegistryService {
 
         GatewayAgentEntity refreshed = agentRepository.findById(agentId).orElse(null);
         if (refreshed != null) {
-            agentCache.put(cacheKey(refreshed.getAgentName(), refreshed.getAgentVersion(), refreshed.getWsTenantName()), refreshed);
+            agentCache.put(cacheKey(refreshed.getAgentName(), refreshed.getWsTenantName()), refreshed);
         }
 
         sessionToAgentId.put(sessionId, agentId);
@@ -609,7 +676,7 @@ public class AgentRegistryService {
         String previousApprovalStatus = agent.getApprovalStatus();
         agent.setApprovalStatus("APPROVED");
         GatewayAgentEntity updated = agentRepository.saveAndFlush(agent);
-        String key = cacheKey(agent.getAgentName(), agent.getAgentVersion(), agent.getWsTenantName());
+        String key = cacheKey(agent.getAgentName(), agent.getWsTenantName());
         agentCache.put(key, updated);
         agentStatusById.put(agentId, "APPROVED");
         auditService.auditAgentApproved(
@@ -631,7 +698,7 @@ public class AgentRegistryService {
         String previousApprovalStatus = agent.getApprovalStatus();
         agent.setApprovalStatus("BLOCKED");
         GatewayAgentEntity updated = agentRepository.saveAndFlush(agent);
-        String key = cacheKey(agent.getAgentName(), agent.getAgentVersion(), agent.getWsTenantName());
+        String key = cacheKey(agent.getAgentName(), agent.getWsTenantName());
         agentCache.put(key, updated);
         agentStatusById.put(agentId, "BLOCKED");
 
@@ -710,7 +777,7 @@ public class AgentRegistryService {
         String previousStatus = agent.getStatus();
         agent.setStatus("DEPROVISIONED");
         GatewayAgentEntity updated = agentRepository.saveAndFlush(agent);
-        String key = cacheKey(agent.getAgentName(), agent.getAgentVersion(), agent.getWsTenantName());
+        String key = cacheKey(agent.getAgentName(), agent.getWsTenantName());
         agentCache.put(key, updated);
 
         List<GatewayAgentSessionEntity> activeSessions = sessionRepository.findConnectedByAgentId(agentId);
@@ -904,9 +971,11 @@ public class AgentRegistryService {
     // Identity key is (tenant, name, version) — NOT (name, version). Two tenants may each register an agent
     // named "market-data"; keying globally would collide them onto one entity (and leak approval/policy
     // across tenants). A null/blank tenant degrades to a legacy global key so pre-tenant callers still work.
-    private String cacheKey(String name, String version, String tenant) {
+    // Unified Agent Model (#2): identity is (tenant, name) — one canonical agent per name per tenant. Version is
+    // no longer part of the key, so an agent that reconnects as a new version/transport maps to the SAME entity.
+    private String cacheKey(String name, String tenant) {
         String t = (tenant != null && !tenant.isBlank()) ? tenant : "-";
-        return t + "|" + (name != null ? name : "unknown") + ":" + (version != null ? version : "?");
+        return t + "|" + (name != null ? name : "unknown");
     }
 
     public static class AgentBlockedException extends RuntimeException {
