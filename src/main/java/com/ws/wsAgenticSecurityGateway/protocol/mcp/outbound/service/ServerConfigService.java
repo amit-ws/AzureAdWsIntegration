@@ -78,7 +78,7 @@ public class ServerConfigService {
         if (Boolean.TRUE.equals(entity.getEnabled()) && Boolean.TRUE.equals(entity.getAutoConnect())) {
             try {
                 connectFromConfig(entity);
-                log.info("Server '{}' auto-connected after creation", entity.getServerName());
+                log.debug("Server '{}' auto-connected after creation", entity.getServerName());
             } catch (Exception e) {
                 log.warn("Auto-connect failed for '{}' after creation: {}",
                         entity.getServerName(), e.getMessage());
@@ -117,7 +117,7 @@ public class ServerConfigService {
         if (wasConnected) {
             try {
                 sessionManager.disconnect(serverName);
-                log.info("Server '{}' disconnected before config update", serverName);
+                log.debug("Server '{}' disconnected before config update", serverName);
             } catch (Exception e) {
                 log.warn("Error disconnecting '{}' before update: {}", serverName, e.getMessage());
             }
@@ -139,12 +139,12 @@ public class ServerConfigService {
         entity = configRepository.save(entity);
         log.info("Server config '{}' updated", serverName);
 
-        auditService.auditServerConfigUpdated(serverName, entity.getUrl());
+        auditService.auditServerConfigUpdated(serverName, entity.getUrl(), "Configuration updated");
 
         if (wasConnected && Boolean.TRUE.equals(entity.getEnabled())) {
             try {
                 connectFromConfig(entity);
-                log.info("Server '{}' reconnected after config update", serverName);
+                log.debug("Server '{}' reconnected after config update", serverName);
             } catch (Exception e) {
                 log.warn("Reconnect failed for '{}' after update: {}", serverName, e.getMessage());
             }
@@ -162,7 +162,7 @@ public class ServerConfigService {
         if (sessionManager.isConnected(serverName)) {
             try {
                 sessionManager.disconnect(serverName);
-                log.info("Server '{}' disconnected before deletion", serverName);
+                log.debug("Server '{}' disconnected before deletion", serverName);
             } catch (Exception e) {
                 log.warn("Error disconnecting '{}' before deletion: {}", serverName, e.getMessage());
             }
@@ -184,18 +184,6 @@ public class ServerConfigService {
         }
 
         connectFromConfig(entity);
-    }
-
-    public void disconnectServer(String serverName) {
-        configRepository.findByServerNameAndWsTenantName(serverName, TenantContext.get())
-                .orElseThrow(() -> new NoSuchElementException(
-                        "Server config '" + serverName + "' not found"));
-
-        if (!sessionManager.isConnected(serverName)) {
-            throw new IllegalStateException("Server '" + serverName + "' is not connected");
-        }
-
-        sessionManager.disconnect(serverName);
     }
 
     public void reconnectServer(String serverName) {
@@ -276,7 +264,7 @@ public class ServerConfigService {
         if (!enabled && sessionManager.isConnected(serverName)) {
             try {
                 sessionManager.disconnect(serverName);
-                log.info("Server '{}' disconnected because it was disabled", serverName);
+                log.debug("Server '{}' disconnected because it was disabled", serverName);
             } catch (Exception e) {
                 log.warn("Error disconnecting '{}' while disabling: {}", serverName, e.getMessage());
             }
@@ -284,7 +272,8 @@ public class ServerConfigService {
 
         entity.setEnabled(enabled);
         entity = configRepository.save(entity);
-        auditService.auditServerConfigUpdated(serverName, entity.getUrl());
+        auditService.auditServerConfigUpdated(serverName, entity.getUrl(),
+                enabled ? "Server enabled" : "Server disabled");
         log.info("Server config '{}' {}", serverName, enabled ? "enabled" : "disabled");
         return toResponse(entity);
     }
@@ -298,6 +287,9 @@ public class ServerConfigService {
     private ServerConfigTestResponse runProbe(String serverName, String url, McpServerConfig cfg) {
         try {
             McpSessionManager.ProbeResult r = sessionManager.probe(cfg);
+            auditService.auditServerConfigTested(serverName, url, true,
+                    "Test OK — " + r.latencyMs() + "ms, " + r.toolCount() + " tools, "
+                            + r.resourceCount() + " resources, " + r.promptCount() + " prompts");
             return ServerConfigTestResponse.builder()
                     .ok(true)
                     .serverName(serverName)
@@ -312,6 +304,7 @@ public class ServerConfigService {
         } catch (Exception e) {
             String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             log.info("Test-connection failed for '{}' ({}): {}", serverName, url, msg);
+            auditService.auditServerConfigTested(serverName, url, false, "Test failed — " + msg);
             return ServerConfigTestResponse.builder()
                     .ok(false)
                     .serverName(serverName)

@@ -27,7 +27,6 @@ public class ServerConfigController {
 
     @PostMapping
     public ResponseEntity<?> createServerConfig(@Valid @RequestBody ServerConfigRequest request) {
-        log.info("POST /api/admin/mcp-servers — creating '{}'", request.getServerName());
         try {
             ServerConfigResponse response = serverConfigService.createServerConfig(request);
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
@@ -58,7 +57,6 @@ public class ServerConfigController {
     @PutMapping("/{name}")
     public ResponseEntity<?> updateServerConfig(@PathVariable String name,
                                                 @Valid @RequestBody ServerConfigRequest request) {
-        log.info("PUT /api/admin/mcp-servers/{}", name);
         try {
             ServerConfigResponse response = serverConfigService.updateServerConfig(name, request);
             return ResponseEntity.ok(response);
@@ -74,7 +72,6 @@ public class ServerConfigController {
 
     @DeleteMapping("/{name}")
     public ResponseEntity<?> deleteServerConfig(@PathVariable String name) {
-        log.info("DELETE /api/admin/mcp-servers/{}", name);
         try {
             serverConfigService.deleteServerConfig(name);
             Map<String, Object> result = new LinkedHashMap<>();
@@ -91,7 +88,6 @@ public class ServerConfigController {
 
     @PostMapping("/{name}/connect")
     public ResponseEntity<?> connectServer(@PathVariable String name) {
-        log.info("POST /api/admin/mcp-servers/{}/connect", name);
         try {
             serverConfigService.connectServer(name);
             Map<String, Object> result = new LinkedHashMap<>();
@@ -108,28 +104,8 @@ public class ServerConfigController {
         }
     }
 
-    @PostMapping("/{name}/disconnect")
-    public ResponseEntity<?> disconnectServer(@PathVariable String name) {
-        log.info("POST /api/admin/mcp-servers/{}/disconnect", name);
-        try {
-            serverConfigService.disconnectServer(name);
-            Map<String, Object> result = new LinkedHashMap<>();
-            result.put("status", "ok");
-            result.put("message", "Server '" + name + "' disconnected");
-            return ResponseEntity.ok(result);
-        } catch (NoSuchElementException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorMap(e.getMessage()));
-        } catch (IllegalStateException e) {
-            return ResponseEntity.badRequest().body(errorMap(e.getMessage()));
-        } catch (Exception e) {
-            log.error("Error disconnecting server '{}': {}", name, e.getMessage());
-            return ResponseEntity.internalServerError().body(errorMap(e.getMessage()));
-        }
-    }
-
     @PostMapping("/{name}/reconnect")
     public ResponseEntity<?> reconnectServer(@PathVariable String name) {
-        log.info("POST /api/admin/mcp-servers/{}/reconnect", name);
         try {
             serverConfigService.reconnectServer(name);
             Map<String, Object> result = new LinkedHashMap<>();
@@ -148,7 +124,6 @@ public class ServerConfigController {
 
     @PostMapping("/test")
     public ResponseEntity<?> testUnsavedConfig(@Valid @RequestBody ServerConfigRequest request) {
-        log.info("POST /api/admin/mcp-servers/test — probing '{}' ({})", request.getServerName(), request.getUrl());
         try {
             return ResponseEntity.ok(serverConfigService.testConnection(request));
         } catch (IllegalArgumentException e) {
@@ -161,7 +136,6 @@ public class ServerConfigController {
 
     @PostMapping("/{name}/test")
     public ResponseEntity<?> testSavedConfig(@PathVariable String name) {
-        log.info("POST /api/admin/mcp-servers/{}/test", name);
         try {
             return ResponseEntity.ok(serverConfigService.testConnection(name));
         } catch (NoSuchElementException e) {
@@ -183,7 +157,6 @@ public class ServerConfigController {
     }
 
     private ResponseEntity<?> toggleEnabled(String name, boolean enabled) {
-        log.info("POST /api/admin/mcp-servers/{}/{}", name, enabled ? "enable" : "disable");
         try {
             return ResponseEntity.ok(serverConfigService.setEnabled(name, enabled));
         } catch (NoSuchElementException e) {

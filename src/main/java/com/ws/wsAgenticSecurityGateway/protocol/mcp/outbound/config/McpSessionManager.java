@@ -6,7 +6,10 @@ import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.event.CapabilityRegistryChangedEvent;
 import com.ws.wsAgenticSecurityGateway.protocol.mcp.capability.service.McpCapabilityRegistrar;
 import com.ws.wsAgenticSecurityGateway.protocol.mcp.outbound.entity.GatewayMcpServerSessionEntity;
+import com.ws.wsAgenticSecurityGateway.protocol.mcp.outbound.entity.GatewayServerConfigEntity;
 import com.ws.wsAgenticSecurityGateway.protocol.mcp.outbound.repository.GatewayMcpServerSessionRepository;
+import com.ws.wsAgenticSecurityGateway.protocol.mcp.outbound.repository.GatewayServerConfigRepository;
+import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.spec.McpClientTransport;
@@ -37,15 +40,18 @@ public class McpSessionManager {
 
     private final GatewayMcpServerSessionRepository serverSessionRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final GatewayServerConfigRepository serverConfigRepository;
 
     public McpSessionManager(GatewayAuditService auditService,
                              McpCapabilityRegistrar capabilityRegistrar,
                              GatewayMcpServerSessionRepository serverSessionRepository,
-                             ApplicationEventPublisher eventPublisher) {
+                             ApplicationEventPublisher eventPublisher,
+                             GatewayServerConfigRepository serverConfigRepository) {
         this.auditService = auditService;
         this.capabilityRegistrar = capabilityRegistrar;
         this.serverSessionRepository = serverSessionRepository;
         this.eventPublisher = eventPublisher;
+        this.serverConfigRepository = serverConfigRepository;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -57,7 +63,7 @@ public class McpSessionManager {
             disconnect(serverName);
         }
 
- log.info("Connecting to MCP server '{}'...", serverName);
+ log.debug("Connecting to MCP server '{}'...", serverName);
         long startTime = System.currentTimeMillis();
 
         try {
@@ -72,7 +78,7 @@ public class McpSessionManager {
         try {
             Map<String, String> headers = config.getHeaders();
 
- log.info("Creating HTTP transport for: {}", config.getUrl());
+ log.debug("Creating HTTP transport for: {}", config.getUrl());
             HttpMcpTransport httpTransport = new HttpMcpTransport(
                     config.getUrl(),
                     headers,
@@ -88,7 +94,7 @@ public class McpSessionManager {
                     null
             );
 
- log.info("Building MCP client for '{}'...", serverName);
+ log.debug("Building MCP client for '{}'...", serverName);
             McpSyncClient client = McpClient.sync(mcpTransport)
                     .clientInfo(new McpSchema.Implementation(
                             "ws-agentic-gateway", "1.0.0"))
@@ -99,7 +105,7 @@ public class McpSessionManager {
                     })
                     .build();
 
- log.info("Initializing MCP client for '{}'...", serverName);
+ log.debug("Initializing MCP client for '{}'...", serverName);
 
             client.initialize();
 
@@ -115,8 +121,8 @@ public class McpSessionManager {
             session.setServerInfo(client.getServerInfo());
             session.setCapabilities(client.getServerCapabilities());
 
- log.info("Server '{}' connected successfully", serverName);
-            log.info("Server: {} v{}",
+ log.debug("Server '{}' connected successfully — {} v{}",
+                    serverName,
                     client.getServerInfo().name(),
                     client.getServerInfo().version());
 
@@ -147,7 +153,7 @@ public class McpSessionManager {
                         session.getPrompts(),
                         wsTenantName
                 );
- log.info("Server '{}' capabilities registered in registry", serverName);
+ log.debug("Server '{}' capabilities registered in registry", serverName);
                 eventPublisher.publishEvent(new CapabilityRegistryChangedEvent("SERVER_CONNECTED", serverName));
             } catch (Exception regEx) {
  log.error("⚠ Failed to register server '{}' in registry: {}",
@@ -168,7 +174,7 @@ public class McpSessionManager {
                         .wsTenantName(wsTenantName)
                         .build();
                 serverSessionRepository.save(entity);
- log.info("WS Client-side session persisted for server '{}'", serverName);
+ log.debug("WS Client-side session persisted for server '{}'", serverName);
             } catch (Exception dbEx) {
  log.error("⚠ Failed to persist WS Client-side session for '{}': {}",
                         serverName, dbEx.getMessage());
@@ -193,8 +199,13 @@ public class McpSessionManager {
             auditService.auditClientSessionInitialized(
                     session.getSessionId(), serverName, null, serverInfoMap, capsMap, duration);
 
- log.info("Server '{}' ready with {} tools",
-                    serverName, session.getToolCount());
+            log.info("MCP server '{}' connected — {} v{}, {} tools, {} resources, {} prompts",
+                    serverName,
+                    client.getServerInfo() != null ? client.getServerInfo().name() : serverName,
+                    client.getServerInfo() != null ? client.getServerInfo().version() : "?",
+                    session.getToolCount(),
+                    session.getResources() != null ? session.getResources().size() : 0,
+                    session.getPrompts() != null ? session.getPrompts().size() : 0);
 
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - startTime;
@@ -266,33 +277,33 @@ public class McpSessionManager {
             if (session.getCapabilities() != null &&
                     session.getCapabilities().tools() != null) {
 
- log.info("Fetching tools for server '{}'...", serverName);
+ log.debug("Fetching tools for server '{}'...", serverName);
                 long toolsStart = System.currentTimeMillis();
                 List<McpSchema.Tool> tools = client.listTools().tools();
                 session.setTools(tools);
                 long toolsDuration = System.currentTimeMillis() - toolsStart;
 
-                log.info("Found {} tools:", tools.size());
+                log.debug("Found {} tools:", tools.size());
                 tools.forEach(tool ->
-                        log.info("- {} : {}", tool.name(),
+                        log.debug("- {} : {}", tool.name(),
                                 tool.description() != null ? tool.description() : "No description")
                 );
 
                 List<String> toolNames = tools.stream().map(McpSchema.Tool::name).toList();
                 auditService.auditClientToolsListFetched(session.getSessionId(), serverName, tools.size(), toolNames, toolsDuration);
             } else {
- log.info("ℹ Server '{}' does not support tools capability", serverName);
+ log.debug("ℹ Server '{}' does not support tools capability", serverName);
             }
 
             if (session.getCapabilities() != null &&
                     session.getCapabilities().resources() != null) {
 
- log.info("Fetching resources for server '{}'...", serverName);
+ log.debug("Fetching resources for server '{}'...", serverName);
                 long resStart = System.currentTimeMillis();
                 List<McpSchema.Resource> resources = client.listResources().resources();
                 session.setResources(resources);
                 long resDuration = System.currentTimeMillis() - resStart;
-                log.info("Found {} resources", resources.size());
+                log.debug("Found {} resources", resources.size());
 
                 List<String> resourceUris = resources.stream().map(McpSchema.Resource::uri).toList();
                 auditService.auditClientResourcesListFetched(session.getSessionId(), serverName, resources.size(), resourceUris, resDuration);
@@ -301,12 +312,12 @@ public class McpSessionManager {
             if (session.getCapabilities() != null &&
                     session.getCapabilities().prompts() != null) {
 
- log.info("Fetching prompts for server '{}'...", serverName);
+ log.debug("Fetching prompts for server '{}'...", serverName);
                 long promptStart = System.currentTimeMillis();
                 List<McpSchema.Prompt> prompts = client.listPrompts().prompts();
                 session.setPrompts(prompts);
                 long promptDuration = System.currentTimeMillis() - promptStart;
-                log.info("Found {} prompts", prompts.size());
+                log.debug("Found {} prompts", prompts.size());
 
                 List<String> promptNames = prompts.stream().map(McpSchema.Prompt::name).toList();
                 auditService.auditClientPromptsListFetched(session.getSessionId(), serverName, prompts.size(), promptNames, promptDuration);
@@ -368,9 +379,31 @@ public class McpSessionManager {
     public McpSession getSession(String serverName) {
         McpSession session = sessions.get(serverName);
         if (session == null) {
-            throw new IllegalArgumentException("Server '" + serverName + "' is not connected");
+            throw new IllegalArgumentException(sessionMissingReason(serverName));
         }
         return session;
+    }
+
+    /**
+     * Explain WHY a server has no live session so the caller — ultimately the agent firing a tool — gets an
+     * actionable message instead of a bare "not connected". A disabled server is an administrative block,
+     * distinct from one that merely dropped its session or was never connected. Best-effort: any lookup
+     * problem (no tenant in scope, etc.) falls back to the generic "not connected".
+     */
+    private String sessionMissingReason(String serverName) {
+        try {
+            String tenant = TenantContext.get();
+            if (tenant != null && !tenant.isBlank()) {
+                GatewayServerConfigEntity cfg =
+                        serverConfigRepository.findByServerNameAndWsTenantName(serverName, tenant).orElse(null);
+                if (cfg != null && !Boolean.TRUE.equals(cfg.getEnabled())) {
+                    return "Server '" + serverName + "' is disabled by an administrator";
+                }
+            }
+        } catch (Exception ignored) {
+            // fall through to the generic message
+        }
+        return "Server '" + serverName + "' is not connected";
     }
 
     public McpSyncClient getClient(String serverName) {
@@ -419,10 +452,10 @@ public class McpSessionManager {
     public synchronized void disconnect(String serverName) {
         McpSession session = sessions.remove(serverName);
         if (session != null) {
- log.info("Disconnecting server '{}'...", serverName);
+ log.debug("Disconnecting server '{}'...", serverName);
             try {
                 session.close();
- log.info("Server '{}' disconnected successfully", serverName);
+ log.debug("Server '{}' disconnected successfully", serverName);
             } catch (Exception e) {
  log.error("⚠ Error during disconnect for '{}': {}", serverName, e.getMessage());
             }
@@ -437,7 +470,7 @@ public class McpSessionManager {
                 try {
                     int updated = serverSessionRepository.markDisconnected(serverName);
                     if (updated > 0) {
- log.info("WS Client-side session marked DISCONNECTED for '{}' (rows={})",
+ log.debug("WS Client-side session marked DISCONNECTED for '{}' (rows={})",
                                 serverName, updated);
                     } else {
  log.warn("⚠ No CONNECTED WS Client-side DB session row found to disconnect for '{}'",

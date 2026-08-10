@@ -50,13 +50,13 @@ public class HttpMcpTransport implements McpClientTransport {
         this.connected = new AtomicBoolean(false);
         this.timeout = timeout;
 
- log.info("HTTP MCP Transport created for: {}", baseUrl);
+ log.debug("HTTP MCP Transport created for: {}", baseUrl);
     }
 
     @Override
     public Mono<Void> connect(Function<Mono<McpSchema.JSONRPCMessage>, Mono<McpSchema.JSONRPCMessage>> handler) {
         this.messageHandler = handler;
- log.info("HTTP transport ready");
+ log.debug("HTTP transport ready");
         return Mono.empty();
     }
 
@@ -65,7 +65,7 @@ public class HttpMcpTransport implements McpClientTransport {
         return Mono.fromRunnable(() -> {
             try {
                 String json = mapper.writeValueAsString(message);
- log.info("Sending: {}", json);
+ log.debug("Sending: {}", json);
 
                 URL url = new URL(baseUrl);
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -122,7 +122,7 @@ public class HttpMcpTransport implements McpClientTransport {
 
                 String ct = conn.getHeaderField("Content-Type");
                 if (ct != null && ct.contains("text/event-stream")) {
- log.info("Got SSE stream");
+ log.debug("Got SSE stream");
                     connected.set(true);
                     sseConnection = conn;
                     startSseReader(conn);
@@ -130,7 +130,7 @@ public class HttpMcpTransport implements McpClientTransport {
                     try (var is = conn.getInputStream()) {
                         String resp = new String(is.readAllBytes(), StandardCharsets.UTF_8);
                         if (!resp.trim().isEmpty()) {
- log.info("JSON response: {}", resp);
+ log.debug("JSON response: {}", resp);
                             processMessage(resp);
                         }
                     }
@@ -160,7 +160,7 @@ public class HttpMcpTransport implements McpClientTransport {
             try (BufferedReader r = new BufferedReader(
                     new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
 
- log.info("SSE reader started");
+ log.debug("SSE reader started");
                 String line;
                 StringBuilder data = new StringBuilder();
 
@@ -171,13 +171,13 @@ public class HttpMcpTransport implements McpClientTransport {
                         String msg = data.toString().trim();
                         data.setLength(0);
                         if (!msg.isEmpty()) {
- log.info("SSE: {}", msg);
+ log.debug("SSE: {}", msg);
                             processMessage(msg);
                         }
                     }
                 }
 
- log.info("SSE ended (closed={})", closed);
+ log.debug("SSE ended (closed={})", closed);
                 if (closed) {
                     connected.set(false);
                 }

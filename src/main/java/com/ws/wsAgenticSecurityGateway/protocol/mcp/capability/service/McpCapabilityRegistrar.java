@@ -125,7 +125,7 @@ public class McpCapabilityRegistrar {
 
         long start = System.currentTimeMillis();
         String tenant = wsTenantName != null ? wsTenantName : TenantContext.get();
-        log.info("Registering server '{}' in capability registry...", serverConfigName);
+        log.debug("Registering server '{}' in capability registry...", serverConfigName);
 
         try {
             McpServerEntity serverEntity = serverRepository
@@ -198,9 +198,6 @@ public class McpCapabilityRegistrar {
                             .serverId(serverId)
                             .build());
                     toolCount++;
-
-                    auditService.auditRegistryCapabilityRegistered(
-                            sessionId, serverConfigName, publicName, "TOOL");
                 }
             }
 
@@ -230,9 +227,6 @@ public class McpCapabilityRegistrar {
                             .serverId(serverId)
                             .build());
                     resourceCount++;
-
-                    auditService.auditRegistryCapabilityRegistered(
-                            sessionId, serverConfigName, publicName, "RESOURCE");
                 }
             }
 
@@ -266,9 +260,6 @@ public class McpCapabilityRegistrar {
                             .serverId(serverId)
                             .build());
                     promptCount++;
-
-                    auditService.auditRegistryCapabilityRegistered(
-                            sessionId, serverConfigName, publicName, "PROMPT");
                 }
             }
 
@@ -293,7 +284,7 @@ public class McpCapabilityRegistrar {
     @Transactional
     public void removeServer(String sessionId, String serverConfigName) {
         long start = System.currentTimeMillis();
-        log.info("Removing server '{}' from capability registry...", serverConfigName);
+        log.debug("Removing server '{}' from capability registry...", serverConfigName);
 
         try {
             Optional<McpServerEntity> optServer =
@@ -302,11 +293,6 @@ public class McpCapabilityRegistrar {
             if (optServer.isPresent()) {
                 McpServerEntity serverEntity = optServer.get();
                 UUID serverId = serverEntity.getId();
-
-                for (CapabilityDescriptor desc : registry.getCapabilitiesByServer(serverConfigName)) {
-                    auditService.auditRegistryCapabilityRemoved(
-                            sessionId, serverConfigName, desc.getPublicName(), desc.getType().name());
-                }
 
                 toolRepository.deleteByServerId(serverId);
                 resourceRepository.deleteByServerId(serverId);

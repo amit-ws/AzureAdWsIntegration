@@ -1318,11 +1318,13 @@ public class GatewayAuditService {
                                 .requestPayload(toJson(Map.of(
                                                 "serverName", serverName,
                                                 "url", url != null ? url : "")))
+                                .comment("Server '" + serverName + "' created"
+                                                + (url != null && !url.isBlank() ? " (url=" + url + ")" : ""))
                                 .build());
         }
 
         @Async("auditExecutor")
-        public void auditServerConfigUpdated(String serverName, String url) {
+        public void auditServerConfigUpdated(String serverName, String url, String comment) {
                 persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.SERVER_CONFIG_UPDATED)
                                 .module(AuditModule.SERVER_CONFIG)
@@ -1333,6 +1335,7 @@ public class GatewayAuditService {
                                 .requestPayload(toJson(Map.of(
                                                 "serverName", serverName,
                                                 "url", url != null ? url : "")))
+                                .comment(comment)
                                 .build());
         }
 
@@ -1345,6 +1348,25 @@ public class GatewayAuditService {
                                 .severity(AuditSeverity.WARN)
                                 .serverName(serverName)
                                 .correlationId(generateCorrelationId())
+                                .comment("Server '" + serverName + "' deleted")
+                                .build());
+        }
+
+        /** One row per admin "Test Connection" (dry-run probe) — outcome + counts in the comment; no capability rows. */
+        @Async("auditExecutor")
+        public void auditServerConfigTested(String serverName, String url, boolean ok, String comment) {
+                persist(GatewayAuditLog.builder()
+                                .eventType(AuditEventType.SERVER_CONFIG_TESTED)
+                                .module(AuditModule.SERVER_CONFIG)
+                                .status(ok ? AuditStatus.SUCCESS : AuditStatus.FAILURE)
+                                .severity(ok ? AuditSeverity.INFO : AuditSeverity.WARN)
+                                .serverName(serverName)
+                                .correlationId(generateCorrelationId())
+                                .requestPayload(toJson(Map.of(
+                                                "serverName", serverName != null ? serverName : "",
+                                                "url", url != null ? url : "",
+                                                "ok", ok)))
+                                .comment(comment)
                                 .build());
         }
 

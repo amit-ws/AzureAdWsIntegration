@@ -155,6 +155,14 @@ public class GatewayAuditLog {
     @Column(name = "protocol_version", length = 20)
     private String protocolVersion;
 
+    /**
+     * Human-readable, event-specific note — e.g. "Server enabled" vs "Server disabled" under the same
+     * SERVER_CONFIG_UPDATED event type, so the audit trail is meaningful without decoding the payload.
+     * TEXT (not varchar): unbounded and cheap in Postgres for the occasional longer note.
+     */
+    @Column(name = "comment", columnDefinition = "text")
+    private String comment;
+
     @Convert(converter = JsonNodeColumnConverter.class)
     @Column(name = "request_payload", columnDefinition = "JSONB")
     private JsonNode requestPayload;
