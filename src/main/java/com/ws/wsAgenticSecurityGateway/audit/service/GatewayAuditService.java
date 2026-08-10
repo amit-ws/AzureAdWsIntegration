@@ -891,6 +891,7 @@ public class GatewayAuditService {
                 if (actChain != null && !actChain.isEmpty()) {
                         payload.put("actor", actChain.get(actChain.size() - 1));
                 }
+                payload.put("obo_invariants", minted.oboInvariants()); // Hardening 10 — integrity status, faithful to the token
                 persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.STS_TOKEN_MINTED)
                                 .module(AuditModule.STS)

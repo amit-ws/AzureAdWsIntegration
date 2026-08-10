@@ -116,7 +116,7 @@ public class StsService {
                     jti, req.tenant(), req.targetServer(), req.scope(), exp);
             return new MintedToken(jwt.serialize(), jti, signingKey.getKeyID(),
                     JWSAlgorithm.RS256.getName(), issuer, subject, req.targetServer(),
-                    req.scope(), now, exp);
+                    req.scope(), now, exp, invariants.toClaim());
         } catch (JOSEException e) {
             throw new StsMintException("Failed to sign STS OBO token for tenant " + req.tenant(), e);
         }

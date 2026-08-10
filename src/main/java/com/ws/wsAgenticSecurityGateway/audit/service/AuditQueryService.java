@@ -118,6 +118,7 @@ public class AuditQueryService {
         // Merge the authoritative deciding-policy + reason (from the pdp_audit_log ledger) onto the gateway PDP
         // timeline markers, which keep their eventSequence for ordering but don't persist that detail.
         enrichPdpRows(records, r -> pdpByType.get(r.getEventType()));
+        flagOboReceipts(records); // OBO-receipt button on every row of an OBO-minting leg, not just the STS row
 
         records.sort(Comparator
                 .comparing(GatewayAuditLog::getEventSequence,
@@ -187,6 +188,7 @@ public class AuditQueryService {
         // Merge the authoritative deciding-policy + reason from the ledger onto the gateway PDP markers.
         enrichPdpRows(records, r -> r.getCorrelationId() == null
                 ? null : pdpByKey.get(r.getCorrelationId() + "|" + r.getEventType()));
+        flagOboReceipts(records); // OBO-receipt button on every row of an OBO-minting leg, not just the STS row
 
         records.sort(Comparator
                 .comparing(GatewayAuditLog::getEventSequence,
