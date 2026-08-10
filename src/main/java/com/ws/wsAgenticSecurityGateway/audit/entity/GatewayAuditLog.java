@@ -123,8 +123,22 @@ public class GatewayAuditLog {
     @Column(name = "pdp_decision", length = 16)
     private String pdpDecision;
 
-    @Column(name = "pdp_reason", length = 1024)
+    /**
+     * Display-only carrier for a PDP hop's reason — <b>not a persisted column</b>. The authoritative store is
+     * {@code pdp_audit_log.pdp_reason}; the chain view merges it onto the timeline marker at read time. Always
+     * null on rows read from the {@code gateway_audit_log} table itself. (Paired with {@link #pdpPolicyId}.)
+     */
+    @Transient
     private String pdpReason;
+
+    /**
+     * Display-only carrier for the deciding policy of a PDP hop — <b>not a persisted column</b>. The authoritative
+     * store is {@code pdp_audit_log.pdp_policy_id}; the View-Trace/chain view merges it onto the timeline marker at
+     * read time so it can show "decided by &lt;policy&gt;". Always null on rows read from the {@code gateway_audit_log}
+     * table itself.
+     */
+    @Transient
+    private String pdpPolicyId;
 
     @Column(name = "server_name", length = 128)
     private String serverName;

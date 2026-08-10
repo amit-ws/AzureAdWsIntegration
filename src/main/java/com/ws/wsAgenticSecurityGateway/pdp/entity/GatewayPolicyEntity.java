@@ -20,7 +20,8 @@ import java.util.UUID;
         indexes = {
                 @Index(name = "idx_policy_enabled", columnList = "enabled"),
                 @Index(name = "idx_policy_effect", columnList = "effect"),
-                @Index(name = "idx_policy_created", columnList = "created_at")
+                @Index(name = "idx_policy_created", columnList = "created_at"),
+                @Index(name = "idx_policy_principal", columnList = "ws_tenant_name, principal_id")
         })
 @Data
 @NoArgsConstructor
@@ -67,6 +68,19 @@ public class GatewayPolicyEntity {
 
     @Column(name = "original_prompt", columnDefinition = "TEXT")
     private String originalPrompt;
+
+    /**
+     * Derived read-model of the policy's principal scope, recomputed from {@link #policyText} on every save —
+     * never authored directly and never consulted during evaluation, so it cannot drift from what the PDP
+     * enforces. {@code principalKind} ∈ AGENT | AGENT_GROUP | AGENT_TYPE | ANY; {@code principalId} is the
+     * agent / group / type name (NULL for ANY/wildcard). This turns "which policies target agent X" from a
+     * full-table Cedar-text scan into an indexed SQL query. See {@code idx_policy_principal}.
+     */
+    @Column(name = "principal_kind", length = 20)
+    private String principalKind;
+
+    @Column(name = "principal_id", length = 256)
+    private String principalId;
 
     @Column(name = "created_by", length = 256)
     @Builder.Default

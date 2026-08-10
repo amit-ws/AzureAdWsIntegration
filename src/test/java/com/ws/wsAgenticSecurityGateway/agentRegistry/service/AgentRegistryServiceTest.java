@@ -8,6 +8,7 @@ import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayAgentSess
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayHumanUserRepository;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayNhiRepository;
 import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
+import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
 
@@ -36,9 +37,12 @@ class AgentRegistryServiceTest {
     private final GatewayNhiRepository nhiRepository = mock(GatewayNhiRepository.class);
     private final GatewayAuditService auditService = mock(GatewayAuditService.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
+    private final CapabilityRegistryService capabilityRegistryService = mock(CapabilityRegistryService.class);
+    private final AgentCapabilityFilterService capabilityFilterService = mock(AgentCapabilityFilterService.class);
 
     private final AgentRegistryService service = new AgentRegistryService(
-            agentRepository, sessionRepository, humanUserRepository, nhiRepository, auditService, eventPublisher);
+            agentRepository, sessionRepository, humanUserRepository, nhiRepository, auditService, eventPublisher,
+            capabilityRegistryService, capabilityFilterService);
 
     @Test
     void deprovision_setsTerminalStatus_terminatesSessions_andAudits() {

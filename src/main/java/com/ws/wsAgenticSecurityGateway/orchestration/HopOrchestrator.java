@@ -272,6 +272,7 @@ public class HopOrchestrator {
             auditService.auditPdpDecisionRendered(
                     correlationId, sessionId, pdpRequest.getAgentName(),
                     publicName, "toolCall", pdpResult.getDecision(),
+                    pdpResult.decidedBy(), pdpResult.getReason(),
                     serverName, pdpResult, pdpResult.getEvaluationDurationMs(),
                     requestId, clientName,
                     LocalDateTime.now(), ++seq);
@@ -546,6 +547,7 @@ public class HopOrchestrator {
             auditService.auditPdpDecisionRendered(
                     correlationId, sessionId, pdpRequest.getAgentName(),
                     publicName, "skillInvocation", pdpResult.getDecision(),
+                    pdpResult.decidedBy(), pdpResult.getReason(),
                     serverName, pdpResult, pdpResult.getEvaluationDurationMs(),
                     requestId, clientName,
                     LocalDateTime.now(), ++seq);
@@ -820,6 +822,7 @@ public class HopOrchestrator {
             auditService.auditPdpDecisionRendered(
                     correlationId, sessionId, pdpRequest.getAgentName(),
                     publicName, "promptGet", pdpResult.getDecision(),
+                    pdpResult.decidedBy(), pdpResult.getReason(),
                     serverName, pdpResult, pdpResult.getEvaluationDurationMs(),
                     requestId, clientName,
                     LocalDateTime.now(), ++seq);
@@ -1076,6 +1079,7 @@ public class HopOrchestrator {
             auditService.auditPdpDecisionRendered(
                     correlationId, sessionId, pdpRequest.getAgentName(),
                     publicName, "resourceRead", pdpResult.getDecision(),
+                    pdpResult.decidedBy(), pdpResult.getReason(),
                     serverName, pdpResult, pdpResult.getEvaluationDurationMs(),
                     requestId, clientName,
                     LocalDateTime.now(), ++seq);

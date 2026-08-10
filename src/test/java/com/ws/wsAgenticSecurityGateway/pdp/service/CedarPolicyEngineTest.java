@@ -101,6 +101,60 @@ class CedarPolicyEngineTest {
         assertThat(result.isAllowed()).isTrue();
     }
 
+    @Test
+    void extractPrincipal_mapsHeadClauseToScope() {
+        // Powers the queryable "policies for agent X" read-model — mirrors the runtime principal parsing.
+        assertThat(engine.extractPrincipal("permit(principal == Agent::\"advisor\", action, resource);"))
+                .isEqualTo(new CedarPolicyEngine.PolicyPrincipal("AGENT", "advisor"));
+
+        assertThat(engine.extractPrincipal("permit(principal in AgentGroup::\"finance-agents\", action, resource);"))
+                .isEqualTo(new CedarPolicyEngine.PolicyPrincipal("AGENT_GROUP", "finance-agents"));
+
+        assertThat(engine.extractPrincipal("permit(principal is Agent, action, resource);"))
+                .isEqualTo(new CedarPolicyEngine.PolicyPrincipal("AGENT_TYPE", "Agent"));
+
+        // A principal-agnostic guardrail (bare principal) is a wildcard — applies to every agent.
+        assertThat(engine.extractPrincipal(FORBID_UNVERIFIED_ROOT))
+                .isEqualTo(new CedarPolicyEngine.PolicyPrincipal("ANY", null));
+        assertThat(engine.extractPrincipal("permit(principal, action, resource);"))
+                .isEqualTo(new CedarPolicyEngine.PolicyPrincipal("ANY", null));
+
+        // Null / blank text defends against odd rows — treated as wildcard, never NPEs.
+        assertThat(engine.extractPrincipal(null))
+                .isEqualTo(new CedarPolicyEngine.PolicyPrincipal("ANY", null));
+        assertThat(engine.extractPrincipal("   "))
+                .isEqualTo(new CedarPolicyEngine.PolicyPrincipal("ANY", null));
+    }
+
+    @Test
+    void decidedBy_attributesEveryDecisionCase() {
+        // The audit trail must always attribute a decision — a matched policy id, or a synthetic marker.
+
+        // ALLOW → the matching permit's id.
+        PolicyEvaluationResult allow = engine.evaluate(request(
+                principal("human", "sarah", true), principal("agent", "claude-desktop", true)));
+        assertThat(allow.isAllowed()).isTrue();
+        assertThat(allow.decidedBy()).contains("allow-all");
+
+        // FORBID DENY → the deciding forbid's id.
+        PolicyEvaluationResult forbid = engine.evaluate(request(
+                principal("human", "sarah", false), principal("agent", "claude-desktop", true)));
+        assertThat(forbid.decidedBy()).isEqualTo("deny-unverified-root");
+
+        // DEFAULT-DENY (a permit exists but none matched) → synthetic marker, not an empty attribution.
+        engine.reloadPolicies(List.of(policy("finance-only",
+                "permit(principal, action, resource) when { principal.roles.contains(\"finance\") };", "PERMIT")));
+        PolicyEvaluationResult defaultDeny = engine.evaluate(PolicyEvaluationRequest.builder()
+                .agentName("a").action("toolCall").resourceName("t").resourceType("TOOL")
+                .agentRoles(List.of("user")).build());
+        assertThat(defaultDeny.isDenied()).isTrue();
+        assertThat(defaultDeny.decidedBy()).isEqualTo("DEFAULT_DENY");
+
+        // NO POLICIES configured → its own marker.
+        engine.reloadPolicies(List.of());
+        assertThat(engine.evaluate(baseRequest()).decidedBy()).isEqualTo("NO_POLICIES");
+    }
+
     // --- helpers -----------------------------------------------------------------------------------------
 
     private static GatewayPolicyEntity policy(String name, String text, String effect) {

@@ -1,6 +1,7 @@
 package com.ws.wsAgenticSecurityGateway.sts.model;
 
 import java.time.Instant;
+import java.util.Map;
 
 /**
  * Output of {@code StsService.mint} — the signed compact JWT plus the full set of claims that were
@@ -20,4 +21,5 @@ public record MintedToken(
         String audience,
         String scope,
         Instant issuedAt,
-        Instant expiresAt) {}
+        Instant expiresAt,
+        Map<String, Object> oboInvariants) {}

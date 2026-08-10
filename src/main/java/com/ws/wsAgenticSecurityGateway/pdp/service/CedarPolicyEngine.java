@@ -347,6 +347,7 @@ public class CedarPolicyEngine {
                         .decision("DENY")
                         .matchedPolicies(Set.of())
                         .reason("No matching permit policy (default deny)")
+                        .decisionBasis("DEFAULT_DENY")
                         .evaluationDurationMs(duration)
                         .diagnostics(diagnostic)
                         .build();
@@ -365,6 +366,7 @@ public class CedarPolicyEngine {
                     .decision("DENY")
                     .matchedPolicies(Set.of())
                     .reason("Policy evaluation error (fail-closed, denied): " + e.getMessage())
+                    .decisionBasis("EVAL_ERROR")
                     .evaluationDurationMs(duration)
                     .hasErrors(true)
                     .diagnostics(e.getMessage())
@@ -839,6 +841,30 @@ public class CedarPolicyEngine {
         }
 
         return refs;
+    }
+
+    /** A policy's principal scope, recovered from its Cedar head for the queryable read-model (never for eval). */
+    public record PolicyPrincipal(String kind, String id) {}
+
+    /**
+     * Recover the principal a policy scopes to, for the admin "policies for agent X" read-model. Mirrors the
+     * runtime principal parsing ({@link #PRINCIPAL_EQ} / {@link #PRINCIPAL_IN_GROUP} / {@link #PRINCIPAL_IS}):
+     * {@code principal == Agent::"x"} ⇒ (AGENT, x); {@code principal in AgentGroup::"g"} ⇒ (AGENT_GROUP, g);
+     * {@code principal is <Type>} ⇒ (AGENT_TYPE, Type); anything else — a bare/unconstrained principal such as
+     * a lineage guardrail — ⇒ (ANY, null), the same null-means-wildcard semantics {@link #matches} applies.
+     * Purely descriptive: the evaluator still decides applicability from {@code policyText}; this is never read
+     * during a decision, so it can never change one.
+     */
+    public PolicyPrincipal extractPrincipal(String policyText) {
+        if (policyText == null || policyText.isBlank()) return new PolicyPrincipal("ANY", null);
+        String clean = policyText.replaceAll("//[^\n]*", "").trim();
+        Matcher m = PRINCIPAL_EQ.matcher(clean);
+        if (m.find()) return new PolicyPrincipal("AGENT", m.group(1));
+        m = PRINCIPAL_IN_GROUP.matcher(clean);
+        if (m.find()) return new PolicyPrincipal("AGENT_GROUP", m.group(1));
+        m = PRINCIPAL_IS.matcher(clean);
+        if (m.find()) return new PolicyPrincipal("AGENT_TYPE", m.group(1));
+        return new PolicyPrincipal("ANY", null);
     }
 
     private boolean evaluateCondition(Condition cond, EvalContext ctx) {

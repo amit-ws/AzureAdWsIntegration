@@ -89,6 +89,28 @@ public interface GatewayAuditLogRepository
                                            @Param("tenant") String tenant,
                                            @Param("since") LocalDateTime since);
 
+    /**
+     * Agent OUTBOUND activity roll-up (the calls THIS agent made): one row per
+     * {@code [protocolMethod, target(serverName), capability, decision(pdpDecision), calls, lastAt]}.
+     * Sourced from PDP decision rows; matches the agent by its client id or (possibly version-suffixed) name.
+     */
+    @Query("SELECT m.protocolMethod, m.serverName, m.capabilityName, m.pdpDecision, COUNT(m), MAX(m.timestamp) "
+            + "FROM GatewayAuditLog m "
+            + "WHERE m.eventType = :eventType AND m.serverName IS NOT NULL "
+            + "AND (m.agentClientId = :key OR m.agentName = :key OR m.agentName LIKE CONCAT(:key, ' %')) "
+            + "GROUP BY m.protocolMethod, m.serverName, m.capabilityName, m.pdpDecision")
+    List<Object[]> aggregateAgentOutbound(@Param("eventType") AuditEventType eventType, @Param("key") String key);
+
+    /**
+     * Agent INBOUND activity roll-up (the calls made TO this agent — its skills invoked): one row per
+     * {@code [protocolMethod, caller(agentName), capability, decision(pdpDecision), calls, lastAt]}.
+     */
+    @Query("SELECT m.protocolMethod, m.agentName, m.capabilityName, m.pdpDecision, COUNT(m), MAX(m.timestamp) "
+            + "FROM GatewayAuditLog m "
+            + "WHERE m.eventType = :eventType AND m.serverName = :key "
+            + "GROUP BY m.protocolMethod, m.agentName, m.capabilityName, m.pdpDecision")
+    List<Object[]> aggregateAgentInbound(@Param("eventType") AuditEventType eventType, @Param("key") String key);
+
     Page<GatewayAuditLog> findByTimestampBetween(LocalDateTime from, LocalDateTime to, Pageable pageable);
 
     Page<GatewayAuditLog> findByModuleAndTimestampBetween(

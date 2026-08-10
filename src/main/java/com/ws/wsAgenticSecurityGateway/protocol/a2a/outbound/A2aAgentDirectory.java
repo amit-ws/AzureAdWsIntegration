@@ -49,8 +49,4 @@ public class A2aAgentDirectory {
         return agentName != null && agentBaseUrls.containsKey(agentName);
     }
 
-    /** A snapshot of the registered agent names. */
-    public Set<String> agentNames() {
-        return Set.copyOf(agentBaseUrls.keySet());
-    }
 }

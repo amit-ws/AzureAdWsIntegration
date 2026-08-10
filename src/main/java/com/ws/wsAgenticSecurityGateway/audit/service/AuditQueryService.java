@@ -6,6 +6,7 @@ import com.ws.wsAgenticSecurityGateway.audit.constants.AuditModule;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditSeverity;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditStatus;
 import com.ws.wsAgenticSecurityGateway.audit.dto.AgentActivity;
+import com.ws.wsAgenticSecurityGateway.audit.dto.AgentActivitySummary;
 import com.ws.wsAgenticSecurityGateway.audit.dto.IdentityGraph;
 import com.ws.wsAgenticSecurityGateway.audit.entity.GatewayAuditLog;
 import com.ws.wsAgenticSecurityGateway.audit.entity.PdpAuditLog;
@@ -107,17 +108,40 @@ public class AuditQueryService {
                 .collect(Collectors.toSet());
 
         List<PdpAuditLog> pdpRecords = pdpAuditRepo.findByCorrelationId(correlationId);
+        Map<AuditEventType, PdpAuditLog> pdpByType = new HashMap<>();
         for (PdpAuditLog pdp : pdpRecords) {
+            pdpByType.putIfAbsent(pdp.getEventType(), pdp);
             if (!existingPdpTypes.contains(pdp.getEventType())) {
                 records.add(toChainEntry(pdp));
             }
         }
+        // Merge the authoritative deciding-policy + reason (from the pdp_audit_log ledger) onto the gateway PDP
+        // timeline markers, which keep their eventSequence for ordering but don't persist that detail.
+        enrichPdpRows(records, r -> pdpByType.get(r.getEventType()));
+        flagOboReceipts(records); // OBO-receipt button on every row of an OBO-minting leg, not just the STS row
 
         records.sort(Comparator
                 .comparing(GatewayAuditLog::getEventSequence,
                         Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(GatewayAuditLog::getTimestamp));
         return records;
+    }
+
+    /** Copy the ledger's {@code pdpPolicyId}/{@code pdpReason} onto each PDP chain row (display-only; the rows are
+     *  detached query results, so this never writes back). {@code lookup} finds the matching ledger row. */
+    private void enrichPdpRows(List<GatewayAuditLog> records,
+                              java.util.function.Function<GatewayAuditLog, PdpAuditLog> lookup) {
+        for (GatewayAuditLog r : records) {
+            if (r.getModule() != AuditModule.PDP) {
+                continue;
+            }
+            PdpAuditLog pdp = lookup.apply(r);
+            if (pdp != null) {
+                if (r.getPdpPolicyId() == null) r.setPdpPolicyId(pdp.getPdpPolicyId());
+                if (r.getPdpReason() == null) r.setPdpReason(pdp.getPdpReason());
+                if (r.getPdpDecision() == null) r.setPdpDecision(pdp.getPdpDecision());
+            }
+        }
     }
 
     /**
@@ -152,13 +176,19 @@ public class AuditQueryService {
                             || r.getEventType() == AuditEventType.PDP_DECISION_RENDERED))
                 .map(r -> r.getCorrelationId() + "|" + r.getEventType())
                 .collect(Collectors.toSet());
+        Map<String, PdpAuditLog> pdpByKey = new HashMap<>();
         for (String corrId : correlationIds) {
             for (PdpAuditLog pdp : pdpAuditRepo.findByCorrelationId(corrId)) {
+                pdpByKey.putIfAbsent(corrId + "|" + pdp.getEventType(), pdp);
                 if (!existingPdpKeys.contains(corrId + "|" + pdp.getEventType())) {
                     records.add(toChainEntry(pdp));
                 }
             }
         }
+        // Merge the authoritative deciding-policy + reason from the ledger onto the gateway PDP markers.
+        enrichPdpRows(records, r -> r.getCorrelationId() == null
+                ? null : pdpByKey.get(r.getCorrelationId() + "|" + r.getEventType()));
+        flagOboReceipts(records); // OBO-receipt button on every row of an OBO-minting leg, not just the STS row
 
         records.sort(Comparator
                 .comparing(GatewayAuditLog::getEventSequence,
@@ -172,6 +202,69 @@ public class AuditQueryService {
      * This is the transport-agnostic replacement for the session list: it works for stateless requests (which
      * have no session row) and surfaces the human each request acted for. Paginated over distinct traces.
      */
+    /**
+     * The 360° activity summary for one agent — outbound calls it MADE + inbound calls it RECEIVED — rolled
+     * up from PDP decision rows. Answers "what did this agent do": which peers (agents over A2A, servers over
+     * MCP), which capabilities, how many calls, allowed vs denied, last seen.
+     */
+    public AgentActivitySummary getAgentActivitySummary(String agentKey) {
+        List<AgentActivitySummary.Edge> outbound =
+                mapActivityEdges(auditRepo.aggregateAgentOutbound(AuditEventType.PDP_DECISION_RENDERED, agentKey));
+        List<AgentActivitySummary.Edge> inbound =
+                mapActivityEdges(auditRepo.aggregateAgentInbound(AuditEventType.PDP_DECISION_RENDERED, agentKey));
+        long calls = outbound.stream().mapToLong(AgentActivitySummary.Edge::calls).sum();
+        long allowed = outbound.stream().mapToLong(AgentActivitySummary.Edge::allowed).sum();
+        long denied = outbound.stream().mapToLong(AgentActivitySummary.Edge::denied).sum();
+        int peers = (int) outbound.stream().map(AgentActivitySummary.Edge::peer).distinct().count();
+        return new AgentActivitySummary(agentKey, outbound, inbound,
+                new AgentActivitySummary.Totals(calls, allowed, denied, peers));
+    }
+
+    /** Merge raw [protocolMethod, peer, capability, decision, calls, lastAt] rows into rolled-up Edges,
+     *  summing allowed/denied per (protocol, peer, capability). */
+    private List<AgentActivitySummary.Edge> mapActivityEdges(List<Object[]> rows) {
+        Map<String, long[]> counts = new LinkedHashMap<>();   // key -> [calls, allowed, denied]
+        Map<String, Object[]> meta = new HashMap<>();         // key -> [protocol, peer, capability, lastAt]
+        for (Object[] r : rows) {
+            String protocol = protocolLabel(asStr(r[0]));
+            String peer = asStr(r[1]);
+            String capability = asStr(r[2]);
+            String decision = asStr(r[3]);
+            long count = r[4] == null ? 0L : ((Number) r[4]).longValue();
+            LocalDateTime lastAt = (r[5] instanceof LocalDateTime lt) ? lt : null;
+            boolean allowed = decision == null
+                    || "ALLOW".equalsIgnoreCase(decision) || "SUCCESS".equalsIgnoreCase(decision);
+            String key = protocol + " " + peer + " " + capability;
+            long[] c = counts.computeIfAbsent(key, k -> new long[3]);
+            c[0] += count;
+            if (allowed) c[1] += count; else c[2] += count;
+            Object[] m = meta.get(key);
+            if (m == null || (lastAt != null && (m[3] == null || lastAt.isAfter((LocalDateTime) m[3])))) {
+                meta.put(key, new Object[]{protocol, peer, capability, lastAt});
+            }
+        }
+        List<AgentActivitySummary.Edge> edges = new ArrayList<>();
+        for (Map.Entry<String, long[]> e : counts.entrySet()) {
+            Object[] m = meta.get(e.getKey());
+            long[] c = e.getValue();
+            edges.add(new AgentActivitySummary.Edge(
+                    (String) m[0], (String) m[1], (String) m[2], c[0], c[1], c[2], (LocalDateTime) m[3]));
+        }
+        edges.sort((a, b) -> Long.compare(b.calls(), a.calls()));
+        return edges;
+    }
+
+    private static String protocolLabel(String method) {
+        if (method == null) return "-";
+        if ("skillInvocation".equalsIgnoreCase(method)) return "A2A";
+        if ("toolCall".equalsIgnoreCase(method)) return "MCP";
+        return method;
+    }
+
+    private static String asStr(Object o) {
+        return o == null ? null : o.toString();
+    }
+
     public List<AgentActivity> getAgentActivities(String agentKey, int page, int size) {
         if (agentKey == null || agentKey.isBlank()) {
             return List.of();
@@ -208,11 +301,16 @@ public class AuditQueryService {
         LocalDateTime startedAt = events.get(0).getTimestamp();
         LocalDateTime endedAt = events.get(events.size() - 1).getTimestamp();
 
-        Set<String> tools = new LinkedHashSet<>();
+        // Split capabilities by their authoritative type (the gateway knows this — the FE must not
+        // reverse-engineer it from name shapes): A2A skills arrive via skillInvocation, MCP tools via
+        // toolCall/tools-call. Fall back to the name shape only when the protocol method is absent.
+        Set<String> skillCaps = new LinkedHashSet<>();
+        Set<String> mcpCaps = new LinkedHashSet<>();
         boolean denied = false, errored = false, allowed = false;
         for (GatewayAuditLog ev : events) {
-            if (ev.getCapabilityName() != null) {
-                tools.add(ev.getCapabilityName());
+            String cap = ev.getCapabilityName();
+            if (cap != null && !cap.isBlank()) {
+                (isSkillCapability(ev, cap) ? skillCaps : mcpCaps).add(cap);
             }
             AuditEventType et = ev.getEventType();
             if (et == AuditEventType.PDP_DECISION_RENDERED) {
@@ -243,10 +341,52 @@ public class AuditQueryService {
                 firstNonNull(events, GatewayAuditLog::getUserIdentity),
                 firstNonNull(events, GatewayAuditLog::getTokenType),
                 firstNonNull(events, GatewayAuditLog::getWsTenantName),
-                new ArrayList<>(tools),
+                dedupeAliases(skillCaps),
+                dedupeAliases(mcpCaps),
                 firstNonNull(events, GatewayAuditLog::getServerName),
                 outcome,
                 events.size());
+    }
+
+    /**
+     * Is this event's capability an A2A skill (vs. an MCP tool)? Prefer the authoritative protocol method
+     * ({@code skillInvocation} ⇒ skill, {@code toolCall}/{@code tools/call} ⇒ tool); fall back to the name
+     * shape (A2A skills are dot-named like {@code market-data.quote}; MCP tools are namespaced like
+     * {@code alphavantage_GLOBAL_QUOTE}) when the method is absent.
+     */
+    private static boolean isSkillCapability(GatewayAuditLog ev, String cap) {
+        String pm = ev.getProtocolMethod();
+        if (pm != null) {
+            String m = pm.toLowerCase();
+            if (m.contains("skill")) return true;
+            if (m.contains("tool")) return false;
+        }
+        return cap.contains(".");
+    }
+
+    /**
+     * De-duplicate capability alias noise: the same call is logged under several name forms across a trace's
+     * events (e.g. {@code quote} ⊂ {@code GLOBAL_QUOTE} ⊂ {@code alphavantage_GLOBAL_QUOTE}). Keep the most
+     * qualified form by dropping any name that is a case-insensitive suffix of a longer kept name, then sort.
+     */
+    private static List<String> dedupeAliases(Collection<String> caps) {
+        List<String> byLenDesc = caps.stream()
+                .distinct()
+                .sorted(Comparator.comparingInt(String::length).reversed())
+                .toList();
+        List<String> kept = new ArrayList<>();
+        for (String c : byLenDesc) {
+            String lc = c.toLowerCase();
+            boolean aliasOfKept = kept.stream().anyMatch(k -> {
+                String lk = k.toLowerCase();
+                return !lk.equals(lc) && lk.endsWith(lc);
+            });
+            if (!aliasOfKept) {
+                kept.add(c);
+            }
+        }
+        kept.sort(String.CASE_INSENSITIVE_ORDER);
+        return kept;
     }
 
     private static <T> T firstNonNull(List<GatewayAuditLog> events, java.util.function.Function<GatewayAuditLog, T> getter) {
@@ -520,6 +660,8 @@ public class AuditQueryService {
         return auditRepo.findBySessionIdOrderByTimestampDesc(sessionId, pageRequest);
     }
 
+    /** Project a {@code pdp_audit_log} ledger row into a chain entry — the fallback used when no gateway PDP
+     *  marker exists for a leg. Carries the decision + authoritative policy/reason for display. */
     GatewayAuditLog toChainEntry(PdpAuditLog pdp) {
         return GatewayAuditLog.builder()
                 .id(pdp.getId())
@@ -531,7 +673,9 @@ public class AuditQueryService {
                 .agentName(pdp.getPdpSubject())
                 .capabilityName(pdp.getPdpResource())
                 .protocolMethod(pdp.getPdpAction())
-                .capabilityType(pdp.getPdpDecision())
+                .pdpDecision(pdp.getPdpDecision())
+                .pdpReason(pdp.getPdpReason())
+                .pdpPolicyId(pdp.getPdpPolicyId())
                 .durationMs(pdp.getDurationMs())
                 .requestPayload(pdp.getPdpContext())
                 .timestamp(pdp.getTimestamp())

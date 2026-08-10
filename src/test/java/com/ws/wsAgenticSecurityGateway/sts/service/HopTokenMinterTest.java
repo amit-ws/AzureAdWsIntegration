@@ -66,7 +66,8 @@ class HopTokenMinterTest {
                 .thenReturn("mcp:tool:github:github_get_me");
         MintedToken token = new MintedToken("jwt", "jti-1", "kid", "RS256",
                 "https://gateway.local/sts/amitdev.local", "sarah", "github",
-                "mcp:tool:github:github_get_me", Instant.now(), Instant.now().plusSeconds(120));
+                "mcp:tool:github:github_get_me", Instant.now(), Instant.now().plusSeconds(120),
+                java.util.Map.of());
         when(stsService.mint(any())).thenReturn(token);
 
         MintedToken result = minter.mintForHop(hop, "s", chain, "rid", "corr", 1);

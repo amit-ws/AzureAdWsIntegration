@@ -72,6 +72,7 @@ public class PolicyService {
         if (count == 0) {
  log.info("No policies in DB — use the LLM chatbot or REST API to create policies");
         }
+        backfillPrincipals(); // populate the principal read-model for any pre-existing rows
         reloadEngine();
     }
 
@@ -103,6 +104,7 @@ public class PolicyService {
             if (repository.findByPolicyNameAndWsTenantName(dp.name(), tenant).isPresent()) {
                 continue; // already present for this tenant — idempotent
             }
+            CedarPolicyEngine.PolicyPrincipal principal = cedarEngine.extractPrincipal(dp.text());
             repository.save(GatewayPolicyEntity.builder()
                     .policyName(dp.name())
                     .description(dp.description())
@@ -112,6 +114,8 @@ public class PolicyService {
                     .enabled(true)
                     .priority(10) // low number = evaluated early; guardrails before allow policies
                     .source("DEFAULT")
+                    .principalKind(principal.kind()) // ANY — these guardrails apply to every agent
+                    .principalId(principal.id())
                     .createdBy("system")
                     .wsTenantName(tenant)
                     .build());
@@ -125,6 +129,61 @@ public class PolicyService {
 
     public List<GatewayPolicyEntity> getAllPolicies() {
         return repository.findAllByWsTenantName(TenantContext.get());
+    }
+
+    /**
+     * The policies that govern one agent, for the admin "what policies does agent X have?" view. Answered from
+     * the indexed principal read-model, not a Cedar-text scan. Union of:
+     * <ul>
+     *   <li>policies that name the agent directly — {@code principal == Agent::"X"} (kind AGENT); and</li>
+     *   <li>tenant-wide policies that apply to <em>every</em> agent — the baseline guardrails / wildcards
+     *       (kind ANY) and type-scoped policies (kind AGENT_TYPE, e.g. {@code principal is Agent}).</li>
+     * </ul>
+     * Group-scoped policies (kind AGENT_GROUP) are intentionally excluded: an agent's group membership rides on
+     * the delegated token at request time and is not stored on the agent, so it cannot be resolved here without
+     * risking false attribution. Deduped by id, ordered by priority then name — the same order the PDP evaluates.
+     * (This is a read-model for admin visibility only; enforcement still runs over {@code policy_text}.)
+     */
+    public List<GatewayPolicyEntity> getPoliciesForAgent(String agentName) {
+        String tenant = TenantContext.get();
+        if (agentName == null || agentName.isBlank()) {
+            return getAllPolicies();
+        }
+        Map<UUID, GatewayPolicyEntity> merged = new LinkedHashMap<>();
+        for (GatewayPolicyEntity p : repository
+                .findByWsTenantNameAndPrincipalKindAndPrincipalId(tenant, "AGENT", agentName)) {
+            merged.put(p.getId(), p);
+        }
+        for (GatewayPolicyEntity p : repository
+                .findByWsTenantNameAndPrincipalKindIn(tenant, List.of("ANY", "AGENT_TYPE"))) {
+            merged.putIfAbsent(p.getId(), p);
+        }
+        return merged.values().stream()
+                .sorted(Comparator
+                        .comparingInt((GatewayPolicyEntity p) -> p.getPriority() == null ? 100 : p.getPriority())
+                        .thenComparing(p -> p.getPolicyName() == null ? "" : p.getPolicyName()))
+                .toList();
+    }
+
+    /**
+     * One-time backfill of the principal read-model for rows saved before the columns existed
+     * ({@code principalKind == null}). Idempotent — only null rows are touched, recomputed from the same
+     * {@code policy_text} the PDP enforces. New create/update/seed paths populate the columns inline, so after
+     * one pass this becomes a no-op. Runs at startup alongside guardrail seeding.
+     */
+    @Transactional
+    public int backfillPrincipals() {
+        List<GatewayPolicyEntity> stale = repository.findByPrincipalKindIsNull();
+        for (GatewayPolicyEntity p : stale) {
+            CedarPolicyEngine.PolicyPrincipal principal = cedarEngine.extractPrincipal(p.getPolicyText());
+            p.setPrincipalKind(principal.kind());
+            p.setPrincipalId(principal.id());
+            repository.save(p);
+        }
+        if (!stale.isEmpty()) {
+ log.info("Backfilled principal read-model for {} policy(ies)", stale.size());
+        }
+        return stale.size();
     }
 
     public Optional<GatewayPolicyEntity> getById(UUID id) {
@@ -219,6 +278,9 @@ public class PolicyService {
                     + idClash.get().getPolicyName() + "'. Give this policy a unique @id.");
         }
 
+        // Derive the queryable principal read-model from the Cedar text (recomputed on every save, never authored).
+        CedarPolicyEngine.PolicyPrincipal principal = cedarEngine.extractPrincipal(dto.getPolicyText());
+
         GatewayPolicyEntity entity = GatewayPolicyEntity.builder()
                 .policyName(dto.getPolicyName())
                 .description(dto.getDescription())
@@ -230,6 +292,8 @@ public class PolicyService {
                 .tags(dto.getTags())
                 .source(dto.getSource() != null ? dto.getSource() : "MANUAL")
                 .originalPrompt(dto.getOriginalPrompt())
+                .principalKind(principal.kind())
+                .principalId(principal.id())
                 .createdBy(dto.getCreatedBy() != null ? dto.getCreatedBy() : "admin")
                 .wsTenantName(tenant)
                 .build();
@@ -280,6 +344,10 @@ public class PolicyService {
             }
             entity.setPolicyText(dto.getPolicyText());
             entity.setEffect(dto.getEffect() != null ? dto.getEffect().toUpperCase() : detectEffect(dto.getPolicyText()));
+            // The principal scope can change with the text — recompute the read-model so it never drifts.
+            CedarPolicyEngine.PolicyPrincipal principal = cedarEngine.extractPrincipal(dto.getPolicyText());
+            entity.setPrincipalKind(principal.kind());
+            entity.setPrincipalId(principal.id());
         }
         if (dto.getEnabled() != null) entity.setEnabled(dto.getEnabled());
         if (dto.getPriority() != null) entity.setPriority(dto.getPriority());

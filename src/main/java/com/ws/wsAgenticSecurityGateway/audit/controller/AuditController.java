@@ -6,6 +6,7 @@ import com.ws.wsAgenticSecurityGateway.audit.constants.AuditModule;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditSeverity;
 import com.ws.wsAgenticSecurityGateway.audit.constants.AuditStatus;
 import com.ws.wsAgenticSecurityGateway.audit.dto.AgentActivity;
+import com.ws.wsAgenticSecurityGateway.audit.dto.AgentActivitySummary;
 import com.ws.wsAgenticSecurityGateway.audit.dto.IdentityGraph;
 import com.ws.wsAgenticSecurityGateway.audit.entity.GatewayAuditLog;
 import com.ws.wsAgenticSecurityGateway.audit.service.AuditQueryService;
@@ -119,6 +120,16 @@ public class AuditController {
             @RequestParam(defaultValue = "25") int size) {
  log.info("GET /api/admin/audit/logs/activities agentKey={} page={} size={}", agentKey, page, size);
         return ResponseEntity.ok(auditQueryService.getAgentActivities(agentKey, page, size));
+    }
+
+    /**
+     * The 360° activity summary for one agent — outbound calls it MADE (to A2A agents + MCP servers) and
+     * inbound calls it RECEIVED, each with the governed allow/deny outcome. Answers "what did this agent do".
+     */
+    @GetMapping("/agents/{agentKey}/activity-summary")
+    public ResponseEntity<AgentActivitySummary> getAgentActivitySummary(@PathVariable String agentKey) {
+        log.info("GET /api/admin/audit/agents/{}/activity-summary", agentKey);
+        return ResponseEntity.ok(auditQueryService.getAgentActivitySummary(agentKey));
     }
 
     /**

@@ -99,13 +99,18 @@ public class HttpMcpTransport implements McpClientTransport {
 
                 int code = conn.getResponseCode();
                 if (code < 200 || code >= 300) {
+                    // A status code came back → the server is reachable and replied → tool/application error,
+                    // NOT a transport failure. Read the error body best-effort; even if the body is unreadable,
+                    // still throw DownstreamHttpException so the connection is never dropped on a status alone.
                     String error = "HTTP " + code;
                     try (var es = conn.getErrorStream()) {
                         if (es != null) {
                             error += ": " + new String(es.readAllBytes(), StandardCharsets.UTF_8);
                         }
+                    } catch (Exception bodyReadFailure) {
+                        error += " (error body unreadable: " + bodyReadFailure.getMessage() + ")";
                     }
-                    throw new RuntimeException(error);
+                    throw new DownstreamHttpException(error);
                 }
 
                 // Capture (or refresh) the server-assigned session id from the initialize response
@@ -134,8 +139,15 @@ public class HttpMcpTransport implements McpClientTransport {
                 }
 
             } catch (Exception e) {
-                connected.set(false);
- log.error("Send failed: {}", e.getMessage());
+                // Only a genuine transport / I-O failure means we are disconnected. A downstream HTTP error
+                // RESPONSE (the server replied with a tool error or a rate-limit 500) is NOT a disconnect —
+                // keep the connection alive. Otherwise one bad tool call (e.g. a model's empty-arg call, or
+                // an Alpha Vantage rate-limit) would flip `connected=false` and knock the whole server
+                // offline for the broker path (isConnected → false → every later call rejected "not connected").
+                if (!(e instanceof DownstreamHttpException)) {
+                    connected.set(false);
+                }
+                log.error("Send failed: {}", e.getMessage());
                 throw new RuntimeException(e);
             } finally {
                 requestOverrideHeaders.remove();
@@ -228,6 +240,15 @@ public class HttpMcpTransport implements McpClientTransport {
     @Override
     public <T> T unmarshalFrom(Object data, TypeReference<T> typeRef) {
         return mapper.convertValue(data, typeRef);
+    }
+
+    /**
+     * A downstream HTTP error RESPONSE (4xx/5xx): the server was reachable and replied — with a tool error
+     * or a rate-limit — so it is a request-level failure, NOT a transport disconnect. Distinguishing it keeps
+     * one bad tool call from marking the whole server "disconnected" for the broker path.
+     */
+    private static final class DownstreamHttpException extends RuntimeException {
+        DownstreamHttpException(String message) { super(message); }
     }
 
     public boolean isConnected() {

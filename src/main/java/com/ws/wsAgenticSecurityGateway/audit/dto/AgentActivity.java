@@ -22,7 +22,10 @@ import java.util.List;
  * @param userIdentity  human-readable identity of that human (email / username)
  * @param tokenType     {@code HUMAN_DELEGATED} / {@code AUTOMATED_AGENT}
  * @param wsTenantName  owning tenant
- * @param tools         distinct capabilities touched in this activity
+ * @param skills        distinct A2A skills invoked in this activity (dot-named, e.g. {@code market-data.quote}),
+ *                      de-duplicated of alias noise — authoritative type, no client-side inference needed
+ * @param mcpTools      distinct MCP tools called in this activity (server-namespaced, e.g.
+ *                      {@code alphavantage_GLOBAL_QUOTE}), de-duplicated of alias noise
  * @param serverName    the enterprise server the capability resolved to
  * @param outcome       {@code ALLOWED} / {@code DENIED} / {@code ERROR} / {@code UNKNOWN}
  * @param eventCount    number of audit events rolled up
@@ -39,7 +42,8 @@ public record AgentActivity(
         String userIdentity,
         String tokenType,
         String wsTenantName,
-        List<String> tools,
+        List<String> skills,
+        List<String> mcpTools,
         String serverName,
         String outcome,
         int eventCount) {

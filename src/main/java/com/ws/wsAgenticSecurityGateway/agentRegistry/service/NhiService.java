@@ -454,7 +454,7 @@ public class NhiService {
                 offHoursCount + " requests outside business hours (8am-8pm)"));
 
         long pdpDenials = windowLogs.stream()
-                .filter(l -> "DENIED".equals(l.getPdpDecision()))
+                .filter(l -> "DENY".equals(l.getPdpDecision()))
                 .count();
         long totalPdpChecks = windowLogs.stream()
                 .filter(l -> l.getPdpDecision() != null)

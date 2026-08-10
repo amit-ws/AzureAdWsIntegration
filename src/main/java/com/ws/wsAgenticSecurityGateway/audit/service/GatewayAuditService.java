@@ -891,6 +891,7 @@ public class GatewayAuditService {
                 if (actChain != null && !actChain.isEmpty()) {
                         payload.put("actor", actChain.get(actChain.size() - 1));
                 }
+                payload.put("obo_invariants", minted.oboInvariants()); // Hardening 10 — integrity status, faithful to the token
                 persist(GatewayAuditLog.builder()
                                 .eventType(AuditEventType.STS_TOKEN_MINTED)
                                 .module(AuditModule.STS)
@@ -1034,6 +1035,8 @@ public class GatewayAuditService {
                         String resource,
                         String action,
                         String decision,
+                        String decidedBy,
+                        String reason,
                         String serverName,
                         Object context,
                         long durationMs,
@@ -1055,6 +1058,10 @@ public class GatewayAuditService {
                                 .pdpResource(resource)
                                 .pdpAction(action)
                                 .pdpDecision(decision)
+                                // Authoritative deciding-policy + reason live here on the dedicated ledger (covers
+                                // every case: matched policy id(s), or the DEFAULT_DENY / NO_POLICIES / EVAL_ERROR marker).
+                                .pdpPolicyId(decidedBy != null && decidedBy.length() > 512 ? decidedBy.substring(0, 512) : decidedBy)
+                                .pdpReason(reason != null && reason.length() > 1024 ? reason.substring(0, 1024) : reason)
                                 .pdpContext(toJson(context))
                                 .durationMs(durationMs)
                                 .build());
@@ -1070,7 +1077,11 @@ public class GatewayAuditService {
                                 .capabilityName(resource)
                                 .serverName(serverName)
                                 .protocolMethod(action)
-                                .capabilityType(decision)
+                                // Timeline marker only: the decision verb in its proper column (no longer misfiled
+                                // into capability_type), for the /logs feed + the activity roll-up. The deciding
+                                // policy + reason are NOT persisted here — they live on pdp_audit_log (authoritative)
+                                // and are merged onto this row in the chain view at read time.
+                                .pdpDecision(decision)
                                 .durationMs(durationMs)
                                 .requestId(requestId)
                                 .responsePayload(toJson(context))

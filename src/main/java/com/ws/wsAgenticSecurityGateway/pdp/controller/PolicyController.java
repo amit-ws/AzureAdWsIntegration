@@ -46,9 +46,17 @@ public class PolicyController {
         this.capabilityRegistry = capabilityRegistry;
     }
 
+    /**
+     * List policies for the caller's tenant. With {@code ?agentId=X} it returns only the policies that govern
+     * that agent — the ones naming it directly plus the tenant-wide guardrails/wildcards that apply to every
+     * agent — answered from the indexed principal read-model rather than a Cedar-text scan.
+     */
     @GetMapping
-    public ResponseEntity<List<Map<String, Object>>> listPolicies() {
-        List<GatewayPolicyEntity> policies = policyService.getAllPolicies();
+    public ResponseEntity<List<Map<String, Object>>> listPolicies(
+            @RequestParam(required = false) String agentId) {
+        List<GatewayPolicyEntity> policies = (agentId != null && !agentId.isBlank())
+                ? policyService.getPoliciesForAgent(agentId)
+                : policyService.getAllPolicies();
         List<Map<String, Object>> result = policies.stream()
                 .map(this::toMap)
                 .collect(Collectors.toList());
@@ -401,6 +409,8 @@ public class PolicyController {
         map.put("priority", entity.getPriority());
         map.put("tags", entity.getTags());
         map.put("source", entity.getSource());
+        map.put("principalKind", entity.getPrincipalKind()); // AGENT | AGENT_GROUP | AGENT_TYPE | ANY
+        map.put("principalId", entity.getPrincipalId());     // agent/group/type name (null for ANY)
         map.put("originalPrompt", entity.getOriginalPrompt());
         map.put("createdBy", entity.getCreatedBy());
         map.put("createdAt", entity.getCreatedAt());
