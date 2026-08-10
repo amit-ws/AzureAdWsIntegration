@@ -44,7 +44,7 @@ class HopTokenMinterTest {
         hop.setProtocol("MCP"); // set by the spine at dispatch; the minter reads it for the scope prefix
         chain = new ActChain(List.of(
                 Principal.human("sarah", null, null, true),
-                Principal.agent("agent-uuid", "client", true)));
+                Principal.agent("agent-uuid", "client", "KEYCLOAK", true)));
     }
 
     @Test

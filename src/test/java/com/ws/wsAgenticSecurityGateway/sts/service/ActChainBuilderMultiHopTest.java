@@ -28,7 +28,7 @@ class ActChainBuilderMultiHopTest {
         // inbound OBO carries a full act_chain: human H -> agent A
         List<Map<String, Object>> inboundChain = List.of(
                 Principal.human("user-h", "alice", "keycloak", true).toClaim(),
-                Principal.agent("agent-a", "client-a", true).toClaim());
+                Principal.agent("agent-a", "client-a", "KEYCLOAK", true).toClaim());
         Map<String, Object> ctx = new HashMap<>();
         ctx.put("rawJwtClaims", Map.of("act_chain", inboundChain));
         ctx.put("agentClientId", "client-b"); // this hop's caller = agent B

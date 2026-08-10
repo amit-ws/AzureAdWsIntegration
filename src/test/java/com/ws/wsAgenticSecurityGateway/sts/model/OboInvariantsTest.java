@@ -22,7 +22,7 @@ class OboInvariantsTest {
     }
 
     private static Principal agent(String id, boolean verified) {
-        return Principal.agent(id, id, verified);
+        return Principal.agent(id, id, "KEYCLOAK", verified);
     }
 
     private static ActChain chain(Principal... ps) {

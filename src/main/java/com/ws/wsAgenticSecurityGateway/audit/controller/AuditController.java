@@ -8,6 +8,7 @@ import com.ws.wsAgenticSecurityGateway.audit.constants.AuditStatus;
 import com.ws.wsAgenticSecurityGateway.audit.dto.AgentActivity;
 import com.ws.wsAgenticSecurityGateway.audit.dto.AgentActivitySummary;
 import com.ws.wsAgenticSecurityGateway.audit.dto.IdentityGraph;
+import com.ws.wsAgenticSecurityGateway.audit.dto.TraceGraph;
 import com.ws.wsAgenticSecurityGateway.audit.entity.GatewayAuditLog;
 import com.ws.wsAgenticSecurityGateway.audit.service.AuditQueryService;
 import lombok.extern.slf4j.Slf4j;
@@ -106,6 +107,13 @@ public class AuditController {
  log.info("GET /api/admin/audit/logs/trace/{}", traceId);
         List<GatewayAuditLog> records = auditQueryService.getTraceChain(traceId);
         return ResponseEntity.ok(records);
+    }
+
+    /** The trace as a delegation DAG (human → agent(s) → tool(s), agent→agent delegation included) — for the
+     *  dashboard "View DAG" governance-trail view. Additive; the flat endpoint above is unchanged. */
+    @GetMapping("/logs/trace/{traceId}/graph")
+    public ResponseEntity<TraceGraph> getTraceGraph(@PathVariable String traceId) {
+        return ResponseEntity.ok(auditQueryService.getTraceGraph(traceId));
     }
 
     /**

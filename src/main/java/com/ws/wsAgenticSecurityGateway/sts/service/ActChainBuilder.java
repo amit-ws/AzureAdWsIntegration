@@ -1,5 +1,6 @@
 package com.ws.wsAgenticSecurityGateway.sts.service;
 
+import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
 import com.ws.wsAgenticSecurityGateway.sts.model.ActChain;
 import com.ws.wsAgenticSecurityGateway.sts.model.OboInvariants;
@@ -42,6 +43,11 @@ public class ActChainBuilder {
         // less data planes (A2A / stateless) rely on it since they have no server-side session to bind to.
         boolean tokenValidated = tokenType != null && !tokenType.isBlank();
 
+        // The calling agent's declared identity source ("KEYCLOAK" today; "SPIFFE" once that source is deployed).
+        // Stamped onto the actor alongside its workload id (client_id today) so the OBO attests HOW this hop
+        // proved identity — source-tagged, so SPIFFE needs no new claim.
+        String identitySource = resolveIdentitySource(agentId, clientId);
+
         // ---- MULTI-HOP: extend the inbound gateway act_chain if the caller presented one ----
         // A downstream A2A leg arrives bearing a gateway-minted OBO whose {@code act_chain} already holds the
         // verified root + every prior actor. Extend it — append this hop's calling agent — rather than
@@ -50,7 +56,7 @@ public class ActChainBuilder {
         ActChain inboundChain = ActChain.fromClaim(inboundClaim(c, "act_chain"));
         if (!inboundChain.isEmpty()) {
             List<Principal> extended = new ArrayList<>(inboundChain.principals());
-            appendActor(extended, agentId, clientId, tokenValidated);
+            appendActor(extended, agentId, clientId, identitySource, tokenValidated);
             ActChain grown = new ActChain(extended);
             // Hardening 10: auto-check the delegation-chain integrity invariants at the point of growth. A hop may
             // only APPEND this agent to the verified inbound lineage — never rewrite its prefix or change the root.
@@ -93,23 +99,24 @@ public class ActChainBuilder {
         // ---- SEED: inbound RFC 8693 `act` claim (an existing delegation), if present ----
         String priorActor = str(inboundActSub(c));
         if (priorActor != null) {
-            chain.add(Principal.agent(priorActor, null, false));           // from the inbound token claim, unverified
+            chain.add(Principal.agent(priorActor, null, null, false));     // from the inbound token claim, unverified
         }
 
         // ---- ACTOR (the calling agent) ----
-        appendActor(chain, agentId, clientId, tokenValidated);
+        appendActor(chain, agentId, clientId, identitySource, tokenValidated);
 
         return new ActChain(chain);
     }
 
     /** Append the calling agent as the chain's actor, skipping a duplicate of the current last principal. */
-    private static void appendActor(List<Principal> chain, UUID agentId, String clientId, boolean tokenValidated) {
+    private static void appendActor(List<Principal> chain, UUID agentId, String clientId,
+                                    String identitySource, boolean tokenValidated) {
         Principal actor;
         if (agentId != null) {
-            actor = Principal.agent(agentId.toString(), clientId, clientId != null);
+            actor = Principal.agent(agentId.toString(), clientId, identitySource, clientId != null);
         } else if (clientId != null) {
             // Session-less caller (A2A / stateless): the agent is verified when named by a validated token.
-            actor = Principal.agent(clientId, clientId, tokenValidated);
+            actor = Principal.agent(clientId, clientId, identitySource, tokenValidated);
         } else {
             return;
         }
@@ -117,6 +124,24 @@ public class ActChainBuilder {
         if (last == null || !actor.id().equals(last.id())) {
             chain.add(actor);
         }
+    }
+
+    /**
+     * The calling agent's declared identity source. Authoritative from the registry when the agent is resolved
+     * (its {@code identity_source} — "KEYCLOAK" today, "SPIFFE" once deployed); otherwise "KEYCLOAK" when a
+     * validated client_id is present (a KC/OIDC JWT is its only source today), else null.
+     */
+    private String resolveIdentitySource(UUID agentId, String clientId) {
+        if (agentId != null) {
+            String src = registry.getAgent(agentId)
+                    .map(GatewayAgentEntity::getIdentitySource)
+                    .filter(s -> s != null && !s.isBlank())
+                    .orElse(null);
+            if (src != null) {
+                return src;
+            }
+        }
+        return clientId != null ? "KEYCLOAK" : null;
     }
 
     private static Object inboundClaim(Map<String, Object> ctx, String key) {

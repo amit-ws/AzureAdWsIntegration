@@ -15,8 +15,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ActChainTest {
 
     private final Principal root = Principal.human("amit", "amit-prakash", "kc", true);
-    private final Principal agent1 = Principal.agent("agent1", "claude-desktop", true);
-    private final Principal agent2 = Principal.agent("agent2", "sub-agent", true);
+    private final Principal agent1 = Principal.agent("agent1", "claude-desktop", "KEYCLOAK", true);
+    private final Principal agent2 = Principal.agent("agent2", "sub-agent", "KEYCLOAK", true);
 
     @Test
     void flatClaim_keepsRootFirstAndCurrentActorLast() {

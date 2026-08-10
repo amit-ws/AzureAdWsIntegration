@@ -42,7 +42,7 @@ class StsServiceTest {
     private MintRequest req() {
         ActChain chain = new ActChain(List.of(
                 Principal.human("sarah@acme.com", "sarah", "https://kc", true),
-                Principal.agent(agentUuid.toString(), "agent-client", true)));
+                Principal.agent(agentUuid.toString(), "agent-client", "KEYCLOAK", true)));
         return new MintRequest("acme", chain, "github",
                 "mcp:tool:github:github_get_me", "trace-abc", "corr-1", 120);
     }

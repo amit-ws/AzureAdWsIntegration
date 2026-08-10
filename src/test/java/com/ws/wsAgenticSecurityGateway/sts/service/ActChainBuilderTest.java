@@ -54,7 +54,7 @@ class ActChainBuilderTest {
         Principal actor = chain.actor();
         assertThat(actor.type()).isEqualTo(Principal.PrincipalType.AGENT);
         assertThat(actor.id()).isEqualTo(agentId.toString());
-        assertThat(actor.clientId()).isEqualTo("agent-client");
+        assertThat(actor.workloadId()).isEqualTo("agent-client");
         assertThat(actor.verified()).isTrue();
     }
 
@@ -150,6 +150,7 @@ class ActChainBuilderTest {
         assertThat(claim.get(0)).containsEntry("type", "human").containsEntry("verified", true)
                 .containsEntry("id", "sarah@acme.com").containsEntry("username", "sarah");
         assertThat(claim.get(1)).containsEntry("type", "agent").containsEntry("verified", true)
-                .containsEntry("clientId", "agent-client");
+                .containsEntry("workload_id", "agent-client").containsEntry("identity_source", "KEYCLOAK")
+                .containsEntry("clientId", "agent-client");   // back-compat key preserved for external consumers
     }
 }

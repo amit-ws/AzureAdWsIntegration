@@ -8,6 +8,7 @@ import com.ws.wsAgenticSecurityGateway.audit.constants.AuditStatus;
 import com.ws.wsAgenticSecurityGateway.audit.dto.AgentActivity;
 import com.ws.wsAgenticSecurityGateway.audit.dto.AgentActivitySummary;
 import com.ws.wsAgenticSecurityGateway.audit.dto.IdentityGraph;
+import com.ws.wsAgenticSecurityGateway.audit.dto.TraceGraph;
 import com.ws.wsAgenticSecurityGateway.audit.entity.GatewayAuditLog;
 import com.ws.wsAgenticSecurityGateway.audit.entity.PdpAuditLog;
 import com.ws.wsAgenticSecurityGateway.audit.repository.GatewayAuditLogRepository;
@@ -486,6 +487,129 @@ public class AuditQueryService {
         v[0] += count;
         v[1] += allowed;
         v[2] += denied;
+    }
+
+    /**
+     * Build the trace-scoped delegation DAG (human → agent(s) → tool(s), agent→agent delegation included) from
+     * one trace's PDP decisions. Additive read-model for the dashboard "View DAG" — the flat
+     * {@link #getTraceChain} is untouched. Edge rule: a target that is itself a caller in this trace is an
+     * AGENT (delegation); otherwise it hosts a TOOL (invocation). Node level = longest path from the human root.
+     */
+    public TraceGraph getTraceGraph(String traceId) {
+        List<GatewayAuditLog> events = getTraceChain(traceId);
+
+        List<GatewayAuditLog> decisions = new ArrayList<>();
+        for (GatewayAuditLog e : events) {
+            if (e.getEventType() == AuditEventType.PDP_DECISION_RENDERED) decisions.add(e);
+        }
+
+        // Every distinct caller (version suffix stripped) is an agent identity within this trace.
+        Set<String> agents = new LinkedHashSet<>();
+        for (GatewayAuditLog e : decisions) {
+            String c = normalizeAgent(e.getAgentName());
+            if (c != null) agents.add(c);
+        }
+
+        String human = resolveTraceHuman(events);
+        String humanId = human != null ? "human:" + human : null;
+
+        Map<String, TraceGraph.Node> nodes = new LinkedHashMap<>();
+        Map<String, TraceGraph.Edge> edges = new LinkedHashMap<>();
+        List<TraceGraph.Blocked> blocked = new ArrayList<>();
+        Set<String> delegationTargets = new LinkedHashSet<>();
+
+        if (humanId != null) nodes.put(humanId, new TraceGraph.Node(humanId, "HUMAN", human, null, 0));
+
+        for (GatewayAuditLog e : decisions) {
+            String caller = normalizeAgent(e.getAgentName());
+            String target = e.getServerName();
+            String cap = e.getCapabilityName();
+            String dec = e.getPdpDecision();
+            if (caller == null || target == null) continue;
+
+            String callerId = "agent:" + caller;
+            nodes.putIfAbsent(callerId, new TraceGraph.Node(callerId, "AGENT", caller, null, 0));
+
+            if (agents.contains(target)) {                          // delegation: agent → agent
+                String targetId = "agent:" + target;
+                nodes.putIfAbsent(targetId, new TraceGraph.Node(targetId, "AGENT", target, null, 0));
+                delegationTargets.add(target);
+                putTraceEdge(edges, callerId, targetId, cap, dec);
+            } else {                                                 // invocation: agent → tool (host = target)
+                String toolId = "tool:" + cap;
+                nodes.putIfAbsent(toolId, new TraceGraph.Node(toolId, "TOOL", cap, target, 0));
+                putTraceEdge(edges, callerId, toolId, cap, dec);
+                if ("DENY".equalsIgnoreCase(dec)) {
+                    blocked.add(new TraceGraph.Blocked(caller, cap, e.getPdpPolicyId(), e.getPdpReason()));
+                }
+            }
+        }
+
+        // human → the entry agents (callers that are never themselves delegated-to)
+        if (humanId != null) {
+            for (String a : agents) {
+                if (!delegationTargets.contains(a)) putTraceEdge(edges, humanId, "agent:" + a, null, "ALLOW");
+            }
+        }
+
+        // level = longest path from the root(s); relaxation converges since a delegation trace is acyclic.
+        Map<String, Integer> level = new HashMap<>();
+        for (String id : nodes.keySet()) level.put(id, 0);
+        for (int pass = 0; pass < nodes.size(); pass++) {
+            boolean changed = false;
+            for (TraceGraph.Edge ed : edges.values()) {
+                int cand = level.getOrDefault(ed.source(), 0) + 1;
+                if (cand > level.getOrDefault(ed.target(), 0)) { level.put(ed.target(), cand); changed = true; }
+            }
+            if (!changed) break;
+        }
+
+        List<TraceGraph.Node> nodeList = new ArrayList<>();
+        for (TraceGraph.Node n : nodes.values()) {
+            nodeList.add(new TraceGraph.Node(n.id(), n.type(), n.label(), n.sublabel(), level.getOrDefault(n.id(), 0)));
+        }
+        return new TraceGraph(traceId, nodeList, new ArrayList<>(edges.values()), blocked);
+    }
+
+    /** Strip a registry version suffix (" v1.0.0") so "advisor v1.0.0" and "advisor" are the same node. */
+    private static String normalizeAgent(String name) {
+        if (name == null || name.isBlank()) return null;
+        int i = name.indexOf(" v");
+        return i > 0 ? name.substring(0, i) : name;
+    }
+
+    /** Insert/merge a directed edge; a DENY on the same source→target wins over ALLOW. */
+    private static void putTraceEdge(Map<String, TraceGraph.Edge> edges, String src, String tgt,
+                                     String cap, String dec) {
+        String key = src + " -> " + tgt;
+        TraceGraph.Edge cur = edges.get(key);
+        if (cur == null) {
+            edges.put(key, new TraceGraph.Edge(src, tgt, cap, dec));
+        } else if ("DENY".equalsIgnoreCase(dec) && !"DENY".equalsIgnoreCase(cur.decision())) {
+            edges.put(key, new TraceGraph.Edge(src, tgt, cur.capability(), "DENY"));
+        }
+    }
+
+    /** The human at the root of the trace — from userIdentity, else a mint's act_chain[0] username/id. */
+    private String resolveTraceHuman(List<GatewayAuditLog> events) {
+        for (GatewayAuditLog e : events) {
+            if (e.getUserIdentity() != null && !e.getUserIdentity().isBlank()) return e.getUserIdentity();
+        }
+        for (GatewayAuditLog e : events) {
+            if (e.getEventType() == AuditEventType.STS_TOKEN_MINTED && e.getResponsePayload() != null) {
+                JsonNode ac = e.getResponsePayload().get("act_chain");
+                if (ac != null && ac.isArray() && !ac.isEmpty()) {
+                    JsonNode root = ac.get(0);
+                    if (root != null) {
+                        JsonNode u = root.get("username");
+                        if (u != null && !u.asText().isBlank()) return u.asText();
+                        JsonNode id = root.get("id");
+                        if (id != null && !id.asText().isBlank()) return id.asText();
+                    }
+                }
+            }
+        }
+        return null;
     }
 
     public Map<String, Object> getStats(LocalDateTime since) {
