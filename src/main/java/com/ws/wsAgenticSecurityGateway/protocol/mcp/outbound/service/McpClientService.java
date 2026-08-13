@@ -118,6 +118,16 @@ public class McpClientService {
             return session.getResources();
         }
 
+        // Resources are an OPTIONAL MCP capability. If the server never advertised it, there is nothing to
+        // list — return empty rather than calling resources/list (which a non-supporting server rejects,
+        // surfacing as a confusing "Failed to load" error in the UI). Mirrors McpSessionManager's guard.
+        McpSchema.ServerCapabilities caps = session.getCapabilities();
+        if (caps == null || caps.resources() == null) {
+            log.info("Server '{}' does not advertise the resources capability — returning no resources", serverName);
+            session.setResources(List.of());
+            return List.of();
+        }
+
         log.info("Fetching resources from server '{}'...", serverName);
         long start = System.currentTimeMillis();
         try {
@@ -128,6 +138,11 @@ public class McpClientService {
             auditService.auditClientResourcesListFetched(session.getSessionId(), serverName, resources.size(), uris, duration);
             return resources;
         } catch (Exception e) {
+            if (isCapabilityUnsupported(e)) {
+                log.info("Server '{}' does not support resources/list ({}) — returning no resources", serverName, e.getMessage());
+                session.setResources(List.of());
+                return List.of();
+            }
             long duration = System.currentTimeMillis() - start;
             auditService.auditClientResourcesListFailed(session.getSessionId(), serverName, e.getMessage(), duration);
             throw e;
@@ -141,6 +156,16 @@ public class McpClientService {
             return session.getPrompts();
         }
 
+        // Prompts are an OPTIONAL MCP capability. If the server never advertised it, there is nothing to
+        // list — return empty rather than calling prompts/list (which a non-supporting server like Alpha
+        // Vantage rejects with JSON-RPC -32601, surfacing as a confusing "Failed to load" error in the UI).
+        McpSchema.ServerCapabilities caps = session.getCapabilities();
+        if (caps == null || caps.prompts() == null) {
+            log.info("Server '{}' does not advertise the prompts capability — returning no prompts", serverName);
+            session.setPrompts(List.of());
+            return List.of();
+        }
+
         log.info("Fetching prompts from server '{}'...", serverName);
         long start = System.currentTimeMillis();
         try {
@@ -151,10 +176,36 @@ public class McpClientService {
             auditService.auditClientPromptsListFetched(session.getSessionId(), serverName, prompts.size(), promptNames, duration);
             return prompts;
         } catch (Exception e) {
+            if (isCapabilityUnsupported(e)) {
+                log.info("Server '{}' does not support prompts/list ({}) — returning no prompts", serverName, e.getMessage());
+                session.setPrompts(List.of());
+                return List.of();
+            }
             long duration = System.currentTimeMillis() - start;
             auditService.auditClientPromptsListFailed(session.getSessionId(), serverName, e.getMessage(), duration);
             throw e;
         }
+    }
+
+    /**
+     * True when a downstream {@code resources/list} or {@code prompts/list} failed only because the server
+     * doesn't support that (optional) capability — JSON-RPC method-not-found ({@code -32601}), an HTTP 404,
+     * or the MCP client's "does not provide the … capability" guard. That is not a real error: the UI should
+     * simply show nothing. Genuine transport/auth failures do NOT match and still surface as errors.
+     */
+    private boolean isCapabilityUnsupported(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            String m = t.getMessage();
+            if (m != null) {
+                String lower = m.toLowerCase();
+                if (m.contains("-32601")
+                        || lower.contains("method not found")
+                        || lower.contains("does not provide")) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     public List<McpSchema.Content> callTool(String correlationId, String serverName, String toolName, JsonNode input,
