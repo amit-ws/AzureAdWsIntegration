@@ -324,4 +324,30 @@ public interface GatewayAuditLogRepository
 
     Page<GatewayAuditLog> findBySessionIdAndWsTenantNameOrderByTimestampDesc(
             String sessionId, String wsTenantName, Pageable pageable);
+
+    /**
+     * Tenant-level audit coverage for the SOC 2 evidence pack (CC7.2 logging/monitoring). Single row:
+     * {@code [total_events (Long), event_types (Long), human_attributed (Long), distinct_humans (Long),
+     * distinct_agents (Long), first_event (Timestamp), last_event (Timestamp)]}.
+     */
+    @Query(value = """
+            SELECT COUNT(*) AS total_events,
+                   COUNT(DISTINCT event_type) AS event_types,
+                   COUNT(*) FILTER (WHERE human_user_id IS NOT NULL) AS human_attributed,
+                   COUNT(DISTINCT human_user_id) AS distinct_humans,
+                   COUNT(DISTINCT agent_name) AS distinct_agents,
+                   MIN(timestamp) AS first_event,
+                   MAX(timestamp) AS last_event
+            FROM gateway_audit_log
+            WHERE ws_tenant_name = :tenant
+            """, nativeQuery = true)
+    List<Object[]> tenantAuditStats(@Param("tenant") String tenant);
+
+    /** Distinct verified humans an agent has acted on behalf of — for the Agent Activity Trail summary (CC-style accountability). */
+    @Query(value = """
+            SELECT COUNT(DISTINCT human_user_id)
+            FROM gateway_audit_log
+            WHERE ws_tenant_name = :tenant AND agent_name = :agent AND human_user_id IS NOT NULL
+            """, nativeQuery = true)
+    long countDistinctHumansForAgent(@Param("tenant") String tenant, @Param("agent") String agent);
 }

@@ -8,11 +8,13 @@ import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyChatResponse;
 import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyDto;
 import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyEvaluationRequest;
 import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyEvaluationResult;
+import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyActivityReport;
 import com.ws.wsAgenticSecurityGateway.pdp.entity.GatewayPolicyEntity;
 import com.ws.wsAgenticSecurityGateway.pdp.service.CedarPolicyEngine;
 import com.ws.wsAgenticSecurityGateway.pdp.service.PolicyLlmService;
 import com.ws.wsAgenticSecurityGateway.pdp.service.PolicyService;
 import com.ws.wsAgenticSecurityGateway.pdp.service.PolicyService.PolicyCreationResult;
+import com.ws.wsAgenticSecurityGateway.pdp.service.PolicyActivityService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -31,19 +33,31 @@ public class PolicyController {
     private final GatewayAuditService auditService;
     private final AgentRegistryService agentRegistryService;
     private final CapabilityRegistryService capabilityRegistry;
+    private final PolicyActivityService policyActivityService;
 
     public PolicyController(PolicyService policyService,
                             PolicyLlmService llmService,
                             CedarPolicyEngine cedarEngine,
                             GatewayAuditService auditService,
                             AgentRegistryService agentRegistryService,
-                            CapabilityRegistryService capabilityRegistry) {
+                            CapabilityRegistryService capabilityRegistry,
+                            PolicyActivityService policyActivityService) {
         this.policyService = policyService;
         this.llmService = llmService;
         this.cedarEngine = cedarEngine;
         this.auditService = auditService;
         this.agentRegistryService = agentRegistryService;
         this.capabilityRegistry = capabilityRegistry;
+        this.policyActivityService = policyActivityService;
+    }
+
+    /**
+     * The CISO Policy-Activity report — per-policy allow/deny/last-fired, dead policies, and decision coverage,
+     * all from the {@code pdp_audit_log} decision ledger. Read-only visibility; scoped to the caller's tenant.
+     */
+    @GetMapping("/activity")
+    public ResponseEntity<PolicyActivityReport> policyActivity() {
+        return ResponseEntity.ok(policyActivityService.getPolicyActivity());
     }
 
     /**

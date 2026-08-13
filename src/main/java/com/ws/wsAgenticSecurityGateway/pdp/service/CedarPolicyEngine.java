@@ -867,6 +867,63 @@ public class CedarPolicyEngine {
         return new PolicyPrincipal("ANY", null);
     }
 
+    /** A single target a policy scopes to. {@code resource in [ … ]} yields one {@code PolicyResource} per item. */
+    public record PolicyResource(String kind, String id) {}
+
+    /**
+     * Recover <em>every</em> resource a policy targets — the resource-side mirror of {@link #extractPrincipal},
+     * for the CISO Blast-Radius read-model. Unlike a principal (always one), a policy can name many targets, so
+     * this returns a list, one entry per target:
+     * <ul>
+     *   <li>{@code resource == Tool::"x"} ⇒ [(TOOL, x)] — a single named target;</li>
+     *   <li>{@code resource in [Skill::"a", Tool::"b"]} ⇒ [(SKILL, a), (TOOL, b)] — many, types may be mixed;</li>
+     *   <li>{@code resource is <Type>} ⇒ [(&lt;TYPE&gt;, null)] — any resource of that type;</li>
+     *   <li>a bare, unconstrained {@code resource} ⇒ [(ANY, null)].</li>
+     * </ul>
+     * Kinds: TOOL | SKILL | PROMPT | RESOURCE | &lt;TYPE&gt; | ANY. Computed on demand (no persistence) and purely
+     * descriptive — never read during a decision, so it can never change one. Always returns at least one entry.
+     */
+    public List<PolicyResource> extractResources(String policyText) {
+        if (policyText == null || policyText.isBlank()) return List.of(new PolicyResource("ANY", null));
+        String clean = policyText.replaceAll("//[^\n]*", "").trim();
+
+        // resource == Tool::"x" — a single named target.
+        Matcher eq = RESOURCE_EQ.matcher(clean);
+        if (eq.find()) {
+            return List.of(new PolicyResource(eq.group(1).toUpperCase(), eq.group(2)));
+        }
+        // resource in [Tool::"a", Skill::"b", …] — many targets, types may be mixed.
+        Matcher inSet = RESOURCE_IN_SET.matcher(clean);
+        if (inSet.find()) {
+            List<PolicyResource> targets = new ArrayList<>();
+            Matcher item = RESOURCE_ITEM.matcher(inSet.group(1));
+            while (item.find()) {
+                targets.add(new PolicyResource(item.group(1).toUpperCase(), item.group(2)));
+            }
+            if (!targets.isEmpty()) return List.copyOf(targets);
+        }
+        // resource is <Type> — any resource of that type.
+        Matcher is = RESOURCE_IS.matcher(clean);
+        if (is.find()) {
+            return List.of(new PolicyResource(is.group(1).toUpperCase(), null));
+        }
+        // bare, unconstrained resource — any target.
+        return List.of(new PolicyResource("ANY", null));
+    }
+
+    /**
+     * True when the policy carries a {@code when {...}} or {@code unless {...}} clause — meaning its grant/block
+     * is <em>conditional</em> on request context (verification, roles, attributes) rather than unconditional.
+     * Used by the CISO Blast-Radius view to flag such edges as CONDITIONAL rather than definitive reach.
+     */
+    public boolean hasConditions(String policyText) {
+        if (policyText == null || policyText.isBlank()) return false;
+        // Strip line comments first — same as the evaluator (parsePolicy/extractPrincipal) — so a commented-out
+        // "// when { ... }" is not mistaken for a real condition.
+        String clean = policyText.replaceAll("//[^\n]*", "");
+        return WHEN_BLOCK.matcher(clean).find() || UNLESS_BLOCK.matcher(clean).find();
+    }
+
     private boolean evaluateCondition(Condition cond, EvalContext ctx) {
 
         if (cond.operator == Condition.Operator.IN_GROUP) {

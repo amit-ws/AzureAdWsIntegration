@@ -1,0 +1,76 @@
+{
+  "framework": "SOC 2 (Trust Services Criteria)",
+  "disclaimer": "Evidence for the listed Trust Services Criteria, generated from the gateway's audit trail for the period shown. This is supporting evidence for specific controls — not a SOC 2 certification, attestation, or opinion.",
+  "controls": [
+    {
+      "ref": "CC6.1",
+      "title": "Logical access — identification, authentication, authorization",
+      "requirement": "Logical access to the system and data is restricted through identification, authentication, and authorization.",
+      "howSatisfied": "Every request is identity-verified and evaluated by the policy decision point (PDP) before access; delegated access uses short-lived, sender-constrained on-behalf-of tokens.",
+      "evidence": [
+        { "label": "Access decisions rendered", "metric": "decisions.total" },
+        { "label": "Allowed", "metric": "decisions.allowed" },
+        { "label": "Denied", "metric": "decisions.denied" },
+        { "label": "Requests attributed to a verified human identity", "metric": "audit.humanAttributedOfTotal" }
+      ]
+    },
+    {
+      "ref": "CC6.2",
+      "title": "Registration & authorization prior to access",
+      "requirement": "Users are registered and authorized prior to being granted system access.",
+      "howSatisfied": "Agents are registered in the identity registry and must be approved before they can act; unapproved agents are denied at the boundary.",
+      "evidence": [
+        { "label": "Registered agents", "metric": "agents.total" },
+        { "label": "Approved", "metric": "agents.approved" },
+        { "label": "Pending approval", "metric": "agents.pending" },
+        { "label": "Distinct human identities observed acting", "metric": "audit.distinctHumans" }
+      ]
+    },
+    {
+      "ref": "CC6.3",
+      "title": "Least privilege & role-based restriction",
+      "requirement": "Access is granted per role and least privilege, restricted to what is necessary.",
+      "howSatisfied": "Capability profiles and Cedar policies restrict each agent to an explicit allow-set; recorded denials show the restriction is actively enforced.",
+      "evidence": [
+        { "label": "Access policies in force", "metric": "policies.total" },
+        { "label": "Currently enabled", "metric": "policies.enabled" },
+        { "label": "Denied access attempts (enforcement evidence)", "metric": "decisions.denied" }
+      ]
+    },
+    {
+      "ref": "CC7.2",
+      "title": "Security monitoring & audit logging",
+      "requirement": "System components are monitored and security-relevant events are logged to detect anomalies.",
+      "howSatisfied": "Every request, decision, and token issuance is recorded to an append-only audit trail spanning identity, policy, and delegation.",
+      "evidence": [
+        { "label": "Audit events recorded", "metric": "audit.events" },
+        { "label": "Distinct event types captured", "metric": "audit.eventTypes" },
+        { "label": "Agents observed", "metric": "audit.distinctAgents" },
+        { "label": "Coverage period", "metric": "audit.period" }
+      ]
+    },
+    {
+      "ref": "CC7.3",
+      "title": "Evaluation & attribution of security events",
+      "requirement": "Detected security events are evaluated to determine whether they are incidents.",
+      "howSatisfied": "Each decision is recorded with its outcome and attributed to the deciding policy, so events can be reviewed and traced.",
+      "evidence": [
+        { "label": "Policy denials recorded", "metric": "decisions.denied" },
+        { "label": "Decisions attributed to a deciding policy", "metric": "decisions.attributedOfTotal" }
+      ]
+    },
+    {
+      "ref": "CC8.1",
+      "title": "Change management — access policy governance",
+      "requirement": "Changes to the system, including access policies, are authorized, tracked, and documented.",
+      "howSatisfied": "Access policies carry authorship and source (manual, generated, or system default) and change timestamps.",
+      "evidence": [
+        { "label": "Access policies", "metric": "policies.total" },
+        { "label": "Manually authored", "metric": "policies.manual" },
+        { "label": "Generated (assisted)", "metric": "policies.generated" },
+        { "label": "System defaults", "metric": "policies.defaults" },
+        { "label": "Most recent policy change", "metric": "policies.lastChange" }
+      ]
+    }
+  ]
+}

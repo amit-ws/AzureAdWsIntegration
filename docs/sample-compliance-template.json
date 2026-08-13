@@ -1,0 +1,40 @@
+{
+  "framework": "Sample Access Control Pack",
+  "disclaimer": "Sample template for testing the config-driven compliance renderer. Evidence for the listed controls, not a certification.",
+  "controls": [
+    {
+      "ref": "AC-1",
+      "title": "Access decisions are enforced",
+      "requirement": "Every access request is evaluated and either allowed or denied.",
+      "howSatisfied": "The PDP renders a decision on every request; denials prove enforcement.",
+      "evidence": [
+        { "label": "Decisions rendered", "metric": "decisions.total" },
+        { "label": "Allowed", "metric": "decisions.allowed" },
+        { "label": "Denied", "metric": "decisions.denied" }
+      ]
+    },
+    {
+      "ref": "AC-2",
+      "title": "Identities are registered and human-attributable",
+      "requirement": "Agents are approved before acting, and activity ties back to a human.",
+      "howSatisfied": "Registry approval gates activation; the audit trail attributes requests to a verified human.",
+      "evidence": [
+        { "label": "Registered agents", "metric": "agents.total" },
+        { "label": "Approved", "metric": "agents.approved" },
+        { "label": "Pending approval", "metric": "agents.pending" },
+        { "label": "Human-attributed requests", "metric": "audit.humanAttributedOfTotal" }
+      ]
+    },
+    {
+      "ref": "AC-3",
+      "title": "Everything is logged over the period",
+      "requirement": "Security-relevant events are logged and retained.",
+      "howSatisfied": "An append-only audit trail records every request, decision, and token issuance.",
+      "evidence": [
+        { "label": "Audit events", "metric": "audit.events" },
+        { "label": "Event types", "metric": "audit.eventTypes" },
+        { "label": "Coverage period", "metric": "audit.period" }
+      ]
+    }
+  ]
+}

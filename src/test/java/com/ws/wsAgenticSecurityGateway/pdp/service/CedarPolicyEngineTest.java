@@ -127,6 +127,47 @@ class CedarPolicyEngineTest {
     }
 
     @Test
+    void extractResources_returnsEveryTarget_singleOrMany() {
+        // Powers the CISO Blast-Radius read-model — one entry per target, NEVER flattened. Computed on demand.
+
+        // A single named target.
+        assertThat(engine.extractResources(
+                "permit(principal == Agent::\"x\", action == Action::\"toolCall\", resource == Tool::\"github_get_me\");"))
+                .containsExactly(new CedarPolicyEngine.PolicyResource("TOOL", "github_get_me"));
+        assertThat(engine.extractResources(
+                "permit(principal == Agent::\"advisor\", action, resource == Skill::\"market-data.quote\");"))
+                .containsExactly(new CedarPolicyEngine.PolicyResource("SKILL", "market-data.quote"));
+
+        // MANY targets in one policy — the real financial-desk grant. All three must survive (the flatten-bug we avoided).
+        assertThat(engine.extractResources(
+                "permit(principal == Agent::\"advisor\", action == Action::\"skillInvocation\", "
+                        + "resource in [Skill::\"market-data.quote\", Skill::\"fundamentals.earnings\", Skill::\"news.sentiment\"]);"))
+                .containsExactly(
+                        new CedarPolicyEngine.PolicyResource("SKILL", "market-data.quote"),
+                        new CedarPolicyEngine.PolicyResource("SKILL", "fundamentals.earnings"),
+                        new CedarPolicyEngine.PolicyResource("SKILL", "news.sentiment"));
+
+        // Mixed types within one set — each mapped to its own kind, order preserved.
+        assertThat(engine.extractResources(
+                "permit(principal, action, resource in [Tool::\"av_quote\", Skill::\"news.sentiment\"]);"))
+                .containsExactly(
+                        new CedarPolicyEngine.PolicyResource("TOOL", "av_quote"),
+                        new CedarPolicyEngine.PolicyResource("SKILL", "news.sentiment"));
+
+        // Type-scoped — any resource of that type.
+        assertThat(engine.extractResources("permit(principal, action, resource is Tool);"))
+                .containsExactly(new CedarPolicyEngine.PolicyResource("TOOL", null));
+
+        // Bare/unconstrained, null, blank — a wildcard, always at least one entry, never NPEs.
+        assertThat(engine.extractResources("permit(principal, action, resource);"))
+                .containsExactly(new CedarPolicyEngine.PolicyResource("ANY", null));
+        assertThat(engine.extractResources(null))
+                .containsExactly(new CedarPolicyEngine.PolicyResource("ANY", null));
+        assertThat(engine.extractResources("   "))
+                .containsExactly(new CedarPolicyEngine.PolicyResource("ANY", null));
+    }
+
+    @Test
     void decidedBy_attributesEveryDecisionCase() {
         // The audit trail must always attribute a decision — a matched policy id, or a synthetic marker.
 
