@@ -1,5 +1,8 @@
 package com.ws.wsAgenticSecurityGateway.protocol.a2a.web;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor.CapabilityType;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
@@ -19,7 +22,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +39,8 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/admin/a2a")
 @Slf4j
 public class A2aAdminController {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final A2aAgentIngestionService ingestionService;
     private final CapabilityRegistryService registryService;
@@ -80,45 +84,80 @@ public class A2aAdminController {
      */
     @PostMapping("/agents/import")
     public ResponseEntity<Map<String, Object>> importCards(@RequestBody String body) {
-        List<AgentCard> cards;
+        List<JsonNode> nodes = new ArrayList<>();
         try {
-            String json = body == null ? "" : body.trim();
-            cards = json.startsWith("[")
-                    ? Arrays.asList(JsonUtil.fromJson(json, AgentCard[].class))
-                    : List.of(JsonUtil.fromJson(json, AgentCard.class));
+            JsonNode root = MAPPER.readTree(body == null ? "" : body);
+            if (root.isArray()) root.forEach(nodes::add);
+            else if (!root.isMissingNode() && !root.isNull()) nodes.add(root);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Invalid Agent Card JSON: " + e.getMessage()));
+            return ResponseEntity.badRequest().body(Map.of("error", "Body is not valid JSON."));
         }
-        log.info("POST /api/admin/a2a/agents/import ({} card(s))", cards.size());
+        log.info("POST /api/admin/a2a/agents/import ({} card(s))", nodes.size());
 
         List<Map<String, Object>> results = new ArrayList<>();
         int registered = 0;
-        for (AgentCard card : cards) {
+        for (JsonNode node : nodes) {
             Map<String, Object> r = new LinkedHashMap<>();
             try {
-                if (card == null) throw new IllegalArgumentException("null card in payload");
-                String name = card.name();
-                String url = card.url();
-                if (name == null || name.isBlank() || url == null || url.isBlank()) {
-                    throw new IllegalArgumentException("each card must have a 'name' and a 'url'");
+                if (node == null || !node.isObject()) {
+                    throw new IllegalArgumentException("each entry must be an Agent Card object");
                 }
+                ObjectNode c = (ObjectNode) node;
+                String name = c.path("name").asText("").trim();
+                String url = c.path("url").asText("").trim();
+                if (name.isEmpty() || url.isEmpty()) {
+                    throw new IllegalArgumentException("an Agent Card must have a 'name' and a 'url'");
+                }
+                fillSpecDefaults(c);   // supply the A2A-spec fields the SDK requires, so a minimal card is accepted
+                AgentCard card = JsonUtil.fromJson(c.toString(), AgentCard.class);
                 A2aAgentIngestionService.IngestResult res = ingestionService.ingestFromCard(name, url, card);
                 r.put("agent", res.agentName());
                 r.put("cardName", res.cardName());
                 r.put("skillsRegistered", res.skillsRegistered());
                 r.put("registered", true);
                 registered++;
-            } catch (Exception e) {
+            } catch (IllegalArgumentException e) {
                 r.put("registered", false);
                 r.put("error", e.getMessage());
+            } catch (Exception e) {
+                log.warn("A2A import: a card was rejected — {}", e.getMessage());
+                r.put("registered", false);
+                r.put("error", "could not register this card (ensure name, url, and each skill's id are present)");
             }
             results.add(r);
         }
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("total", cards.size());
+        out.put("total", nodes.size());
         out.put("registered", registered);
         out.put("results", results);
         return ResponseEntity.ok(out);
+    }
+
+    /**
+     * Supply the A2A-spec fields the SDK's {@code AgentCard} requires but a hand-written minimal card may omit
+     * (capabilities, default I/O modes, version, transport, and {@code supportedInterfaces}) — so an admin can paste
+     * just {@code name}, {@code url}, and {@code skills}. Anything already present is left untouched.
+     */
+    private static void fillSpecDefaults(ObjectNode c) {
+        if (c.path("preferredTransport").asText("").isBlank()) c.put("preferredTransport", "JSONRPC");
+        if (c.path("version").asText("").isBlank()) c.put("version", "1.0.0");
+        if (!c.path("capabilities").isObject()) {
+            c.set("capabilities", c.objectNode()
+                    .put("streaming", false).put("pushNotifications", false).put("extendedAgentCard", false));
+        }
+        if (!c.path("defaultInputModes").isArray() || c.path("defaultInputModes").isEmpty()) {
+            c.set("defaultInputModes", c.arrayNode().add("text/plain"));
+        }
+        if (!c.path("defaultOutputModes").isArray() || c.path("defaultOutputModes").isEmpty()) {
+            c.set("defaultOutputModes", c.arrayNode().add("text/plain"));
+        }
+        if (!c.path("skills").isArray()) c.set("skills", c.arrayNode());
+        if (!c.path("supportedInterfaces").isArray() || c.path("supportedInterfaces").isEmpty()) {
+            c.set("supportedInterfaces", c.arrayNode().add(c.objectNode()
+                    .put("protocolBinding", c.path("preferredTransport").asText("JSONRPC"))
+                    .put("url", c.path("url").asText(""))
+                    .put("protocolVersion", "1.0")));
+        }
     }
 
     /** The registered downstream agents for the tenant, each with its skill count. */
