@@ -44,4 +44,7 @@ public interface GatewayAgentRepository extends JpaRepository<GatewayAgentEntity
     List<GatewayAgentEntity> findBySpeaksA2aTrue();
 
     List<GatewayAgentEntity> findByWsTenantNameAndSpeaksA2aTrue(String wsTenantName);
+
+    /** Agents in the tenant advertising a given A2A base URL — used to reject registering the same URL twice. */
+    List<GatewayAgentEntity> findByWsTenantNameAndA2aBaseUrl(String wsTenantName, String a2aBaseUrl);
 }

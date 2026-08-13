@@ -20,7 +20,11 @@ import java.util.UUID;
         // version/transport (e.g. claude-desktop 1.0.0 vs stateless) is ONE agent, not two rows.
         uniqueConstraints = {
                 @UniqueConstraint(name = "uq_gateway_agent_tenant_name",
-                        columnNames = {"ws_tenant_name", "agent_name"})
+                        columnNames = {"ws_tenant_name", "agent_name"}),
+                // One A2A endpoint maps to exactly one agent per tenant — you can't register the same base URL
+                // under two different names. (a2a_base_url is null for MCP-only agents; Postgres allows many NULLs.)
+                @UniqueConstraint(name = "uq_gateway_agent_tenant_a2a_url",
+                        columnNames = {"ws_tenant_name", "a2a_base_url"})
         },
         indexes = {
                 @Index(name = "idx_gateway_agent_name", columnList = "agent_name"),

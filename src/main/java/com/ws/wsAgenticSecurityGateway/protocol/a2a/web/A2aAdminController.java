@@ -7,6 +7,7 @@ import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryServic
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
 import com.ws.wsAgenticSecurityGateway.protocol.a2a.capability.A2aAgentIngestionService;
 import lombok.extern.slf4j.Slf4j;
+import org.a2aproject.sdk.jsonrpc.common.json.JsonUtil;
 import org.a2aproject.sdk.spec.AgentCard;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -17,6 +18,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -68,6 +71,54 @@ public class A2aAdminController {
             log.warn("A2A ingest failed for '{}' at {}: {}", name, baseUrl, e.getMessage());
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
+    }
+
+    /**
+     * Register one or many downstream agents from Agent Card JSON supplied directly (no fetch) — the body is either
+     * a single Agent Card object or an array of them, the shape agents publish at {@code /.well-known/agent-card.json}.
+     * Each card's own {@code url} is its endpoint. Returns a per-card result so a partial bulk failure is legible.
+     */
+    @PostMapping("/agents/import")
+    public ResponseEntity<Map<String, Object>> importCards(@RequestBody String body) {
+        List<AgentCard> cards;
+        try {
+            String json = body == null ? "" : body.trim();
+            cards = json.startsWith("[")
+                    ? Arrays.asList(JsonUtil.fromJson(json, AgentCard[].class))
+                    : List.of(JsonUtil.fromJson(json, AgentCard.class));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Invalid Agent Card JSON: " + e.getMessage()));
+        }
+        log.info("POST /api/admin/a2a/agents/import ({} card(s))", cards.size());
+
+        List<Map<String, Object>> results = new ArrayList<>();
+        int registered = 0;
+        for (AgentCard card : cards) {
+            Map<String, Object> r = new LinkedHashMap<>();
+            try {
+                if (card == null) throw new IllegalArgumentException("null card in payload");
+                String name = card.name();
+                String url = card.url();
+                if (name == null || name.isBlank() || url == null || url.isBlank()) {
+                    throw new IllegalArgumentException("each card must have a 'name' and a 'url'");
+                }
+                A2aAgentIngestionService.IngestResult res = ingestionService.ingestFromCard(name, url, card);
+                r.put("agent", res.agentName());
+                r.put("cardName", res.cardName());
+                r.put("skillsRegistered", res.skillsRegistered());
+                r.put("registered", true);
+                registered++;
+            } catch (Exception e) {
+                r.put("registered", false);
+                r.put("error", e.getMessage());
+            }
+            results.add(r);
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("total", cards.size());
+        out.put("registered", registered);
+        out.put("results", results);
+        return ResponseEntity.ok(out);
     }
 
     /** The registered downstream agents for the tenant, each with its skill count. */

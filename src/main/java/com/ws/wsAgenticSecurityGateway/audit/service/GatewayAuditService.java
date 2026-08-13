@@ -635,6 +635,35 @@ public class GatewayAuditService {
                                 .build());
         }
 
+        /**
+         * Records that a downstream A2A agent was registered via the admin path — distinct from the per-skill
+         * capability events — so the trail unambiguously shows whether the agent was newly onboarded or an
+         * already-registered agent whose card was re-ingested. The comment states which, in plain words.
+         */
+        @Async("auditExecutor")
+        public void auditAgentRegistered(String agentName, String baseUrl, String cardName,
+                        int skillCount, boolean newlyRegistered) {
+                String comment = newlyRegistered
+                                ? "New A2A agent '" + agentName + "' registered from " + baseUrl + " — "
+                                        + skillCount + " skill(s)."
+                                : "A2A agent '" + agentName + "' already registered — endpoint + "
+                                        + skillCount + " skill(s) refreshed.";
+                persist(GatewayAuditLog.builder()
+                                .eventType(AuditEventType.AGENT_REGISTERED)
+                                .module(AuditModule.AGENT_REGISTRY)
+                                .status(AuditStatus.SUCCESS)
+                                .severity(AuditSeverity.INFO)
+                                .agentName(agentName)
+                                .correlationId(generateCorrelationId())
+                                .comment(comment)
+                                .responsePayload(toJson(Map.of(
+                                                "baseUrl", baseUrl == null ? "" : baseUrl,
+                                                "cardName", cardName == null ? "" : cardName,
+                                                "skillsRegistered", skillCount,
+                                                "newlyRegistered", newlyRegistered)))
+                                .build());
+        }
+
         @Async("auditExecutor")
         public void auditRegistryCapabilityRemoved(String sessionId,
                         String serverName,

@@ -331,6 +331,13 @@ public class AgentRegistryService {
                 .findFirst();
     }
 
+    /** The agent (if any) in the current tenant already advertising this A2A base URL — for duplicate rejection. */
+    public Optional<GatewayAgentEntity> getA2aAgentByUrl(String baseUrl) {
+        if (baseUrl == null || baseUrl.isBlank()) return Optional.empty();
+        String tenant = TenantContext.get();
+        return agentRepository.findByWsTenantNameAndA2aBaseUrl(tenant, baseUrl).stream().findFirst();
+    }
+
     @Transactional
     public GatewayAgentSessionEntity registerSession(UUID agentId, String sessionId,
             String authMethod,

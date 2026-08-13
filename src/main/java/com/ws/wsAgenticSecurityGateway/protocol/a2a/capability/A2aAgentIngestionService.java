@@ -1,6 +1,7 @@
 package com.ws.wsAgenticSecurityGateway.protocol.a2a.capability;
 
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
+import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
 import com.ws.wsAgenticSecurityGateway.protocol.a2a.outbound.A2aAgentDirectory;
 import lombok.extern.slf4j.Slf4j;
 import org.a2aproject.sdk.client.http.A2ACardResolver;
@@ -31,13 +32,16 @@ public class A2aAgentIngestionService {
     private final A2aAgentDirectory directory;
     private final A2aCapabilityRegistrar registrar;
     private final AgentRegistryService agentRegistryService;
+    private final GatewayAuditService auditService;
 
     public A2aAgentIngestionService(A2aAgentDirectory directory,
                                     A2aCapabilityRegistrar registrar,
-                                    AgentRegistryService agentRegistryService) {
+                                    AgentRegistryService agentRegistryService,
+                                    GatewayAuditService auditService) {
         this.directory = directory;
         this.registrar = registrar;
         this.agentRegistryService = agentRegistryService;
+        this.auditService = auditService;
     }
 
     /** Ingest (or refresh) a downstream agent: fetch its Agent Card, register its skills + endpoint, record it. */
@@ -46,14 +50,46 @@ public class A2aAgentIngestionService {
         if (agentName == null || agentName.isBlank() || baseUrl == null || baseUrl.isBlank()) {
             throw new IllegalArgumentException("agentName and baseUrl are required");
         }
-        AgentCard card = resolveCard(baseUrl);
+        return register(agentName, baseUrl, resolveCard(baseUrl));
+    }
+
+    /**
+     * Register a downstream agent from an Agent Card supplied directly (admin JSON upload) rather than fetched
+     * from the agent's URL — the card's skills are registered as-is. Used by the bulk/single import endpoint.
+     */
+    @Transactional
+    public IngestResult ingestFromCard(String agentName, String baseUrl, AgentCard card) {
+        if (agentName == null || agentName.isBlank() || baseUrl == null || baseUrl.isBlank()) {
+            throw new IllegalArgumentException("agentName and baseUrl are required");
+        }
+        if (card == null) {
+            throw new IllegalArgumentException("agent card is required");
+        }
+        return register(agentName, baseUrl, card);
+    }
+
+    /**
+     * Shared registration path: reject a base URL already registered to a <em>different</em> agent, register the
+     * card's skills + the A2A endpoint on the canonical agent, and audit the agent registration (distinct from the
+     * per-skill capability events) noting whether the agent was newly onboarded or re-ingested.
+     */
+    private IngestResult register(String agentName, String baseUrl, AgentCard card) {
+        agentRegistryService.getA2aAgentByUrl(baseUrl).ifPresent(existing -> {
+            if (!existing.getAgentName().equals(agentName)) {
+                throw new IllegalArgumentException("Base URL '" + baseUrl + "' is already registered to agent '"
+                        + existing.getAgentName() + "'.");
+            }
+        });
+        boolean newlyRegistered = agentRegistryService.getA2aAgent(agentName).isEmpty();
+
         directory.register(agentName, baseUrl);
         int skills = registrar.register(agentName, card);
-
         // Record the A2A facet on the canonical agent (gateway_agent) — the single source of truth (#2).
         agentRegistryService.registerA2aEndpoint(agentName, baseUrl);
+        auditService.auditAgentRegistered(agentName, baseUrl, card.name(), skills, newlyRegistered);
 
-        log.info("A2A agent ingested: name='{}', card='{}', skills={}", agentName, card.name(), skills);
+        log.info("A2A agent {}: name='{}', card='{}', skills={}, url={}",
+                newlyRegistered ? "registered" : "re-ingested", agentName, card.name(), skills, baseUrl);
         return new IngestResult(agentName, card.name(), skills);
     }
 
