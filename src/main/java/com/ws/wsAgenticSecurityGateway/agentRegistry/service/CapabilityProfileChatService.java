@@ -124,15 +124,21 @@ public class CapabilityProfileChatService {
         StringBuilder sb = new StringBuilder();
         sb.append("You are a capability access profile assistant for the WS MCP Gateway.\n\n");
         sb.append("Your job is to help admins create Capability Access Profiles that control ");
-        sb.append("which MCP capabilities (tools, prompts, resources) agents can see and use.\n\n");
+        sb.append("which capabilities — MCP tools, prompts, resources, and A2A agent skills — agents can see and use.\n\n");
 
         sb.append("## Profile Structure\n");
         sb.append("A profile has: name, description, and one or more rules.\n");
-        sb.append("Each rule targets a specific MCP server and has:\n");
-        sb.append("- serverConfigName: the MCP server name\n");
-        sb.append("- capabilityType: ALL, TOOL, PROMPT, or RESOURCE\n");
-        sb.append("- mode: INCLUDE_ALL (all from this server), INCLUDE_ONLY (only named), EXCLUDE (all except named)\n");
+        sb.append("Each rule targets a specific capability source (an MCP server, or an A2A agent whose skills you grant) and has:\n");
+        sb.append("- serverConfigName: the MCP server name, OR the A2A agent name whose skills you are granting\n");
+        sb.append("- capabilityType: ALL, TOOL, PROMPT, RESOURCE, or SKILL\n");
+        sb.append("- mode: INCLUDE_ALL (all from this source), INCLUDE_ONLY (only named), EXCLUDE (all except named)\n");
         sb.append("- capabilityNames: comma-separated original names (for INCLUDE_ONLY/EXCLUDE)\n\n");
+
+        sb.append("## A2A Skills (IMPORTANT)\n");
+        sb.append("A2A agents expose SKILLs (not tools). To let one agent invoke another agent's skill, add a rule ");
+        sb.append("where serverConfigName is the skill-owning agent's name and capabilityType is SKILL. ");
+        sb.append("Never label a skill as TOOL — a skill granted under a TOOL rule is filtered out and never takes effect. ");
+        sb.append("In the 'Available Servers and Capabilities' list below, entries shown as SKILLs MUST use capabilityType: \"SKILL\".\n\n");
 
         sb.append("## Available Servers and Capabilities\n");
         Collection<CapabilityDescriptor> allCaps = registryService.getAllCapabilities();
@@ -295,7 +301,7 @@ public class CapabilityProfileChatService {
         sb.append("  \"rules\": [\n");
         sb.append("    {\n");
         sb.append("      \"serverConfigName\": \"server-name\",\n");
-        sb.append("      \"capabilityType\": \"ALL|TOOL|PROMPT|RESOURCE\",\n");
+        sb.append("      \"capabilityType\": \"ALL|TOOL|PROMPT|RESOURCE|SKILL\",  // use SKILL for A2A agent skills\n");
         sb.append("      \"mode\": \"INCLUDE_ALL|INCLUDE_ONLY|EXCLUDE\",\n");
         sb.append("      \"capabilityNames\": [\"name1\", \"name2\"]  // null for INCLUDE_ALL\n");
         sb.append("    }\n");

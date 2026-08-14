@@ -384,9 +384,13 @@ public class CapabilityProfileService {
             server.put("tools", types.getOrDefault("TOOL", List.of()));
             server.put("prompts", types.getOrDefault("PROMPT", List.of()));
             server.put("resources", types.getOrDefault("RESOURCE", List.of()));
+            // Skills are a first-class capability kind (A2A agents expose them) — surface them to the profile
+            // builder alongside tools/prompts/resources so an admin can grant one agent another agent's skill.
+            server.put("skills", types.getOrDefault("SKILL", List.of()));
             server.put("toolCount", types.getOrDefault("TOOL", List.of()).size());
             server.put("promptCount", types.getOrDefault("PROMPT", List.of()).size());
             server.put("resourceCount", types.getOrDefault("RESOURCE", List.of()).size());
+            server.put("skillCount", types.getOrDefault("SKILL", List.of()).size());
             servers.add(server);
         }
         return servers;
@@ -461,10 +465,60 @@ public class CapabilityProfileService {
                 .profile(profile)
                 .wsTenantName(profile.getWsTenantName())
                 .serverConfigName(serverConfigName)
-                .capabilityType(capabilityType)
+                .capabilityType(normalizeRuleType(serverConfigName, mode, capabilityType, capabilityNames))
                 .mode(mode)
                 .capabilityNames(capabilityNames)
                 .build();
+    }
+
+    /**
+     * Reconcile a rule's declared {@code capabilityType} against the actual kinds of the capabilities it names,
+     * so the persisted rule can never carry a type-filter that contradicts the registry. This is the single
+     * authoritative choke point: every rule — whether authored via the visual builder, the LLM profile
+     * assistant, or an external provisioner — passes through here, so a capability's real kind (a fact in the
+     * capability registry) always wins over whatever type the caller supplied.
+     *
+     * <p>The motivating bug: an A2A agent's <em>skill</em> assigned to another agent was written as
+     * {@code TOOL}. Because the enforcement filter narrows a server's capabilities to the rule's type before
+     * matching names, a {@code SKILL} named under a {@code TOOL} rule was filtered out and silently un-granted
+     * (invisible in the UI). Re-deriving the type here makes the grant land correctly and display as a skill.
+     *
+     * <p>Scope: only an {@code INCLUDE_ONLY} grant of specific, named capabilities is re-derived — that is the
+     * "give agent X capability Y" case, where each named capability uniquely identifies a registry entry whose
+     * kind is authoritative. {@code ALL} rules and unnamed {@code INCLUDE_ALL} rules already behave correctly
+     * and are left untouched; {@code EXCLUDE} ("all except …") is intentionally left as authored to avoid
+     * silently broadening or narrowing an exclusion. If none of the named capabilities resolve (the server or
+     * agent is not currently registered) the declared type is kept — we do not guess about what we cannot see.
+     */
+    String normalizeRuleType(String serverConfigName, String mode, String declaredType, String capabilityNames) {
+        if (declaredType == null || "ALL".equals(declaredType)) return declaredType;
+        if (!"INCLUDE_ONLY".equals(mode)) return declaredType;
+
+        Set<String> names = parseNames(capabilityNames);
+        if (names.isEmpty()) return declaredType;
+
+        Set<String> actualTypes = registryService.getCapabilitiesByServer(serverConfigName).stream()
+                .filter(d -> names.contains(d.getOriginalName()))
+                .map(d -> d.getType().name())
+                .collect(Collectors.toSet());
+
+        if (actualTypes.isEmpty()) {
+            // Server/agent not registered right now — cannot validate the named capabilities; keep the caller's type.
+            return declaredType;
+        }
+        if (actualTypes.size() == 1) {
+            String actual = actualTypes.iterator().next();
+            if (!actual.equals(declaredType)) {
+                log.warn("Capability profile rule for '{}' declared type {} but its named capabilities {} are {} — "
+                        + "correcting to {} so the grant is not filtered out.",
+                        serverConfigName, declaredType, names, actual, actual);
+            }
+            return actual;
+        }
+        // Named capabilities span multiple kinds — no single type-filter fits; widen to ALL (names still gate).
+        log.warn("Capability profile rule for '{}' names capabilities of multiple kinds {} — widening type filter "
+                + "to ALL so all named capabilities are granted.", serverConfigName, actualTypes);
+        return "ALL";
     }
 
     Set<String> parseNames(String names) {

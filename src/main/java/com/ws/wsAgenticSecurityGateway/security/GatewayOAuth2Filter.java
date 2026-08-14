@@ -12,6 +12,7 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 
 import java.io.IOException;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -48,6 +49,9 @@ public class GatewayOAuth2Filter implements Filter {
     private final GatewayAuditService auditService;
     private final TokenClassificationService tokenClassificationService;
     private final AuthConfigService authConfigService;
+    /** Sessions whose auth-success is already audited — a session-bound client re-presents its token every
+     *  request, so auditing each is noise (and floods when an agent retries a stale session). Audit once. */
+    private final Set<String> authAuditedSessions = ConcurrentHashMap.newKeySet();
 
     public GatewayOAuth2Filter(GatewayAuditService auditService,
                                TokenClassificationService tokenClassificationService,
@@ -132,9 +136,16 @@ public class GatewayOAuth2Filter implements Filter {
                 clientId, subject, tokenType, classification.matchedSignal(), allRoles, preferredUsername);
 
         String sessionId = request.getHeader("Mcp-Session-Id");
-        auditService.auditOAuth2AuthSuccess(
-                sessionId, clientId, subject, allRoles, tokenType,
-                preferredUsername, rawClaims, null);
+        // Audit auth-success ONCE per session — a session-bound client re-presents the same token on every request
+        // (and hammers it while retrying a stale session post-restart), so per-request auditing is pure noise.
+        // Stateless calls (no session id) are audited each time, since they are genuinely independent.
+        boolean stateless = (sessionId == null || sessionId.isBlank());
+        if (!stateless && authAuditedSessions.size() > 8192) authAuditedSessions.clear();   // bound the dedup set
+        if (stateless || authAuditedSessions.add(sessionId)) {
+            auditService.auditOAuth2AuthSuccess(
+                    sessionId, clientId, subject, allRoles, tokenType,
+                    preferredUsername, rawClaims, null);
+        }
     }
 
     private String resolveClientId(Jwt jwt) {

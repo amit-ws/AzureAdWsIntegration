@@ -54,6 +54,8 @@ public class HttpMcpAuditFilter implements Filter {
     private final ConcurrentHashMap<String, Boolean> registeredSessions = new ConcurrentHashMap<>();
 
     private final Set<String> knownSessionIds = ConcurrentHashMap.newKeySet();
+    /** Stale session IDs already logged+audited once — so a client retrying a dead session doesn't flood. */
+    private final Set<String> staleSessionsReported = ConcurrentHashMap.newKeySet();
 
     private final ConcurrentHashMap<String, String> sessionAgentNames = new ConcurrentHashMap<>();
 
@@ -126,9 +128,15 @@ public class HttpMcpAuditFilter implements Filter {
 
         String existingSessionId = httpRequest.getHeader("Mcp-Session-Id");
         if (existingSessionId != null && !knownSessionIds.contains(existingSessionId)) {
-            log.warn("Rejecting request with stale session ID: {} — gateway was restarted, agent must reconnect",
-                    existingSessionId);
-            rejectStaleSession(httpRequest, httpResponse, existingSessionId);
+            // A stale session (client still using a pre-restart id) is expected and is often retried ~1/sec.
+            // Log + audit it ONCE, then silently reject the retries so the terminal and audit trail don't flood.
+            if (staleSessionsReported.size() > 4096) staleSessionsReported.clear();   // bound the dedup set
+            boolean firstReport = staleSessionsReported.add(existingSessionId);
+            if (firstReport) {
+                log.warn("Rejecting request(s) with stale session ID: {} — gateway was restarted, agent must "
+                        + "reconnect (subsequent retries for this session are suppressed)", existingSessionId);
+            }
+            rejectStaleSession(httpRequest, httpResponse, existingSessionId, firstReport);
             return;
         }
 
@@ -819,8 +827,8 @@ public class HttpMcpAuditFilter implements Filter {
         log.debug("Audited HTTP notification: session={}, method={}", sessionId, method);
     }
 
-    private void rejectStaleSession(HttpServletRequest request, HttpServletResponse response, String existingSessionId)
-            throws IOException {
+    private void rejectStaleSession(HttpServletRequest request, HttpServletResponse response,
+            String existingSessionId, boolean audit) throws IOException {
         String errorMessage = "Session expired. Gateway was restarted. Please reconnect the AI agent.";
         String requestId = null;
         JsonNode requestJson = null;
@@ -836,8 +844,10 @@ public class HttpMcpAuditFilter implements Filter {
             log.debug("Could not parse request body for stale session rejection: {}", e.getMessage());
         }
 
-        String agentName = agentRegistryService.getAgentNameBySessionId(existingSessionId);
-        auditService.auditServerRequestRejected(existingSessionId, agentName, requestJson, errorMessage);
+        if (audit) {
+            String agentName = agentRegistryService.getAgentNameBySessionId(existingSessionId);
+            auditService.auditServerRequestRejected(existingSessionId, agentName, requestJson, errorMessage);
+        }
 
         response.setStatus(HttpServletResponse.SC_OK);
         response.setContentType("application/json");
