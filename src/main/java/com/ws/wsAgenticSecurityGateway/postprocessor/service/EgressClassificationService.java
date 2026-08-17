@@ -32,11 +32,14 @@ public class EgressClassificationService {
 
     private final EgressClassifier classifier;
     private final GatewayResponseClassificationRepository repository;
+    private final ClassifierRuleService ruleService;
 
     public EgressClassificationService(EgressClassifier classifier,
-                                       GatewayResponseClassificationRepository repository) {
+                                       GatewayResponseClassificationRepository repository,
+                                       ClassifierRuleService ruleService) {
         this.classifier = classifier;
         this.repository = repository;
+        this.ruleService = ruleService;
     }
 
     /**
@@ -54,7 +57,7 @@ public class EgressClassificationService {
                 return;
             }
 
-            DetectionResult d = classifier.classify(responseText);
+            DetectionResult d = classifier.classify(responseText, ruleService.policyFor(ctx.tenant()));
             long bytes = responseText == null ? 0L : responseText.getBytes(StandardCharsets.UTF_8).length;
 
             GatewayResponseClassificationEntity row = GatewayResponseClassificationEntity.builder()

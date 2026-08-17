@@ -42,10 +42,28 @@ public class EgressClassifier {
         this.recognizers = List.copyOf(recognizers);
     }
 
-    /** Classify a response body into categories + sensitivity + detector evidence. Never returns null. */
+    /** Classify with built-in recognizers only (no admin rules). Never returns null. */
     public DetectionResult classify(String text) {
+        return classify(text, RulePolicy.empty());
+    }
+
+    /**
+     * Classify a response body into categories + sensitivity + detector evidence, applying a tenant's admin
+     * {@link RulePolicy} on top of the built-ins: extra custom recognizers run, disabled detectors are dropped,
+     * and overridden detectors are remapped. Never returns null.
+     */
+    public DetectionResult classify(String text, RulePolicy policy) {
         if (text == null || text.isBlank()) {
             return DetectionResult.clean();
+        }
+        RulePolicy rules = policy == null ? RulePolicy.empty() : policy;
+
+        List<Recognizer> active;
+        if (rules.extraRecognizers().isEmpty()) {
+            active = recognizers;
+        } else {
+            active = new ArrayList<>(recognizers);
+            active.addAll(rules.extraRecognizers());
         }
 
         TreeSet<String> categories = new TreeSet<>();
@@ -53,7 +71,7 @@ public class EgressClassifier {
         int rank = Sensitivity.PUBLIC;
         boolean injection = false;
 
-        for (Recognizer recognizer : recognizers) {
+        for (Recognizer recognizer : active) {
             List<Recognition> found;
             try {
                 found = recognizer.find(text);
@@ -64,19 +82,32 @@ public class EgressClassifier {
                 continue;
             }
             for (Recognition rec : found) {
-                if ("prompt_injection".equals(rec.matcher())) {
+                String matcher = rec.matcher();
+                if (rules.disabledMatchers().contains(matcher)) {
+                    continue; // admin turned this detector off
+                }
+                if ("prompt_injection".equals(matcher)) {
                     injection = true;
                     detectorAgg.computeIfAbsent("prompt_injection", k -> new Detector("phrase"))
                             .add(rec.start(), rec.end(), 1.0);
                     continue; // injection is a flag, not a confidentiality category
                 }
+                String category = rec.category();
+                int floor = rec.sensitivityFloor();
+                RuleOverride override = rules.overrides().get(matcher);
+                if (override != null) {
+                    if (override.category() != null && !override.category().isBlank()) {
+                        category = override.category();
+                    }
+                    floor = override.sensitivityFloor();
+                }
                 double confidence = ContextScorer.boosted(rec.confidence(), rec.contextKey(), text, rec.start(), rec.end());
                 if (confidence < GATE) {
                     continue; // weak, uncorroborated signal — do not escalate (raw kept in audit for reprocess)
                 }
-                categories.add(rec.category());
-                rank = Math.max(rank, rec.sensitivityFloor());
-                detectorAgg.computeIfAbsent(rec.matcher(), k -> new Detector(matcherType(rec.matcher())))
+                categories.add(category);
+                rank = Math.max(rank, floor);
+                detectorAgg.computeIfAbsent(matcher, k -> new Detector(matcherType(matcher)))
                         .add(rec.start(), rec.end(), confidence);
             }
         }
