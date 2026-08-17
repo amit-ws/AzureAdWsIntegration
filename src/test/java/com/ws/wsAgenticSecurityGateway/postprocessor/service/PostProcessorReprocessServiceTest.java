@@ -1,6 +1,7 @@
 package com.ws.wsAgenticSecurityGateway.postprocessor.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ws.wsAgenticSecurityGateway.audit.constants.AuditEventType;
 import com.ws.wsAgenticSecurityGateway.audit.entity.GatewayAuditLog;
 import com.ws.wsAgenticSecurityGateway.audit.repository.GatewayAuditLogRepository;
 import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
@@ -52,7 +53,10 @@ class PostProcessorReprocessServiceTest {
 
     @Test
     void reprocess_reclassifiesExistingRow_fromRetainedRaw() throws Exception {
+        // With the tool-invocation event under the caller's tenant (as it should be), reprocess finds the retained
+        // response and re-classifies it against the current rules.
         GatewayAuditLog audit = new GatewayAuditLog();
+        audit.setEventType(AuditEventType.CLIENT_TOOL_INVOCATION);
         audit.setResponsePayload(mapper.readTree("\"employee record SSN 123-45-6789\""));
         when(auditRepo.findByCorrelationIdAndWsTenantName("C1", "t1")).thenReturn(List.of(audit));
 
@@ -71,6 +75,20 @@ class PostProcessorReprocessServiceTest {
     void reprocess_noRetainedRaw_isRefusedCleanly() {
         when(auditRepo.findByCorrelationIdAndWsTenantName("C2", "t1")).thenReturn(List.of());
         assertThatThrownBy(() -> svc.reprocess("C2"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("No retained response");
+    }
+
+    @Test
+    void reprocess_ignoresNonCapabilityPayloads_likeStsToken() throws Exception {
+        // The STS-token / PDP-decision payloads share the correlation and would look classifiable — they must be
+        // ignored so we never classify a token or a policy decision instead of the tool response.
+        GatewayAuditLog sts = new GatewayAuditLog();
+        sts.setEventType(AuditEventType.STS_TOKEN_MINTED);
+        sts.setResponsePayload(mapper.readTree("\"minted token for holder with SSN 123-45-6789\""));
+        when(auditRepo.findByCorrelationIdAndWsTenantName("C3", "t1")).thenReturn(List.of(sts));
+
+        assertThatThrownBy(() -> svc.reprocess("C3"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("No retained response");
     }

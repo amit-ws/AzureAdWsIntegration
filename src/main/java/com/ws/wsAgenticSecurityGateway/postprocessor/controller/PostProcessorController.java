@@ -78,6 +78,12 @@ public class PostProcessorController {
         return ResponseEntity.ok(reprocessService.reprocessMany(correlationIds));
     }
 
+    /** Re-classify every hop in a trace (whole journey) against the current rules. */
+    @PostMapping("/classifications/reprocess-trace")
+    public ResponseEntity<Map<String, Object>> reprocessTrace(@RequestParam String traceId) {
+        return ResponseEntity.ok(reprocessService.reprocessTrace(traceId));
+    }
+
     /** Re-classify all of the tenant's recorded classifications against the current rules (page-capped). */
     @PostMapping("/classifications/reprocess-all")
     public ResponseEntity<Map<String, Object>> reprocessAll() {

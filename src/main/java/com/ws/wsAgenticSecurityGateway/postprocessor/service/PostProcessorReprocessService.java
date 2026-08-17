@@ -1,6 +1,7 @@
 package com.ws.wsAgenticSecurityGateway.postprocessor.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.ws.wsAgenticSecurityGateway.audit.constants.AuditEventType;
 import com.ws.wsAgenticSecurityGateway.audit.entity.GatewayAuditLog;
 import com.ws.wsAgenticSecurityGateway.audit.repository.GatewayAuditLogRepository;
 import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
@@ -17,9 +18,11 @@ import org.springframework.stereotype.Service;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Re-classifies a response on demand from its RETAINED raw (kept in the audit trail's {@code response_payload}),
@@ -34,6 +37,15 @@ import java.util.Map;
 public class PostProcessorReprocessService {
 
     private static final int MAX_BULK = 500;
+
+    /**
+     * Audit events whose {@code response_payload} is the actual downstream capability response — the only payloads
+     * reprocess may classify. Everything else that shares a correlation (the PDP decision, the STS-minted token,
+     * list-fetch results) also carries a payload and must be ignored. A2A skill responses are not retained here,
+     * so skills can't be reprocessed.
+     */
+    private static final Set<AuditEventType> RESPONSE_EVENTS =
+            EnumSet.of(AuditEventType.CLIENT_TOOL_INVOCATION, AuditEventType.CLIENT_RESOURCE_READ);
 
     private final GatewayResponseClassificationRepository classificationRepo;
     private final GatewayAuditLogRepository auditRepo;
@@ -80,6 +92,17 @@ public class PostProcessorReprocessService {
             }
         }
         return summary(ids.size(), updated, skipped, false);
+    }
+
+    /** Re-classify every hop in a trace (the whole journey) against the current rules — trace-scoped bulk reprocess. */
+    public Map<String, Object> reprocessTrace(String traceId) {
+        String tenant = TenantContext.get();
+        List<String> correlationIds = classificationRepo.findByWsTenantNameAndTraceId(tenant, traceId).stream()
+                .map(GatewayResponseClassificationEntity::getCorrelationId)
+                .filter(c -> c != null && !c.isBlank())
+                .distinct()
+                .toList();
+        return reprocessMany(correlationIds);
     }
 
     /** Re-classify all of the tenant's recorded classifications against the current rules (page-capped). */
@@ -131,12 +154,19 @@ public class PostProcessorReprocessService {
 
     // ── Internals ────────────────────────────────────────────────────────────
 
-    /** The retained raw response for a correlation, as text — or null if no response was retained for it. */
+    /**
+     * The retained raw CAPABILITY response for a correlation, as text — or null if none was retained. Only the
+     * tool/resource response event is considered; the PDP-decision and STS-token payloads on the same correlation
+     * are skipped so we never classify a decision or a token by mistake.
+     */
     private String rawResponseFor(String tenant, String correlationId) {
         if (correlationId == null) {
             return null;
         }
         for (GatewayAuditLog a : auditRepo.findByCorrelationIdAndWsTenantName(correlationId, tenant)) {
+            if (!isCapabilityResponse(a)) {
+                continue; // ignore PDP-decision / STS-token / list-fetch payloads on the same correlation
+            }
             JsonNode payload = a.getResponsePayload();
             if (payload != null && !payload.isNull()) {
                 String text = payload.toString();
@@ -146,6 +176,11 @@ public class PostProcessorReprocessService {
             }
         }
         return null;
+    }
+
+    /** True only for events that carry an actual downstream capability response (tool/resource). */
+    private static boolean isCapabilityResponse(GatewayAuditLog a) {
+        return a.getEventType() != null && RESPONSE_EVENTS.contains(a.getEventType());
     }
 
     private static void applyDetection(GatewayResponseClassificationEntity row, DetectionResult d, String raw) {
@@ -162,6 +197,7 @@ public class PostProcessorReprocessService {
     /** Build a fresh classification row from the audit event's metadata (for a previously-missing classification). */
     private GatewayResponseClassificationEntity buildFromAudit(String tenant, String correlationId) {
         GatewayAuditLog a = auditRepo.findByCorrelationIdAndWsTenantName(correlationId, tenant).stream()
+                .filter(PostProcessorReprocessService::isCapabilityResponse)
                 .filter(x -> x.getResponsePayload() != null && !x.getResponsePayload().isNull())
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("No retained response is available to reprocess."));
