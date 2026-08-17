@@ -14,6 +14,8 @@ import com.ws.wsAgenticSecurityGateway.orchestration.model.Hop;
 import com.ws.wsAgenticSecurityGateway.orchestration.model.RequestAttributeKeys;
 import com.ws.wsAgenticSecurityGateway.orchestration.model.RequestAttributes;
 import com.ws.wsAgenticSecurityGateway.orchestration.model.RequestContext;
+import com.ws.wsAgenticSecurityGateway.postprocessor.model.EgressContext;
+import com.ws.wsAgenticSecurityGateway.postprocessor.service.EgressClassificationService;
 import com.ws.wsAgenticSecurityGateway.sts.model.ActChain;
 import com.ws.wsAgenticSecurityGateway.sts.model.MintedToken;
 import com.ws.wsAgenticSecurityGateway.sts.service.ActChainBuilder;
@@ -74,6 +76,8 @@ public class HopOrchestrator {
     private final Map<String, ProtocolAdapter> adapterByProtocol;
     private final HopTokenMinter hopTokenMinter;
     private final ActChainBuilder actChainBuilder;
+    /** Egress post-processor: classifies each downstream response off the hot path (fire-and-forget, fail-open). */
+    private final EgressClassificationService egressClassificationService;
 
     @Setter
     private volatile SessionManager sessionManager;
@@ -88,7 +92,8 @@ public class HopOrchestrator {
                            PolicyContextBuilder policyContextBuilder,
                            List<ProtocolAdapter> adapters,
                            HopTokenMinter hopTokenMinter,
-                           ActChainBuilder actChainBuilder) {
+                           ActChainBuilder actChainBuilder,
+                           EgressClassificationService egressClassificationService) {
         this.registryService = registryService;
         this.auditService = auditService;
         this.inFlightRegistry = inFlightRegistry;
@@ -104,6 +109,7 @@ public class HopOrchestrator {
         this.adapterByProtocol = byProtocol;
         this.hopTokenMinter = hopTokenMinter;
         this.actChainBuilder = actChainBuilder;
+        this.egressClassificationService = egressClassificationService;
     }
 
     /**
@@ -125,6 +131,36 @@ public class HopOrchestrator {
             MDC.remove("traceId");
             MDC.remove("correlationId");
             MDC.remove("protocol");
+        }
+    }
+
+    /**
+     * Fire-and-forget egress post-processing: hand the successful response's full text plus this hop's
+     * governance context to the async classifier. Runs off the hot path and is fail-open — a post-processing
+     * hiccup never affects the live call. Errors carry no response body, so they are not classified. The
+     * classification row links back to its audit event by {@code correlationId} (the reliable 1:1 key).
+     */
+    private void fireEgress(Hop hop, String correlationId, String sessionId, String publicName,
+                            String serverName, String consumer, String capabilityType, CapabilityResult result) {
+        if (result == null || result.error()) {
+            return;
+        }
+        try {
+            egressClassificationService.classifyAsync(
+                    new EgressContext(
+                            auditService.resolveTenant(sessionId),
+                            correlationId,
+                            hop.traceId(),
+                            null, // sourceEventId — correlationId is the reliable 1:1 link to the audit event
+                            hop.protocol(),
+                            capabilityType,
+                            publicName,
+                            serverName,
+                            consumer),
+                    result.fullText());
+        } catch (Exception e) {
+            // Enqueue must never break a working call; the async body is itself fail-open.
+            log.debug("[{}] egress post-processing enqueue skipped: {}", correlationId, e.getMessage());
         }
     }
 
@@ -389,6 +425,8 @@ public class HopOrchestrator {
             inFlightRegistry.complete(correlationId);
 
             agentRegistryService.updateLastActivity(sessionId);
+
+            fireEgress(hop, correlationId, sessionId, publicName, serverName, clientName, "TOOL", result);
 
             log.info("ORCHESTRATION COMPLETE [{}]", correlationId);
             log.info("Tool: {} → {}.{}", publicName, serverName, originalName);
@@ -669,6 +707,8 @@ public class HopOrchestrator {
 
             agentRegistryService.updateLastActivity(sessionId);
 
+            fireEgress(hop, correlationId, sessionId, publicName, serverName, clientName, "SKILL", result);
+
             log.info("SKILL ORCHESTRATION COMPLETE [{}]", correlationId);
             log.info("Skill: {} → {}.{}", publicName, serverName, originalName);
             log.info("Response: {} content item(s)", result.itemCount());
@@ -927,6 +967,7 @@ public class HopOrchestrator {
             agentRegistryService.updateLastActivity(sessionId);
 
             int messageCount = result.itemCount();
+            fireEgress(hop, correlationId, sessionId, publicName, serverName, clientName, "PROMPT", result);
             log.info("PROMPT ORCHESTRATION COMPLETE [{}]", correlationId);
             log.info("Prompt: {} → {}.{}", publicName, serverName, originalName);
             log.info("Response: {} message(s)", messageCount);
@@ -1179,6 +1220,8 @@ public class HopOrchestrator {
             inFlightRegistry.complete(correlationId);
 
             agentRegistryService.updateLastActivity(sessionId);
+
+            fireEgress(hop, correlationId, sessionId, publicName, serverName, clientName, "RESOURCE", result);
 
             log.info("RESOURCE ORCHESTRATION COMPLETE [{}]", correlationId);
             log.info("Resource: {} → {}", publicName, originalUri);

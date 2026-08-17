@@ -165,7 +165,7 @@ public class A2aAdapter implements ProtocolAdapter {
         }
         JsonNode result = body.get("result");
         String kind = result != null && result.hasNonNull("kind") ? result.get("kind").asText() : "message";
-        return CapabilityResult.ok(result, extractText(result), 1, kind.toUpperCase(Locale.ROOT));
+        return CapabilityResult.ok(result, extractText(result), extractFullText(result), 1, kind.toUpperCase(Locale.ROOT));
     }
 
     /** Pull the first text part out of a spec {@code Message} result, or a {@code Task}'s status message. */
@@ -185,6 +185,29 @@ public class A2aAdapter implements ProtocolAdapter {
             }
         }
         return "";
+    }
+
+    /** All text parts of a spec {@code Message}/{@code Task} result, concatenated untruncated — for egress post-processing. */
+    private static String extractFullText(JsonNode result) {
+        if (result == null) {
+            return "";
+        }
+        JsonNode parts = result.get("parts");
+        if (parts == null || !parts.isArray()) {
+            parts = result.path("status").path("message").get("parts"); // Task shape
+        }
+        StringBuilder sb = new StringBuilder();
+        if (parts != null && parts.isArray()) {
+            for (JsonNode part : parts) {
+                if (part.hasNonNull("text")) {
+                    if (sb.length() > 0) {
+                        sb.append("\n");
+                    }
+                    sb.append(part.get("text").asText());
+                }
+            }
+        }
+        return sb.toString();
     }
 
     @Override

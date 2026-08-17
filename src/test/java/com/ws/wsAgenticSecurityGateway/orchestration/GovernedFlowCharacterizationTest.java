@@ -97,7 +97,8 @@ class GovernedFlowCharacterizationTest {
 
         HopOrchestrator hopOrchestrator = new HopOrchestrator(registryService, auditService, inFlight,
                 objectMapper, agentRegistryService, capabilityFilterService,
-                cedarPolicyEngine, policyContextBuilder, java.util.List.of(adapter), hopTokenMinter, actChainBuilder);
+                cedarPolicyEngine, policyContextBuilder, java.util.List.of(adapter), hopTokenMinter, actChainBuilder,
+                mock(com.ws.wsAgenticSecurityGateway.postprocessor.service.EgressClassificationService.class));
         orchestrator = new ToolCallOrchestrator(hopOrchestrator);
 
         when(exchange.transportContext()).thenReturn(McpTransportContext.EMPTY);

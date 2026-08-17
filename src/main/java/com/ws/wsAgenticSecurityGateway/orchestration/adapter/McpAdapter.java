@@ -75,7 +75,7 @@ public class McpAdapter implements ProtocolAdapter {
                                      LocalDateTime firedAt, int eventSequence) {
         List<McpSchema.Content> content = mcpClientService.callTool(correlationId, hop.serverName(),
                 hop.originalName(), argsJson, firedAt, eventSequence);
-        return CapabilityResult.ok(content, summarize(content),
+        return CapabilityResult.ok(content, summarize(content), fullText(content),
                 content != null ? content.size() : 0, typesOf(content));
     }
 
@@ -91,7 +91,7 @@ public class McpAdapter implements ProtocolAdapter {
         McpSchema.GetPromptResult result =
                 mcpClientService.getPrompt(hop.serverName(), hop.originalName(), hop.arguments());
         int messageCount = result != null && result.messages() != null ? result.messages().size() : 0;
-        return CapabilityResult.ok(result, summarizePrompt(result), messageCount, "PROMPT");
+        return CapabilityResult.ok(result, summarizePrompt(result), fullTextPrompt(result), messageCount, "PROMPT");
     }
 
     /** The prompt description, blank-checked and truncated — mirrors the spine's former {@code enrichPromptResponseData}. */
@@ -103,12 +103,34 @@ public class McpAdapter implements ProtocolAdapter {
         return description.length() > 2000 ? description.substring(0, 2000) + "..." : description;
     }
 
+    /** The full prompt body — description plus every message's text, untruncated — for egress post-processing. */
+    private static String fullTextPrompt(McpSchema.GetPromptResult result) {
+        if (result == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        if (result.description() != null && !result.description().isBlank()) {
+            sb.append(result.description());
+        }
+        if (result.messages() != null) {
+            for (McpSchema.PromptMessage m : result.messages()) {
+                if (m.content() instanceof McpSchema.TextContent t && t.text() != null) {
+                    if (sb.length() > 0) {
+                        sb.append("\n");
+                    }
+                    sb.append(t.text());
+                }
+            }
+        }
+        return sb.toString();
+    }
+
     @Override
     public CapabilityResult readResource(Hop hop, String correlationId,
                                          LocalDateTime firedAt, int eventSequence) {
         List<McpSchema.ResourceContents> contents = mcpClientService.readResource(correlationId,
                 hop.serverName(), hop.originalName(), firedAt, eventSequence);
-        return CapabilityResult.ok(contents, summarizeResource(contents),
+        return CapabilityResult.ok(contents, summarizeResource(contents), fullTextResource(contents),
                 contents != null ? contents.size() : 0, typesOfResource(contents));
     }
 
@@ -128,6 +150,23 @@ public class McpAdapter implements ProtocolAdapter {
             }
         }
         return "";
+    }
+
+    /** All text content blocks, concatenated untruncated — the egress post-processor's scan input (never surfaced on the wire). */
+    private static String fullText(List<McpSchema.Content> content) {
+        if (content == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (McpSchema.Content c : content) {
+            if (c instanceof McpSchema.TextContent t && t.text() != null) {
+                if (sb.length() > 0) {
+                    sb.append("\n");
+                }
+                sb.append(t.text());
+            }
+        }
+        return sb.toString();
     }
 
     /** Comma-joined content kinds (e.g. {@code "TEXT,IMAGE"}) for the in-flight display. */
@@ -161,6 +200,23 @@ public class McpAdapter implements ProtocolAdapter {
             }
         }
         return "";
+    }
+
+    /** All text resource contents, concatenated untruncated — for egress post-processing. */
+    private static String fullTextResource(List<McpSchema.ResourceContents> contents) {
+        if (contents == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (McpSchema.ResourceContents rc : contents) {
+            if (rc instanceof McpSchema.TextResourceContents t && t.text() != null) {
+                if (sb.length() > 0) {
+                    sb.append("\n");
+                }
+                sb.append(t.text());
+            }
+        }
+        return sb.toString();
     }
 
     /** Comma-joined resource content kinds (e.g. {@code "TEXT,BLOB"}) for the in-flight display. */
