@@ -26,5 +26,10 @@ public record EgressContext(
         String capabilityType,
         String capabilityName,
         String producer,
-        String consumer) {
+        String consumer,
+        // Exact identities (no name-guessing) so per-agent / per-tool rollups join deterministically:
+        UUID consumerAgentId,       // the calling agent's registry id (getAgentIdForSession)
+        String producerKind,        // SERVER (tool/prompt/resource) or AGENT (skill)
+        UUID producerServerId,      // the MCP server's id (CapabilityDescriptor.serverId), when SERVER
+        UUID producerAgentId) {     // the downstream agent's registry id (resolveAgentIdByName), when AGENT
 }

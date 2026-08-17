@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -42,4 +43,61 @@ public interface GatewayResponseClassificationRepository
     @Query("select c.sensitivity, count(c) from GatewayResponseClassificationEntity c "
             + "where c.wsTenantName = :tenant group by c.sensitivity")
     List<Object[]> sensitivityBreakdown(@Param("tenant") String tenant);
+
+    // ── Insights aggregates (Step 4: fingerprints / sharing / drift) ──
+
+    /** Per-capability sensitivity profile: [producer, capabilityName, capabilityType, protocol, sensitivity, count, lastSeen]. */
+    @Query("select c.producer, c.capabilityName, c.capabilityType, c.protocol, c.sensitivity, count(c), max(c.classifiedAt) "
+            + "from GatewayResponseClassificationEntity c where c.wsTenantName = :tenant "
+            + "group by c.producer, c.capabilityName, c.capabilityType, c.protocol, c.sensitivity")
+    List<Object[]> capabilityProfileRows(@Param("tenant") String tenant);
+
+    /** Per producer→consumer edge sensitivity profile: [producer, consumer, sensitivity, count, lastSeen]. */
+    @Query("select c.producer, c.consumer, c.sensitivity, count(c), max(c.classifiedAt) "
+            + "from GatewayResponseClassificationEntity c where c.wsTenantName = :tenant "
+            + "group by c.producer, c.consumer, c.sensitivity")
+    List<Object[]> sharingEdgeRows(@Param("tenant") String tenant);
+
+    /**
+     * Drift buckets: [producer, capabilityName, sensitivity, recent(boolean), count] split at {@code cutoff}.
+     * Groups by the 4th output column (the {@code recent} expression) rather than repeating {@code (classified_at
+     * >= :cutoff)} — Hibernate binds the named param twice as two positional params, which Postgres then treats as
+     * different expressions and rejects; the ordinal keeps {@code classified_at} in a single grouped expression.
+     */
+    @Query(value = "select producer, capability_name, sensitivity, (classified_at >= :cutoff) as recent, count(*) "
+            + "from ws_agentic_security.gateway_response_classification where ws_tenant_name = :tenant "
+            + "group by producer, capability_name, sensitivity, 4", nativeQuery = true)
+    List<Object[]> driftRows(@Param("tenant") String tenant, @Param("cutoff") LocalDateTime cutoff);
+
+    // ── Entity-sensitivity rollups (per agent / server / tool, keyed by exact id) ──
+
+    /** [consumerAgentId, sensitivity, count] — an agent as the receiver of data. */
+    @Query("select c.consumerAgentId, c.sensitivity, count(c) from GatewayResponseClassificationEntity c "
+            + "where c.wsTenantName = :tenant and c.consumerAgentId is not null group by c.consumerAgentId, c.sensitivity")
+    List<Object[]> consumerAgentSensitivity(@Param("tenant") String tenant);
+
+    /** [producerAgentId, sensitivity, count] — an agent as the producer (its skills). */
+    @Query("select c.producerAgentId, c.sensitivity, count(c) from GatewayResponseClassificationEntity c "
+            + "where c.wsTenantName = :tenant and c.producerAgentId is not null group by c.producerAgentId, c.sensitivity")
+    List<Object[]> producerAgentSensitivity(@Param("tenant") String tenant);
+
+    /** [producerServerId, producer(name), sensitivity, count] — a server (tool/prompt/resource producer). */
+    @Query("select c.producerServerId, c.producer, c.sensitivity, count(c) from GatewayResponseClassificationEntity c "
+            + "where c.wsTenantName = :tenant and c.producerKind = 'SERVER' group by c.producerServerId, c.producer, c.sensitivity")
+    List<Object[]> serverSensitivity(@Param("tenant") String tenant);
+
+    /** [producerServerId, producer(name), capabilityType, capabilityName, sensitivity, count] — every SERVER
+     *  capability (tool / prompt / resource), grouped by type + name. */
+    @Query("select c.producerServerId, c.producer, c.capabilityType, c.capabilityName, c.sensitivity, count(c) "
+            + "from GatewayResponseClassificationEntity c "
+            + "where c.wsTenantName = :tenant and c.producerKind = 'SERVER' "
+            + "group by c.producerServerId, c.producer, c.capabilityType, c.capabilityName, c.sensitivity")
+    List<Object[]> serverCapabilitySensitivity(@Param("tenant") String tenant);
+
+    /** [producerAgentId, producer(name), capabilityName, sensitivity, count] — per skill (agent id + skill name). */
+    @Query("select c.producerAgentId, c.producer, c.capabilityName, c.sensitivity, count(c) "
+            + "from GatewayResponseClassificationEntity c "
+            + "where c.wsTenantName = :tenant and c.producerKind = 'AGENT' and c.producerAgentId is not null "
+            + "group by c.producerAgentId, c.producer, c.capabilityName, c.sensitivity")
+    List<Object[]> skillSensitivity(@Param("tenant") String tenant);
 }

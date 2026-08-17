@@ -80,6 +80,25 @@ public class GatewayResponseClassificationEntity {
     @Column(name = "consumer", length = 256)
     private String consumer;
 
+    // ── Exact identities (stamped at the hook) so per-agent / per-tool rollups join deterministically, no
+    //    name-guessing. Display names above stay for the UI; these are the stable keys. ──────────────────────
+
+    /** The calling agent's registry id (the consumer) — joins to the agents table. */
+    @Column(name = "consumer_agent_id")
+    private UUID consumerAgentId;
+
+    /** What produced the response: {@code SERVER} (tool/prompt/resource) or {@code AGENT} (skill). */
+    @Column(name = "producer_kind", length = 16)
+    private String producerKind;
+
+    /** The MCP server's id (producer of a tool/prompt/resource) — joins to the server table. */
+    @Column(name = "producer_server_id")
+    private UUID producerServerId;
+
+    /** The downstream agent's registry id (producer of a skill) — joins to the agents table. */
+    @Column(name = "producer_agent_id")
+    private UUID producerAgentId;
+
     /** RESPONSE today; leaves room for request-side arg inspection (Phase-3) without a schema change. */
     @Column(name = "direction", length = 16, nullable = false)
     @Builder.Default

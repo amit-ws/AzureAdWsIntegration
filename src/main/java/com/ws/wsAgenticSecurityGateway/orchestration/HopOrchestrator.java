@@ -141,11 +141,16 @@ public class HopOrchestrator {
      * classification row links back to its audit event by {@code correlationId} (the reliable 1:1 key).
      */
     private void fireEgress(Hop hop, String correlationId, String sessionId, String publicName,
-                            String serverName, String consumer, String capabilityType, CapabilityResult result) {
+                            String serverName, String consumer, String capabilityType,
+                            UUID consumerAgentId, UUID descriptorServerId, CapabilityResult result) {
         if (result == null || result.error()) {
             return;
         }
         try {
+            boolean skill = "SKILL".equals(capabilityType);
+            String producerKind = skill ? "AGENT" : "SERVER";
+            UUID producerServerId = skill ? null : descriptorServerId;
+            UUID producerAgentId = skill ? safeResolveAgentId(serverName) : null;
             egressClassificationService.classifyAsync(
                     new EgressContext(
                             auditService.resolveTenant(sessionId),
@@ -156,11 +161,24 @@ public class HopOrchestrator {
                             capabilityType,
                             publicName,
                             serverName,
-                            consumer),
+                            consumer,
+                            consumerAgentId,
+                            producerKind,
+                            producerServerId,
+                            producerAgentId),
                     result.fullText());
         } catch (Exception e) {
             // Enqueue must never break a working call; the async body is itself fail-open.
             log.debug("[{}] egress post-processing enqueue skipped: {}", correlationId, e.getMessage());
+        }
+    }
+
+    /** Resolve a downstream agent's registry id by name (the skill producer's identity); null if unknown. */
+    private UUID safeResolveAgentId(String agentName) {
+        try {
+            return agentRegistryService.resolveAgentIdByName(agentName);
+        } catch (Exception e) {
+            return null;
         }
     }
 
@@ -426,7 +444,8 @@ public class HopOrchestrator {
 
             agentRegistryService.updateLastActivity(sessionId);
 
-            fireEgress(hop, correlationId, sessionId, publicName, serverName, clientName, "TOOL", result);
+            fireEgress(hop, correlationId, sessionId, publicName, serverName, clientName, "TOOL",
+                    agentIdForAccess, descriptor.getServerId(), result);
 
             log.info("ORCHESTRATION COMPLETE [{}]", correlationId);
             log.info("Tool: {} → {}.{}", publicName, serverName, originalName);
@@ -707,7 +726,8 @@ public class HopOrchestrator {
 
             agentRegistryService.updateLastActivity(sessionId);
 
-            fireEgress(hop, correlationId, sessionId, publicName, serverName, clientName, "SKILL", result);
+            fireEgress(hop, correlationId, sessionId, publicName, serverName, clientName, "SKILL",
+                    agentIdForAccess, descriptor.getServerId(), result);
 
             log.info("SKILL ORCHESTRATION COMPLETE [{}]", correlationId);
             log.info("Skill: {} → {}.{}", publicName, serverName, originalName);
@@ -967,7 +987,8 @@ public class HopOrchestrator {
             agentRegistryService.updateLastActivity(sessionId);
 
             int messageCount = result.itemCount();
-            fireEgress(hop, correlationId, sessionId, publicName, serverName, clientName, "PROMPT", result);
+            fireEgress(hop, correlationId, sessionId, publicName, serverName, clientName, "PROMPT",
+                    promptAgentId, descriptor.getServerId(), result);
             log.info("PROMPT ORCHESTRATION COMPLETE [{}]", correlationId);
             log.info("Prompt: {} → {}.{}", publicName, serverName, originalName);
             log.info("Response: {} message(s)", messageCount);
@@ -1221,7 +1242,8 @@ public class HopOrchestrator {
 
             agentRegistryService.updateLastActivity(sessionId);
 
-            fireEgress(hop, correlationId, sessionId, publicName, serverName, clientName, "RESOURCE", result);
+            fireEgress(hop, correlationId, sessionId, publicName, serverName, clientName, "RESOURCE",
+                    resourceAgentId, descriptor.getServerId(), result);
 
             log.info("RESOURCE ORCHESTRATION COMPLETE [{}]", correlationId);
             log.info("Resource: {} → {}", publicName, originalUri);
