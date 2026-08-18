@@ -2,6 +2,7 @@ package com.ws.wsAgenticSecurityGateway.postprocessor.controller;
 
 import com.ws.wsAgenticSecurityGateway.postprocessor.dto.DataTagRuleDto;
 import com.ws.wsAgenticSecurityGateway.postprocessor.dto.DetectorInfo;
+import com.ws.wsAgenticSecurityGateway.postprocessor.dto.EffectiveDetectorView;
 import com.ws.wsAgenticSecurityGateway.postprocessor.service.PostProcessorRuleService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -39,6 +40,45 @@ public class PostProcessorRuleController {
     @GetMapping("/detectors")
     public ResponseEntity<List<DetectorInfo>> detectors() {
         return ResponseEntity.ok(ruleService.detectors());
+    }
+
+    /** Every built-in detector with its effective state for this tenant (on/off + any category/sensitivity remap). */
+    @GetMapping("/detectors/effective")
+    public ResponseEntity<List<EffectiveDetectorView>> effectiveDetectors() {
+        return ResponseEntity.ok(ruleService.effectiveDetectors());
+    }
+
+    /** Turn a built-in detector on/off for this tenant. Body: {@code {"enabled": true|false}}. */
+    @PostMapping("/detectors/{matcher}/enabled")
+    public ResponseEntity<?> setDetectorEnabled(@PathVariable String matcher, @RequestBody Map<String, Boolean> body) {
+        try {
+            ruleService.setDetectorEnabled(matcher, Boolean.TRUE.equals(body.get("enabled")));
+            return ResponseEntity.ok(Map.of("ok", true));
+        } catch (IllegalArgumentException e) {
+            return badRequest(e);
+        }
+    }
+
+    /** Remap a built-in detector's category/sensitivity for this tenant (reuses the rule DTO's category + sensitivity). */
+    @PutMapping("/detectors/{matcher}/override")
+    public ResponseEntity<?> setDetectorOverride(@PathVariable String matcher, @RequestBody DataTagRuleDto body) {
+        try {
+            ruleService.setDetectorOverride(matcher, body.dataCategories(), body.sensitivity());
+            return ResponseEntity.ok(Map.of("ok", true));
+        } catch (IllegalArgumentException e) {
+            return badRequest(e);
+        }
+    }
+
+    /** Clear a built-in detector's override (revert to its shipped category/sensitivity). */
+    @DeleteMapping("/detectors/{matcher}/override")
+    public ResponseEntity<?> clearDetectorOverride(@PathVariable String matcher) {
+        try {
+            ruleService.clearDetectorOverride(matcher);
+            return ResponseEntity.ok(Map.of("ok", true));
+        } catch (IllegalArgumentException e) {
+            return badRequest(e);
+        }
     }
 
     @GetMapping("/rules")

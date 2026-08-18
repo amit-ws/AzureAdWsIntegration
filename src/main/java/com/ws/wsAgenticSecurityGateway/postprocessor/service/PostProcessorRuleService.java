@@ -4,6 +4,7 @@ import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import com.ws.wsAgenticSecurityGateway.postprocessor.classifier.Sensitivity;
 import com.ws.wsAgenticSecurityGateway.postprocessor.dto.DataTagRuleDto;
 import com.ws.wsAgenticSecurityGateway.postprocessor.dto.DetectorInfo;
+import com.ws.wsAgenticSecurityGateway.postprocessor.dto.EffectiveDetectorView;
 import com.ws.wsAgenticSecurityGateway.postprocessor.entity.DataTagRuleEntity;
 import com.ws.wsAgenticSecurityGateway.postprocessor.entity.DataTagRuleType;
 import com.ws.wsAgenticSecurityGateway.postprocessor.repository.DataTagRuleRepository;
@@ -11,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
@@ -110,7 +112,116 @@ public class PostProcessorRuleService {
         return DataTagRuleDto.from(saved);
     }
 
+    // ── Built-in detector management (enable/disable + override; never delete — the logic is code) ──
+
+    /** Every built-in detector with its effective state for this tenant: shipped defaults plus any DISABLE/OVERRIDE. */
+    public List<EffectiveDetectorView> effectiveDetectors() {
+        String tenant = TenantContext.get();
+        List<DataTagRuleEntity> rules = repository.findByWsTenantNameOrderByCreatedAtDesc(tenant);
+        List<EffectiveDetectorView> out = new ArrayList<>();
+        for (DetectorInfo d : ruleEngine.builtinDetectors()) {
+            DataTagRuleEntity disable = ruleFor(rules, DataTagRuleType.DISABLE, d.matcher());
+            DataTagRuleEntity override = ruleFor(rules, DataTagRuleType.OVERRIDE, d.matcher());
+            boolean silenced = disable != null && disable.isEnabled();
+            boolean remapped = override != null && override.isEnabled();
+            out.add(new EffectiveDetectorView(
+                    d.matcher(), d.description(), d.category(), d.defaultSensitivity(),
+                    !silenced,
+                    disable == null ? null : disable.getId(),
+                    remapped ? override.getDataCategories() : null,
+                    remapped ? override.getSensitivity() : null,
+                    override == null ? null : override.getId()));
+        }
+        return out;
+    }
+
+    /** Turn a built-in detector on/off for this tenant (off = an enabled DISABLE rule; on = no DISABLE rule). */
+    public void setDetectorEnabled(String matcher, boolean enabled) {
+        String tenant = TenantContext.get();
+        requireKnownDetector(matcher);
+        List<DataTagRuleEntity> rules = repository.findByWsTenantNameOrderByCreatedAtDesc(tenant);
+        DataTagRuleEntity disable = ruleFor(rules, DataTagRuleType.DISABLE, matcher);
+        if (enabled) {
+            if (disable != null) {
+                repository.delete(disable);
+            }
+        } else if (disable == null) {
+            repository.save(DataTagRuleEntity.builder()
+                    .wsTenantName(tenant)
+                    .name("Disabled built-in: " + matcher)
+                    .ruleType(DataTagRuleType.DISABLE)
+                    .builtinMatcher(matcher)
+                    .enabled(true)
+                    .description("Built-in detector turned off by an admin.")
+                    .createdAt(LocalDateTime.now())
+                    .build());
+        } else if (!disable.isEnabled()) {
+            disable.setEnabled(true);
+            disable.setUpdatedAt(LocalDateTime.now());
+            repository.save(disable);
+        }
+        ruleEngine.invalidate(tenant);
+        log.info("Built-in detector '{}' set enabled={} for tenant={}", matcher, enabled, tenant);
+    }
+
+    /** Remap a built-in detector's output (categories + sensitivity) for this tenant via an OVERRIDE rule. */
+    public void setDetectorOverride(String matcher, List<String> categories, String sensitivity) {
+        String tenant = TenantContext.get();
+        requireKnownDetector(matcher);
+        requireSensitivity(sensitivity, "override");
+        List<DataTagRuleEntity> rules = repository.findByWsTenantNameOrderByCreatedAtDesc(tenant);
+        DataTagRuleEntity override = ruleFor(rules, DataTagRuleType.OVERRIDE, matcher);
+        if (override == null) {
+            override = DataTagRuleEntity.builder()
+                    .wsTenantName(tenant)
+                    .name("Override built-in: " + matcher)
+                    .ruleType(DataTagRuleType.OVERRIDE)
+                    .builtinMatcher(matcher)
+                    .description("Built-in detector remapped by an admin.")
+                    .createdAt(LocalDateTime.now())
+                    .build();
+        }
+        override.setDataCategories(cleanList(categories));
+        override.setSensitivity(upper(sensitivity));
+        override.setEnabled(true);
+        override.setUpdatedAt(LocalDateTime.now());
+        repository.save(override);
+        ruleEngine.invalidate(tenant);
+        log.info("Built-in detector '{}' overridden (sensitivity={}) for tenant={}", matcher, upper(sensitivity), tenant);
+    }
+
+    /** Remove a built-in detector's OVERRIDE (revert to its shipped category/sensitivity). */
+    public void clearDetectorOverride(String matcher) {
+        String tenant = TenantContext.get();
+        requireKnownDetector(matcher);
+        List<DataTagRuleEntity> rules = repository.findByWsTenantNameOrderByCreatedAtDesc(tenant);
+        DataTagRuleEntity override = ruleFor(rules, DataTagRuleType.OVERRIDE, matcher);
+        if (override != null) {
+            repository.delete(override);
+            ruleEngine.invalidate(tenant);
+            log.info("Built-in detector '{}' override cleared for tenant={}", matcher, tenant);
+        }
+    }
+
     // ── Internals ────────────────────────────────────────────────────────────
+
+    /** The single DISABLE / OVERRIDE rule a tenant has against a built-in matcher, or null. */
+    private DataTagRuleEntity ruleFor(List<DataTagRuleEntity> rules, DataTagRuleType type, String matcher) {
+        return rules.stream()
+                .filter(r -> r.getRuleType() == type
+                        && r.getBuiltinMatcher() != null
+                        && matcher.equals(r.getBuiltinMatcher().trim()))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private void requireKnownDetector(String matcher) {
+        boolean known = matcher != null
+                && ruleEngine.builtinDetectors().stream().anyMatch(d -> d.matcher().equals(matcher));
+        if (!known) {
+            throw new IllegalArgumentException("Unknown built-in detector.");
+        }
+    }
 
     private DataTagRuleEntity find(UUID id, String tenant) {
         return repository.findByIdAndWsTenantName(id, tenant)
