@@ -840,8 +840,9 @@ public class GatewayAuditService {
                         long durationMs,
                         String requestId,
                         String agentName,
-                        LocalDateTime firedAt, Integer eventSequence) {
-                persist(GatewayAuditLog.builder()
+                        LocalDateTime firedAt, Integer eventSequence,
+                        String capabilityType, String responseText) {
+                GatewayAuditLog.GatewayAuditLogBuilder entry = GatewayAuditLog.builder()
                                 .eventType(AuditEventType.ORCHESTRATION_RESPONSE_RETURNED)
                                 .module(AuditModule.ORCHESTRATION_LAYER)
                                 .status(AuditStatus.SUCCESS)
@@ -852,12 +853,19 @@ public class GatewayAuditService {
                                 .requestId(requestId)
                                 .serverName(serverName)
                                 .capabilityName(toolName)
-                                .capabilityType("TOOL")
+                                .capabilityType(capabilityType != null ? capabilityType : "TOOL")
                                 .protocolMethod("tools/call")
                                 .durationMs(durationMs)
                                 .timestamp(firedAt)
-                                .eventSequence(eventSequence)
-                                .build());
+                                .eventSequence(eventSequence);
+                // Retain the downstream response only where nothing else keeps it. MCP tools/resources are
+                // persisted by their client-service layer; A2A skills and MCP prompts have no such layer, so this
+                // shared orchestration marker is where their body is kept for the egress post-processor to reprocess.
+                // Callers pass a body for skills and prompts (null for tool/resource) to avoid double-storing.
+                if (responseText != null && !responseText.isBlank()) {
+                        entry.responsePayload(toJson(Map.of("content", responseText)));
+                }
+                persist(entry.build());
         }
 
         /** Resolve the tenant for a request: the per-session identity context, else the request-thread tenant. */

@@ -41,11 +41,17 @@ public class PostProcessorReprocessService {
     /**
      * Audit events whose {@code response_payload} is the actual downstream capability response — the only payloads
      * reprocess may classify. Everything else that shares a correlation (the PDP decision, the STS-minted token,
-     * list-fetch results) also carries a payload and must be ignored. A2A skill responses are not retained here,
-     * so skills can't be reprocessed.
+     * list-fetch results) also carries a payload and must be ignored. MCP tool/resource responses are kept by the
+     * client-service layer ({@code CLIENT_TOOL_INVOCATION} / {@code CLIENT_RESOURCE_READ}); A2A skill and MCP prompt
+     * responses have no such layer, so they ride on the shared orchestration marker
+     * ({@code ORCHESTRATION_RESPONSE_RETURNED}, which carries a body only for skills and prompts), making them
+     * reprocessable too. That marker is payload-free for tools/resources, so a tool/resource correlation is still
+     * resolved to its own {@code CLIENT_*} body, never double-classified.
      */
     private static final Set<AuditEventType> RESPONSE_EVENTS =
-            EnumSet.of(AuditEventType.CLIENT_TOOL_INVOCATION, AuditEventType.CLIENT_RESOURCE_READ);
+            EnumSet.of(AuditEventType.CLIENT_TOOL_INVOCATION,
+                    AuditEventType.CLIENT_RESOURCE_READ,
+                    AuditEventType.ORCHESTRATION_RESPONSE_RETURNED);
 
     private final GatewayResponseClassificationRepository classificationRepo;
     private final GatewayAuditLogRepository auditRepo;
@@ -155,9 +161,10 @@ public class PostProcessorReprocessService {
     // ── Internals ────────────────────────────────────────────────────────────
 
     /**
-     * The retained raw CAPABILITY response for a correlation, as text — or null if none was retained. Only the
-     * tool/resource response event is considered; the PDP-decision and STS-token payloads on the same correlation
-     * are skipped so we never classify a decision or a token by mistake.
+     * The retained raw CAPABILITY response for a correlation, as text — or null if none was retained. Only a
+     * capability-response event is considered (an MCP tool/resource body, or a skill/prompt body on the
+     * orchestration marker); the PDP-decision and STS-token payloads on the same correlation are skipped so we
+     * never classify a decision or a token by mistake.
      */
     private String rawResponseFor(String tenant, String correlationId) {
         if (correlationId == null) {

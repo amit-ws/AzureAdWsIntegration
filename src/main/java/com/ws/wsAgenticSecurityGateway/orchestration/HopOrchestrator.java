@@ -438,7 +438,7 @@ public class HopOrchestrator {
 
             auditService.auditOrchestrationCallForwarded(
                     correlationId, sessionId, serverName, originalName, callDuration, requestId, clientName,
-                    LocalDateTime.now(), ++seq);
+                    LocalDateTime.now(), ++seq, "TOOL", null);
 
             inFlightRegistry.complete(correlationId);
 
@@ -720,7 +720,7 @@ public class HopOrchestrator {
 
             auditService.auditOrchestrationCallForwarded(
                     correlationId, sessionId, serverName, originalName, callDuration, requestId, clientName,
-                    LocalDateTime.now(), ++seq);
+                    LocalDateTime.now(), ++seq, "SKILL", result.fullText());
 
             inFlightRegistry.complete(correlationId);
 
@@ -980,7 +980,7 @@ public class HopOrchestrator {
 
             auditService.auditOrchestrationCallForwarded(
                     correlationId, sessionId, serverName, originalName, callDuration, requestId, clientName,
-                    LocalDateTime.now(), ++seq);
+                    LocalDateTime.now(), ++seq, "PROMPT", result.fullText());
 
             inFlightRegistry.complete(correlationId);
 
@@ -1236,7 +1236,7 @@ public class HopOrchestrator {
 
             auditService.auditOrchestrationCallForwarded(
                     correlationId, sessionId, serverName, publicName, callDuration, requestId, clientName,
-                    LocalDateTime.now(), ++seq);
+                    LocalDateTime.now(), ++seq, "RESOURCE", null);
 
             inFlightRegistry.complete(correlationId);
 

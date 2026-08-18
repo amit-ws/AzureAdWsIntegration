@@ -92,4 +92,59 @@ class PostProcessorReprocessServiceTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("No retained response");
     }
+
+    @Test
+    void reprocess_reclassifiesSkillResponse_fromOrchestrationMarker() throws Exception {
+        // A2A skills have no client-service layer that persists their response; the body is retained on the shared
+        // ORCHESTRATION_RESPONSE_RETURNED marker (skills only). Reprocess must now find and classify it.
+        GatewayAuditLog skill = new GatewayAuditLog();
+        skill.setEventType(AuditEventType.ORCHESTRATION_RESPONSE_RETURNED);
+        skill.setCapabilityType("SKILL");
+        skill.setResponsePayload(mapper.readTree("{\"content\":\"advisor note: client SSN 123-45-6789\"}"));
+        when(auditRepo.findByCorrelationIdAndWsTenantName("C4", "t1")).thenReturn(List.of(skill));
+        when(classRepo.findByWsTenantNameAndCorrelationId("t1", "C4")).thenReturn(List.of());
+
+        ClassificationView v = svc.reprocess("C4");
+
+        assertThat(v.sensitivity()).isEqualTo("RESTRICTED");
+        assertThat(v.detectors()).containsKey("ssn");
+    }
+
+    @Test
+    void reprocess_reclassifiesPromptResponse_fromOrchestrationMarker() throws Exception {
+        // MCP getPrompt has no client-service layer either; the prompt body is retained on the same
+        // ORCHESTRATION_RESPONSE_RETURNED marker (prompts only, like skills). Reprocess must find and classify it.
+        GatewayAuditLog prompt = new GatewayAuditLog();
+        prompt.setEventType(AuditEventType.ORCHESTRATION_RESPONSE_RETURNED);
+        prompt.setCapabilityType("PROMPT");
+        prompt.setResponsePayload(mapper.readTree("{\"content\":\"template greeting for SSN 123-45-6789\"}"));
+        when(auditRepo.findByCorrelationIdAndWsTenantName("C6", "t1")).thenReturn(List.of(prompt));
+        when(classRepo.findByWsTenantNameAndCorrelationId("t1", "C6")).thenReturn(List.of());
+
+        ClassificationView v = svc.reprocess("C6");
+
+        assertThat(v.sensitivity()).isEqualTo("RESTRICTED");
+        assertThat(v.detectors()).containsKey("ssn");
+    }
+
+    @Test
+    void reprocess_toolCorrelation_skipsPayloadFreeOrchestrationMarker() throws Exception {
+        // A tool correlation now also carries an ORCHESTRATION_RESPONSE_RETURNED marker, but that marker is
+        // payload-free for tools (bodies are written there only for skills). Reprocess must skip past the marker and
+        // resolve the tool's own CLIENT_TOOL_INVOCATION body — never mis-skip it as "no retained response".
+        GatewayAuditLog marker = new GatewayAuditLog();
+        marker.setEventType(AuditEventType.ORCHESTRATION_RESPONSE_RETURNED);
+        marker.setCapabilityType("TOOL"); // no responsePayload → payload-free
+        GatewayAuditLog tool = new GatewayAuditLog();
+        tool.setEventType(AuditEventType.CLIENT_TOOL_INVOCATION);
+        tool.setResponsePayload(mapper.readTree("\"employee record SSN 123-45-6789\""));
+        // Marker listed first, so the loop must correctly step over it to reach the tool body.
+        when(auditRepo.findByCorrelationIdAndWsTenantName("C5", "t1")).thenReturn(List.of(marker, tool));
+        when(classRepo.findByWsTenantNameAndCorrelationId("t1", "C5")).thenReturn(List.of());
+
+        ClassificationView v = svc.reprocess("C5");
+
+        assertThat(v.sensitivity()).isEqualTo("RESTRICTED");
+        assertThat(v.detectors()).containsKey("ssn");
+    }
 }
