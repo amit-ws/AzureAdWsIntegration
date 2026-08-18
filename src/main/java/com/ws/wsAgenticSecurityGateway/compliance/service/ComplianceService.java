@@ -10,6 +10,7 @@ import com.ws.wsAgenticSecurityGateway.compliance.dto.ComplianceReport.EvidenceI
 import com.ws.wsAgenticSecurityGateway.compliance.dto.ComplianceTemplate;
 import com.ws.wsAgenticSecurityGateway.compliance.dto.ComplianceTemplate.TemplateEvidence;
 import com.ws.wsAgenticSecurityGateway.compliance.repository.ComplianceAuditStatsRepository;
+import com.ws.wsAgenticSecurityGateway.compliance.repository.ComplianceClassificationRepository;
 import com.ws.wsAgenticSecurityGateway.compliance.repository.ComplianceDecisionRepository;
 import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import com.ws.wsAgenticSecurityGateway.pdp.entity.GatewayPolicyEntity;
@@ -21,6 +22,7 @@ import org.springframework.stereotype.Service;
 import java.io.InputStream;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -50,8 +52,12 @@ public class ComplianceService {
             "Evidence for the listed controls, generated from the gateway's audit trail for the period shown. "
             + "This is supporting evidence — not a certification, attestation, or opinion.";
 
+    /** Frameworks with a shipped default template (classpath {@code compliance/<id>-default.json}). */
+    private static final List<String> FRAMEWORK_IDS = List.of("soc2", "sox");
+
     private final ComplianceDecisionRepository decisionRepo;
     private final ComplianceAuditStatsRepository auditStatsRepo;
+    private final ComplianceClassificationRepository classificationRepo;
     private final GatewayAgentRepository agentRepo;
     private final PolicyService policyService;
 
@@ -60,9 +66,11 @@ public class ComplianceService {
 
     public ComplianceService(ComplianceDecisionRepository decisionRepo,
                              ComplianceAuditStatsRepository auditStatsRepo,
+                             ComplianceClassificationRepository classificationRepo,
                              GatewayAgentRepository agentRepo, PolicyService policyService) {
         this.decisionRepo = decisionRepo;
         this.auditStatsRepo = auditStatsRepo;
+        this.classificationRepo = classificationRepo;
         this.agentRepo = agentRepo;
         this.policyService = policyService;
     }
@@ -72,6 +80,20 @@ public class ComplianceService {
     /** The default (shipped) SOC 2 report, filled from live data. Kept for the simple {@code /compliance/soc2} route. */
     public ComplianceReport soc2Report() {
         return render("soc2", null);
+    }
+
+    /** Frameworks that have a shipped default template — {@code [{id, name}]}, powering the FE framework switcher.
+     *  The display name is read from each template so it never drifts from the report title. */
+    public List<Map<String, String>> frameworks() {
+        List<Map<String, String>> out = new ArrayList<>();
+        for (String id : FRAMEWORK_IDS) {
+            try {
+                out.add(Map.of("id", id, "name", defaultTemplate(id).framework()));
+            } catch (Exception e) {
+                log.warn("Compliance framework '{}' has no readable default template: {}", id, e.getMessage());
+            }
+        }
+        return out;
     }
 
     /** Render {@code template} (or the shipped default for {@code framework} when null) against live tenant data. */
@@ -158,7 +180,7 @@ public class ComplianceService {
             return json.readValue(in, ComplianceTemplate.class);
         } catch (Exception e) {
             throw new IllegalArgumentException("No default template for framework '" + framework
-                    + "'. Upload a template, or use one of: soc2.");
+                    + "'. Upload a template, or use one of: " + String.join(", ", FRAMEWORK_IDS) + ".");
         }
     }
 
@@ -173,6 +195,10 @@ public class ComplianceService {
         long agTotal = agents.size();
         long agApproved = agents.stream().filter(g -> "APPROVED".equalsIgnoreCase(g.getApprovalStatus())).count();
         long agPending = agents.stream().filter(g -> "PENDING".equalsIgnoreCase(g.getApprovalStatus())).count();
+
+        DataClassStats dc = dataClassStats(tenant);
+        long dcCategories = orZero(classificationRepo.distinctCategoryCount(tenant));
+        long dcRules = orZero(classificationRepo.activeCustomRuleCount(tenant));
 
         List<GatewayPolicyEntity> policies = policyService.getAllPolicies();
         long pTotal = policies.size();
@@ -208,6 +234,21 @@ public class ComplianceService {
         m.put("policies.generated", num(pGen));
         m.put("policies.defaults", num(pDef));
         m.put("policies.lastChange", lastChange == null ? "n/a" : lastChange.toLocalDate().toString());
+        // Egress data-classification (post-processor) — data-integrity / confidentiality evidence, financial-aware.
+        m.put("dataclass.classifications", num(dc.total));
+        m.put("dataclass.sensitive", num(dc.sensitive));
+        m.put("dataclass.sensitiveOfTotal", num(dc.sensitive) + " of " + num(dc.total));
+        m.put("dataclass.restricted", num(dc.restricted));
+        m.put("dataclass.confidential", num(dc.confidential));
+        m.put("dataclass.financial", num(dc.financial));
+        m.put("dataclass.injections", num(dc.injections));
+        m.put("dataclass.humanAttributed", num(dc.humanAttr));
+        m.put("dataclass.humanAttributedOfTotal", num(dc.humanAttr) + " of " + num(dc.total));
+        m.put("dataclass.categories", num(dcCategories));
+        m.put("dataclass.rulesActive", num(dcRules));
+        m.put("dataclass.periodStart", dc.first == null ? "n/a" : dc.first.toLocalDate().toString());
+        m.put("dataclass.periodEnd", dc.last == null ? "n/a" : dc.last.toLocalDate().toString());
+        m.put("dataclass.period", period(dc.first, dc.last));
 
         LocalDate ps = a.first == null ? null : a.first.toLocalDate();
         LocalDate pe = a.last == null ? null : a.last.toLocalDate();
@@ -224,10 +265,28 @@ public class ComplianceService {
                 asDateTime(r[5]), asDateTime(r[6]));
     }
 
+    private DataClassStats dataClassStats(String tenant) {
+        List<Object[]> rows = classificationRepo.dataClassStats(tenant);
+        if (rows == null || rows.isEmpty()) {
+            return new DataClassStats(0, 0, 0, 0, 0, 0, 0, null, null);
+        }
+        Object[] r = rows.get(0);
+        return new DataClassStats(asLong(r[0]), asLong(r[1]), asLong(r[2]), asLong(r[3]), asLong(r[4]),
+                asLong(r[5]), asLong(r[6]), asDateTime(r[7]), asDateTime(r[8]));
+    }
+
     private record ComplianceData(Map<String, String> metrics, LocalDate periodStart, LocalDate periodEnd) {}
 
     private record AuditStats(long total, long types, long humanAttr, long humans, long agents,
                               LocalDateTime first, LocalDateTime last) {}
+
+    private record DataClassStats(long total, long sensitive, long restricted, long confidential,
+                                  long financial, long injections, long humanAttr,
+                                  LocalDateTime first, LocalDateTime last) {}
+
+    private static long orZero(Long v) {
+        return v == null ? 0L : v;
+    }
 
     private static String num(long n) {
         return Long.toString(n);

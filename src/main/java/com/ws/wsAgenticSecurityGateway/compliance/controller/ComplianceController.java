@@ -34,6 +34,27 @@ public class ComplianceController {
         return ResponseEntity.ok(complianceService.metricMenu());
     }
 
+    /** Frameworks that have a shipped default report — {@code [{id, name}]} — for the FE framework switcher. */
+    @GetMapping("/frameworks")
+    public ResponseEntity<List<Map<String, String>>> frameworks() {
+        return ResponseEntity.ok(complianceService.frameworks());
+    }
+
+    /**
+     * A shipped default evidence pack for {@code framework} (e.g. {@code soc2}, {@code sox}), filled from live data.
+     * {@code ?format=csv} returns CSV; default JSON. Unknown framework → 400. Supporting evidence, not a certification.
+     */
+    @GetMapping("/report/{framework}")
+    public ResponseEntity<?> report(@PathVariable String framework,
+                                    @RequestParam(value = "format", defaultValue = "json") String format) {
+        log.info("GET /api/admin/compliance/report/{} format={}", framework, format);
+        try {
+            return respond(complianceService.render(framework, null), format);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
     /**
      * SOC 2 evidence pack using the shipped default template, filled from live data. {@code ?format=csv} returns a
      * spreadsheet-friendly CSV; default is JSON. Supporting evidence for the listed controls, not a certification.

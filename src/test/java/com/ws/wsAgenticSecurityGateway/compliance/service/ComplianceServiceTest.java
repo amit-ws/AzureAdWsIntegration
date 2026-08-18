@@ -7,6 +7,7 @@ import com.ws.wsAgenticSecurityGateway.compliance.dto.ComplianceReport.ControlEv
 import com.ws.wsAgenticSecurityGateway.compliance.dto.ComplianceReport.EvidenceItem;
 import com.ws.wsAgenticSecurityGateway.compliance.dto.ComplianceTemplate;
 import com.ws.wsAgenticSecurityGateway.compliance.repository.ComplianceAuditStatsRepository;
+import com.ws.wsAgenticSecurityGateway.compliance.repository.ComplianceClassificationRepository;
 import com.ws.wsAgenticSecurityGateway.compliance.repository.ComplianceDecisionRepository;
 import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import com.ws.wsAgenticSecurityGateway.pdp.entity.GatewayPolicyEntity;
@@ -34,10 +35,11 @@ class ComplianceServiceTest {
 
     private final ComplianceDecisionRepository decisionRepo = mock(ComplianceDecisionRepository.class);
     private final ComplianceAuditStatsRepository auditRepo = mock(ComplianceAuditStatsRepository.class);
+    private final ComplianceClassificationRepository classRepo = mock(ComplianceClassificationRepository.class);
     private final GatewayAgentRepository agentRepo = mock(GatewayAgentRepository.class);
     private final PolicyService policyService = mock(PolicyService.class);
     private final ComplianceService service =
-            new ComplianceService(decisionRepo, auditRepo, agentRepo, policyService);
+            new ComplianceService(decisionRepo, auditRepo, classRepo, agentRepo, policyService);
 
     @BeforeEach
     void setUp() {
@@ -57,6 +59,14 @@ class ComplianceServiceTest {
         when(policyService.getAllPolicies()).thenReturn(List.of(
                 policy(true, "MANUAL", LocalDateTime.of(2026, 8, 13, 9, 0)),
                 policy(false, "LLM_GENERATED", LocalDateTime.of(2026, 8, 10, 9, 0))));
+        // Egress classification: 200 classified, 40 sensitive / 15 restricted / 25 confidential, 30 financial,
+        // 2 injections, 180 human-attributed, 11th–13th Aug.
+        when(classRepo.dataClassStats(anyString())).thenReturn(List.<Object[]>of(new Object[]{
+                200L, 40L, 15L, 25L, 30L, 2L, 180L,
+                Timestamp.valueOf(LocalDateTime.of(2026, 8, 11, 0, 0)),
+                Timestamp.valueOf(LocalDateTime.of(2026, 8, 13, 0, 0)) }));
+        when(classRepo.distinctCategoryCount(anyString())).thenReturn(6L);
+        when(classRepo.activeCustomRuleCount(anyString())).thenReturn(4L);
     }
 
     @AfterEach
@@ -87,6 +97,45 @@ class ComplianceServiceTest {
         assertThat(ev(ctrl(r, "CC7.2"), "Coverage period")).isEqualTo("2026-08-11 to 2026-08-13");
         assertThat(ev(ctrl(r, "CC8.1"), "System defaults")).isEqualTo("0");
         assertThat(ev(ctrl(r, "CC8.1"), "Most recent policy change")).isEqualTo("2026-08-13");
+    }
+
+    @Test
+    void defaultSoxTemplate_fillsControls_includingPostProcessorEvidence() {
+        ComplianceReport r = service.render("sox", null);
+
+        assertThat(r.framework()).contains("SOX");
+        assertThat(r.tenant()).isEqualTo("acme");
+        assertThat(r.disclaimer()).containsIgnoringCase("not a SOX audit");
+        assertThat(r.controls()).extracting(ControlEvidence::ref)
+                .containsExactly("APD.1", "APD.2", "LP.1", "PC.1", "DC.1", "CO.1");
+        assertThat(r.controls()).allMatch(c -> "EVIDENCED".equals(c.status()));
+        // Every metric the shipped SOX template cites must be a real menu key (guards against typos in the template).
+        assertThat(r.controls()).allSatisfy(c ->
+                assertThat(c.evidence()).allSatisfy(e ->
+                        assertThat(e.value()).doesNotContain("unknown metric")));
+
+        // The post-processor-fed evidence (data-confidentiality control) carries the mocked live values.
+        assertThat(ev(ctrl(r, "DC.1"), "Responses inspected & classified")).isEqualTo("200");
+        assertThat(ev(ctrl(r, "DC.1"), "Responses carrying financial data")).isEqualTo("30");
+        assertThat(ev(ctrl(r, "DC.1"), "Sensitive responses (of total)")).isEqualTo("40 of 200");
+        assertThat(ev(ctrl(r, "DC.1"), "Restricted-sensitivity responses")).isEqualTo("15");
+        assertThat(ev(ctrl(r, "DC.1"), "Distinct data categories observed")).isEqualTo("6");
+        assertThat(ev(ctrl(r, "PC.1"), "Active data-classification rules")).isEqualTo("4");
+        assertThat(ev(ctrl(r, "CO.1"), "Classified egress attributed to a human (of total)"))
+                .isEqualTo("180 of 200");
+    }
+
+    @Test
+    void metricMenu_includesPostProcessorMetrics() {
+        assertThat(service.metricMenu()).containsKeys(
+                "dataclass.classifications", "dataclass.financial", "dataclass.sensitiveOfTotal",
+                "dataclass.restricted", "dataclass.categories", "dataclass.rulesActive",
+                "dataclass.humanAttributedOfTotal", "dataclass.period");
+    }
+
+    @Test
+    void frameworks_listSoc2AndSox() {
+        assertThat(service.frameworks()).extracting(m -> m.get("id")).contains("soc2", "sox");
     }
 
     @Test
