@@ -102,7 +102,8 @@ public class ClassifierRuleService {
                 case OVERRIDE -> {
                     if (isSet(rule.getBuiltinMatcher())) {
                         overrides.put(rule.getBuiltinMatcher().trim(),
-                                new RuleOverride(rule.getDataCategory(), Sensitivity.rankOf(rule.getSensitivity())));
+                                new RuleOverride(cleanCategories(rule.getDataCategories()),
+                                        Sensitivity.rankOf(rule.getSensitivity())));
                     }
                 }
             }
@@ -122,7 +123,8 @@ public class ClassifierRuleService {
             log.warn("Skipping custom egress rule '{}' — invalid regex: {}", rule.getName(), e.getMessage());
             return null;
         }
-        final String category = isSet(rule.getDataCategory()) ? rule.getDataCategory().trim() : "CUSTOM";
+        List<String> cats = cleanCategories(rule.getDataCategories());
+        final List<String> categories = cats.isEmpty() ? List.of("CUSTOM") : cats;
         final int floor = Sensitivity.rankOf(rule.getSensitivity());
         final double confidence = rule.getConfidence() != null ? rule.getConfidence() : DEFAULT_CUSTOM_CONFIDENCE;
         final String contextKey = isSet(rule.getContextKey()) ? rule.getContextKey().trim() : null;
@@ -132,7 +134,11 @@ public class ClassifierRuleService {
             List<Recognition> out = new ArrayList<>();
             Matcher m = pattern.matcher(text);
             while (m.find()) {
-                out.add(new Recognition(category, floor, confidence, matcher, contextKey, m.start(), m.end()));
+                // One recognition per category, sharing the match span + matcher id — the classifier collects every
+                // category while the detector-evidence count stays span-deduped (so a multi-category match counts once).
+                for (String category : categories) {
+                    out.add(new Recognition(category, floor, confidence, matcher, contextKey, m.start(), m.end()));
+                }
             }
             return out;
         };
@@ -140,6 +146,14 @@ public class ClassifierRuleService {
 
     private static boolean isSet(String s) {
         return s != null && !s.isBlank();
+    }
+
+    /** Trim, drop blanks, and de-dupe a rule's categories; never null (empty means "no explicit category"). */
+    private static List<String> cleanCategories(List<String> raw) {
+        if (raw == null) {
+            return List.of();
+        }
+        return raw.stream().filter(ClassifierRuleService::isSet).map(String::trim).distinct().toList();
     }
 
     private record Cached(RulePolicy policy, long expiresAt) {

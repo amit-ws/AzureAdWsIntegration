@@ -3,6 +3,7 @@ package com.ws.wsAgenticSecurityGateway.postprocessor.dto;
 import com.ws.wsAgenticSecurityGateway.postprocessor.entity.DataTagRuleEntity;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -15,7 +16,7 @@ public record DataTagRuleDto(
         String ruleType,
         String builtinMatcher,
         String pattern,
-        String dataCategory,
+        List<String> dataCategories,
         String sensitivity,
         String contextKey,
         Double confidence,
@@ -31,7 +32,7 @@ public record DataTagRuleDto(
                 e.getRuleType() == null ? null : e.getRuleType().name(),
                 e.getBuiltinMatcher(),
                 e.getPattern(),
-                e.getDataCategory(),
+                e.getDataCategories(),
                 e.getSensitivity(),
                 e.getContextKey(),
                 e.getConfidence(),

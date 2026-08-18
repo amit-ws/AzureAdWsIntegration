@@ -39,24 +39,35 @@ public class PostProcessorController {
     }
 
     /**
-     * Classifications for the current tenant, newest first. Optional filters (most specific wins):
-     * {@code correlationId} (one hop), {@code traceId} (a whole journey), {@code producer} (a tool/agent),
-     * {@code sensitivity} (PUBLIC/INTERNAL/CONFIDENTIAL/RESTRICTED); none ⇒ the recent list capped by {@code limit}.
+     * Classifications for the current tenant, newest first. A {@code correlationId} (one hop) or {@code traceId}
+     * (a whole journey) is the jump shortcut and wins if present. Otherwise the multi-select facets apply, each
+     * repeatable and combined AND across facets / OR within one: {@code sensitivity}, {@code category},
+     * {@code capabilityType}, {@code protocol}, {@code producer}. No facet ⇒ the recent list capped by {@code limit}.
      */
     @GetMapping("/classifications")
     public ResponseEntity<List<ClassificationView>> classifications(
             @RequestParam(required = false) String correlationId,
             @RequestParam(required = false) String traceId,
-            @RequestParam(required = false) String sensitivity,
-            @RequestParam(required = false) String producer,
+            @RequestParam(required = false) List<String> sensitivity,
+            @RequestParam(required = false) List<String> category,
+            @RequestParam(required = false) List<String> capabilityType,
+            @RequestParam(required = false) List<String> protocol,
+            @RequestParam(required = false) List<String> producer,
             @RequestParam(defaultValue = "100") int limit) {
-        return ResponseEntity.ok(queryService.list(correlationId, traceId, sensitivity, producer, limit));
+        return ResponseEntity.ok(queryService.list(correlationId, traceId, sensitivity, category,
+                capabilityType, protocol, producer, limit));
     }
 
     /** Header counts (total, per-sensitivity, injection) for the current tenant. */
     @GetMapping("/classifications/summary")
     public ResponseEntity<ClassificationSummary> summary() {
         return ResponseEntity.ok(queryService.summary());
+    }
+
+    /** The filter dropdowns' choices for the Processed-Data view, served from the backend (distinct tenant values). */
+    @GetMapping("/classifications/filters")
+    public ResponseEntity<Map<String, List<String>>> filters() {
+        return ResponseEntity.ok(queryService.filterOptions());
     }
 
     /**

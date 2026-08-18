@@ -53,7 +53,7 @@ public class PostProcessorRuleService {
                 .ruleType(parseType(in.ruleType()))
                 .builtinMatcher(trim(in.builtinMatcher()))
                 .pattern(in.pattern())
-                .dataCategory(trim(in.dataCategory()))
+                .dataCategories(cleanList(in.dataCategories()))
                 .sensitivity(upper(in.sensitivity()))
                 .contextKey(trim(in.contextKey()))
                 .confidence(in.confidence())
@@ -79,7 +79,7 @@ public class PostProcessorRuleService {
         }
         e.setBuiltinMatcher(trim(in.builtinMatcher()));
         e.setPattern(in.pattern());
-        e.setDataCategory(trim(in.dataCategory()));
+        e.setDataCategories(cleanList(in.dataCategories()));
         e.setSensitivity(upper(in.sensitivity()));
         e.setContextKey(trim(in.contextKey()));
         e.setConfidence(in.confidence());
@@ -178,6 +178,19 @@ public class PostProcessorRuleService {
 
     private static String trim(String s) {
         return s == null ? null : s.trim();
+    }
+
+    /** Trim, drop blanks, de-dupe the categories; null when none remain (so the column stays clean). */
+    private static List<String> cleanList(List<String> raw) {
+        if (raw == null) {
+            return null;
+        }
+        List<String> out = raw.stream()
+                .map(PostProcessorRuleService::trim)
+                .filter(s -> s != null && !s.isBlank())
+                .distinct()
+                .toList();
+        return out.isEmpty() ? null : out;
     }
 
     private static String upper(String s) {

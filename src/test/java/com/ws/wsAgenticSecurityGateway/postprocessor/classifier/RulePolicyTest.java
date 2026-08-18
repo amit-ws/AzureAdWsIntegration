@@ -66,11 +66,42 @@ class RulePolicyTest {
     @Test
     void overrideRule_canRemapCategory() {
         RulePolicy policy = new RulePolicy(List.of(), Set.of(),
-                Map.of("ip_address", new RuleOverride("INFRA", Sensitivity.rankOf("CONFIDENTIAL"))));
+                Map.of("ip_address", new RuleOverride(List.of("INFRA"), Sensitivity.rankOf("CONFIDENTIAL"))));
         DetectionResult r = classifier.classify("origin host 10.0.12.44 responded", policy);
         assertThat(r.categories()).contains("INFRA");
         assertThat(r.categories()).doesNotContain("NETWORK");
         assertThat(r.sensitivity()).isEqualTo("CONFIDENTIAL");
+    }
+
+    @Test
+    void overrideRule_canRemapToMultipleCategories() {
+        // One built-in remapped to several categories at once — a match is tagged with all of them.
+        RulePolicy policy = new RulePolicy(List.of(), Set.of(),
+                Map.of("ip_address", new RuleOverride(List.of("INFRA", "NETWORK_ASSET"), Sensitivity.rankOf("CONFIDENTIAL"))));
+        DetectionResult r = classifier.classify("origin host 10.0.12.44 responded", policy);
+        assertThat(r.categories()).contains("INFRA", "NETWORK_ASSET");
+        assertThat(r.categories()).doesNotContain("NETWORK");
+        assertThat(r.sensitivity()).isEqualTo("CONFIDENTIAL");
+    }
+
+    @Test
+    void customRule_canTagMultipleCategories() {
+        // A custom rule with several categories emits one recognition per category for each match; the classifier
+        // collects every category while the single detector entry counts the span once.
+        Recognizer multi = text -> {
+            List<Recognition> out = new ArrayList<>();
+            Matcher m = Pattern.compile("ACME-\\d{4}").matcher(text);
+            while (m.find()) {
+                out.add(new Recognition("PROJECT", Sensitivity.rankOf("INTERNAL"), 0.9, "rule:acme", null, m.start(), m.end()));
+                out.add(new Recognition("INTERNAL_ID", Sensitivity.rankOf("INTERNAL"), 0.9, "rule:acme", null, m.start(), m.end()));
+            }
+            return out;
+        };
+        RulePolicy policy = new RulePolicy(List.of(multi), Set.of(), Map.of());
+        DetectionResult r = classifier.classify("ticket ACME-1234 opened", policy);
+        assertThat(r.categories()).contains("PROJECT", "INTERNAL_ID");
+        assertThat(r.detectors()).containsKey("rule:acme");
+        assertThat(((Map<?, ?>) r.detectors().get("rule:acme")).get("count")).isEqualTo(1);
     }
 
     @Test

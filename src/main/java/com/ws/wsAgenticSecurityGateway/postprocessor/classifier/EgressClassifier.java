@@ -92,12 +92,12 @@ public class EgressClassifier {
                             .add(rec.start(), rec.end(), 1.0);
                     continue; // injection is a flag, not a confidentiality category
                 }
-                String category = rec.category();
                 int floor = rec.sensitivityFloor();
+                List<String> overrideCategories = null; // non-null → replaces the detector's own category
                 RuleOverride override = rules.overrides().get(matcher);
                 if (override != null) {
-                    if (override.category() != null && !override.category().isBlank()) {
-                        category = override.category();
+                    if (override.categories() != null && !override.categories().isEmpty()) {
+                        overrideCategories = override.categories();
                     }
                     floor = override.sensitivityFloor();
                 }
@@ -105,7 +105,11 @@ public class EgressClassifier {
                 if (confidence < GATE) {
                     continue; // weak, uncorroborated signal — do not escalate (raw kept in audit for reprocess)
                 }
-                categories.add(category);
+                if (overrideCategories != null) {
+                    categories.addAll(overrideCategories);
+                } else {
+                    categories.add(rec.category());
+                }
                 rank = Math.max(rank, floor);
                 detectorAgg.computeIfAbsent(matcher, k -> new Detector(matcherType(matcher)))
                         .add(rec.start(), rec.end(), confidence);

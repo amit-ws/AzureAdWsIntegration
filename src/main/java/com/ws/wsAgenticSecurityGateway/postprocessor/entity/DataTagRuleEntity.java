@@ -12,8 +12,11 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -59,9 +62,12 @@ public class DataTagRuleEntity {
     @Column(name = "pattern", length = 1024)
     private String pattern;
 
-    /** For CUSTOM / OVERRIDE: the data category to tag (e.g. {@code PII}, {@code FINANCIAL}, or a custom label). */
-    @Column(name = "data_category", length = 64)
-    private String dataCategory;
+    /** For CUSTOM / OVERRIDE: the data categories to tag (e.g. {@code PII}, {@code FINANCIAL}, or custom labels).
+     *  Multiple are allowed — a match is tagged with every category listed. Stored as a JSON array, mirroring the
+     *  classification table's {@code data_categories} (the {@code @JdbcTypeCode} binds it as jsonb, not varchar[]). */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "data_categories", columnDefinition = "jsonb")
+    private List<String> dataCategories;
 
     /** For CUSTOM / OVERRIDE: PUBLIC / INTERNAL / CONFIDENTIAL / RESTRICTED. */
     @Column(name = "sensitivity", length = 24)

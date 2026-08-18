@@ -100,4 +100,55 @@ public interface GatewayResponseClassificationRepository
             + "where c.wsTenantName = :tenant and c.producerKind = 'AGENT' and c.producerAgentId is not null "
             + "group by c.producerAgentId, c.producer, c.capabilityName, c.sensitivity")
     List<Object[]> skillSensitivity(@Param("tenant") String tenant);
+
+    // ── Advanced filtering (Processed-Data multi-select facets) ──
+
+    /**
+     * Multi-facet filtered classifications, newest first. Each facet is an optional {@code chr(10)}-joined value
+     * list (null = "don't filter on this facet"); within a facet the match is OR (any value), across facets it is
+     * AND. Passing a single joined string per facet — rather than a collection — sidesteps both the empty-{@code IN}
+     * error and jsonb's bare {@code ?} operator: scalar facets use {@code = any(string_to_array(...))}, and the
+     * category facet (a jsonb array column) matches via {@code jsonb_array_elements_text} so a row counts if ANY of
+     * its categories is selected.
+     */
+    @Query(value = "select c.* from ws_agentic_security.gateway_response_classification c "
+            + "where c.ws_tenant_name = :tenant "
+            + "and (cast(:sensitivities as text) is null or c.sensitivity = any(string_to_array(cast(:sensitivities as text), chr(10)))) "
+            + "and (cast(:capabilityTypes as text) is null or c.capability_type = any(string_to_array(cast(:capabilityTypes as text), chr(10)))) "
+            + "and (cast(:protocols as text) is null or c.protocol = any(string_to_array(cast(:protocols as text), chr(10)))) "
+            + "and (cast(:producers as text) is null or c.producer = any(string_to_array(cast(:producers as text), chr(10)))) "
+            + "and (cast(:categories as text) is null or exists ("
+            + "     select 1 from jsonb_array_elements_text(c.data_categories) e "
+            + "     where e = any(string_to_array(cast(:categories as text), chr(10))))) "
+            + "order by c.classified_at desc nulls last limit :limit", nativeQuery = true)
+    List<GatewayResponseClassificationEntity> search(@Param("tenant") String tenant,
+                                                     @Param("sensitivities") String sensitivities,
+                                                     @Param("capabilityTypes") String capabilityTypes,
+                                                     @Param("protocols") String protocols,
+                                                     @Param("producers") String producers,
+                                                     @Param("categories") String categories,
+                                                     @Param("limit") int limit);
+
+    // ── Distinct facet values (the filter dropdowns' choices, served from the backend) ──
+
+    @Query(value = "select distinct sensitivity from ws_agentic_security.gateway_response_classification "
+            + "where ws_tenant_name = :tenant and sensitivity is not null order by 1", nativeQuery = true)
+    List<String> distinctSensitivities(@Param("tenant") String tenant);
+
+    @Query(value = "select distinct capability_type from ws_agentic_security.gateway_response_classification "
+            + "where ws_tenant_name = :tenant and capability_type is not null order by 1", nativeQuery = true)
+    List<String> distinctCapabilityTypes(@Param("tenant") String tenant);
+
+    @Query(value = "select distinct protocol from ws_agentic_security.gateway_response_classification "
+            + "where ws_tenant_name = :tenant and protocol is not null order by 1", nativeQuery = true)
+    List<String> distinctProtocols(@Param("tenant") String tenant);
+
+    @Query(value = "select distinct producer from ws_agentic_security.gateway_response_classification "
+            + "where ws_tenant_name = :tenant and producer is not null order by 1", nativeQuery = true)
+    List<String> distinctProducers(@Param("tenant") String tenant);
+
+    @Query(value = "select distinct e from ws_agentic_security.gateway_response_classification c, "
+            + "jsonb_array_elements_text(c.data_categories) e "
+            + "where c.ws_tenant_name = :tenant and c.data_categories is not null order by 1", nativeQuery = true)
+    List<String> distinctCategories(@Param("tenant") String tenant);
 }
