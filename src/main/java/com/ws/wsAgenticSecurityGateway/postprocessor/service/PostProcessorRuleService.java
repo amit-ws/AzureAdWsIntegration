@@ -5,8 +5,13 @@ import com.ws.wsAgenticSecurityGateway.postprocessor.classifier.Sensitivity;
 import com.ws.wsAgenticSecurityGateway.postprocessor.dto.DataTagRuleDto;
 import com.ws.wsAgenticSecurityGateway.postprocessor.dto.DetectorInfo;
 import com.ws.wsAgenticSecurityGateway.postprocessor.dto.EffectiveDetectorView;
+import com.ws.wsAgenticSecurityGateway.postprocessor.dto.RuleTemplatePackView;
+import com.ws.wsAgenticSecurityGateway.postprocessor.dto.RuleTemplateView;
+import com.ws.wsAgenticSecurityGateway.postprocessor.dto.TemplateInstallResult;
 import com.ws.wsAgenticSecurityGateway.postprocessor.entity.DataTagRuleEntity;
 import com.ws.wsAgenticSecurityGateway.postprocessor.entity.DataTagRuleType;
+import com.ws.wsAgenticSecurityGateway.postprocessor.model.RuleTemplate;
+import com.ws.wsAgenticSecurityGateway.postprocessor.model.RuleTemplateCatalog;
 import com.ws.wsAgenticSecurityGateway.postprocessor.repository.DataTagRuleRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -14,8 +19,12 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -66,6 +75,7 @@ public class PostProcessorRuleService {
                 .createdAt(LocalDateTime.now())
                 .build();
         validate(e);
+        requireUniqueName(tenant, e.getName(), null);
         DataTagRuleEntity saved = repository.save(e);
         ruleEngine.invalidate(tenant);
         log.info("Egress rule created: tenant={} type={} name='{}'", tenant, saved.getRuleType(), saved.getName());
@@ -94,10 +104,23 @@ public class PostProcessorRuleService {
         }
         e.setDescription(in.description());
         validate(e);
+        requireUniqueName(tenant, e.getName(), id);
         e.setUpdatedAt(LocalDateTime.now());
         DataTagRuleEntity saved = repository.save(e);
         ruleEngine.invalidate(tenant);
         return DataTagRuleDto.from(saved);
+    }
+
+    /** Reject a name already used by ANOTHER rule in this tenant (excludeId = the rule being updated, or null). */
+    private void requireUniqueName(String tenant, String name, UUID excludeId) {
+        if (name == null || name.isBlank()) {
+            return; // blank is caught by validate()
+        }
+        for (DataTagRuleEntity r : repository.findByWsTenantNameAndNameIgnoreCase(tenant, name.trim())) {
+            if (excludeId == null || !r.getId().equals(excludeId)) {
+                throw new IllegalArgumentException("A rule named \"" + name.trim() + "\" already exists.");
+            }
+        }
     }
 
     public void delete(UUID id) {
@@ -114,6 +137,108 @@ public class PostProcessorRuleService {
         DataTagRuleEntity saved = repository.save(e);
         ruleEngine.invalidate(tenant);
         return DataTagRuleDto.from(saved);
+    }
+
+    // ── Industry rule-template library (curated packs an admin installs as normal, editable rules) ──
+
+    /** The shipped template catalog grouped by industry, each template marked installed/not for this tenant. */
+    public List<RuleTemplatePackView> templates() {
+        String tenant = TenantContext.get();
+        Set<String> installed = installedTemplateIds(tenant);
+        Map<String, List<RuleTemplateView>> byIndustry = new LinkedHashMap<>();
+        for (RuleTemplate t : RuleTemplateCatalog.all()) {
+            byIndustry.computeIfAbsent(t.industry(), k -> new ArrayList<>())
+                    .add(RuleTemplateView.from(t, installed.contains(t.templateId())));
+        }
+        List<RuleTemplatePackView> out = new ArrayList<>();
+        byIndustry.forEach((industry, views) -> {
+            String regulation = views.isEmpty() ? null : views.get(0).regulation();
+            int installedCount = (int) views.stream().filter(RuleTemplateView::installed).count();
+            out.add(new RuleTemplatePackView(industry, regulation, views, installedCount));
+        });
+        return out;
+    }
+
+    /** Install one template as a normal editable CUSTOM rule (idempotent — a re-install returns the existing rule). */
+    public DataTagRuleDto installTemplate(String templateId) {
+        String tenant = TenantContext.get();
+        RuleTemplate t = RuleTemplateCatalog.byId(templateId)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown rule template."));
+        DataTagRuleEntity existing = findByTemplateId(tenant, t.templateId());
+        if (existing != null) {
+            return DataTagRuleDto.from(existing); // already installed — never duplicate
+        }
+        DataTagRuleEntity saved = persistTemplate(tenant, t);
+        log.info("Rule template '{}' installed for tenant={}", t.templateId(), tenant);
+        return DataTagRuleDto.from(saved);
+    }
+
+    /** Install every not-yet-installed template in an industry pack; reports counts + any name conflicts skipped. */
+    public TemplateInstallResult installPack(String industry) {
+        String tenant = TenantContext.get();
+        List<RuleTemplate> pack = RuleTemplateCatalog.byIndustry(industry);
+        if (pack.isEmpty()) {
+            throw new IllegalArgumentException("Unknown template pack.");
+        }
+        int installed = 0;
+        int already = 0;
+        List<String> conflicts = new ArrayList<>();
+        for (RuleTemplate t : pack) {
+            if (findByTemplateId(tenant, t.templateId()) != null) {
+                already++;
+                continue;
+            }
+            try {
+                persistTemplate(tenant, t);
+                installed++;
+            } catch (IllegalArgumentException e) {
+                conflicts.add(t.name()); // a hand-made rule already uses this name — leave it untouched
+            }
+        }
+        log.info("Template pack '{}' installed for tenant={}: {} new, {} already, {} conflicts",
+                industry, tenant, installed, already, conflicts.size());
+        return new TemplateInstallResult(installed, already, conflicts);
+    }
+
+    /** Build + validate + persist a template as a CUSTOM rule carrying its origin marker. */
+    private DataTagRuleEntity persistTemplate(String tenant, RuleTemplate t) {
+        DataTagRuleEntity e = DataTagRuleEntity.builder()
+                .wsTenantName(tenant)
+                .name(trim(t.name()))
+                .ruleType(DataTagRuleType.CUSTOM)
+                .matchType(normalizeMatchType(t.matchType()))
+                .pattern(t.pattern())
+                .keywords(cleanList(t.keywords()))
+                .dataCategories(cleanList(t.dataCategories()))
+                .sensitivity(upper(t.sensitivity()))
+                .contextKey(trim(t.contextKey()))
+                .enabled(true)
+                .description(t.description())
+                .sourceTemplateId(t.templateId())
+                .createdAt(LocalDateTime.now())
+                .build();
+        validate(e);
+        requireUniqueName(tenant, e.getName(), null);
+        DataTagRuleEntity saved = repository.save(e);
+        ruleEngine.invalidate(tenant);
+        return saved;
+    }
+
+    private Set<String> installedTemplateIds(String tenant) {
+        Set<String> ids = new HashSet<>();
+        for (DataTagRuleEntity r : repository.findByWsTenantNameAndSourceTemplateIdIsNotNull(tenant)) {
+            if (r.getSourceTemplateId() != null) {
+                ids.add(r.getSourceTemplateId());
+            }
+        }
+        return ids;
+    }
+
+    private DataTagRuleEntity findByTemplateId(String tenant, String templateId) {
+        return repository.findByWsTenantNameAndSourceTemplateIdIsNotNull(tenant).stream()
+                .filter(r -> templateId.equals(r.getSourceTemplateId()))
+                .findFirst()
+                .orElse(null);
     }
 
     // ── Built-in detector management (enable/disable + override; never delete — the logic is code) ──

@@ -21,6 +21,12 @@ public class RuleChatRequest {
 
     private List<ChatMessage> messages;
 
+    /**
+     * When set, the assistant is EDITING this existing rule rather than drafting a new one: it starts from the rule
+     * below, applies the admin's requested change, and returns the FULL updated draft. Null = create-new mode.
+     */
+    private DataTagRuleDto currentRule;
+
     @Data
     @NoArgsConstructor
     @AllArgsConstructor

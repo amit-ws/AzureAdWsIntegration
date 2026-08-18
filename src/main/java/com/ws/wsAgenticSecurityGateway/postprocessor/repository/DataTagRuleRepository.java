@@ -17,4 +17,10 @@ public interface DataTagRuleRepository extends JpaRepository<DataTagRuleEntity, 
     List<DataTagRuleEntity> findByWsTenantNameAndEnabledTrue(String wsTenantName);
 
     Optional<DataTagRuleEntity> findByIdAndWsTenantName(UUID id, String wsTenantName);
+
+    /** For per-tenant name-uniqueness — any rule with this name (case-insensitive) in the tenant. */
+    List<DataTagRuleEntity> findByWsTenantNameAndNameIgnoreCase(String wsTenantName, String name);
+
+    /** For template-pack dedup — the template ids already installed in this tenant. */
+    List<DataTagRuleEntity> findByWsTenantNameAndSourceTemplateIdIsNotNull(String wsTenantName);
 }

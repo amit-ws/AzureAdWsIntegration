@@ -100,6 +100,11 @@ public class DataTagRuleEntity {
     @Column(name = "description", length = 512)
     private String description;
 
+    /** When installed from an industry template pack, the template's stable id (for dedup + "installed" state);
+     *  null for hand-authored / AI-drafted rules. The rule is still fully editable/deletable after install. */
+    @Column(name = "source_template_id", length = 64)
+    private String sourceTemplateId;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 

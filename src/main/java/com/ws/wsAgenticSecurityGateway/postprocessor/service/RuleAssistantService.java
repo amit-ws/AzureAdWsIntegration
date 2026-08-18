@@ -93,9 +93,10 @@ public class RuleAssistantService {
                         .map(m -> Map.of("role", m.getRole(), "content", m.getContent()))
                         .collect(Collectors.toList())
                     : List.of(Map.of("role", "user", "content", request.getPrompt()));
-            RuleChatResponse response = parseDraft(anthropicText(buildSystemPrompt(), messages));
-            log.info("Rule assistant: prompt='{}' → complete={}, hasDraft={}, hasFollowUp={} ({}ms)",
-                    abbreviate(prompt), response.isConversationComplete(),
+            RuleChatResponse response = parseDraft(anthropicText(buildSystemPrompt(request.getCurrentRule()), messages));
+            log.info("Rule assistant: prompt='{}' edit={} → complete={}, hasDraft={}, hasFollowUp={} ({}ms)",
+                    abbreviate(prompt), request.getCurrentRule() != null,
+                    response.isConversationComplete(),
                     response.getMatchType() != null, response.getFollowUpQuestion() != null,
                     System.currentTimeMillis() - start);
             return response;
@@ -253,7 +254,7 @@ public class RuleAssistantService {
 
     // ── System prompt = the rule model + this tenant's live detector/rule/data context ──
 
-    private String buildSystemPrompt() {
+    private String buildSystemPrompt(DataTagRuleDto currentRule) {
         StringBuilder sb = new StringBuilder(STATIC_SCHEMA);
         try {
             sb.append("\n\n## Built-in detectors already active (do NOT recreate these)\n");
@@ -275,6 +276,37 @@ public class RuleAssistantService {
             log.debug("Could not append rule config to assistant prompt: {}", e.getMessage());
         }
         sb.append(buildLiveDataSection());
+        if (currentRule != null) {
+            sb.append(buildEditSection(currentRule));
+        }
+        return sb.toString();
+    }
+
+    /** In EDIT mode, show the model the rule's current fields and require the FULL updated draft back. */
+    private String buildEditSection(DataTagRuleDto r) {
+        StringBuilder sb = new StringBuilder("\n\n## EDIT MODE — you are MODIFYING an existing rule, not creating one\n");
+        sb.append("Apply the change the admin describes and return the COMPLETE updated rule as one json draft (every "
+                + "field, not only the changed one). Keep the fields they did not ask to change; do not rename unless "
+                + "they ask. If their message doesn't clearly change anything, ask a short follow-up instead.\n");
+        sb.append("The rule as it stands now:\n");
+        sb.append("- name: ").append(nz(r.name())).append("\n");
+        sb.append("- matchType: ").append(r.matchType() == null ? "REGEX" : r.matchType()).append("\n");
+        if (r.pattern() != null) {
+            sb.append("- pattern: ").append(r.pattern()).append("\n");
+        }
+        if (r.keywords() != null && !r.keywords().isEmpty()) {
+            sb.append("- keywords: ").append(String.join(", ", r.keywords())).append("\n");
+        }
+        sb.append("- categories: ")
+                .append(r.dataCategories() == null || r.dataCategories().isEmpty()
+                        ? "(none)" : String.join(", ", r.dataCategories())).append("\n");
+        sb.append("- sensitivity: ").append(nz(r.sensitivity())).append("\n");
+        if (r.contextKey() != null) {
+            sb.append("- contextKey: ").append(r.contextKey()).append("\n");
+        }
+        if (r.description() != null) {
+            sb.append("- description: ").append(r.description()).append("\n");
+        }
         return sb.toString();
     }
 
@@ -425,6 +457,10 @@ public class RuleAssistantService {
 
     private static String str(Object o) {
         return o == null ? null : o.toString();
+    }
+
+    private static String nz(String s) {
+        return s == null ? "" : s;
     }
 
     private static String abbreviate(String s) {

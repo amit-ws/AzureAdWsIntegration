@@ -5,6 +5,7 @@ import com.ws.wsAgenticSecurityGateway.postprocessor.dto.DetectorInfo;
 import com.ws.wsAgenticSecurityGateway.postprocessor.dto.EffectiveDetectorView;
 import com.ws.wsAgenticSecurityGateway.postprocessor.dto.RuleChatRequest;
 import com.ws.wsAgenticSecurityGateway.postprocessor.dto.RuleChatResponse;
+import com.ws.wsAgenticSecurityGateway.postprocessor.dto.RuleTemplatePackView;
 import com.ws.wsAgenticSecurityGateway.postprocessor.service.PostProcessorRuleService;
 import com.ws.wsAgenticSecurityGateway.postprocessor.service.RuleAssistantService;
 import lombok.extern.slf4j.Slf4j;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -123,6 +125,34 @@ public class PostProcessorRuleController {
         try {
             ruleService.delete(id);
             return ResponseEntity.ok(Map.of("deleted", true));
+        } catch (IllegalArgumentException e) {
+            return badRequest(e);
+        }
+    }
+
+    // ── Industry rule-template library ──
+
+    /** The shipped template packs, each template marked installed/not for this tenant. */
+    @GetMapping("/rules/templates")
+    public ResponseEntity<List<RuleTemplatePackView>> templates() {
+        return ResponseEntity.ok(ruleService.templates());
+    }
+
+    /** Install one template as a normal editable rule (idempotent). Returns the installed rule. */
+    @PostMapping("/rules/templates/{templateId}/install")
+    public ResponseEntity<?> installTemplate(@PathVariable String templateId) {
+        try {
+            return ResponseEntity.ok(ruleService.installTemplate(templateId));
+        } catch (IllegalArgumentException e) {
+            return badRequest(e);
+        }
+    }
+
+    /** Install every not-yet-installed template in an industry pack. Returns a per-pack install summary. */
+    @PostMapping("/rules/templates/packs/install")
+    public ResponseEntity<?> installPack(@RequestParam String industry) {
+        try {
+            return ResponseEntity.ok(ruleService.installPack(industry));
         } catch (IllegalArgumentException e) {
             return badRequest(e);
         }
