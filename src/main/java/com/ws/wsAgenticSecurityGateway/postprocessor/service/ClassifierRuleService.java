@@ -111,16 +111,10 @@ public class ClassifierRuleService {
         return new RulePolicy(List.copyOf(extras), Set.copyOf(disabled), Map.copyOf(overrides));
     }
 
-    /** Compile a CUSTOM rule into a metadata-only recognizer; a bad regex is skipped (logged), never thrown. */
+    /** Compile a CUSTOM rule into a metadata-only recognizer; an uncompilable rule is skipped (logged), never thrown. */
     private Recognizer customRecognizer(DataTagRuleEntity rule) {
-        if (!isSet(rule.getPattern())) {
-            return null;
-        }
-        final Pattern pattern;
-        try {
-            pattern = Pattern.compile(rule.getPattern());
-        } catch (Exception e) {
-            log.warn("Skipping custom egress rule '{}' — invalid regex: {}", rule.getName(), e.getMessage());
+        final Pattern pattern = compileRulePattern(rule);
+        if (pattern == null) {
             return null;
         }
         List<String> cats = cleanCategories(rule.getDataCategories());
@@ -154,6 +148,32 @@ public class ClassifierRuleService {
             return List.of();
         }
         return raw.stream().filter(ClassifierRuleService::isSet).map(String::trim).distinct().toList();
+    }
+
+    /**
+     * Compile a CUSTOM rule to the {@link Pattern} it matches with: its regex ({@code REGEX}) or a safe matcher built
+     * from its keyword list ({@code KEYWORDS} — each word regex-escaped via {@link Pattern#quote}, matched whole-word
+     * and case-insensitively). Returns null when nothing usable is configured or the regex is invalid (logged, never
+     * thrown), so a broken rule is simply skipped rather than breaking classification.
+     */
+    private Pattern compileRulePattern(DataTagRuleEntity rule) {
+        if ("KEYWORDS".equalsIgnoreCase(rule.getMatchType())) {
+            List<String> words = cleanCategories(rule.getKeywords());
+            if (words.isEmpty()) {
+                return null;
+            }
+            String alternation = String.join("|", words.stream().map(Pattern::quote).toList());
+            return Pattern.compile("\\b(?:" + alternation + ")\\b", Pattern.CASE_INSENSITIVE);
+        }
+        if (!isSet(rule.getPattern())) {
+            return null;
+        }
+        try {
+            return Pattern.compile(rule.getPattern());
+        } catch (Exception e) {
+            log.warn("Skipping custom egress rule '{}' — invalid regex: {}", rule.getName(), e.getMessage());
+            return null;
+        }
     }
 
     private record Cached(RulePolicy policy, long expiresAt) {

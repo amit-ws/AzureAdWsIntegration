@@ -58,9 +58,21 @@ public class DataTagRuleEntity {
     @Column(name = "builtin_matcher", length = 64)
     private String builtinMatcher;
 
-    /** For CUSTOM: the regex whose matches are tagged. */
+    /** For CUSTOM: how the rule matches — {@code REGEX} (uses {@code pattern}) or {@code KEYWORDS} (uses the
+     *  {@code keywords} list). Null/blank = REGEX, for back-compat with rules created before keyword matching. */
+    @Column(name = "match_type", length = 16)
+    private String matchType;
+
+    /** For CUSTOM + REGEX: the regex whose matches are tagged. */
     @Column(name = "pattern", length = 1024)
     private String pattern;
+
+    /** For CUSTOM + KEYWORDS: the literal words/terms to flag — each matched whole-word and case-insensitively.
+     *  Stored as a JSON array; the engine compiles it to a safe escaped regex so a non-technical admin never writes
+     *  pattern syntax and can't produce a broken or over-matching rule. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "keywords", columnDefinition = "jsonb")
+    private List<String> keywords;
 
     /** For CUSTOM / OVERRIDE: the data categories to tag (e.g. {@code PII}, {@code FINANCIAL}, or custom labels).
      *  Multiple are allowed — a match is tagged with every category listed. Stored as a JSON array, mirroring the

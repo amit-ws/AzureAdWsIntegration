@@ -3,7 +3,10 @@ package com.ws.wsAgenticSecurityGateway.postprocessor.controller;
 import com.ws.wsAgenticSecurityGateway.postprocessor.dto.DataTagRuleDto;
 import com.ws.wsAgenticSecurityGateway.postprocessor.dto.DetectorInfo;
 import com.ws.wsAgenticSecurityGateway.postprocessor.dto.EffectiveDetectorView;
+import com.ws.wsAgenticSecurityGateway.postprocessor.dto.RuleChatRequest;
+import com.ws.wsAgenticSecurityGateway.postprocessor.dto.RuleChatResponse;
 import com.ws.wsAgenticSecurityGateway.postprocessor.service.PostProcessorRuleService;
+import com.ws.wsAgenticSecurityGateway.postprocessor.service.RuleAssistantService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -31,9 +34,11 @@ import java.util.UUID;
 public class PostProcessorRuleController {
 
     private final PostProcessorRuleService ruleService;
+    private final RuleAssistantService assistantService;
 
-    public PostProcessorRuleController(PostProcessorRuleService ruleService) {
+    public PostProcessorRuleController(PostProcessorRuleService ruleService, RuleAssistantService assistantService) {
         this.ruleService = ruleService;
+        this.assistantService = assistantService;
     }
 
     /** The built-in detectors an admin can DISABLE / OVERRIDE — targets for the rule-authoring UI. */
@@ -121,6 +126,26 @@ public class PostProcessorRuleController {
         } catch (IllegalArgumentException e) {
             return badRequest(e);
         }
+    }
+
+    // ── AI rule assistant (mirrors /policies/chat) ──
+
+    /** Draft a custom rule from a natural-language description, or ask a follow-up. Never saves — the admin does. */
+    @PostMapping("/rules/chat")
+    public ResponseEntity<RuleChatResponse> ruleChat(@RequestBody RuleChatRequest body) {
+        return ResponseEntity.ok(assistantService.chat(body));
+    }
+
+    /** Whether the AI assistant is configured — the FE shows an "AI Active" badge / hides the assistant otherwise. */
+    @GetMapping("/rules/chat/status")
+    public ResponseEntity<Map<String, Object>> ruleChatStatus() {
+        return ResponseEntity.ok(Map.of("llmAvailable", assistantService.isLlmAvailable()));
+    }
+
+    /** Starter prompt suggestions grounded in THIS tenant's actual classified data (empty if the assistant is off). */
+    @GetMapping("/rules/chat/suggestions")
+    public ResponseEntity<Map<String, Object>> ruleChatSuggestions() {
+        return ResponseEntity.ok(Map.of("suggestions", assistantService.suggestions()));
     }
 
     private static ResponseEntity<Map<String, String>> badRequest(IllegalArgumentException e) {

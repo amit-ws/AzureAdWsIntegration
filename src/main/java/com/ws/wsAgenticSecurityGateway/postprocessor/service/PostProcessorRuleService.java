@@ -54,7 +54,9 @@ public class PostProcessorRuleService {
                 .name(trim(in.name()))
                 .ruleType(parseType(in.ruleType()))
                 .builtinMatcher(trim(in.builtinMatcher()))
+                .matchType(normalizeMatchType(in.matchType()))
                 .pattern(in.pattern())
+                .keywords(cleanList(in.keywords()))
                 .dataCategories(cleanList(in.dataCategories()))
                 .sensitivity(upper(in.sensitivity()))
                 .contextKey(trim(in.contextKey()))
@@ -80,7 +82,9 @@ public class PostProcessorRuleService {
             e.setName(trim(in.name()));
         }
         e.setBuiltinMatcher(trim(in.builtinMatcher()));
+        e.setMatchType(normalizeMatchType(in.matchType()));
         e.setPattern(in.pattern());
+        e.setKeywords(cleanList(in.keywords()));
         e.setDataCategories(cleanList(in.dataCategories()));
         e.setSensitivity(upper(in.sensitivity()));
         e.setContextKey(trim(in.contextKey()));
@@ -228,6 +232,18 @@ public class PostProcessorRuleService {
                 .orElseThrow(() -> new IllegalArgumentException("Rule not found."));
     }
 
+    /** Normalize the CUSTOM match type to REGEX (default) or KEYWORDS; reject anything else. */
+    private static String normalizeMatchType(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "REGEX";
+        }
+        String v = raw.trim().toUpperCase(Locale.ROOT);
+        if (!v.equals("REGEX") && !v.equals("KEYWORDS")) {
+            throw new IllegalArgumentException("Match type must be REGEX or KEYWORDS.");
+        }
+        return v;
+    }
+
     private static DataTagRuleType parseType(String raw) {
         if (raw == null || raw.isBlank()) {
             throw new IllegalArgumentException("Rule type is required: CUSTOM, DISABLE, or OVERRIDE.");
@@ -245,13 +261,19 @@ public class PostProcessorRuleService {
         }
         switch (e.getRuleType()) {
             case CUSTOM -> {
-                if (isBlank(e.getPattern())) {
-                    throw new IllegalArgumentException("A custom rule needs a regex pattern.");
-                }
-                try {
-                    Pattern.compile(e.getPattern());
-                } catch (Exception ex) {
-                    throw new IllegalArgumentException("Invalid regex pattern: " + ex.getMessage());
+                if ("KEYWORDS".equalsIgnoreCase(e.getMatchType())) {
+                    if (e.getKeywords() == null || e.getKeywords().isEmpty()) {
+                        throw new IllegalArgumentException("A keyword rule needs at least one keyword.");
+                    }
+                } else {
+                    if (isBlank(e.getPattern())) {
+                        throw new IllegalArgumentException("A custom rule needs a regex pattern.");
+                    }
+                    try {
+                        Pattern.compile(e.getPattern());
+                    } catch (Exception ex) {
+                        throw new IllegalArgumentException("Invalid regex pattern: " + ex.getMessage());
+                    }
                 }
                 requireSensitivity(e.getSensitivity(), "custom");
             }
