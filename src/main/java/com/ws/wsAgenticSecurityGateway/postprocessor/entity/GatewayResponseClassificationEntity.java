@@ -99,6 +99,21 @@ public class GatewayResponseClassificationEntity {
     @Column(name = "producer_agent_id")
     private UUID producerAgentId;
 
+    // The OBO ROOT principal on whose behalf this hop ran — a human user or an NHI (service account), resolved from
+    // the delegation ActChain (root = index 0). Works for BOTH MCP and A2A (A2A audit rows carry no human/nhi, but the
+    // ActChain always does). Enables per-user / per-NHI sensitivity attribution + badges.
+    @Column(name = "root_principal_kind", length = 16)
+    private String rootPrincipalKind;      // HUMAN | NHI | AGENT | UNKNOWN
+
+    @Column(name = "root_principal_id", length = 128)
+    private String rootPrincipalId;        // human: JWT subject; NHI: registry UUID
+
+    @Column(name = "root_principal_name", length = 256)
+    private String rootPrincipalName;      // human: username (display + join key)
+
+    @Column(name = "root_verified")
+    private Boolean rootVerified;          // true only for a strongly-authenticated root (never fabricated)
+
     /** RESPONSE today; leaves room for request-side arg inspection (Phase-3) without a schema change. */
     @Column(name = "direction", length = 16, nullable = false)
     @Builder.Default

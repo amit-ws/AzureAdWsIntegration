@@ -18,6 +18,7 @@ import com.ws.wsAgenticSecurityGateway.postprocessor.model.EgressContext;
 import com.ws.wsAgenticSecurityGateway.postprocessor.service.EgressClassificationService;
 import com.ws.wsAgenticSecurityGateway.sts.model.ActChain;
 import com.ws.wsAgenticSecurityGateway.sts.model.MintedToken;
+import com.ws.wsAgenticSecurityGateway.sts.model.Principal;
 import com.ws.wsAgenticSecurityGateway.sts.service.ActChainBuilder;
 import com.ws.wsAgenticSecurityGateway.sts.service.HopTokenMinter;
 import lombok.Setter;
@@ -142,7 +143,8 @@ public class HopOrchestrator {
      */
     private void fireEgress(Hop hop, String correlationId, String sessionId, String publicName,
                             String serverName, String consumer, String capabilityType,
-                            UUID consumerAgentId, UUID descriptorServerId, CapabilityResult result) {
+                            UUID consumerAgentId, UUID descriptorServerId, Principal rootPrincipal,
+                            CapabilityResult result) {
         if (result == null || result.error()) {
             return;
         }
@@ -151,6 +153,8 @@ public class HopOrchestrator {
             String producerKind = skill ? "AGENT" : "SERVER";
             UUID producerServerId = skill ? null : descriptorServerId;
             UUID producerAgentId = skill ? safeResolveAgentId(serverName) : null;
+            // The OBO root (human/NHI on whose behalf this hop ran). ActChain.root() is authoritative for BOTH MCP and
+            // A2A — A2A audit rows carry no human/nhi, so this is the only source that attributes A2A hops correctly.
             egressClassificationService.classifyAsync(
                     new EgressContext(
                             auditService.resolveTenant(sessionId),
@@ -165,7 +169,11 @@ public class HopOrchestrator {
                             consumerAgentId,
                             producerKind,
                             producerServerId,
-                            producerAgentId),
+                            producerAgentId,
+                            rootPrincipal != null ? rootPrincipal.type().name() : null,
+                            rootPrincipal != null ? rootPrincipal.id() : null,
+                            rootPrincipal != null ? rootPrincipal.username() : null,
+                            rootPrincipal != null ? rootPrincipal.verified() : null),
                     result.fullText());
         } catch (Exception e) {
             // Enqueue must never break a working call; the async body is itself fail-open.
@@ -445,7 +453,7 @@ public class HopOrchestrator {
             agentRegistryService.updateLastActivity(sessionId);
 
             fireEgress(hop, correlationId, sessionId, publicName, serverName, clientName, "TOOL",
-                    agentIdForAccess, descriptor.getServerId(), result);
+                    agentIdForAccess, descriptor.getServerId(), actChain.root(), result);
 
             log.info("ORCHESTRATION COMPLETE [{}]", correlationId);
             log.info("Tool: {} → {}.{}", publicName, serverName, originalName);
@@ -727,7 +735,7 @@ public class HopOrchestrator {
             agentRegistryService.updateLastActivity(sessionId);
 
             fireEgress(hop, correlationId, sessionId, publicName, serverName, clientName, "SKILL",
-                    agentIdForAccess, descriptor.getServerId(), result);
+                    agentIdForAccess, descriptor.getServerId(), actChain.root(), result);
 
             log.info("SKILL ORCHESTRATION COMPLETE [{}]", correlationId);
             log.info("Skill: {} → {}.{}", publicName, serverName, originalName);
@@ -988,7 +996,7 @@ public class HopOrchestrator {
 
             int messageCount = result.itemCount();
             fireEgress(hop, correlationId, sessionId, publicName, serverName, clientName, "PROMPT",
-                    promptAgentId, descriptor.getServerId(), result);
+                    promptAgentId, descriptor.getServerId(), actChain.root(), result);
             log.info("PROMPT ORCHESTRATION COMPLETE [{}]", correlationId);
             log.info("Prompt: {} → {}.{}", publicName, serverName, originalName);
             log.info("Response: {} message(s)", messageCount);
@@ -1243,7 +1251,7 @@ public class HopOrchestrator {
             agentRegistryService.updateLastActivity(sessionId);
 
             fireEgress(hop, correlationId, sessionId, publicName, serverName, clientName, "RESOURCE",
-                    resourceAgentId, descriptor.getServerId(), result);
+                    resourceAgentId, descriptor.getServerId(), actChain.root(), result);
 
             log.info("RESOURCE ORCHESTRATION COMPLETE [{}]", correlationId);
             log.info("Resource: {} → {}", publicName, originalUri);

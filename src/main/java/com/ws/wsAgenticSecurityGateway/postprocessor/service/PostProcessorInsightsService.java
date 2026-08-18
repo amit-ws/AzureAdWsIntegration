@@ -88,7 +88,14 @@ public class PostProcessorInsightsService {
                 .map(s -> new SkillSensitivity(s.agentId, s.agentName, s.name, Sensitivity.labelOf(s.rank)))
                 .toList();
 
-        return new EntitySensitivity(toLabels(agents), toLabels(servers), toLabels(serversByName), toolList, skillList);
+        // Root principals — the human OR NHI on whose behalf the hops ran (from ActChain.root(), both protocols).
+        Map<String, Integer> humans = new HashMap<>();
+        mergeRank(humans, repository.humanRootSensitivity(tenant));
+        Map<String, Integer> nhis = new HashMap<>();
+        mergeRank(nhis, repository.nhiRootSensitivity(tenant));
+
+        return new EntitySensitivity(toLabels(agents), toLabels(servers), toLabels(serversByName),
+                toolList, skillList, toLabels(humans), toLabels(nhis));
     }
 
     // ── Fingerprints (per producer + capability) ─────────────────────────────

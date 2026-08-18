@@ -101,6 +101,20 @@ public interface GatewayResponseClassificationRepository
             + "group by c.producerAgentId, c.producer, c.capabilityName, c.sensitivity")
     List<Object[]> skillSensitivity(@Param("tenant") String tenant);
 
+    // ── Root-principal (human / NHI) rollups — who, at the root of the OBO chain, triggered sensitive data ──
+
+    /** [rootPrincipalName (username), sensitivity, count] — a HUMAN root's sensitivity footprint. */
+    @Query("select c.rootPrincipalName, c.sensitivity, count(c) from GatewayResponseClassificationEntity c "
+            + "where c.wsTenantName = :tenant and c.rootPrincipalKind = 'HUMAN' and c.rootPrincipalName is not null "
+            + "group by c.rootPrincipalName, c.sensitivity")
+    List<Object[]> humanRootSensitivity(@Param("tenant") String tenant);
+
+    /** [rootPrincipalId (nhi UUID), sensitivity, count] — an NHI/service-account root's sensitivity footprint. */
+    @Query("select c.rootPrincipalId, c.sensitivity, count(c) from GatewayResponseClassificationEntity c "
+            + "where c.wsTenantName = :tenant and c.rootPrincipalKind = 'NHI' and c.rootPrincipalId is not null "
+            + "group by c.rootPrincipalId, c.sensitivity")
+    List<Object[]> nhiRootSensitivity(@Param("tenant") String tenant);
+
     // ── Advanced filtering (Processed-Data multi-select facets) ──
 
     /**

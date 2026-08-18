@@ -31,5 +31,10 @@ public record EgressContext(
         UUID consumerAgentId,       // the calling agent's registry id (getAgentIdForSession)
         String producerKind,        // SERVER (tool/prompt/resource) or AGENT (skill)
         UUID producerServerId,      // the MCP server's id (CapabilityDescriptor.serverId), when SERVER
-        UUID producerAgentId) {     // the downstream agent's registry id (resolveAgentIdByName), when AGENT
+        UUID producerAgentId,       // the downstream agent's registry id (resolveAgentIdByName), when AGENT
+        // The OBO ROOT principal (human/NHI on whose behalf the whole hop ran) — from ActChain.root(), both protocols:
+        String rootPrincipalKind,   // HUMAN | NHI | AGENT | UNKNOWN
+        String rootPrincipalId,     // human: JWT subject; NHI: registry UUID
+        String rootPrincipalName,   // human: username (display + join key)
+        Boolean rootVerified) {     // strongly-authenticated root only (never fabricated)
 }
