@@ -61,9 +61,9 @@ public class ServerConfigService {
         GatewayServerConfigEntity entity = GatewayServerConfigEntity.builder()
                 .serverName(request.getServerName())
                 .type(request.getType() != null ? request.getType() : "http")
-                .url(request.getUrl())
+                .url(prepareUrlForStorage(request.getUrl(), null))
                 .headers(toJsonNode(prepareHeadersForStorage(request.getHeaders(), null)))
-                .serverConfig(toJsonNode(request.getServerConfig()))
+                .serverConfig(toJsonNode(prepareServerConfigForStorage(request.getServerConfig(), null)))
                 .timeoutSeconds(request.getTimeoutSeconds() != null ? request.getTimeoutSeconds() : 30)
                 .enabled(request.getEnabled() != null ? request.getEnabled() : true)
                 .autoConnect(request.getAutoConnect() != null ? request.getAutoConnect() : true)
@@ -71,9 +71,10 @@ public class ServerConfigService {
                 .build();
 
         entity = configRepository.save(entity);
-        log.info("Server config '{}' created (url={})", entity.getServerName(), entity.getUrl());
+        String maskedUrl = maskUrlForResponse(entity.getUrl());
+        log.info("Server config '{}' created (url={})", entity.getServerName(), maskedUrl);
 
-        auditService.auditServerConfigCreated(entity.getServerName(), entity.getUrl());
+        auditService.auditServerConfigCreated(entity.getServerName(), maskedUrl);
 
         if (Boolean.TRUE.equals(entity.getEnabled()) && Boolean.TRUE.equals(entity.getAutoConnect())) {
             try {
@@ -123,7 +124,7 @@ public class ServerConfigService {
             }
         }
 
-        if (request.getUrl() != null) entity.setUrl(request.getUrl());
+        if (request.getUrl() != null) entity.setUrl(prepareUrlForStorage(request.getUrl(), entity.getUrl()));
         if (request.getType() != null) entity.setType(request.getType());
         if (request.getHeaders() != null) {
             Map<String, String> existingStoredHeaders = jsonNodeToStringMap(entity.getHeaders());
@@ -131,7 +132,10 @@ public class ServerConfigService {
                     prepareHeadersForStorage(request.getHeaders(), existingStoredHeaders);
             entity.setHeaders(toJsonNode(headersToStore));
         }
-        if (request.getServerConfig() != null) entity.setServerConfig(toJsonNode(request.getServerConfig()));
+        if (request.getServerConfig() != null) {
+            entity.setServerConfig(toJsonNode(prepareServerConfigForStorage(
+                    request.getServerConfig(), jsonNodeToObjectMap(entity.getServerConfig()))));
+        }
         if (request.getTimeoutSeconds() != null) entity.setTimeoutSeconds(request.getTimeoutSeconds());
         if (request.getEnabled() != null) entity.setEnabled(request.getEnabled());
         if (request.getAutoConnect() != null) entity.setAutoConnect(request.getAutoConnect());
@@ -139,7 +143,7 @@ public class ServerConfigService {
         entity = configRepository.save(entity);
         log.info("Server config '{}' updated", serverName);
 
-        auditService.auditServerConfigUpdated(serverName, entity.getUrl(), "Configuration updated");
+        auditService.auditServerConfigUpdated(serverName, maskUrlForResponse(entity.getUrl()), "Configuration updated");
 
         if (wasConnected && Boolean.TRUE.equals(entity.getEnabled())) {
             try {
@@ -220,6 +224,7 @@ public class ServerConfigService {
     public ServerConfigTestResponse testConnection(ServerConfigRequest request) {
         Map<String, String> headers = resolveEnvVars(request.getHeaders());
         assertNoMaskedSecret(headers);
+        assertNoMaskedUrlSecret(request.getUrl());
 
         McpServerConfig cfg = new McpServerConfig();
         cfg.setType(request.getType() != null ? request.getType() : "http");
@@ -227,7 +232,7 @@ public class ServerConfigService {
         cfg.setHeaders(headers);
         cfg.setConfig(request.getServerConfig());
         cfg.setTimeout(request.getTimeoutSeconds() != null ? request.getTimeoutSeconds() : 30);
-        return runProbe(request.getServerName(), request.getUrl(), cfg);
+        return runProbe(request.getServerName(), maskUrlForResponse(request.getUrl()), cfg);
     }
 
     /**
@@ -241,11 +246,11 @@ public class ServerConfigService {
 
         McpServerConfig cfg = new McpServerConfig();
         cfg.setType(entity.getType());
-        cfg.setUrl(entity.getUrl());
+        cfg.setUrl(buildRuntimeUrl(entity.getUrl()));
         cfg.setHeaders(resolvedHeaders);
-        cfg.setConfig(jsonNodeToObjectMap(entity.getServerConfig()));
+        cfg.setConfig(buildRuntimeServerConfig(jsonNodeToObjectMap(entity.getServerConfig())));
         cfg.setTimeout(entity.getTimeoutSeconds());
-        return runProbe(serverName, entity.getUrl(), cfg);
+        return runProbe(serverName, maskUrlForResponse(entity.getUrl()), cfg);
     }
 
     /**
@@ -272,7 +277,7 @@ public class ServerConfigService {
 
         entity.setEnabled(enabled);
         entity = configRepository.save(entity);
-        auditService.auditServerConfigUpdated(serverName, entity.getUrl(),
+        auditService.auditServerConfigUpdated(serverName, maskUrlForResponse(entity.getUrl()),
                 enabled ? "Server enabled" : "Server disabled");
         log.info("Server config '{}' {}", serverName, enabled ? "enabled" : "disabled");
         return toResponse(entity);
@@ -329,11 +334,11 @@ public class ServerConfigService {
         Map<String, String> storedHeaders = jsonNodeToStringMap(entity.getHeaders());
         Map<String, String> resolvedHeaders = buildRuntimeHeaders(storedHeaders);
 
-        Map<String, Object> config = jsonNodeToObjectMap(entity.getServerConfig());
+        Map<String, Object> config = buildRuntimeServerConfig(jsonNodeToObjectMap(entity.getServerConfig()));
 
         McpServerConfig mcpConfig = new McpServerConfig();
         mcpConfig.setType(entity.getType());
-        mcpConfig.setUrl(entity.getUrl());
+        mcpConfig.setUrl(buildRuntimeUrl(entity.getUrl()));
         mcpConfig.setHeaders(resolvedHeaders);
         mcpConfig.setConfig(config);
         mcpConfig.setTimeout(entity.getTimeoutSeconds());
@@ -402,7 +407,7 @@ public class ServerConfigService {
     private ServerConfigResponse toResponse(GatewayServerConfigEntity entity) {
         Map<String, String> storedHeaders = jsonNodeToStringMap(entity.getHeaders());
         Map<String, String> maskedHeaders = maskHeadersForResponse(storedHeaders);
-        Map<String, Object> serverConfigMap = jsonNodeToObjectMap(entity.getServerConfig());
+        Map<String, Object> serverConfigMap = maskServerConfigForResponse(jsonNodeToObjectMap(entity.getServerConfig()));
 
         boolean connected = sessionManager.isConnected(entity.getServerName());
         String connectionSessionId = null;
@@ -428,7 +433,7 @@ public class ServerConfigService {
                 .id(entity.getId())
                 .serverName(entity.getServerName())
                 .type(entity.getType())
-                .url(entity.getUrl())
+                .url(maskUrlForResponse(entity.getUrl()))
                 .headers(maskedHeaders)
                 .serverConfig(serverConfigMap)
                 .timeoutSeconds(entity.getTimeoutSeconds())
@@ -539,6 +544,248 @@ public class ServerConfigService {
             }
         }
         return null;
+    }
+
+    // ── URL query-string secret handling (mirrors the header flow: encrypt at rest, mask on read, decrypt on use) ──
+    // API keys are commonly passed in the URL (e.g. ?apikey=KEY). Those must not sit in the DB in plaintext.
+
+    /** Encrypt sensitive URL query params (apikey/token/key/…) for storage; preserve a masked/unchanged secret. */
+    private String prepareUrlForStorage(String incomingUrl, String existingStoredUrl) {
+        if (incomingUrl == null) {
+            return null;
+        }
+        int q = incomingUrl.indexOf('?');
+        if (q < 0) {
+            return incomingUrl;   // no query string → no URL secrets
+        }
+        String base = incomingUrl.substring(0, q);
+        List<String[]> params = parseQuery(incomingUrl.substring(q + 1));
+        Map<String, String> existing = queryParamsDecoded(existingStoredUrl);
+        for (String[] p : params) {
+            if (p[1] == null || !isSecretHeaderKey(p[0])) {
+                continue;
+            }
+            String decoded = urlDecode(p[1]);
+            if (isMaskedPlaceholder(decoded)) {
+                String prev = existing.get(p[0]);
+                if (prev != null && (cryptoService.isEncryptedValue(prev) || isSecretHeaderKey(p[0]))) {
+                    p[1] = urlEncode(prev);   // keep the stored secret (edit didn't change the key)
+                    continue;
+                }
+                throw new IllegalArgumentException("Masked value received for URL parameter '" + p[0]
+                        + "' but no existing secret is available. Resubmit the real value.");
+            }
+            if (cryptoService.isEncryptedValue(decoded) || containsEnvPlaceholder(decoded)) {
+                p[1] = urlEncode(decoded);   // already encrypted, or an ${env:...} placeholder — store verbatim
+            } else {
+                p[1] = urlEncode(cryptoService.encrypt(decoded.trim()));
+            }
+        }
+        return rebuildUrl(base, params);
+    }
+
+    /** Mask sensitive URL query params for API responses. Works for stored (encrypted) or plaintext URLs. */
+    private String maskUrlForResponse(String url) {
+        if (url == null) {
+            return null;
+        }
+        int q = url.indexOf('?');
+        if (q < 0) {
+            return url;
+        }
+        String base = url.substring(0, q);
+        List<String[]> params = parseQuery(url.substring(q + 1));
+        for (String[] p : params) {
+            if (p[1] == null || !isSecretHeaderKey(p[0])) {
+                continue;
+            }
+            String plain;
+            try {
+                plain = cryptoService.decryptIfEncrypted(urlDecode(p[1]));
+            } catch (Exception e) {
+                continue;
+            }
+            if (!containsEnvPlaceholder(plain)) {
+                p[1] = urlEncode(maskValue(plain));
+            }
+        }
+        return rebuildUrl(base, params);
+    }
+
+    /** Decrypt sensitive URL query params to their real values (+ resolve env vars) for the outbound connection. */
+    private String buildRuntimeUrl(String url) {
+        if (url == null) {
+            return null;
+        }
+        int q = url.indexOf('?');
+        if (q < 0) {
+            return url;
+        }
+        String base = url.substring(0, q);
+        List<String[]> params = parseQuery(url.substring(q + 1));
+        for (String[] p : params) {
+            if (p[1] == null || !isSecretHeaderKey(p[0])) {
+                continue;
+            }
+            String plain;
+            try {
+                plain = cryptoService.decryptIfEncrypted(urlDecode(p[1]));
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to decrypt URL parameter '" + p[0]
+                        + "' for server config runtime use", e);
+            }
+            p[1] = urlEncode(resolveEnvVarInValue(plain));
+        }
+        return rebuildUrl(base, params);
+    }
+
+    private void assertNoMaskedUrlSecret(String url) {
+        if (url == null) {
+            return;
+        }
+        int q = url.indexOf('?');
+        if (q < 0) {
+            return;
+        }
+        for (String[] p : parseQuery(url.substring(q + 1))) {
+            if (p[1] != null && isSecretHeaderKey(p[0]) && isMaskedPlaceholder(urlDecode(p[1]))) {
+                throw new IllegalArgumentException("URL parameter '" + p[0] + "' still holds a masked secret. "
+                        + "Re-enter its real value to test, or use Test on the saved server.");
+            }
+        }
+    }
+
+    // ── server_config secret handling (top-level string values under secret-named keys) ──
+
+    private Map<String, Object> prepareServerConfigForStorage(Map<String, Object> incoming, Map<String, Object> existing) {
+        if (incoming == null) {
+            return null;
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> e : incoming.entrySet()) {
+            Object v = e.getValue();
+            if (!(v instanceof String s) || !isSecretHeaderKey(e.getKey())) {
+                out.put(e.getKey(), v);
+                continue;
+            }
+            if (isMaskedPlaceholder(s)) {
+                Object prev = existing != null ? existing.get(e.getKey()) : null;
+                out.put(e.getKey(), prev != null ? prev : s);
+            } else if (cryptoService.isEncryptedValue(s) || containsEnvPlaceholder(s)) {
+                out.put(e.getKey(), s);
+            } else {
+                out.put(e.getKey(), cryptoService.encrypt(s.trim()));
+            }
+        }
+        return out;
+    }
+
+    private Map<String, Object> maskServerConfigForResponse(Map<String, Object> stored) {
+        if (stored == null) {
+            return null;
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> e : stored.entrySet()) {
+            Object v = e.getValue();
+            if (v instanceof String s && isSecretHeaderKey(e.getKey())) {
+                String plain;
+                try {
+                    plain = cryptoService.decryptIfEncrypted(s);
+                } catch (Exception ex) {
+                    plain = null;
+                }
+                out.put(e.getKey(), plain != null && !containsEnvPlaceholder(plain) ? maskValue(plain) : plain);
+            } else {
+                out.put(e.getKey(), v);
+            }
+        }
+        return out;
+    }
+
+    private Map<String, Object> buildRuntimeServerConfig(Map<String, Object> stored) {
+        if (stored == null) {
+            return null;
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> e : stored.entrySet()) {
+            Object v = e.getValue();
+            if (v instanceof String s && isSecretHeaderKey(e.getKey())) {
+                out.put(e.getKey(), resolveEnvVarInValue(cryptoService.decryptIfEncrypted(s)));
+            } else {
+                out.put(e.getKey(), v);
+            }
+        }
+        return out;
+    }
+
+    // ── URL query helpers ──
+
+    private static List<String[]> parseQuery(String query) {
+        List<String[]> out = new ArrayList<>();
+        if (query == null || query.isEmpty()) {
+            return out;
+        }
+        for (String part : query.split("&")) {
+            int eq = part.indexOf('=');
+            out.add(eq < 0 ? new String[]{part, null} : new String[]{part.substring(0, eq), part.substring(eq + 1)});
+        }
+        return out;
+    }
+
+    private static String rebuildUrl(String base, List<String[]> params) {
+        if (params.isEmpty()) {
+            return base;
+        }
+        StringBuilder sb = new StringBuilder(base).append('?');
+        for (int i = 0; i < params.size(); i++) {
+            if (i > 0) {
+                sb.append('&');
+            }
+            sb.append(params.get(i)[0]);
+            if (params.get(i)[1] != null) {
+                sb.append('=').append(params.get(i)[1]);
+            }
+        }
+        return sb.toString();
+    }
+
+    private Map<String, String> queryParamsDecoded(String url) {
+        Map<String, String> m = new LinkedHashMap<>();
+        if (url == null) {
+            return m;
+        }
+        int q = url.indexOf('?');
+        if (q < 0) {
+            return m;
+        }
+        for (String[] p : parseQuery(url.substring(q + 1))) {
+            if (p[1] != null) {
+                m.put(p[0], urlDecode(p[1]));
+            }
+        }
+        return m;
+    }
+
+    private static String urlEncode(String v) {
+        return java.net.URLEncoder.encode(v, java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    private static String urlDecode(String v) {
+        return java.net.URLDecoder.decode(v, java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    private String resolveEnvVarInValue(String value) {
+        if (value == null || !value.contains("${env:")) {
+            return value;
+        }
+        StringBuffer sb = new StringBuffer();
+        Matcher m = ENV_VAR_PATTERN.matcher(value);
+        while (m.find()) {
+            String env = System.getenv(m.group(1));
+            m.appendReplacement(sb, Matcher.quoteReplacement(env != null ? env : m.group(0)));
+        }
+        m.appendTail(sb);
+        return sb.toString();
     }
 
     private JsonNode toJsonNode(Object value) {
