@@ -6,12 +6,15 @@ import com.ws.wsAgenticSecurityGateway.ciso.dto.AgentActivityTrail;
 import com.ws.wsAgenticSecurityGateway.ciso.dto.AgentBlastRadius;
 import com.ws.wsAgenticSecurityGateway.ciso.dto.ComplianceReport;
 import com.ws.wsAgenticSecurityGateway.ciso.dto.ComplianceTemplate;
+import com.ws.wsAgenticSecurityGateway.ciso.dto.DashboardOverview;
 import com.ws.wsAgenticSecurityGateway.ciso.dto.PointInTimeEvents;
 import com.ws.wsAgenticSecurityGateway.ciso.dto.PointInTimeSnapshot;
 import com.ws.wsAgenticSecurityGateway.ciso.dto.PostureReport;
+import com.ws.wsAgenticSecurityGateway.ciso.dto.PriorityAction;
 import com.ws.wsAgenticSecurityGateway.ciso.service.AccountabilityService;
 import com.ws.wsAgenticSecurityGateway.ciso.service.AgentActivityTrailService;
 import com.ws.wsAgenticSecurityGateway.ciso.service.BlastRadiusService;
+import com.ws.wsAgenticSecurityGateway.ciso.service.CisoDashboardService;
 import com.ws.wsAgenticSecurityGateway.ciso.service.ComplianceService;
 import com.ws.wsAgenticSecurityGateway.ciso.service.PointInTimeService;
 import com.ws.wsAgenticSecurityGateway.ciso.service.PostureService;
@@ -47,18 +50,42 @@ public class CisoController {
     private final AccountabilityService accountabilityService;
     private final PostureService postureService;
     private final PointInTimeService pointInTimeService;
+    private final CisoDashboardService dashboardService;
 
     public CisoController(BlastRadiusService blastRadiusService, ComplianceService complianceService,
                           AgentActivityTrailService activityTrailService,
                           AccountabilityService accountabilityService,
                           PostureService postureService,
-                          PointInTimeService pointInTimeService) {
+                          PointInTimeService pointInTimeService,
+                          CisoDashboardService dashboardService) {
         this.blastRadiusService = blastRadiusService;
         this.complianceService = complianceService;
         this.activityTrailService = activityTrailService;
         this.accountabilityService = accountabilityService;
         this.postureService = postureService;
         this.pointInTimeService = pointInTimeService;
+        this.dashboardService = dashboardService;
+    }
+
+    /**
+     * CISO → Dashboard overview — the executive summary widgets (KPI strip, posture scorecard, data-sensitivity mix,
+     * policy/enforcement coverage) for {@code window} (1h / 24h / 7d / 30d; default 24h). All from real governed data.
+     */
+    @GetMapping("/dashboard/overview")
+    public ResponseEntity<DashboardOverview> dashboardOverview(
+            @RequestParam(value = "window", defaultValue = "24h") String window) {
+        log.info("GET /api/admin/ciso/dashboard/overview window={}", window);
+        return ResponseEntity.ok(dashboardService.overview(window));
+    }
+
+    /**
+     * CISO → Dashboard priority actions (#69) — detected governance conditions ranked by blast radius + sensitivity,
+     * each with a click-through context that seeds the policy assistant. Top 8, all real detections.
+     */
+    @GetMapping("/dashboard/priority-actions")
+    public ResponseEntity<List<PriorityAction>> dashboardPriorityActions() {
+        log.info("GET /api/admin/ciso/dashboard/priority-actions");
+        return ResponseEntity.ok(dashboardService.priorityActions());
     }
 
     /**

@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -37,6 +38,81 @@ public interface GatewayResponseClassificationRepository
     // ── Summary aggregates (SQL-side, so counts are accurate rather than derived from a capped list) ──
 
     long countByWsTenantName(String wsTenantName);
+
+    // ── CISO Dashboard windowed counts (for KPI tiles + period-over-period deltas) ──
+
+    long countByWsTenantNameAndClassifiedAtBetween(String wsTenantName, LocalDateTime from, LocalDateTime to);
+
+    long countByWsTenantNameAndSensitivityInAndClassifiedAtBetween(
+            String wsTenantName, Collection<String> sensitivities, LocalDateTime from, LocalDateTime to);
+
+    long countByWsTenantNameAndProtocolAndClassifiedAtBetween(
+            String wsTenantName, String protocol, LocalDateTime from, LocalDateTime to);
+
+    /**
+     * Enforcement coverage for the policy-coverage widget. One row:
+     * {@code [sensitiveCaps, coveredSensitiveCaps, totalCaps, coveredCaps, servers, coveredServers]} (all Long).
+     * "Covered" = at least one classification for that capability/server carried an egress enforcement policy id;
+     * a capability is keyed by {@code type:name}. Honest to our advisory-first reality — uncovered sensitive
+     * capabilities are exactly the enforcement gaps.
+     */
+    @Query(value = """
+            SELECT
+              COUNT(DISTINCT COALESCE(capability_type,'') || ':' || COALESCE(capability_name,''))
+                  FILTER (WHERE sensitivity IN ('CONFIDENTIAL','RESTRICTED')) AS sensitive_caps,
+              COUNT(DISTINCT COALESCE(capability_type,'') || ':' || COALESCE(capability_name,''))
+                  FILTER (WHERE sensitivity IN ('CONFIDENTIAL','RESTRICTED') AND egress_policy_id IS NOT NULL) AS covered_sensitive_caps,
+              COUNT(DISTINCT COALESCE(capability_type,'') || ':' || COALESCE(capability_name,'')) AS total_caps,
+              COUNT(DISTINCT COALESCE(capability_type,'') || ':' || COALESCE(capability_name,''))
+                  FILTER (WHERE egress_policy_id IS NOT NULL) AS covered_caps,
+              COUNT(DISTINCT producer_server_id) FILTER (WHERE producer_server_id IS NOT NULL) AS servers,
+              COUNT(DISTINCT producer_server_id)
+                  FILTER (WHERE producer_server_id IS NOT NULL AND egress_policy_id IS NOT NULL) AS covered_servers
+            FROM ws_agentic_security.gateway_response_classification
+            WHERE ws_tenant_name = :tenant
+            """, nativeQuery = true)
+    List<Object[]> enforcementCoverage(@Param("tenant") String tenant);
+
+    /**
+     * Sensitive capabilities that reached a consumer with NO egress enforcement policy — the priority-actions
+     * "restricted data, no policy" detection. Row shape (ranked, most-sensitive first):
+     * {@code [capability_type, capability_name, producer, producer_server_id, peak_rank(int),
+     * exposures(Long), distinct_roots(Long), distinct_agents(Long), last_at(Timestamp)]}.
+     */
+    @Query(value = """
+            SELECT capability_type, capability_name, producer, producer_server_id,
+                   MAX(CASE sensitivity WHEN 'RESTRICTED' THEN 3 WHEN 'CONFIDENTIAL' THEN 2
+                                        WHEN 'INTERNAL' THEN 1 ELSE 0 END) AS peak_rank,
+                   COUNT(*) AS exposures,
+                   COUNT(DISTINCT root_principal_id) AS roots,
+                   COUNT(DISTINCT consumer_agent_id) AS agents,
+                   MAX(classified_at) AS last_at
+            FROM ws_agentic_security.gateway_response_classification
+            WHERE ws_tenant_name = :tenant
+              AND sensitivity IN ('CONFIDENTIAL','RESTRICTED')
+              AND egress_policy_id IS NULL
+            GROUP BY capability_type, capability_name, producer, producer_server_id
+            ORDER BY peak_rank DESC, exposures DESC
+            """, nativeQuery = true)
+    List<Object[]> sensitiveExposures(@Param("tenant") String tenant);
+
+    /**
+     * Agents (consumers) that received data from many distinct servers in the window — the "broad fan-out"
+     * detection. Row shape: {@code [consumer, consumer_agent_id, servers(Long), calls(Long), last_at(Timestamp)]},
+     * only agents at/over {@code minServers} distinct servers, widest first.
+     */
+    @Query(value = """
+            SELECT consumer, consumer_agent_id,
+                   COUNT(DISTINCT producer_server_id) AS servers,
+                   COUNT(*) AS calls,
+                   MAX(classified_at) AS last_at
+            FROM ws_agentic_security.gateway_response_classification
+            WHERE ws_tenant_name = :tenant AND producer_kind = 'SERVER' AND consumer IS NOT NULL
+            GROUP BY consumer, consumer_agent_id
+            HAVING COUNT(DISTINCT producer_server_id) >= :minServers
+            ORDER BY servers DESC
+            """, nativeQuery = true)
+    List<Object[]> agentServerFanout(@Param("tenant") String tenant, @Param("minServers") int minServers);
 
     long countByWsTenantNameAndInjectionDetectedTrue(String wsTenantName);
 
