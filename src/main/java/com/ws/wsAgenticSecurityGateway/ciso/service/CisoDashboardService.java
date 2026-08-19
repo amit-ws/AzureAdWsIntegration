@@ -94,21 +94,26 @@ public class CisoDashboardService {
         long deniedNow = pdpRepo.countByPdpDecisionAndTimestampBetweenAndWsTenantName("DENY", from, now, tenant);
         long deniedPrev = pdpRepo.countByPdpDecisionAndTimestampBetweenAndWsTenantName("DENY", prevFrom, from, tenant);
 
-        // ── Enforcement coverage (egress policy over classified capabilities/servers) ──
+        // ── Egress gaps (sensitive capabilities with no egress redaction/deny rule) — the KPI "gaps" + priority feed ──
         long[] cov = firstRow(classificationRepo.enforcementCoverage(tenant), 6);
-        int sensitiveCaps = (int) cov[0];
-        int coveredSensitiveCaps = (int) cov[1];
-        int toolsTotal = (int) cov[2];
-        int toolsWithEnforcement = (int) cov[3];
-        int servers = (int) cov[4];
-        int coveredServers = (int) cov[5];
-        int gaps = Math.max(0, sensitiveCaps - coveredSensitiveCaps);
+        int gaps = Math.max(0, (int) cov[0] - (int) cov[1]);   // sensitiveCaps − coveredSensitiveCaps
 
         // ── PDP decision coverage (share decided by an explicit policy) ──
         long[] dc = firstRow(pdpRepo.policyDecisionCoverage(tenant), 5);
         long dTotal = dc[0];
         long dAttributed = dc[3];
         int attributedPct = dTotal > 0 ? (int) Math.round(100.0 * dAttributed / dTotal) : 0;
+
+        // ── Access-policy coverage over REGISTERED servers + tools / skills / agents ──
+        long[] ac = firstRow(pdpRepo.accessCoverage(tenant), 8);
+        int registeredServers = (int) ac[0];
+        int serversWithPolicies = (int) ac[1];
+        int mcpCapabilitiesTotal = (int) ac[2];
+        int mcpCapabilitiesGoverned = (int) ac[3];
+        int skillsTotal = (int) ac[4];
+        int skillsGoverned = (int) ac[5];
+        int agentsTotal = (int) ac[6];
+        int agentsGoverned = (int) ac[7];
 
         AccountabilityReport acct = accountabilityService.getReport();
         int activeAgents = acct.summary().actingAgents();
@@ -141,8 +146,9 @@ public class CisoDashboardService {
         long classifiedTotal = classificationRepo.countByWsTenantName(tenant);
         List<SensitivitySlice> mix = sensitivityMix(tenant, classifiedTotal);
 
-        Coverage coverage = new Coverage(attributedPct, sensitiveCaps, coveredSensitiveCaps,
-                toolsTotal, toolsWithEnforcement, servers, coveredServers, gaps);
+        Coverage coverage = new Coverage(registeredServers, serversWithPolicies,
+                mcpCapabilitiesTotal, mcpCapabilitiesGoverned, skillsTotal, skillsGoverned,
+                agentsTotal, agentsGoverned, attributedPct, gaps);
 
         return new DashboardOverview(tenant, now, window, kpis, posture, mix, classifiedTotal, coverage);
     }
@@ -230,7 +236,7 @@ public class CisoDashboardService {
         }
 
         out.sort(Comparator.comparingInt(PriorityAction::rank).reversed());
-        return out.size() > 8 ? new ArrayList<>(out.subList(0, 8)) : out;
+        return out.size() > 24 ? new ArrayList<>(out.subList(0, 24)) : out;   // FE pages 6 at a time
     }
 
     /** Traffic time-series (#70) — governed traffic bucketed over the window, zero-filled for a continuous line. */

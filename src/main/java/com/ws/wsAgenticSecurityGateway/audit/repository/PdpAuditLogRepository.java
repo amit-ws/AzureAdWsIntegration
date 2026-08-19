@@ -365,4 +365,46 @@ public interface PdpAuditLogRepository extends JpaRepository<PdpAuditLog, UUID> 
             GROUP BY pdp_resource
             """, nativeQuery = true)
     List<Object[]> deniedByResource(@Param("tenant") String tenant);
+
+    /**
+     * Access-policy coverage for the CISO Dashboard coverage widget (#75), broken out by entity kind. One row (all
+     * Long): {@code [registered_servers, servers_with_policies, mcp_caps_total, mcp_caps_governed, skills_total,
+     * skills_governed, agents_total, agents_governed]}. Totals are the REGISTERED catalog: servers from
+     * {@code gateway_server_config}, MCP capabilities (tools + resources + prompts) from the mcp_* registry, agents
+     * from {@code gateway_agent}; A2A skills have no registry table so their total is distinct skills observed.
+     * "Governed" = decided by an explicit policy (pdp_policy_id present) in the decision ledger; MCP capabilities vs
+     * skills split by {@code pdp_action} (non-skill vs {@code skillInvocation}); a server is "with policies" when one
+     * of its MCP capabilities (resource prefixed by the server name) is governed.
+     */
+    @Query(value = """
+            SELECT
+              (SELECT COUNT(*) FROM ws_agentic_security.gateway_server_config WHERE ws_tenant_name = :tenant)
+                AS registered_servers,
+              (SELECT COUNT(*) FROM ws_agentic_security.gateway_server_config s WHERE s.ws_tenant_name = :tenant
+                 AND EXISTS (SELECT 1 FROM ws_agentic_security.pdp_audit_log p
+                             WHERE p.ws_tenant_name = :tenant AND p.pdp_policy_id IS NOT NULL
+                               AND p.pdp_action <> 'skillInvocation' AND p.pdp_resource LIKE s.server_name || '%'))
+                AS servers_with_policies,
+              ((SELECT COUNT(*) FROM ws_agentic_security.mcp_tool WHERE ws_tenant_name = :tenant)
+                 + (SELECT COUNT(*) FROM ws_agentic_security.mcp_resource WHERE ws_tenant_name = :tenant)
+                 + (SELECT COUNT(*) FROM ws_agentic_security.mcp_prompt WHERE ws_tenant_name = :tenant))
+                AS mcp_caps_total,
+              (SELECT COUNT(DISTINCT pdp_resource) FROM ws_agentic_security.pdp_audit_log WHERE ws_tenant_name = :tenant
+                 AND event_type = 'PDP_DECISION_RENDERED' AND pdp_action <> 'skillInvocation' AND pdp_resource IS NOT NULL
+                 AND pdp_policy_id IS NOT NULL)
+                AS mcp_caps_governed,
+              (SELECT COUNT(DISTINCT pdp_resource) FROM ws_agentic_security.pdp_audit_log WHERE ws_tenant_name = :tenant
+                 AND event_type = 'PDP_DECISION_RENDERED' AND pdp_action = 'skillInvocation' AND pdp_resource IS NOT NULL)
+                AS skills_total,
+              (SELECT COUNT(DISTINCT pdp_resource) FROM ws_agentic_security.pdp_audit_log WHERE ws_tenant_name = :tenant
+                 AND event_type = 'PDP_DECISION_RENDERED' AND pdp_action = 'skillInvocation' AND pdp_resource IS NOT NULL
+                 AND pdp_policy_id IS NOT NULL)
+                AS skills_governed,
+              (SELECT COUNT(*) FROM ws_agentic_security.gateway_agent WHERE ws_tenant_name = :tenant)
+                AS agents_total,
+              (SELECT COUNT(DISTINCT pdp_subject) FROM ws_agentic_security.pdp_audit_log WHERE ws_tenant_name = :tenant
+                 AND event_type = 'PDP_DECISION_RENDERED' AND pdp_subject IS NOT NULL AND pdp_policy_id IS NOT NULL)
+                AS agents_governed
+            """, nativeQuery = true)
+    List<Object[]> accessCoverage(@Param("tenant") String tenant);
 }

@@ -34,12 +34,15 @@ public record DashboardOverview(
     public record SensitivitySlice(String sensitivity, long count, int pct) {}
 
     /**
-     * Policy / enforcement coverage. {@code decisionsAttributedPct} = requests decided by an explicit policy (PDP);
-     * the sensitive/server counts and {@code enforcementGaps} come from egress-policy coverage of classified data.
+     * Policy coverage — ACCESS control (PDP/Cedar) over the tenant's registered MCP servers and their capabilities:
+     * how many registered servers have a governing policy, how many capabilities are decided by an explicit policy,
+     * and the overall attributed-decision rate. {@code egressGaps} is the separate data-protection signal (sensitive
+     * capabilities with no egress redaction/deny rule) that also feeds the priority actions.
      */
-    public record Coverage(int decisionsAttributedPct,
-                           int sensitiveCaps, int coveredSensitiveCaps,
-                           int toolsTotal, int toolsWithEnforcement,
-                           int servers, int coveredServers,
-                           int enforcementGaps) {}
+    public record Coverage(int registeredServers, int serversWithPolicies,
+                           int mcpCapabilitiesTotal, int mcpCapabilitiesGoverned,
+                           int skillsTotal, int skillsGoverned,
+                           int agentsTotal, int agentsGoverned,
+                           int decisionsAttributedPct,
+                           int egressGaps) {}
 }

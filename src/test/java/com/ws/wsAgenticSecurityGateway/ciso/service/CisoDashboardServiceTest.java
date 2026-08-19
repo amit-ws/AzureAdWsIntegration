@@ -55,6 +55,10 @@ class CisoDashboardServiceTest {
         // Decision coverage: 100 total, 60 attributed → 60%.
         when(pdpRepo.policyDecisionCoverage(anyString()))
                 .thenReturn(List.<Object[]>of(new Object[]{ 100L, 90L, 10L, 60L, 40L }));
+        // Access coverage: [registered servers, servers w/ policies, mcp-caps total, mcp-caps gov, skills total,
+        // skills gov, agents total, agents gov] — totals are the registered catalog.
+        when(pdpRepo.accessCoverage(anyString()))
+                .thenReturn(List.<Object[]>of(new Object[]{ 2L, 2L, 181L, 6L, 6L, 4L, 9L, 5L }));
 
         // Sensitive events: 4 this window, 2 the prior window (consecutive calls).
         when(classRepo.countByWsTenantNameAndSensitivityInAndClassifiedAtBetween(anyString(), anyCollection(), any(), any()))
@@ -124,13 +128,17 @@ class CisoDashboardServiceTest {
         assertThat(o.sensitivityMix().get(0).pct()).isEqualTo(50);   // 6/12
         assertThat(o.sensitivityMix().get(1).pct()).isEqualTo(25);   // 3/12
 
-        // Coverage
-        assertThat(o.coverage().enforcementGaps()).isEqualTo(2);
-        assertThat(o.coverage().sensitiveCaps()).isEqualTo(3);
-        assertThat(o.coverage().toolsTotal()).isEqualTo(5);
-        assertThat(o.coverage().toolsWithEnforcement()).isEqualTo(2);
-        assertThat(o.coverage().coveredServers()).isEqualTo(1);
+        // Coverage — access policy over registered servers / tools / skills / agents + the egress-gap signal
+        assertThat(o.coverage().registeredServers()).isEqualTo(2);
+        assertThat(o.coverage().serversWithPolicies()).isEqualTo(2);
+        assertThat(o.coverage().mcpCapabilitiesTotal()).isEqualTo(181);   // registered catalog, not observed
+        assertThat(o.coverage().mcpCapabilitiesGoverned()).isEqualTo(6);
+        assertThat(o.coverage().skillsTotal()).isEqualTo(6);
+        assertThat(o.coverage().skillsGoverned()).isEqualTo(4);
+        assertThat(o.coverage().agentsTotal()).isEqualTo(9);              // registered agents
+        assertThat(o.coverage().agentsGoverned()).isEqualTo(5);
         assertThat(o.coverage().decisionsAttributedPct()).isEqualTo(60);
+        assertThat(o.coverage().egressGaps()).isEqualTo(2);   // sensitiveCaps(3) − coveredSensitive(1)
     }
 
     @Test
