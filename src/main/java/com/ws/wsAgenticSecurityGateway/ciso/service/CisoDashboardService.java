@@ -11,8 +11,12 @@ import com.ws.wsAgenticSecurityGateway.ciso.dto.DashboardOverview.SensitivitySli
 import com.ws.wsAgenticSecurityGateway.ciso.dto.PostureReport;
 import com.ws.wsAgenticSecurityGateway.ciso.dto.PriorityAction;
 import com.ws.wsAgenticSecurityGateway.ciso.dto.PriorityAction.ActionContext;
+import com.ws.wsAgenticSecurityGateway.ciso.dto.ChainVisibility;
+import com.ws.wsAgenticSecurityGateway.ciso.dto.ChainVisibility.ChainRow;
 import com.ws.wsAgenticSecurityGateway.ciso.dto.RiskHotspots;
 import com.ws.wsAgenticSecurityGateway.ciso.dto.RiskHotspots.Hotspot;
+import com.ws.wsAgenticSecurityGateway.ciso.dto.TopTools;
+import com.ws.wsAgenticSecurityGateway.ciso.dto.TopTools.ToolRow;
 import com.ws.wsAgenticSecurityGateway.ciso.dto.TrafficSeries;
 import com.ws.wsAgenticSecurityGateway.ciso.dto.TrafficSeries.TrafficPoint;
 import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
@@ -94,6 +98,8 @@ public class CisoDashboardService {
         long[] cov = firstRow(classificationRepo.enforcementCoverage(tenant), 6);
         int sensitiveCaps = (int) cov[0];
         int coveredSensitiveCaps = (int) cov[1];
+        int toolsTotal = (int) cov[2];
+        int toolsWithEnforcement = (int) cov[3];
         int servers = (int) cov[4];
         int coveredServers = (int) cov[5];
         int gaps = Math.max(0, sensitiveCaps - coveredSensitiveCaps);
@@ -136,7 +142,7 @@ public class CisoDashboardService {
         List<SensitivitySlice> mix = sensitivityMix(tenant, classifiedTotal);
 
         Coverage coverage = new Coverage(attributedPct, sensitiveCaps, coveredSensitiveCaps,
-                servers, coveredServers, gaps);
+                toolsTotal, toolsWithEnforcement, servers, coveredServers, gaps);
 
         return new DashboardOverview(tenant, now, window, kpis, posture, mix, classifiedTotal, coverage);
     }
@@ -344,6 +350,151 @@ public class CisoDashboardService {
                             uncovered > 0 ? uncovered + " uncovered" : "policy-covered", total + " responses")));
         }
         return topBy(out, 6);
+    }
+
+    /** Top MCP tools by call volume (#74) — usage × data sensitivity, with denials and a risk band. Top 10. */
+    public TopTools topTools() {
+        String tenant = TenantContext.get();
+        Map<String, Long> denied = new HashMap<>();
+        for (Object[] r : pdpRepo.deniedByResource(tenant)) {
+            String res = str(r[0]);
+            if (res != null) {
+                denied.merge(res, asLong(r[1]), Long::sum);
+            }
+        }
+        Map<String, ToolAgg> agg = new LinkedHashMap<>();
+        for (Object[] r : classificationRepo.capabilityProfileRows(tenant)) {
+            String producer = str(r[0]);
+            String capName = str(r[1]);
+            if (capName == null) {
+                continue;
+            }
+            String capType = str(r[2]);
+            String protocol = str(r[3]);
+            int rank = Sensitivity.rankOf(str(r[4]));
+            long count = asLong(r[5]);
+            ToolAgg a = agg.computeIfAbsent(capType + ":" + capName + "@" + producer,
+                    k -> new ToolAgg(capName, capType, producer, protocol));
+            a.calls += count;
+            a.peak = Math.max(a.peak, rank);
+        }
+        List<ToolRow> rows = new ArrayList<>();
+        for (ToolAgg a : agg.values()) {
+            long den = denied.getOrDefault(a.tool, 0L);
+            int score = clampScore(base(a.peak) + (int) Math.min(15, den));
+            rows.add(new ToolRow(a.tool, a.capType, a.producer, a.protocol, a.calls,
+                    peakLabel(a.peak), den, band(score)));
+        }
+        rows.sort(Comparator.comparingLong(ToolRow::calls).reversed());
+        return new TopTools(rows.size() > 10 ? new ArrayList<>(rows.subList(0, 10)) : rows);
+    }
+
+    /** Human → agent → MCP chain visibility (#73) — recent governed traces reconstructed from classification hops. */
+    public ChainVisibility chains() {
+        String tenant = TenantContext.get();
+        Map<String, List<Object[]>> byTrace = new LinkedHashMap<>();   // newest trace first (query is newest-first)
+        for (Object[] r : classificationRepo.chainRows(tenant, 500)) {
+            String trace = str(r[0]);
+            if (trace != null) {
+                byTrace.computeIfAbsent(trace, k -> new ArrayList<>()).add(r);
+            }
+        }
+        List<ChainRow> chains = new ArrayList<>();
+        for (Map.Entry<String, List<Object[]>> e : byTrace.entrySet()) {
+            ChainRow row = buildChain(e.getKey(), e.getValue());
+            if (row != null) {
+                chains.add(row);
+            }
+            if (chains.size() >= 20) {
+                break;
+            }
+        }
+        return new ChainVisibility(chains);
+    }
+
+    /** Reconstruct one chain row from a trace's hops. Cols: [0 trace,1 rootName,2 rootKind,3 consumer,4 producer,
+     *  5 producerKind,6 capName,7 capType,8 sensitivity,9 protocol,10 classifiedAt]. */
+    private ChainRow buildChain(String trace, List<Object[]> rows) {
+        String human = null;
+        String humanKind = null;
+        int peak = 0;
+        LocalDateTime seen = null;
+        Object[] serverHop = null;
+        Object[] a2aHop = null;
+        for (Object[] r : rows) {
+            if (human == null && str(r[1]) != null) {
+                human = str(r[1]);
+                humanKind = str(r[2]);
+            }
+            peak = Math.max(peak, Sensitivity.rankOf(str(r[8])));
+            LocalDateTime t = asDateTime(r[10]);
+            if (t != null && (seen == null || t.isAfter(seen))) {
+                seen = t;
+            }
+            String pk = str(r[5]);
+            if ("SERVER".equalsIgnoreCase(pk) && serverHop == null) {
+                serverHop = r;   // newest server hop
+            }
+            if ("AGENT".equalsIgnoreCase(pk) && a2aHop == null) {
+                a2aHop = r;      // newest A2A (skill) hop
+            }
+        }
+        String agent;
+        String agentToAgent;
+        String server = null;
+        String tool = null;
+        String capType = null;
+        String protocol = null;
+        if (serverHop != null) {
+            server = str(serverHop[4]);
+            tool = str(serverHop[6]);
+            capType = str(serverHop[7]);
+            protocol = str(serverHop[9]);
+        }
+        if (a2aHop != null) {
+            agent = str(a2aHop[3]);          // entry agent (consumer of the A2A hop)
+            agentToAgent = str(a2aHop[4]);   // downstream agent
+            if (server == null) {
+                tool = str(a2aHop[6]);
+                capType = str(a2aHop[7]);
+                protocol = str(a2aHop[9]);
+            }
+        } else {
+            agent = serverHop != null ? str(serverHop[3]) : null;
+            agentToAgent = null;
+        }
+        if (agent == null && server == null && tool == null) {
+            return null;
+        }
+        return new ChainRow(trace, human, humanKind, agent, agentToAgent, server, tool, capType, protocol,
+                sensitivityBand(peak), seen);
+    }
+
+    /** Sensitivity-only band for a path/tool: RESTRICTED→CRITICAL … PUBLIC→LOW. */
+    private static String sensitivityBand(int peak) {
+        return switch (peak) {
+            case 3 -> "CRITICAL";
+            case 2 -> "HIGH";
+            case 1 -> "MEDIUM";
+            default -> "LOW";
+        };
+    }
+
+    /** Mutable per-capability accumulator for the top-tools rollup. */
+    private static final class ToolAgg {
+        final String tool;
+        final String capType;
+        final String producer;
+        final String protocol;
+        long calls;
+        int peak;
+
+        ToolAgg(String tool, String capType, String producer, String protocol) {
+            this.tool = tool;
+            this.capType = capType;
+            this.producer = producer;
+            this.protocol = protocol;
+        }
     }
 
     // ── scoring (transparent, tunable) ──────────────────────────────────────────────

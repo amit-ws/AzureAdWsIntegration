@@ -127,8 +127,52 @@ class CisoDashboardServiceTest {
         // Coverage
         assertThat(o.coverage().enforcementGaps()).isEqualTo(2);
         assertThat(o.coverage().sensitiveCaps()).isEqualTo(3);
+        assertThat(o.coverage().toolsTotal()).isEqualTo(5);
+        assertThat(o.coverage().toolsWithEnforcement()).isEqualTo(2);
         assertThat(o.coverage().coveredServers()).isEqualTo(1);
         assertThat(o.coverage().decisionsAttributedPct()).isEqualTo(60);
+    }
+
+    @Test
+    void topTools_rankedByVolume_withDataClassAndRisk() {
+        when(classRepo.capabilityProfileRows(anyString())).thenReturn(List.<Object[]>of(
+                new Object[]{ "hr-data-search", "search_employee_records", "TOOL", "MCP", "RESTRICTED", 1248L, null },
+                new Object[]{ "jira-mcp", "create_ticket", "TOOL", "MCP", "INTERNAL", 384L, null }));
+        // deniedByResource returns empty by default → denials show 0 (never over-counted).
+
+        var t = service.topTools();
+
+        assertThat(t.tools()).extracting(r -> r.tool())
+                .containsExactly("search_employee_records", "create_ticket");   // volume desc
+        assertThat(t.tools().get(0).calls()).isEqualTo(1248L);
+        assertThat(t.tools().get(0).dataClass()).isEqualTo("Restricted");
+        assertThat(t.tools().get(0).risk()).isEqualTo("CRITICAL");
+        assertThat(t.tools().get(0).denied()).isEqualTo(0L);
+        assertThat(t.tools().get(1).risk()).isEqualTo("LOW");
+    }
+
+    @Test
+    void chains_reconstructTraceHumanToAgentToServerToTool() {
+        Timestamp newer = Timestamp.valueOf(LocalDateTime.now());
+        Timestamp older = Timestamp.valueOf(LocalDateTime.now().minusMinutes(1));
+        // Query is newest-first: the A2A (skill) hop, then the server hop, same trace "t1".
+        when(classRepo.chainRows(anyString(), org.mockito.ArgumentMatchers.anyInt())).thenReturn(List.<Object[]>of(
+                new Object[]{ "t1", "amit", "HUMAN", "agent-console", "advisor", "AGENT",
+                        "advisor.analyze", "SKILL", "RESTRICTED", "A2A", newer },
+                new Object[]{ "t1", "amit", "HUMAN", "advisor", "alphavantage", "SERVER",
+                        "alphavantage_GLOBAL_QUOTE", "TOOL", "PUBLIC", "MCP", older }));
+
+        var c = service.chains();
+
+        assertThat(c.chains()).hasSize(1);
+        var row = c.chains().get(0);
+        assertThat(row.human()).isEqualTo("amit");
+        assertThat(row.humanKind()).isEqualTo("HUMAN");
+        assertThat(row.agent()).isEqualTo("agent-console");
+        assertThat(row.agentToAgent()).isEqualTo("advisor");
+        assertThat(row.server()).isEqualTo("alphavantage");
+        assertThat(row.tool()).isEqualTo("alphavantage_GLOBAL_QUOTE");
+        assertThat(row.risk()).isEqualTo("CRITICAL");   // peak sensitivity on the path = Restricted
     }
 
     private static Kpi kpi(DashboardOverview o, String id) {

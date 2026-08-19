@@ -39,6 +39,7 @@ public record DashboardOverview(
      */
     public record Coverage(int decisionsAttributedPct,
                            int sensitiveCaps, int coveredSensitiveCaps,
+                           int toolsTotal, int toolsWithEnforcement,
                            int servers, int coveredServers,
                            int enforcementGaps) {}
 }

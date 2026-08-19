@@ -9,9 +9,11 @@ import com.ws.wsAgenticSecurityGateway.ciso.dto.ComplianceTemplate;
 import com.ws.wsAgenticSecurityGateway.ciso.dto.DashboardOverview;
 import com.ws.wsAgenticSecurityGateway.ciso.dto.PointInTimeEvents;
 import com.ws.wsAgenticSecurityGateway.ciso.dto.PointInTimeSnapshot;
+import com.ws.wsAgenticSecurityGateway.ciso.dto.ChainVisibility;
 import com.ws.wsAgenticSecurityGateway.ciso.dto.PostureReport;
 import com.ws.wsAgenticSecurityGateway.ciso.dto.PriorityAction;
 import com.ws.wsAgenticSecurityGateway.ciso.dto.RiskHotspots;
+import com.ws.wsAgenticSecurityGateway.ciso.dto.TopTools;
 import com.ws.wsAgenticSecurityGateway.ciso.dto.TrafficSeries;
 import com.ws.wsAgenticSecurityGateway.ciso.service.AccountabilityService;
 import com.ws.wsAgenticSecurityGateway.ciso.service.AgentActivityTrailService;
@@ -109,6 +111,25 @@ public class CisoController {
     public ResponseEntity<RiskHotspots> dashboardHotspots() {
         log.info("GET /api/admin/ciso/dashboard/hotspots");
         return ResponseEntity.ok(dashboardService.hotspots());
+    }
+
+    /**
+     * CISO → Dashboard chain visibility (#73) — recent governed traces reconstructed as
+     * human → agent → (agent-to-agent) → MCP server → tool, with peak risk and last-seen.
+     */
+    @GetMapping("/dashboard/chains")
+    public ResponseEntity<ChainVisibility> dashboardChains() {
+        log.info("GET /api/admin/ciso/dashboard/chains");
+        return ResponseEntity.ok(dashboardService.chains());
+    }
+
+    /**
+     * CISO → Dashboard top MCP tools (#74) — the highest-volume capabilities, with data class, denials, and risk.
+     */
+    @GetMapping("/dashboard/top-tools")
+    public ResponseEntity<TopTools> dashboardTopTools() {
+        log.info("GET /api/admin/ciso/dashboard/top-tools");
+        return ResponseEntity.ok(dashboardService.topTools());
     }
 
     /**

@@ -171,6 +171,21 @@ public interface GatewayResponseClassificationRepository
             """, nativeQuery = true)
     List<Object[]> serverRisk(@Param("tenant") String tenant);
 
+    /**
+     * Recent classification hops for the human→agent→MCP chain table (#73), newest first (grouped into traces in
+     * the service). Row shape: {@code [trace_id, root_principal_name, root_principal_kind, consumer, producer,
+     * producer_kind, capability_name, capability_type, sensitivity, protocol, classified_at]}.
+     */
+    @Query(value = """
+            SELECT trace_id, root_principal_name, root_principal_kind, consumer, producer, producer_kind,
+                   capability_name, capability_type, sensitivity, protocol, classified_at
+            FROM ws_agentic_security.gateway_response_classification
+            WHERE ws_tenant_name = :tenant AND trace_id IS NOT NULL
+            ORDER BY classified_at DESC
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<Object[]> chainRows(@Param("tenant") String tenant, @Param("limit") int limit);
+
     long countByWsTenantNameAndInjectionDetectedTrue(String wsTenantName);
 
     @Query("select c.sensitivity, count(c) from GatewayResponseClassificationEntity c "

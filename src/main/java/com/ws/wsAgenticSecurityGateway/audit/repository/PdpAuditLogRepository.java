@@ -351,4 +351,18 @@ public interface PdpAuditLogRepository extends JpaRepository<PdpAuditLog, UUID> 
             """, nativeQuery = true)
     List<Object[]> decisionBuckets(@Param("tenant") String tenant, @Param("unit") String unit,
                                    @Param("from") java.time.LocalDateTime from);
+
+    /**
+     * Denials grouped by the resource that was denied — feeds the "Denied" column of the top-tools table (#74).
+     * Row shape: {@code [pdp_resource(String), deny_count(Long)]}. Matched to a capability by exact name in the
+     * service (unmatched → 0, never over-counted).
+     */
+    @Query(value = """
+            SELECT pdp_resource, COUNT(*)
+            FROM pdp_audit_log
+            WHERE event_type = 'PDP_DECISION_RENDERED' AND pdp_decision = 'DENY'
+              AND ws_tenant_name = :tenant AND pdp_resource IS NOT NULL
+            GROUP BY pdp_resource
+            """, nativeQuery = true)
+    List<Object[]> deniedByResource(@Param("tenant") String tenant);
 }
