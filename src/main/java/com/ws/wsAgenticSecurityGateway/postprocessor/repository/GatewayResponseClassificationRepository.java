@@ -114,6 +114,63 @@ public interface GatewayResponseClassificationRepository
             """, nativeQuery = true)
     List<Object[]> agentServerFanout(@Param("tenant") String tenant, @Param("minServers") int minServers);
 
+    /**
+     * Time-bucketed classification traffic for the traffic chart (#70). {@code unit} is a date_trunc granularity
+     * ("hour" / "day"). Row shape (oldest first): {@code [bucket(Timestamp), total, sensitive, mcp, a2a]} (Long counts).
+     */
+    @Query(value = """
+            SELECT date_trunc(cast(:unit as text), classified_at) AS bucket,
+                   COUNT(*) AS total,
+                   COUNT(*) FILTER (WHERE sensitivity IN ('CONFIDENTIAL','RESTRICTED')) AS sensitive,
+                   COUNT(*) FILTER (WHERE protocol = 'MCP') AS mcp,
+                   COUNT(*) FILTER (WHERE protocol = 'A2A') AS a2a
+            FROM ws_agentic_security.gateway_response_classification
+            WHERE ws_tenant_name = :tenant AND classified_at >= :from
+            GROUP BY 1
+            ORDER BY 1
+            """, nativeQuery = true)
+    List<Object[]> trafficBuckets(@Param("tenant") String tenant, @Param("unit") String unit,
+                                  @Param("from") LocalDateTime from);
+
+    /**
+     * Per-agent (consumer) risk rollup for the hotspots widget (#72). Row shape:
+     * {@code [consumer(name), consumer_agent_id, peak_rank(int), sensitive(Long), total(Long),
+     * servers(Long), last_at(Timestamp)]}.
+     */
+    @Query(value = """
+            SELECT consumer, consumer_agent_id,
+                   MAX(CASE sensitivity WHEN 'RESTRICTED' THEN 3 WHEN 'CONFIDENTIAL' THEN 2
+                                        WHEN 'INTERNAL' THEN 1 ELSE 0 END) AS peak_rank,
+                   COUNT(*) FILTER (WHERE sensitivity IN ('CONFIDENTIAL','RESTRICTED')) AS sensitive,
+                   COUNT(*) AS total,
+                   COUNT(DISTINCT producer_server_id) AS servers,
+                   MAX(classified_at) AS last_at
+            FROM ws_agentic_security.gateway_response_classification
+            WHERE ws_tenant_name = :tenant AND consumer IS NOT NULL
+            GROUP BY consumer, consumer_agent_id
+            """, nativeQuery = true)
+    List<Object[]> consumerAgentRisk(@Param("tenant") String tenant);
+
+    /**
+     * Per-server risk rollup for the hotspots widget (#72). Row shape:
+     * {@code [producer_server_id, producer(name), peak_rank(int), sensitive(Long), total(Long),
+     * uncovered_sensitive(Long), last_at(Timestamp)]} — {@code uncovered_sensitive} = sensitive responses this
+     * server returned with no egress enforcement policy (the "no block policy" reason).
+     */
+    @Query(value = """
+            SELECT producer_server_id, producer,
+                   MAX(CASE sensitivity WHEN 'RESTRICTED' THEN 3 WHEN 'CONFIDENTIAL' THEN 2
+                                        WHEN 'INTERNAL' THEN 1 ELSE 0 END) AS peak_rank,
+                   COUNT(*) FILTER (WHERE sensitivity IN ('CONFIDENTIAL','RESTRICTED')) AS sensitive,
+                   COUNT(*) AS total,
+                   COUNT(*) FILTER (WHERE sensitivity IN ('CONFIDENTIAL','RESTRICTED') AND egress_policy_id IS NULL) AS uncovered,
+                   MAX(classified_at) AS last_at
+            FROM ws_agentic_security.gateway_response_classification
+            WHERE ws_tenant_name = :tenant AND producer_kind = 'SERVER' AND producer_server_id IS NOT NULL
+            GROUP BY producer_server_id, producer
+            """, nativeQuery = true)
+    List<Object[]> serverRisk(@Param("tenant") String tenant);
+
     long countByWsTenantNameAndInjectionDetectedTrue(String wsTenantName);
 
     @Query("select c.sensitivity, count(c) from GatewayResponseClassificationEntity c "

@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 
@@ -154,5 +155,51 @@ class CisoDashboardServiceTest {
         assertThat(a.entities()).contains("3 principals", "2 agents", "1 server");
         assertThat(a.context().assistantSeed()).contains("no enforcing egress policy");
         assertThat(a.context().server()).isEqualTo("hr-data-search");
+    }
+
+    @Test
+    void traffic_bucketsAreZeroFilledAndCarryRealCounts() {
+        LocalDateTime bucket = LocalDateTime.now().truncatedTo(ChronoUnit.HOURS);   // the current (last) bucket
+        when(classRepo.trafficBuckets(anyString(), any(), any())).thenReturn(List.<Object[]>of(
+                new Object[]{ Timestamp.valueOf(bucket), 10L, 4L, 6L, 4L }));         // total, sensitive, mcp, a2a
+        when(pdpRepo.decisionBuckets(anyString(), any(), any())).thenReturn(List.<Object[]>of(
+                new Object[]{ Timestamp.valueOf(bucket), 8L, 2L }));                  // allow, deny
+
+        var series = service.traffic("24h");
+
+        assertThat(series.bucket()).isEqualTo("hour");
+        assertThat(series.points()).isNotEmpty();                                     // continuous, zero-filled line
+        var p = series.points().stream().filter(x -> x.t().equals(bucket)).findFirst().orElseThrow();
+        assertThat(p.requests()).isEqualTo(10L);
+        assertThat(p.mcp()).isEqualTo(6L);
+        assertThat(p.a2a()).isEqualTo(4L);
+        assertThat(p.sensitive()).isEqualTo(4L);
+        assertThat(p.allowed()).isEqualTo(8L);
+        assertThat(p.denied()).isEqualTo(2L);
+    }
+
+    @Test
+    void hotspots_scoreEntitiesFromRealSignals() {
+        // Human "amit": peak RESTRICTED (rank 3), 5 sensitive events → 80 + min(15,5) = 85 → CRITICAL.
+        when(classRepo.humanRootSensitivity(anyString())).thenReturn(List.<Object[]>of(
+                new Object[]{ "amit", "RESTRICTED", 5L }, new Object[]{ "amit", "PUBLIC", 3L }));
+        when(classRepo.nhiRootSensitivity(anyString())).thenReturn(List.of());
+        // Agent "advisor": peak CONFIDENTIAL (2), 3 sensitive, 4 servers → 55 + 3 + fanout(6) = 64 → HIGH.
+        when(classRepo.consumerAgentRisk(anyString())).thenReturn(List.<Object[]>of(
+                new Object[]{ "advisor", "aid-1", 2, 3L, 10L, 4L, Timestamp.valueOf(LocalDateTime.now()) }));
+        // Server "alphavantage": public only, no exposure → 10 → LOW.
+        when(classRepo.serverRisk(anyString())).thenReturn(List.<Object[]>of(
+                new Object[]{ "srv-1", "alphavantage", 0, 0L, 10L, 0L, Timestamp.valueOf(LocalDateTime.now()) }));
+
+        var h = service.hotspots();
+
+        assertThat(h.humans()).hasSize(1);
+        assertThat(h.humans().get(0).score()).isEqualTo(85);
+        assertThat(h.humans().get(0).band()).isEqualTo("CRITICAL");
+        assertThat(h.humans().get(0).reason()).isEqualTo("Handles Restricted data");
+        assertThat(h.nhis()).isEmpty();
+        assertThat(h.agents().get(0).band()).isEqualTo("HIGH");
+        assertThat(h.agents().get(0).reason()).contains("fan-out across 4 servers");
+        assertThat(h.servers().get(0).band()).isEqualTo("LOW");
     }
 }

@@ -11,6 +11,10 @@ import com.ws.wsAgenticSecurityGateway.ciso.dto.DashboardOverview.SensitivitySli
 import com.ws.wsAgenticSecurityGateway.ciso.dto.PostureReport;
 import com.ws.wsAgenticSecurityGateway.ciso.dto.PriorityAction;
 import com.ws.wsAgenticSecurityGateway.ciso.dto.PriorityAction.ActionContext;
+import com.ws.wsAgenticSecurityGateway.ciso.dto.RiskHotspots;
+import com.ws.wsAgenticSecurityGateway.ciso.dto.RiskHotspots.Hotspot;
+import com.ws.wsAgenticSecurityGateway.ciso.dto.TrafficSeries;
+import com.ws.wsAgenticSecurityGateway.ciso.dto.TrafficSeries.TrafficPoint;
 import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import com.ws.wsAgenticSecurityGateway.postprocessor.classifier.Sensitivity;
 import com.ws.wsAgenticSecurityGateway.postprocessor.repository.GatewayResponseClassificationRepository;
@@ -18,9 +22,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -221,6 +227,184 @@ public class CisoDashboardService {
         return out.size() > 8 ? new ArrayList<>(out.subList(0, 8)) : out;
     }
 
+    /** Traffic time-series (#70) — governed traffic bucketed over the window, zero-filled for a continuous line. */
+    public TrafficSeries traffic(String windowRaw) {
+        String tenant = TenantContext.get();
+        String window = normalizeWindow(windowRaw);
+        String unit = bucketUnit(window);
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime from = now.minusHours(windowHours(window));
+
+        Map<LocalDateTime, long[]> cls = new HashMap<>();
+        for (Object[] r : classificationRepo.trafficBuckets(tenant, unit, from)) {
+            LocalDateTime b = asDateTime(r[0]);
+            if (b != null) {
+                cls.put(b, new long[]{ asLong(r[1]), asLong(r[2]), asLong(r[3]), asLong(r[4]) }); // total, sensitive, mcp, a2a
+            }
+        }
+        Map<LocalDateTime, long[]> dec = new HashMap<>();
+        for (Object[] r : pdpRepo.decisionBuckets(tenant, unit, from)) {
+            LocalDateTime b = asDateTime(r[0]);
+            if (b != null) {
+                dec.put(b, new long[]{ asLong(r[1]), asLong(r[2]) }); // allow, deny
+            }
+        }
+
+        List<TrafficPoint> points = new ArrayList<>();
+        LocalDateTime cursor = truncate(from, unit);
+        int guard = 0;
+        while (!cursor.isAfter(now) && guard++ < 800) {
+            long[] c = cls.getOrDefault(cursor, new long[4]);
+            long[] d = dec.getOrDefault(cursor, new long[2]);
+            points.add(new TrafficPoint(cursor, c[0], c[2], c[3], c[1], d[0], d[1]));
+            cursor = "day".equals(unit) ? cursor.plusDays(1) : cursor.plusHours(1);
+        }
+        return new TrafficSeries(window, unit, points);
+    }
+
+    /** Risk hotspots (#72) — scored principals (humans / NHIs), agents, and servers. Score inputs are all real. */
+    public RiskHotspots hotspots() {
+        String tenant = TenantContext.get();
+        return new RiskHotspots(
+                principalsFrom(classificationRepo.humanRootSensitivity(tenant)),
+                principalsFrom(classificationRepo.nhiRootSensitivity(tenant)),
+                agentsFrom(classificationRepo.consumerAgentRisk(tenant)),
+                serversFrom(classificationRepo.serverRisk(tenant)));
+    }
+
+    /** Root principals (human or NHI) from [name/id, sensitivity, count] rows → scored hotspots. */
+    private List<Hotspot> principalsFrom(List<Object[]> rows) {
+        Map<String, int[]> agg = new LinkedHashMap<>();   // key → [peakRank, sensitiveCount, totalCount]
+        for (Object[] r : rows) {
+            String key = str(r[0]);
+            if (key == null) {
+                continue;
+            }
+            int rank = Sensitivity.rankOf(str(r[1]));
+            int cnt = (int) asLong(r[2]);
+            int[] a = agg.computeIfAbsent(key, k -> new int[3]);
+            a[0] = Math.max(a[0], rank);
+            if (rank >= Sensitivity.CONFIDENTIAL) {
+                a[1] += cnt;
+            }
+            a[2] += cnt;
+        }
+        List<Hotspot> out = new ArrayList<>();
+        for (Map.Entry<String, int[]> e : agg.entrySet()) {
+            int peak = e.getValue()[0];
+            int sensitive = e.getValue()[1];
+            int total = e.getValue()[2];
+            int score = clampScore(base(peak) + Math.min(15, sensitive));
+            out.add(new Hotspot(e.getKey(), e.getKey(), score, band(score), reasonFor(peak),
+                    factList(peakLabel(peak) + " footprint", total + " events")));
+        }
+        return topBy(out, 6);
+    }
+
+    /** Agents (consumers) from [consumer, id, peakRank, sensitive, total, servers, last] → scored hotspots. */
+    private List<Hotspot> agentsFrom(List<Object[]> rows) {
+        List<Hotspot> out = new ArrayList<>();
+        for (Object[] r : rows) {
+            String name = str(r[0]);
+            if (name == null) {
+                continue;
+            }
+            String id = str(r[1]) == null ? name : str(r[1]);
+            int peak = (int) asLong(r[2]);
+            int sensitive = (int) asLong(r[3]);
+            long total = asLong(r[4]);
+            long servers = asLong(r[5]);
+            int fanout = servers >= MIN_FANOUT_SERVERS ? (int) Math.min(10, (servers - 2) * 3) : 0;
+            int score = clampScore(base(peak) + Math.min(15, sensitive) + fanout);
+            String reason = fanout > 0 ? "Broad fan-out across " + servers + " servers" : reasonFor(peak);
+            out.add(new Hotspot(id, name, score, band(score), reason,
+                    factList(peakLabel(peak) + " data", servers + " servers", total + " calls")));
+        }
+        return topBy(out, 6);
+    }
+
+    /** Servers from [serverId, producer, peakRank, sensitive, total, uncovered, last] → scored hotspots. */
+    private List<Hotspot> serversFrom(List<Object[]> rows) {
+        List<Hotspot> out = new ArrayList<>();
+        for (Object[] r : rows) {
+            String id = str(r[0]);
+            String name = str(r[1]) == null ? id : str(r[1]);
+            if (id == null && name == null) {
+                continue;
+            }
+            int peak = (int) asLong(r[2]);
+            int sensitive = (int) asLong(r[3]);
+            long total = asLong(r[4]);
+            long uncovered = asLong(r[5]);
+            int gapBump = uncovered > 0 ? 10 : 0;
+            int score = clampScore(base(peak) + Math.min(15, sensitive) + gapBump);
+            String reason = uncovered > 0 ? "Sensitive data with no blocking policy" : reasonFor(peak);
+            out.add(new Hotspot(id == null ? name : id, name, score, band(score), reason,
+                    factList(peakLabel(peak) + " data",
+                            uncovered > 0 ? uncovered + " uncovered" : "policy-covered", total + " responses")));
+        }
+        return topBy(out, 6);
+    }
+
+    // ── scoring (transparent, tunable) ──────────────────────────────────────────────
+
+    /** Base points by peak sensitivity rank reached (PUBLIC…RESTRICTED). */
+    private static int base(int peakRank) {
+        return switch (peakRank) {
+            case 3 -> 80;   // RESTRICTED
+            case 2 -> 55;   // CONFIDENTIAL
+            case 1 -> 25;   // INTERNAL
+            default -> 10;  // PUBLIC
+        };
+    }
+
+    private static int clampScore(int s) {
+        return Math.max(0, Math.min(100, s));
+    }
+
+    private static String band(int score) {
+        return score >= 80 ? "CRITICAL" : score >= 60 ? "HIGH" : score >= 35 ? "MEDIUM" : "LOW";
+    }
+
+    private static String reasonFor(int peakRank) {
+        return switch (peakRank) {
+            case 3 -> "Handles Restricted data";
+            case 2 -> "Handles Confidential data";
+            case 1 -> "Handles Internal data";
+            default -> "Public data only";
+        };
+    }
+
+    private static String peakLabel(int peakRank) {
+        return friendly(Sensitivity.labelOf(peakRank));
+    }
+
+    private static List<Hotspot> topBy(List<Hotspot> in, int n) {
+        in.sort(Comparator.comparingInt(Hotspot::score).reversed());
+        return in.size() > n ? new ArrayList<>(in.subList(0, n)) : in;
+    }
+
+    private static List<String> factList(String... xs) {
+        List<String> out = new ArrayList<>();
+        for (String x : xs) {
+            if (x != null && !x.isBlank()) {
+                out.add(x);
+            }
+        }
+        return out;
+    }
+
+    private static String bucketUnit(String window) {
+        return switch (window) {
+            case "7d", "30d", "90d" -> "day";
+            default -> "hour";
+        };
+    }
+
+    private static LocalDateTime truncate(LocalDateTime dt, String unit) {
+        return "day".equals(unit) ? dt.truncatedTo(ChronoUnit.DAYS) : dt.truncatedTo(ChronoUnit.HOURS);
+    }
+
     // ── internals ─────────────────────────────────────────────────────────────────
 
     private static String ownerFor(String findingType) {
@@ -303,16 +487,16 @@ public class CisoDashboardService {
         }
         String w = raw.trim().toLowerCase(Locale.ROOT);
         return switch (w) {
-            case "1h", "24h", "7d", "30d" -> w;
+            case "24h", "7d", "30d", "90d" -> w;
             default -> "24h";
         };
     }
 
     private static long windowHours(String window) {
         return switch (window) {
-            case "1h" -> 1;
             case "7d" -> 24L * 7;
             case "30d" -> 24L * 30;
+            case "90d" -> 24L * 90;
             default -> 24;
         };
     }

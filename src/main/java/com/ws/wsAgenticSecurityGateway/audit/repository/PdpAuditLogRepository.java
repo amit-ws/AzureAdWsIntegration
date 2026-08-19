@@ -335,4 +335,20 @@ public interface PdpAuditLogRepository extends JpaRepository<PdpAuditLog, UUID> 
                            @Param("to") java.time.LocalDateTime to,
                            @Param("agent") String agent,
                            @Param("decision") String decision);
+
+    /**
+     * Time-bucketed decision traffic for the CISO Dashboard traffic chart (#70). {@code unit} is a date_trunc
+     * granularity ("hour" / "day"). Row shape (oldest first): {@code [bucket(Timestamp), allow(Long), deny(Long)]}.
+     */
+    @Query(value = """
+            SELECT date_trunc(cast(:unit as text), timestamp) AS bucket,
+                   COUNT(*) FILTER (WHERE pdp_decision = 'ALLOW') AS allow,
+                   COUNT(*) FILTER (WHERE pdp_decision = 'DENY') AS deny
+            FROM pdp_audit_log
+            WHERE event_type = 'PDP_DECISION_RENDERED' AND ws_tenant_name = :tenant AND timestamp >= :from
+            GROUP BY 1
+            ORDER BY 1
+            """, nativeQuery = true)
+    List<Object[]> decisionBuckets(@Param("tenant") String tenant, @Param("unit") String unit,
+                                   @Param("from") java.time.LocalDateTime from);
 }

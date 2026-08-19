@@ -11,6 +11,8 @@ import com.ws.wsAgenticSecurityGateway.ciso.dto.PointInTimeEvents;
 import com.ws.wsAgenticSecurityGateway.ciso.dto.PointInTimeSnapshot;
 import com.ws.wsAgenticSecurityGateway.ciso.dto.PostureReport;
 import com.ws.wsAgenticSecurityGateway.ciso.dto.PriorityAction;
+import com.ws.wsAgenticSecurityGateway.ciso.dto.RiskHotspots;
+import com.ws.wsAgenticSecurityGateway.ciso.dto.TrafficSeries;
 import com.ws.wsAgenticSecurityGateway.ciso.service.AccountabilityService;
 import com.ws.wsAgenticSecurityGateway.ciso.service.AgentActivityTrailService;
 import com.ws.wsAgenticSecurityGateway.ciso.service.BlastRadiusService;
@@ -86,6 +88,27 @@ public class CisoController {
     public ResponseEntity<List<PriorityAction>> dashboardPriorityActions() {
         log.info("GET /api/admin/ciso/dashboard/priority-actions");
         return ResponseEntity.ok(dashboardService.priorityActions());
+    }
+
+    /**
+     * CISO → Dashboard traffic time-series (#70) — governed traffic (requests, MCP/A2A split, sensitive, allow/deny)
+     * bucketed over {@code window} (1h / 24h / 7d / 30d; default 24h), zero-filled for a continuous line.
+     */
+    @GetMapping("/dashboard/traffic")
+    public ResponseEntity<TrafficSeries> dashboardTraffic(
+            @RequestParam(value = "window", defaultValue = "24h") String window) {
+        log.info("GET /api/admin/ciso/dashboard/traffic window={}", window);
+        return ResponseEntity.ok(dashboardService.traffic(window));
+    }
+
+    /**
+     * CISO → Dashboard risk hotspots (#72) — the highest-risk principals (humans / NHIs), agents, and MCP servers,
+     * each with a transparent 0–100 score, band, reason, and the real supporting facts.
+     */
+    @GetMapping("/dashboard/hotspots")
+    public ResponseEntity<RiskHotspots> dashboardHotspots() {
+        log.info("GET /api/admin/ciso/dashboard/hotspots");
+        return ResponseEntity.ok(dashboardService.hotspots());
     }
 
     /**
