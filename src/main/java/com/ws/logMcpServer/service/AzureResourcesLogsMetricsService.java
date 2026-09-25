@@ -26,7 +26,7 @@ public class AzureResourcesLogsMetricsService {
 
         TokenCredential credential = new ClientSecretCredentialBuilder()
                 .clientId("cb51e8d1-519c-4e18-9b2f-28d53e6badd1")
-                .clientSecret("TUo8Q~eVNZNHVbrGV4E8VLNphrJ24xObLUolOcJD")
+                .clientSecret("jaU8Q~TsB3s2lXIr0d51F6ClwHXTWJWbuRwiAbDq")
                 .tenantId("f875ebf8-f5f0-4915-a2c9-4442e0118fd2")
                 .build();
 

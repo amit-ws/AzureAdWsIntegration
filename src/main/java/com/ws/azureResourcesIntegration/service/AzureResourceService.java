@@ -890,7 +890,7 @@ public class AzureResourceService {
 
 
     public void revokeRoleToPrincipalForResourceInAzure(String pathId) {
-        AzureResourceManager azureResourceManager = getAzureResourceManager("cb51e8d1-519c-4e18-9b2f-28d53e6badd1", "TUo8Q~eVNZNHVbrGV4E8VLNphrJ24xObLUolOcJD",
+        AzureResourceManager azureResourceManager = getAzureResourceManager("cb51e8d1-519c-4e18-9b2f-28d53e6badd1", "jaU8Q~TsB3s2lXIr0d51F6ClwHXTWJWbuRwiAbDq",
                 "f875ebf8-f5f0-4915-a2c9-4442e0118fd2", "4769af8e-ca3d-448d-bd1a-80e03ed94158");
         try {
             azureResourceManager.accessManagement()
@@ -954,7 +954,7 @@ public class AzureResourceService {
 //        }
 //        log.info("Success2");
 
-        AzureResourceManager armAdmin = getAzureResourceManager("cb51e8d1-519c-4e18-9b2f-28d53e6badd1", "TUo8Q~eVNZNHVbrGV4E8VLNphrJ24xObLUolOcJD",
+        AzureResourceManager armAdmin = getAzureResourceManager("cb51e8d1-519c-4e18-9b2f-28d53e6badd1", "jaU8Q~TsB3s2lXIr0d51F6ClwHXTWJWbuRwiAbDq",
                 "f875ebf8-f5f0-4915-a2c9-4442e0118fd2", "4769af8e-ca3d-448d-bd1a-80e03ed94158");
 
         try {
@@ -965,7 +965,7 @@ public class AzureResourceService {
                     .forObjectId("da41ec2f-8b1b-419d-9c8b-00b9adf487d4")
                     .withRoleDefinition("/subscriptions/4769af8e-ca3d-448d-bd1a-80e03ed94158/providers/Microsoft.Authorization/roleDefinitions/b24988ac-6180-42a0-ab88-20f7382dd24c")
                     .withScope("/subscriptions/4769af8e-ca3d-448d-bd1a-80e03ed94158")
-                    .withDescription("Owner access to the JIT ACESS app on Subs")
+                    .withDescription("Owner access to the JIT ACCESS app on Subs")
                     .create();
             log.info("Role Assignment created....");
             if (createdRoleAssignment == null) {

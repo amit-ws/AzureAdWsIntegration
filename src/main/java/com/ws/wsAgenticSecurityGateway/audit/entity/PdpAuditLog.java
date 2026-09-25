@@ -23,6 +23,7 @@ import java.util.UUID;
                 @Index(name = "idx_pdp_subject", columnList = "pdp_subject"),
                 @Index(name = "idx_pdp_resource", columnList = "pdp_resource"),
                 @Index(name = "idx_pdp_decision", columnList = "pdp_decision"),
+                @Index(name = "idx_pdp_policy", columnList = "pdp_policy_id"),
                 @Index(name = "idx_pdp_timestamp", columnList = "timestamp"),
                 @Index(name = "idx_pdp_status", columnList = "status")
         })
@@ -70,6 +71,19 @@ public class PdpAuditLog {
 
     @Column(name = "pdp_decision", length = 20)
     private String pdpDecision;
+
+    /**
+     * The deciding policy for this decision — the matched policy id(s) (comma-joined) that allowed/denied, or a
+     * synthetic marker when no rule matched ({@code DEFAULT_DENY} / {@code NO_POLICIES} / {@code EVAL_ERROR}).
+     * Never null for a rendered decision. Indexed ({@code idx_pdp_policy}) — this is the queryable answer to
+     * "which policy decided / why was this denied", across every hop.
+     */
+    @Column(name = "pdp_policy_id", length = 512)
+    private String pdpPolicyId;
+
+    /** Human-readable reason for the decision (e.g. "Permitted by policy: [...]", "No matching permit policy (default deny)"). */
+    @Column(name = "pdp_reason", length = 1024)
+    private String pdpReason;
 
     @Column(name = "error_code")
     private Integer errorCode;

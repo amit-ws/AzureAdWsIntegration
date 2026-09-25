@@ -2,11 +2,12 @@ package com.ws.wsAgenticSecurityGateway.pdp.service;
 
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.service.AgentRegistryService;
+import com.ws.wsAgenticSecurityGateway.orchestration.model.ClientInfo;
+import com.ws.wsAgenticSecurityGateway.orchestration.model.RequestAttributeKeys;
+import com.ws.wsAgenticSecurityGateway.orchestration.model.RequestContext;
 import com.ws.wsAgenticSecurityGateway.pdp.dto.PolicyEvaluationRequest;
-import com.ws.wsAgenticSecurityGateway.wsServer.session.ClientSession;
-import com.ws.wsAgenticSecurityGateway.wsServer.session.SessionManager;
-import io.modelcontextprotocol.server.McpSyncServerExchange;
-import io.modelcontextprotocol.spec.McpSchema;
+import com.ws.wsAgenticSecurityGateway.protocol.mcp.session.ClientSession;
+import com.ws.wsAgenticSecurityGateway.protocol.mcp.session.SessionManager;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -48,7 +49,7 @@ public class PolicyContextBuilder {
     }
 
     public PolicyEvaluationRequest buildForToolCall(
-            McpSyncServerExchange exchange,
+            RequestContext requestContext,
             String publicName,
             String serverName,
             String originalName,
@@ -56,36 +57,82 @@ public class PolicyContextBuilder {
             String correlationId,
             String sessionId) {
 
-        return buildRequest(exchange, "toolCall", publicName, serverName,
+        return buildRequest(requestContext, "toolCall", publicName, serverName,
                 originalName, "TOOL", arguments, correlationId, sessionId);
     }
 
+    public PolicyEvaluationRequest buildForSkillInvocation(
+            RequestContext requestContext,
+            String publicName,
+            String serverName,
+            String originalName,
+            Map<String, Object> arguments,
+            String correlationId,
+            String sessionId) {
+
+        return buildRequest(requestContext, "skillInvocation", publicName, serverName,
+                originalName, "SKILL", arguments, correlationId, sessionId);
+    }
+
     public PolicyEvaluationRequest buildForPromptGet(
-            McpSyncServerExchange exchange,
+            RequestContext requestContext,
             String publicName,
             String serverName,
             String originalName,
             String correlationId,
             String sessionId) {
 
-        return buildRequest(exchange, "promptGet", publicName, serverName,
+        return buildRequest(requestContext, "promptGet", publicName, serverName,
                 originalName, "PROMPT", null, correlationId, sessionId);
     }
 
     public PolicyEvaluationRequest buildForResourceRead(
-            McpSyncServerExchange exchange,
+            RequestContext requestContext,
             String publicName,
             String serverName,
             String originalName,
             String correlationId,
             String sessionId) {
 
-        return buildRequest(exchange, "resourceRead", publicName, serverName,
+        return buildRequest(requestContext, "resourceRead", publicName, serverName,
                 originalName, "RESOURCE", null, correlationId, sessionId);
     }
 
+    /**
+     * The caller's PROVEN identity, or {@code null} if none is present. Priority:
+     * <ol>
+     *   <li>the agent's own verified credential — {@code client_id}/{@code azp} from a validated
+     *       client-credentials token (the KC workload identity);</li>
+     *   <li>the gateway-SIGNED OBO {@code actor} (its {@code clientId}, else {@code id}) — the verified
+     *       delegatee on a delegation token the gateway itself minted.</li>
+     * </ol>
+     * Never the self-asserted MCP {@code clientInfo.name}. This is the seam a SPIFFE/SVID source would
+     * later feed identically.
+     */
+    @SuppressWarnings("unchecked")
+    private String resolveVerifiedAgentId(RequestContext rc) {
+        if (rc == null) return null;
+        try {
+            Object clientId = rc.attributes().get(RequestAttributeKeys.AGENT_CLIENT_ID);
+            if (clientId instanceof String s && !s.isBlank()) return s;
+            Object raw = rc.attributes().get(RequestAttributeKeys.RAW_JWT_CLAIMS);
+            if (raw instanceof Map<?, ?> claims) {
+                Object actor = claims.get("actor");
+                if (actor instanceof Map<?, ?> a) {
+                    Object cid = a.get("clientId");
+                    if (cid instanceof String s && !s.isBlank()) return s;
+                    Object id = a.get("id");
+                    if (id instanceof String s && !s.isBlank()) return s;
+                }
+            }
+        } catch (Exception e) {
+            log.debug("verified agent id resolution failed: {}", e.getMessage());
+        }
+        return null;
+    }
+
     private PolicyEvaluationRequest buildRequest(
-            McpSyncServerExchange exchange,
+            RequestContext requestContext,
             String action,
             String publicName,
             String serverName,
@@ -98,13 +145,19 @@ public class PolicyContextBuilder {
         String agentName = "unknown";
         String agentVersion = null;
         try {
-            if (exchange != null && exchange.getClientInfo() != null) {
-                McpSchema.Implementation ci = exchange.getClientInfo();
-                agentName = ci.name() != null ? ci.name() : "unknown";
+            ClientInfo ci = requestContext != null ? requestContext.clientInfo() : null;
+            String asserted = (ci != null && ci.name() != null && !ci.name().isBlank()) ? ci.name() : null;
+            if (ci != null) {
                 agentVersion = ci.version();
             }
+            // PROVEN IDENTITY FIRST (Hardening 1): a verified credential — the agent's own KC
+            // client_id/azp (client-credentials) or the gateway-SIGNED OBO actor — outranks the
+            // self-asserted MCP clientInfo.name, which any client can set to anything. Also covers the
+            // stateless bridge (no clientInfo → identity rides on the verified client_id).
+            String verified = resolveVerifiedAgentId(requestContext);
+            agentName = verified != null ? verified : (asserted != null ? asserted : "unknown");
         } catch (Exception e) {
-            log.debug("Could not extract agent info from exchange: {}", e.getMessage());
+            log.debug("Could not extract agent identity from request context: {}", e.getMessage());
         }
 
         String approvalStatus = "UNKNOWN";
@@ -121,18 +174,18 @@ public class PolicyContextBuilder {
         Map<String, String> httpHeaders = Collections.emptyMap();
         String sourceIp = null;
         try {
-            if (exchange != null) {
-                Object ip = exchange.transportContext().get("clientIp");
+            if (requestContext != null) {
+                Object ip = requestContext.attributes().get(RequestAttributeKeys.CLIENT_IP);
                 if (ip != null) {
                     sourceIp = String.valueOf(ip);
                     transportContext.put("clientIp", sourceIp);
                 }
-                Object tcAgentName = exchange.transportContext().get("agentName");
+                Object tcAgentName = requestContext.attributes().get(RequestAttributeKeys.AGENT_NAME);
                 if (tcAgentName != null) transportContext.put("agentName", tcAgentName);
-                Object tcCorrelation = exchange.transportContext().get("correlationId");
+                Object tcCorrelation = requestContext.attributes().get(RequestAttributeKeys.CORRELATION_ID);
                 if (tcCorrelation != null) transportContext.put("correlationId", tcCorrelation);
 
-                Object headersObj = exchange.transportContext().get("_httpHeaders");
+                Object headersObj = requestContext.attributes().get(RequestAttributeKeys.HTTP_HEADERS);
                 if (headersObj instanceof Map<?, ?> rawMap) {
                     @SuppressWarnings("unchecked")
                     Map<String, String> castHeaders = (Map<String, String>) rawMap;
@@ -152,27 +205,30 @@ public class PolicyContextBuilder {
         List<String> agentRoles = null;
         List<String> tcRealmRoles = null;
         List<String> tcClientRoles = null;
+        List<String> tcGroups = null;
         String userIdentity = null;
         String tokenType = null;
         Map<String, Object> jwtCustomClaims = null;
         try {
-            if (exchange != null) {
+            if (requestContext != null) {
                 Object o;
-                o = exchange.transportContext().get("agentClientId");
+                o = requestContext.attributes().get(RequestAttributeKeys.AGENT_CLIENT_ID);
                 if (o instanceof String s) agentClientId = s;
-                o = exchange.transportContext().get("jwtSubject");
+                o = requestContext.attributes().get(RequestAttributeKeys.JWT_SUBJECT);
                 if (o instanceof String s) jwtSubject = s;
-                o = exchange.transportContext().get("userIdentity");
+                o = requestContext.attributes().get(RequestAttributeKeys.USER_IDENTITY);
                 if (o instanceof String s) userIdentity = s;
-                o = exchange.transportContext().get("tokenType");
+                o = requestContext.attributes().get(RequestAttributeKeys.TOKEN_TYPE);
                 if (o instanceof String s) tokenType = s;
-                o = exchange.transportContext().get("agentRoles");
+                o = requestContext.attributes().get(RequestAttributeKeys.AGENT_ROLES);
                 if (o instanceof List<?> l) agentRoles = l.stream().map(String::valueOf).toList();
-                o = exchange.transportContext().get("realmRoles");
+                o = requestContext.attributes().get(RequestAttributeKeys.REALM_ROLES);
                 if (o instanceof List<?> l) tcRealmRoles = l.stream().map(String::valueOf).toList();
-                o = exchange.transportContext().get("clientRoles");
+                o = requestContext.attributes().get(RequestAttributeKeys.CLIENT_ROLES);
                 if (o instanceof List<?> l) tcClientRoles = l.stream().map(String::valueOf).toList();
-                o = exchange.transportContext().get("customClaims");
+                o = requestContext.attributes().get(RequestAttributeKeys.GROUPS);
+                if (o instanceof List<?> l) tcGroups = l.stream().map(String::valueOf).toList();
+                o = requestContext.attributes().get(RequestAttributeKeys.CUSTOM_CLAIMS);
                 if (o instanceof Map<?, ?> m) {
                     @SuppressWarnings("unchecked")
                     Map<String, Object> cast = (Map<String, Object>) m;
@@ -193,6 +249,7 @@ public class PolicyContextBuilder {
                 .agentRoles(agentRoles)
                 .realmRoles(tcRealmRoles)
                 .clientRoles(tcClientRoles)
+                .agentGroups(tcGroups)
                 .userIdentity(userIdentity)
                 .tokenType(tokenType)
                 .jwtCustomClaims(jwtCustomClaims)

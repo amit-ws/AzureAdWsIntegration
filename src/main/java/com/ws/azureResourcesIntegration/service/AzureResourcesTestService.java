@@ -61,7 +61,7 @@ public class AzureResourcesTestService {
     final String tenantId2 = "0079de83-6146-45cb-a189-5d5b03507ce8";
     final String subscriptionId2 = "15b85f1d-1983-469c-a593-46fe8fc514f7";
     final String clientId = "cb51e8d1-519c-4e18-9b2f-28d53e6badd1";
-    final String clientSecret = "TUo8Q~eVNZNHVbrGV4E8VLNphrJ24xObLUolOcJD";
+    final String clientSecret = "jaU8Q~TsB3s2lXIr0d51F6ClwHXTWJWbuRwiAbDq";
     final String tenantId = "f875ebf8-f5f0-4915-a2c9-4442e0118fd2";
     final String subscriptionId = "4769af8e-ca3d-448d-bd1a-80e03ed94158";
     final AzureAuthConfigurationFactory azureAuthConfigurationFactory;

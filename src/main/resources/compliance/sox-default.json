@@ -1,0 +1,79 @@
+{
+  "framework": "SOX — IT General Controls (financial reporting)",
+  "disclaimer": "Evidence for the listed IT General Controls relevant to Sarbanes-Oxley (SOX) financial reporting, generated from the gateway's audit trail and egress data-classification records for the period shown. This is supporting evidence for specific controls — not a SOX audit, a management assertion under §302/§404, or an attestation. Each figure reflects only what the gateway observes; it does not assert completeness of the underlying systems.",
+  "controls": [
+    {
+      "ref": "APD.1",
+      "title": "Access to programs & data — authenticated, authorized access",
+      "requirement": "Access to financial systems and data is restricted to authenticated and authorized users and services.",
+      "howSatisfied": "Every request is identity-verified and evaluated by the policy decision point (PDP) before access; delegated access to financial workflows uses short-lived on-behalf-of tokens bound to the root human.",
+      "evidence": [
+        { "label": "Access decisions rendered", "metric": "decisions.total" },
+        { "label": "Allowed", "metric": "decisions.allowed" },
+        { "label": "Denied", "metric": "decisions.denied" },
+        { "label": "Audit events attributed to a human identity", "metric": "audit.humanAttributedOfTotal" }
+      ]
+    },
+    {
+      "ref": "APD.2",
+      "title": "Access provisioning — registration & approval before access",
+      "requirement": "Users and automated identities are registered and approved before being granted access to financial systems.",
+      "howSatisfied": "Agents are registered in the identity registry and must be approved before they can act; unapproved identities are denied at the boundary.",
+      "evidence": [
+        { "label": "Registered agents", "metric": "agents.total" },
+        { "label": "Approved", "metric": "agents.approved" },
+        { "label": "Pending approval", "metric": "agents.pending" },
+        { "label": "Distinct human identities observed acting", "metric": "audit.distinctHumans" }
+      ]
+    },
+    {
+      "ref": "LP.1",
+      "title": "Least privilege — enforced allow-sets",
+      "requirement": "Access is granted on a least-privilege basis, restricted to the capabilities each agent actually needs.",
+      "howSatisfied": "Capability profiles and Cedar policies restrict each agent to an explicit allow-set; recorded denials show the restriction is actively enforced rather than advisory.",
+      "evidence": [
+        { "label": "Access policies defined", "metric": "policies.total" },
+        { "label": "Currently enabled", "metric": "policies.enabled" },
+        { "label": "Denied access attempts (enforcement evidence)", "metric": "decisions.denied" }
+      ]
+    },
+    {
+      "ref": "PC.1",
+      "title": "Change management — controls are tracked & documented",
+      "requirement": "Changes to access policies and data-handling controls are tracked and documented.",
+      "howSatisfied": "Access policies carry authorship and source (manual, generated, or system default) with change timestamps; egress data-classification rules are tenant-scoped configuration recorded the same way.",
+      "evidence": [
+        { "label": "Access policies", "metric": "policies.total" },
+        { "label": "Manually authored", "metric": "policies.manual" },
+        { "label": "Generated (assisted)", "metric": "policies.generated" },
+        { "label": "Active data-classification rules", "metric": "dataclass.rulesActive" },
+        { "label": "Most recent policy change", "metric": "policies.lastChange" }
+      ]
+    },
+    {
+      "ref": "DC.1",
+      "title": "Data confidentiality — sensitive & financial data egress monitoring",
+      "requirement": "Sensitive and financial information leaving the system is identified, classified, and monitored so that its exposure can be reviewed.",
+      "howSatisfied": "Every response returned through the gateway is inspected by the egress post-processor and labelled with a data category and sensitivity; financial and restricted data is surfaced for monitoring.",
+      "evidence": [
+        { "label": "Responses inspected & classified", "metric": "dataclass.classifications" },
+        { "label": "Responses carrying financial data", "metric": "dataclass.financial" },
+        { "label": "Sensitive responses (of total)", "metric": "dataclass.sensitiveOfTotal" },
+        { "label": "Restricted-sensitivity responses", "metric": "dataclass.restricted" },
+        { "label": "Distinct data categories observed", "metric": "dataclass.categories" }
+      ]
+    },
+    {
+      "ref": "CO.1",
+      "title": "Computer operations — audit trail over financial data access",
+      "requirement": "Security- and financial-relevant events are recorded to an audit trail supporting monitoring and after-the-fact review.",
+      "howSatisfied": "Requests, decisions, token issuances, and classified data egress are recorded to the gateway's audit trail; access to sensitive data is attributed to the root human on whose behalf it occurred.",
+      "evidence": [
+        { "label": "Audit events recorded", "metric": "audit.events" },
+        { "label": "Distinct event types captured", "metric": "audit.eventTypes" },
+        { "label": "Classified egress attributed to a human (of total)", "metric": "dataclass.humanAttributedOfTotal" },
+        { "label": "Data-classification coverage period", "metric": "dataclass.period" }
+      ]
+    }
+  ]
+}

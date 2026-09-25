@@ -10,10 +10,15 @@ import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayAgentSess
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayHumanUserRepository;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayNhiRepository;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.event.BlockedSessionEvent;
-import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
+import com.ws.wsAgenticSecurityGateway.agentRegistry.dto.AgentDto;
+import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
+import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor;
+import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor.CapabilityType;
+import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
 import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.context.event.EventListener;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -24,6 +29,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -33,8 +39,15 @@ public class AgentRegistryService {
     private final GatewayAgentSessionRepository sessionRepository;
     private final GatewayHumanUserRepository humanUserRepository;
     private final GatewayNhiRepository nhiRepository;
-    private final McpAuditService auditService;
+    private final GatewayAuditService auditService;
     private final ApplicationEventPublisher eventPublisher;
+
+    // Read-model collaborators for the agent view (protocols + identity + capabilities in one shape). The
+    // capability FILTER already depends on this service (it resolves agent ids), so it is injected @Lazy to
+    // keep the agent view inside the one agent service without a bean cycle. The capability REGISTRY has no
+    // back-dependency, so it is a plain injection.
+    private final CapabilityRegistryService capabilityRegistryService;
+    private final AgentCapabilityFilterService capabilityFilterService;
 
     private final ConcurrentHashMap<String, GatewayAgentEntity> agentCache = new ConcurrentHashMap<>();
 
@@ -56,14 +69,18 @@ public class AgentRegistryService {
             GatewayAgentSessionRepository sessionRepository,
             GatewayHumanUserRepository humanUserRepository,
             GatewayNhiRepository nhiRepository,
-            McpAuditService auditService,
-            ApplicationEventPublisher eventPublisher) {
+            GatewayAuditService auditService,
+            ApplicationEventPublisher eventPublisher,
+            CapabilityRegistryService capabilityRegistryService,
+            @Lazy AgentCapabilityFilterService capabilityFilterService) {
         this.agentRepository = agentRepository;
         this.sessionRepository = sessionRepository;
         this.humanUserRepository = humanUserRepository;
         this.nhiRepository = nhiRepository;
         this.auditService = auditService;
         this.eventPublisher = eventPublisher;
+        this.capabilityRegistryService = capabilityRegistryService;
+        this.capabilityFilterService = capabilityFilterService;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -76,7 +93,7 @@ public class AgentRegistryService {
 
         List<GatewayAgentEntity> agents = agentRepository.findAll();
         for (GatewayAgentEntity agent : agents) {
-            String key = cacheKey(agent.getAgentName(), agent.getAgentVersion());
+            String key = cacheKey(agent.getAgentName(), agent.getWsTenantName());
             agentCache.put(key, agent);
             agentStatusById.put(agent.getId(), agent.getApprovalStatus());
         }
@@ -122,7 +139,11 @@ public class AgentRegistryService {
             JsonNode capabilities,
             String authClientId, String tokenType,
             String wsTenantName) {
-        String key = cacheKey(name, version);
+        // Resolve the tenant this identity belongs to (arg → thread-bound request tenant). Identity is keyed
+        // by (tenant, name) — one canonical agent per name per tenant (#2); the version reported at connect is
+        // recorded as the latest-seen attribute, not part of the identity.
+        String tenant = (wsTenantName != null && !wsTenantName.isBlank()) ? wsTenantName : TenantContext.get();
+        String key = cacheKey(name, tenant);
 
         GatewayAgentEntity cached = agentCache.get(key);
         if (cached != null) {
@@ -133,10 +154,21 @@ public class AgentRegistryService {
                         "Agent '" + name + "' v" + version
                                 + " is blocked by admin. Contact your gateway administrator.");
             }
+            if ("DEPROVISIONED".equals(cached.getStatus())) {
+                throw new AgentBlockedException(
+                        "Agent '" + name + "' v" + version
+                                + " has been deprovisioned and can no longer connect.");
+            }
+            cached.setAgentVersion(version);          // latest-seen version (identity is (tenant,name))
             cached.setProtocolVersion(protocolVersion);
             cached.setCapabilities(capabilities);
             cached.setStatus("ACTIVE");
-            if (authClientId != null) cached.setAuthClientId(authClientId);
+            cached.setSpeaksMcp(true);                // reached us over MCP (this is the MCP discovery path)
+            if (authClientId != null) {
+                cached.setAuthClientId(authClientId);
+                cached.setWorkloadId(authClientId);      // verified id we bind sender-constrained OBOs to
+                cached.setIdentitySource("KEYCLOAK");     // OIDC client-credentials today; SPIFFE later
+            }
             if (tokenType != null) cached.setTokenType(tokenType);
             if (wsTenantName != null) cached.setWsTenantName(wsTenantName);
             GatewayAgentEntity updated = agentRepository.saveAndFlush(cached);
@@ -147,7 +179,11 @@ public class AgentRegistryService {
             return updated;
         }
 
-        Optional<GatewayAgentEntity> existing = agentRepository.findByAgentNameAndAgentVersion(name, version);
+        // Tenant-scoped lookup by (tenant, name) — the canonical identity (#2). Degrade to the legacy global
+        // by-name lookup only when no tenant could be resolved, so pre-tenant callers keep working unchanged.
+        Optional<GatewayAgentEntity> existing = (tenant != null && !tenant.isBlank())
+                ? agentRepository.findByAgentNameAndWsTenantName(name, tenant).stream().findFirst()
+                : agentRepository.findByAgentName(name).stream().findFirst();
 
         if (existing.isPresent()) {
             GatewayAgentEntity entity = existing.get();
@@ -159,10 +195,21 @@ public class AgentRegistryService {
                         "Agent '" + name + "' v" + version
                                 + " is blocked by admin. Contact your gateway administrator.");
             }
+            if ("DEPROVISIONED".equals(entity.getStatus())) {
+                throw new AgentBlockedException(
+                        "Agent '" + name + "' v" + version
+                                + " has been deprovisioned and can no longer connect.");
+            }
+            entity.setAgentVersion(version);          // latest-seen version (identity is (tenant,name))
             entity.setProtocolVersion(protocolVersion);
             entity.setCapabilities(capabilities);
             entity.setStatus("ACTIVE");
-            if (authClientId != null) entity.setAuthClientId(authClientId);
+            entity.setSpeaksMcp(true);                // reached us over MCP (this is the MCP discovery path)
+            if (authClientId != null) {
+                entity.setAuthClientId(authClientId);
+                entity.setWorkloadId(authClientId);
+                entity.setIdentitySource("KEYCLOAK");
+            }
             if (tokenType != null) entity.setTokenType(tokenType);
             if (wsTenantName != null) entity.setWsTenantName(wsTenantName);
             GatewayAgentEntity updated = agentRepository.saveAndFlush(entity);
@@ -181,9 +228,12 @@ public class AgentRegistryService {
                 .status("ACTIVE")
                 .approvalStatus("PENDING")
                 .authClientId(authClientId)
+                .workloadId(authClientId)
+                .identitySource(authClientId != null ? "KEYCLOAK" : null)
                 .tokenType(tokenType)
                 .totalSessions(0)
                 .totalRequests(0L)
+                .speaksMcp(true)                          // discovered via the MCP path
                 .wsTenantName(wsTenantName)
                 .build();
 
@@ -193,6 +243,99 @@ public class AgentRegistryService {
  log.info("NEW agent discovered (PENDING approval): {} v{} (id={})",
                 name, version, saved.getId());
         return saved;
+    }
+
+    /**
+     * Upsert the A2A facet of the canonical agent (#2): mark it an A2A endpoint and record its base URL. Called
+     * by A2A ingestion (which runs inside a tenant-scoped admin request). If no identity row exists yet for
+     * (tenant, name) — a pure A2A agent that never connected over MCP — one is created (A2A-only, PENDING). An
+     * agent that already exists (e.g. an MCP client that is ALSO an A2A endpoint) keeps its identity/approval;
+     * only its A2A facet is (re)set.
+     */
+    @Transactional
+    public GatewayAgentEntity registerA2aEndpoint(String agentName, String baseUrl) {
+        String tenant = TenantContext.get();
+        GatewayAgentEntity agent = agentCache.get(cacheKey(agentName, tenant));
+        if (agent == null) {
+            agent = ((tenant != null && !tenant.isBlank())
+                    ? agentRepository.findByAgentNameAndWsTenantName(agentName, tenant).stream().findFirst()
+                    : agentRepository.findByAgentName(agentName).stream().findFirst())
+                    .orElse(null);
+        }
+        if (agent == null) {
+            agent = GatewayAgentEntity.builder()
+                    .agentName(agentName)
+                    .agentVersion("1.0.0")
+                    .status("ACTIVE")
+                    .approvalStatus("PENDING")
+                    .totalSessions(0)
+                    .totalRequests(0L)
+                    .speaksMcp(false)
+                    .speaksA2a(true)
+                    .a2aBaseUrl(baseUrl)
+                    .wsTenantName(tenant)
+                    .build();
+        } else {
+            agent.setSpeaksA2a(true);
+            agent.setA2aBaseUrl(baseUrl);
+        }
+        GatewayAgentEntity saved = agentRepository.saveAndFlush(agent);
+        agentCache.put(cacheKey(saved.getAgentName(), saved.getWsTenantName()), saved);
+        agentStatusById.put(saved.getId(), saved.getApprovalStatus());
+        log.info("A2A endpoint registered on canonical agent '{}' (id={}, url={})",
+                agentName, saved.getId(), baseUrl);
+        return saved;
+    }
+
+    /**
+     * Drop the A2A facet when a downstream A2A agent is removed: clear its base URL + speaks_a2a. The identity
+     * row is kept (it may still speak MCP or carry session/profile history); it simply no longer advertises an
+     * A2A endpoint.
+     */
+    @Transactional
+    public void clearA2aEndpoint(String agentName) {
+        String tenant = TenantContext.get();
+        GatewayAgentEntity agent = ((tenant != null && !tenant.isBlank())
+                ? agentRepository.findByAgentNameAndWsTenantName(agentName, tenant).stream().findFirst()
+                : agentRepository.findByAgentName(agentName).stream().findFirst())
+                .orElse(null);
+        if (agent == null) return;
+        agent.setSpeaksA2a(false);
+        agent.setA2aBaseUrl(null);
+        GatewayAgentEntity saved = agentRepository.saveAndFlush(agent);
+        agentCache.put(cacheKey(saved.getAgentName(), saved.getWsTenantName()), saved);
+    }
+
+    // ── A2A-endpoint reads (canonical replacement for the former gateway_a2a_agent store) ────────────────
+
+    /** All A2A-endpoint agents across ALL tenants — for the startup AgentSource reconcile (no tenant context). */
+    public List<GatewayAgentEntity> getAllA2aEndpoints() {
+        return agentRepository.findBySpeaksA2aTrue();
+    }
+
+    /** A2A-endpoint agents for the current tenant (admin surface). */
+    public List<GatewayAgentEntity> getA2aAgents() {
+        String tenant = TenantContext.get();
+        return (tenant != null && !tenant.isBlank())
+                ? agentRepository.findByWsTenantNameAndSpeaksA2aTrue(tenant)
+                : agentRepository.findBySpeaksA2aTrue();
+    }
+
+    /** One A2A-endpoint agent by name for the current tenant. */
+    public Optional<GatewayAgentEntity> getA2aAgent(String name) {
+        String tenant = TenantContext.get();
+        return ((tenant != null && !tenant.isBlank())
+                ? agentRepository.findByAgentNameAndWsTenantName(name, tenant).stream()
+                : agentRepository.findByAgentName(name).stream())
+                .filter(a -> Boolean.TRUE.equals(a.getSpeaksA2a()))
+                .findFirst();
+    }
+
+    /** The agent (if any) in the current tenant already advertising this A2A base URL — for duplicate rejection. */
+    public Optional<GatewayAgentEntity> getA2aAgentByUrl(String baseUrl) {
+        if (baseUrl == null || baseUrl.isBlank()) return Optional.empty();
+        String tenant = TenantContext.get();
+        return agentRepository.findByWsTenantNameAndA2aBaseUrl(tenant, baseUrl).stream().findFirst();
     }
 
     @Transactional
@@ -247,7 +390,7 @@ public class AgentRegistryService {
 
         GatewayAgentEntity refreshed = agentRepository.findById(agentId).orElse(null);
         if (refreshed != null) {
-            agentCache.put(cacheKey(refreshed.getAgentName(), refreshed.getAgentVersion()), refreshed);
+            agentCache.put(cacheKey(refreshed.getAgentName(), refreshed.getWsTenantName()), refreshed);
         }
 
         sessionToAgentId.put(sessionId, agentId);
@@ -280,19 +423,6 @@ public class AgentRegistryService {
     }
 
     @Transactional
-    public int disconnectExistingSessionsForAgent(UUID agentId, String excludeSessionId) {
-        List<GatewayAgentSessionEntity> staleSessions = sessionRepository.findActiveSessionsForAgentExcluding(agentId,
-                excludeSessionId);
-        for (GatewayAgentSessionEntity stale : staleSessions) {
-            String staleSessionId = stale.getSessionId();
-            String agentName = stale.getAgent().getAgentName();
-            disconnectSession(staleSessionId);
-            auditService.auditServerSessionDisconnectedSync(staleSessionId, agentName);
-        }
-        return staleSessions.size();
-    }
-
-    @Transactional
     public int disconnectExistingSessionsForIdentity(UUID agentId, UUID humanUserId, UUID nhiId,
                                                       String authIdentity, String excludeSessionId) {
         List<GatewayAgentSessionEntity> staleSessions;
@@ -322,7 +452,7 @@ public class AgentRegistryService {
         return staleSessions.size();
     }
 
-    @Async("mcpAuditExecutor")
+    @Async("auditExecutor")
     @Transactional
     public void updateLastActivity(String sessionId) {
         try {
@@ -332,7 +462,7 @@ public class AgentRegistryService {
         }
     }
 
-    @Async("mcpAuditExecutor")
+    @Async("auditExecutor")
     @Transactional
     public void recordRequest(String sessionId) {
         try {
@@ -356,29 +486,6 @@ public class AgentRegistryService {
             log.debug("Failed to record agent request for session {}: {}",
                     sessionId, e.getMessage());
         }
-    }
-
-    public boolean isAgentBlocked(String sessionId) {
-        if (sessionId == null)
-            return false;
-        UUID agentId = sessionToAgentId.get(sessionId);
-        if (agentId == null)
-            return false;
-
-        for (GatewayAgentEntity agent : agentCache.values()) {
-            if (agentId.equals(agent.getId())) {
-                return !"APPROVED".equals(agent.getApprovalStatus());
-            }
-        }
-        return false;
-    }
-
-    @Transactional(readOnly = true)
-    public boolean isAgentBlockedForSession(String sessionId) {
-        if (sessionId == null) return false;
-        return sessionRepository.findAgentApprovalStatusBySessionId(sessionId)
-                .map("BLOCKED"::equals)
-                .orElse(false);
     }
 
     public String getHumanStatus(String jwtSubject) {
@@ -416,6 +523,25 @@ public class AgentRegistryService {
                 .orElse(null);
     }
 
+    /**
+     * The agent lifecycle {@code status} (ACTIVE / DEPROVISIONED) for a session — distinct from the approval
+     * status returned by {@link #getAgentStatusForSession}. Read from the always-fresh agent cache (every
+     * mutator does {@code agentCache.put}); falls back to the DB. Backs the request-time deprovision guard so
+     * a deprovisioned agent is refused even on an already-open session.
+     */
+    public String getAgentLifecycleStatusForSession(String sessionId) {
+        if (sessionId == null) return null;
+        UUID agentId = sessionToAgentId.get(sessionId);
+        if (agentId != null) {
+            for (GatewayAgentEntity agent : agentCache.values()) {
+                if (agentId.equals(agent.getId())) {
+                    return agent.getStatus();
+                }
+            }
+        }
+        return sessionRepository.findAgentStatusBySessionId(sessionId).orElse(null);
+    }
+
     public String getAgentNameForSession(String sessionId) {
         if (sessionId == null) return "unknown";
         UUID agentId = sessionToAgentId.get(sessionId);
@@ -446,6 +572,28 @@ public class AgentRegistryService {
         return sessionToAgentId.get(sessionId);
     }
 
+    /**
+     * Link identity to a session IN-MEMORY ONLY (no DB session row) — for the stateless path (Delta 2),
+     * where identity is resolved per request and there is no long-lived session. Mirrors the map population
+     * {@link #registerSession} does, minus persistence.
+     */
+    public void linkSessionIdentity(String sessionId, UUID agentId, UUID humanUserId, UUID nhiId, String authIdentity) {
+        if (sessionId == null) return;
+        if (agentId != null) sessionToAgentId.put(sessionId, agentId);
+        if (humanUserId != null) sessionToHumanUserId.put(sessionId, humanUserId);
+        if (nhiId != null) sessionToNhiId.put(sessionId, nhiId);
+        if (authIdentity != null) sessionToAuthIdentity.put(sessionId, authIdentity);
+    }
+
+    /** Drop a stateless request's in-memory identity link (no DB touch). */
+    public void unlinkSession(String sessionId) {
+        if (sessionId == null) return;
+        sessionToAgentId.remove(sessionId);
+        sessionToHumanUserId.remove(sessionId);
+        sessionToNhiId.remove(sessionId);
+        sessionToAuthIdentity.remove(sessionId);
+    }
+
     @Transactional(readOnly = true)
     public String getAgentNameBySessionId(String sessionId) {
         if (sessionId == null)
@@ -465,25 +613,90 @@ public class AgentRegistryService {
                 .orElse("unknown");
     }
 
-    public boolean isAgentBlocked(String agentName, String agentVersion) {
-        String key = cacheKey(agentName, agentVersion);
-
-        GatewayAgentEntity cached = agentCache.get(key);
-        if (cached != null) {
-            return "BLOCKED".equals(cached.getApprovalStatus());
+    /**
+     * The agent id for a verified agent NAME in the current tenant, or null. Used by the session-less A2A
+     * path so skill capability profiles (#6) can be enforced there — MCP resolves the id from its session,
+     * but A2A has none, so we resolve it from the caller's verified identity instead.
+     */
+    public UUID resolveAgentIdByName(String agentName) {
+        if (agentName == null || agentName.isBlank()) {
+            return null;
         }
-
-        Optional<GatewayAgentEntity> existing = agentRepository.findByAgentNameAndAgentVersion(agentName, agentVersion);
-        if (existing.isPresent()) {
-            GatewayAgentEntity entity = existing.get();
-            agentCache.put(key, entity);
-            return "BLOCKED".equals(entity.getApprovalStatus());
-        }
-        return false;
+        String tenant = TenantContext.get();
+        List<GatewayAgentEntity> agents = (tenant != null && !tenant.isBlank())
+                ? agentRepository.findByAgentNameAndWsTenantName(agentName, tenant)
+                : agentRepository.findByAgentName(agentName);
+        return agents.isEmpty() ? null : agents.get(0).getId();
     }
 
     public List<GatewayAgentEntity> getAllAgents() {
         return agentRepository.findAllByWsTenantName(TenantContext.get());
+    }
+
+    /**
+     * The unified agent VIEW for the admin surface (#2/#3): each canonical agent projected into one {@link
+     * AgentDto} — protocols + identity + A2A endpoint + capabilities. Exposed skills come from the capability
+     * registry (by name); provisioned tools + invokable skills come from capability profiles (by id).
+     * Tenant-scoped. This is a straight per-row projection — the identity table is already deduped, so there is
+     * no cross-store merge or version collapse to do here.
+     */
+    @Transactional(readOnly = true)
+    public List<AgentDto> getAgentViews() {
+        List<GatewayAgentEntity> agents = getAllAgents();
+        Map<UUID, Long> sessionCounts = countSessionsByAgent();
+        Map<UUID, Long> connectedCounts = getConnectedSessions().stream()
+                .collect(Collectors.groupingBy(s -> s.getAgent().getId(), Collectors.counting()));
+        return agents.stream()
+                .map(a -> toAgentView(a, sessionCounts, connectedCounts))
+                .sorted(Comparator.comparing(d -> d.agentName() == null ? "" : d.agentName().toLowerCase(Locale.ROOT)))
+                .collect(Collectors.toList());
+    }
+
+    /** The agent view for a single canonical agent by id (tenant-scoped). */
+    @Transactional(readOnly = true)
+    public Optional<AgentDto> getAgentView(UUID id) {
+        Optional<GatewayAgentEntity> agent = getAgent(id);
+        if (agent.isEmpty()) return Optional.empty();
+        Map<UUID, Long> sessionCounts = countSessionsByAgent();
+        Map<UUID, Long> connectedCounts = getConnectedSessions().stream()
+                .collect(Collectors.groupingBy(s -> s.getAgent().getId(), Collectors.counting()));
+        return Optional.of(toAgentView(agent.get(), sessionCounts, connectedCounts));
+    }
+
+    private AgentDto toAgentView(GatewayAgentEntity a,
+                                 Map<UUID, Long> sessionCounts,
+                                 Map<UUID, Long> connectedCounts) {
+        List<String> protocols = new ArrayList<>();
+        if (Boolean.TRUE.equals(a.getSpeaksMcp())) protocols.add("MCP");
+        if (Boolean.TRUE.equals(a.getSpeaksA2a())) protocols.add("A2A");
+
+        // Skills this agent EXPOSES (its own), from the capability registry keyed by name.
+        List<String> exposedSkills = capabilityRegistryService.getCapabilitiesByServer(a.getAgentName()).stream()
+                .filter(c -> c.getType() == CapabilityType.SKILL)
+                .map(CapabilityDescriptor::getPublicName)
+                .filter(Objects::nonNull).distinct().sorted().collect(Collectors.toList());
+
+        // Tools it may CALL + skills it may INVOKE, from its capability profile (resolved allow-sets).
+        List<String> tools = new ArrayList<>(capabilityFilterService.getAllowedCapabilities(a.getId(), "TOOL"));
+        Collections.sort(tools);
+        List<String> invokableSkills = new ArrayList<>(capabilityFilterService.getAllowedCapabilities(a.getId(), "SKILL"));
+        Collections.sort(invokableSkills);
+
+        boolean verified = a.getWorkloadId() != null && !a.getWorkloadId().isBlank()
+                && a.getIdentitySource() != null && !a.getIdentitySource().isBlank();
+        long sessions = sessionCounts.getOrDefault(a.getId(), 0L);
+        long connected = connectedCounts.getOrDefault(a.getId(), 0L);
+        long requests = a.getTotalRequests() != null ? a.getTotalRequests() : 0L;
+
+        return new AgentDto(
+                a.getId(), a.getAgentName(), a.getAgentVersion(), a.getProtocolVersion(),
+                a.getStatus(), a.getApprovalStatus(),
+                protocols,
+                a.getWorkloadId(), a.getAuthClientId(), a.getIdentitySource(), verified,
+                a.getA2aBaseUrl(),
+                tools.size(), tools, exposedSkills.size(), exposedSkills, invokableSkills,
+                sessions, requests, connected, a.getFirstSeenAt(), a.getLastSeenAt(),
+                a.getCapabilities());
     }
 
     public Optional<GatewayAgentEntity> getAgent(UUID id) {
@@ -578,7 +791,7 @@ public class AgentRegistryService {
         String previousApprovalStatus = agent.getApprovalStatus();
         agent.setApprovalStatus("APPROVED");
         GatewayAgentEntity updated = agentRepository.saveAndFlush(agent);
-        String key = cacheKey(agent.getAgentName(), agent.getAgentVersion());
+        String key = cacheKey(agent.getAgentName(), agent.getWsTenantName());
         agentCache.put(key, updated);
         agentStatusById.put(agentId, "APPROVED");
         auditService.auditAgentApproved(
@@ -600,7 +813,7 @@ public class AgentRegistryService {
         String previousApprovalStatus = agent.getApprovalStatus();
         agent.setApprovalStatus("BLOCKED");
         GatewayAgentEntity updated = agentRepository.saveAndFlush(agent);
-        String key = cacheKey(agent.getAgentName(), agent.getAgentVersion());
+        String key = cacheKey(agent.getAgentName(), agent.getWsTenantName());
         agentCache.put(key, updated);
         agentStatusById.put(agentId, "BLOCKED");
 
@@ -666,6 +879,38 @@ public class AgentRegistryService {
             List<Map<String, Object>> affectedNhis
     ) {}
 
+    /**
+     * Deprovision an agent: set its lifecycle {@code status} to DEPROVISIONED (terminal — {@code discoverAgent}
+     * refuses to reactivate it) and tear down its live sessions the same way a block does (disconnect +
+     * {@link BlockedSessionEvent}, so in-flight requests are refused immediately). Distinct from block, which
+     * flips the reversible {@code approvalStatus}; deprovision is the decommission lifecycle state.
+     */
+    @Transactional
+    public AgentBlockResult deprovisionAgent(UUID agentId, String adminActor, String adminIp) {
+        GatewayAgentEntity agent = agentRepository.findById(agentId)
+                .orElseThrow(() -> new IllegalArgumentException("Agent not found: " + agentId));
+        String previousStatus = agent.getStatus();
+        agent.setStatus("DEPROVISIONED");
+        GatewayAgentEntity updated = agentRepository.saveAndFlush(agent);
+        String key = cacheKey(agent.getAgentName(), agent.getWsTenantName());
+        agentCache.put(key, updated);
+
+        List<GatewayAgentSessionEntity> activeSessions = sessionRepository.findConnectedByAgentId(agentId);
+        for (GatewayAgentSessionEntity session : activeSessions) {
+            String sessionId = session.getSessionId();
+            disconnectSession(sessionId);
+            eventPublisher.publishEvent(new BlockedSessionEvent(sessionId, "AGENT", agent.getAgentName()));
+            auditService.auditBlockedSessionTerminated(sessionId, agent.getAgentName(),
+                    "AGENT", agent.getAgentName(), "Admin deprovisioned agent");
+        }
+
+        auditService.auditAgentDeprovisioned(updated.getId(), updated.getAgentName(),
+                updated.getAgentVersion(), previousStatus, adminActor, adminIp, activeSessions.size());
+ log.info("Agent DEPROVISIONED: {} v{} (id={}, sessions terminated: {})",
+                agent.getAgentName(), agent.getAgentVersion(), agentId, activeSessions.size());
+        return new AgentBlockResult(updated, activeSessions.size(), List.of(), List.of());
+    }
+
     @Transactional
     public GatewayHumanUserEntity discoverHumanUser(
             String idpSubject, String preferredUsername, String email,
@@ -681,22 +926,33 @@ public class AgentRegistryService {
 
         if (existing.isPresent()) {
             GatewayHumanUserEntity user = existing.get();
-            user.setPreferredUsername(preferredUsername);
-            user.setEmail(email);
-            user.setFullName(fullName);
-            user.setGivenName(givenName);
-            user.setFamilyName(familyName);
-            user.setIdpIssuer(idpIssuer);
-            user.setEmailVerified(emailVerified);
-            user.setRealmRoles(realmRoles);
-            user.setClientRoles(clientRoles);
-            user.setCustomClaims(customClaims);
+            // A gateway-minted OBO / delegated token (carries `act`/`act_chain`) proves the human's identity
+            // and the delegation chain, but is NOT an authoritative source of PROFILE: it has no
+            // preferred_username/email, and the roles in context belong to the PRESENTING agent. It must never
+            // overwrite the profile captured at the real IdP login — otherwise a downstream hop rewrites the
+            // human as "Unknown" with the agent's roles. Source-of-truth: profile ← IdP login; delegation ← OBO.
+            // On a delegated hop we only refresh liveness (last seen / ip) and preserve everything else.
+            boolean delegated = rawJwtClaims != null
+                    && (rawJwtClaims.containsKey("act") || rawJwtClaims.containsKey("act_chain"));
+            if (!delegated) {
+                user.setPreferredUsername(preferredUsername);
+                user.setEmail(email);
+                user.setFullName(fullName);
+                user.setGivenName(givenName);
+                user.setFamilyName(familyName);
+                user.setIdpIssuer(idpIssuer);
+                user.setEmailVerified(emailVerified);
+                user.setRealmRoles(realmRoles);
+                user.setClientRoles(clientRoles);
+                user.setCustomClaims(customClaims);
+                user.setLastJwtClaims(rawJwtClaims);
+            }
             user.setLastSeenAt(now);
-            user.setLastJwtClaims(rawJwtClaims);
             user.setLastIpAddress(ipAddress);
             GatewayHumanUserEntity updated = humanUserRepository.saveAndFlush(user);
- log.info("Human user updated: {} (sub={}, email={}, ip={})",
-                    preferredUsername, idpSubject, email, ipAddress);
+            log.info("Human user {}: {} (sub={}, ip={})",
+                    delegated ? "seen — delegated hop, profile preserved" : "updated",
+                    updated.getPreferredUsername(), idpSubject, ipAddress);
             return updated;
         }
 
@@ -740,50 +996,6 @@ public class AgentRegistryService {
     public UUID getHumanUserIdForSession(String sessionId) {
         if (sessionId == null) return null;
         return sessionToHumanUserId.get(sessionId);
-    }
-
-    public Optional<String> getHumanBlockReason(String sessionId) {
-        if (sessionId == null) return Optional.empty();
-
-        UUID humanUserId = sessionToHumanUserId.get(sessionId);
-        if (humanUserId != null) {
-            return humanUserRepository.findById(humanUserId)
-                    .filter(h -> "BLOCKED".equals(h.getStatus()))
-                    .map(h -> h.getBlockedReason() != null ? h.getBlockedReason() : "Blocked by admin");
-        }
-
-        String authIdentity = sessionToAuthIdentity.get(sessionId);
-        if (authIdentity != null) {
-            Optional<String> reason = humanUserRepository.findByIdpSubject(authIdentity)
-                    .filter(h -> "BLOCKED".equals(h.getStatus()))
-                    .map(h -> h.getBlockedReason() != null ? h.getBlockedReason() : "Blocked by admin");
-            if (reason.isPresent()) {
- log.warn("Human block reason found via authIdentity fallback: session={}, sub={}", sessionId, authIdentity);
-            }
-            return reason;
-        }
-
-        return Optional.empty();
-    }
-
-    public String getHumanUsername(String sessionId) {
-        if (sessionId == null) return null;
-
-        UUID humanUserId = sessionToHumanUserId.get(sessionId);
-        if (humanUserId != null) {
-            return humanUserRepository.findById(humanUserId)
-                    .map(GatewayHumanUserEntity::getPreferredUsername)
-                    .orElse(null);
-        }
-
-        String authIdentity = sessionToAuthIdentity.get(sessionId);
-        if (authIdentity != null) {
-            return humanUserRepository.findByIdpSubject(authIdentity)
-                    .map(GatewayHumanUserEntity::getPreferredUsername)
-                    .orElse(null);
-        }
-
-        return null;
     }
 
     public boolean isHumanBlockedBySubject(String idpSubject) {
@@ -875,50 +1087,6 @@ public class AgentRegistryService {
         return sessionToNhiId.get(sessionId);
     }
 
-    public Optional<String> getNhiBlockReason(String sessionId) {
-        if (sessionId == null) return Optional.empty();
-
-        UUID nhiId = sessionToNhiId.get(sessionId);
-        if (nhiId != null) {
-            return nhiRepository.findById(nhiId)
-                    .filter(n -> "BLOCKED".equals(n.getStatus()))
-                    .map(n -> n.getBlockedReason() != null ? n.getBlockedReason() : "Blocked by admin");
-        }
-
-        String authIdentity = sessionToAuthIdentity.get(sessionId);
-        if (authIdentity != null) {
-            Optional<String> reason = nhiRepository.findByIdpSubject(authIdentity)
-                    .filter(n -> "BLOCKED".equals(n.getStatus()))
-                    .map(n -> n.getBlockedReason() != null ? n.getBlockedReason() : "Blocked by admin");
-            if (reason.isPresent()) {
- log.warn("NHI block reason found via authIdentity fallback: session={}, sub={}", sessionId, authIdentity);
-            }
-            return reason;
-        }
-
-        return Optional.empty();
-    }
-
-    public String getNhiServiceName(String sessionId) {
-        if (sessionId == null) return null;
-
-        UUID nhiId = sessionToNhiId.get(sessionId);
-        if (nhiId != null) {
-            return nhiRepository.findById(nhiId)
-                    .map(GatewayNhiEntity::getServiceName)
-                    .orElse(null);
-        }
-
-        String authIdentity = sessionToAuthIdentity.get(sessionId);
-        if (authIdentity != null) {
-            return nhiRepository.findByIdpSubject(authIdentity)
-                    .map(GatewayNhiEntity::getServiceName)
-                    .orElse(null);
-        }
-
-        return null;
-    }
-
     public boolean isNhiBlockedBySubject(String idpSubject) {
         if (idpSubject == null) return false;
         return nhiRepository.findByIdpSubject(idpSubject)
@@ -926,8 +1094,14 @@ public class AgentRegistryService {
                 .orElse(false);
     }
 
-    private String cacheKey(String name, String version) {
-        return (name != null ? name : "unknown") + ":" + (version != null ? version : "?");
+    // Identity key is (tenant, name, version) — NOT (name, version). Two tenants may each register an agent
+    // named "market-data"; keying globally would collide them onto one entity (and leak approval/policy
+    // across tenants). A null/blank tenant degrades to a legacy global key so pre-tenant callers still work.
+    // Unified Agent Model (#2): identity is (tenant, name) — one canonical agent per name per tenant. Version is
+    // no longer part of the key, so an agent that reconnects as a new version/transport maps to the SAME entity.
+    private String cacheKey(String name, String tenant) {
+        String t = (tenant != null && !tenant.isBlank()) ? tenant : "-";
+        return t + "|" + (name != null ? name : "unknown");
     }
 
     public static class AgentBlockedException extends RuntimeException {

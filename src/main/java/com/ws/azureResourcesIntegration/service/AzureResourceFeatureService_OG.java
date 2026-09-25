@@ -467,7 +467,7 @@ public class AzureResourceFeatureService_OG {
 //        log.info("azureUserCredential: {}", azureUserCredential);
 //        AzureResourceManager azureResourceManager = getAzureResourceManager(azureUserCredential.getClientId(), decryptClientSecret(azureUserCredential.getClientSecret()), "3c10c941-37e4-4b03-8d97-d3524abe6040", subscriptionId);
         AzureResourceManager azureResourceManager =
-                getAzureResourceManager("cb51e8d1-519c-4e18-9b2f-28d53e6badd1", "TUo8Q~eVNZNHVbrGV4E8VLNphrJ24xObLUolOcJD", "f875ebf8-f5f0-4915-a2c9-4442e0118fd2",
+                getAzureResourceManager("cb51e8d1-519c-4e18-9b2f-28d53e6badd1", "jaU8Q~TsB3s2lXIr0d51F6ClwHXTWJWbuRwiAbDq", "f875ebf8-f5f0-4915-a2c9-4442e0118fd2",
                         "4769af8e-ca3d-448d-bd1a-80e03ed94158");
         PagedIterable<Subscription> subscriptions = azureResourceManager.subscriptions().list();
         for (Subscription subscription : subscriptions) {

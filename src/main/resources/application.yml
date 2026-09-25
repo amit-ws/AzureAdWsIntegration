@@ -112,20 +112,10 @@ certificate:
 github:
   token: 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
 
-#mcp:
-#  server:
-#    enabled: false  # Set to true only when you want MCP server to run [for option 2]
-
-
-
-mcp:
-  config:
-    file: mcp_config.json
-
 logging:
   level:
-    com.ws.wsAgenticSecurity.client: INFO
-    com.ws.wsAgenticSecurity.audit: DEBUG
+    com.ws.wsAgenticSecurityGateway.protocol.mcp.outbound: INFO
+    com.ws.wsAgenticSecurityGateway.audit: DEBUG
     io.modelcontextprotocol: DEBUG
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
@@ -157,9 +147,10 @@ ws:
     server-config-encryption:
       key: ${WS_GATEWAY_SERVER_CONFIG_ENCRYPTION_KEY:}
     pdp:
+      anthropic-api-key: ${WS_GATEWAY_ANTHROPIC_API_KEY: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}   # Anthropic API key for LLM policy generation
 
 # ─── NOTE ────────────────────────────────────────────────────────────
-# The audit table 'mcp_audit_log' lives in schema 'ws_agentic_security'.
+# The audit table 'gateway_audit_log' lives in schema 'ws_agentic_security'.
 # Ensure this schema exists in PostgreSQL before startup:
 #   CREATE SCHEMA IF NOT EXISTS ws_agentic_security;
 # Hibernate ddl-auto:update will create/update the table automatically.

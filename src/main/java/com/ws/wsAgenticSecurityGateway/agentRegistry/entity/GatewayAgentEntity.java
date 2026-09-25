@@ -15,9 +15,16 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "gateway_agent", schema = "ws_agentic_security",
+        // Unified Agent Model (#2): identity is (tenant, name) — one canonical agent per name per tenant.
+        // Version is demoted to a plain attribute (latest seen), so an agent that reconnects as a new
+        // version/transport (e.g. claude-desktop 1.0.0 vs stateless) is ONE agent, not two rows.
         uniqueConstraints = {
-                @UniqueConstraint(name = "uq_agent_name_version",
-                        columnNames = {"agent_name", "agent_version", "ws_tenant_name"})
+                @UniqueConstraint(name = "uq_gateway_agent_tenant_name",
+                        columnNames = {"ws_tenant_name", "agent_name"}),
+                // One A2A endpoint maps to exactly one agent per tenant — you can't register the same base URL
+                // under two different names. (a2a_base_url is null for MCP-only agents; Postgres allows many NULLs.)
+                @UniqueConstraint(name = "uq_gateway_agent_tenant_a2a_url",
+                        columnNames = {"ws_tenant_name", "a2a_base_url"})
         },
         indexes = {
                 @Index(name = "idx_gateway_agent_name", columnList = "agent_name"),
@@ -79,4 +86,35 @@ public class GatewayAgentEntity {
 
     @Column(name = "token_type", length = 32)
     private String tokenType;
+
+    // HOW this agent proves its identity — the WorkloadIdentitySource method. "KEYCLOAK" today (OIDC
+    // client-credentials); "SPIFFE" once SVID/mTLS is deployed. Lets the registry carry multiple identity
+    // roots side by side and makes the SPIFFE swap a data change, not a schema change.
+    @Column(name = "identity_source", length = 32)
+    private String identitySource;
+
+    // The source-specific verified identifier: the Keycloak client_id today; the SPIFFE ID
+    // (spiffe://<trust-domain>/...) once SPIFFE is the source. This is the id we bind a sender-constrained
+    // OBO to (its `cnf`), and the id the honor-time check matches the presenter's credential against.
+    @Column(name = "workload_id", length = 512)
+    private String workloadId;
+
+    // ── Unified Agent Model (#2) facets ──────────────────────────────────────
+    // An agent is one identity that may speak more than one protocol. These flags are set explicitly by the
+    // write paths (MCP discovery sets speaks_mcp; A2A ingestion sets speaks_a2a + a2a_base_url) rather than
+    // inferred, so the dashboard can render protocol badges deterministically.
+
+    /** A2A endpoint base URL (folded in from the former gateway_a2a_agent); null for MCP-only agents. */
+    @Column(name = "a2a_base_url", length = 1024)
+    private String a2aBaseUrl;
+
+    /** True if this agent connects as an MCP client (auto-discovered on connect). */
+    @Column(name = "speaks_mcp", nullable = false)
+    @Builder.Default
+    private Boolean speaksMcp = false;
+
+    /** True if this agent is registered as an A2A endpoint (has an Agent Card / base URL). */
+    @Column(name = "speaks_a2a", nullable = false)
+    @Builder.Default
+    private Boolean speaksA2a = false;
 }

@@ -10,8 +10,7 @@ import java.time.DayOfWeek;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.*;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -33,6 +32,7 @@ public class CedarPolicyEngine {
 
         String resourceType;
         String resourceEntityId;
+        List<String> resourceEntityIds;   // resource in [ X::"a", X::"b" ] — any listed resource is allowed
 
         List<Condition> whenConditions = new ArrayList<>();
         List<Condition> unlessConditions = new ArrayList<>();
@@ -83,7 +83,11 @@ public class CedarPolicyEngine {
 
     private static final Pattern RESOURCE_IS = Pattern.compile("resource\\s+is\\s+(\\w+)");
 
-    private static final Pattern RESOURCE_EQ = Pattern.compile("resource\\s*==\\s*(Tool|Prompt|Resource)::\"([^\"]+)\"");
+    private static final Pattern RESOURCE_EQ = Pattern.compile("resource\\s*==\\s*(Tool|Prompt|Resource|Skill)::\"([^\"]+)\"");
+
+    // resource in [ Type::"a", Type::"b", ... ] — a set of allowed resources (any resource entity type).
+    private static final Pattern RESOURCE_IN_SET = Pattern.compile("resource\\s+in\\s+\\[([^\\]]+)\\]");
+    private static final Pattern RESOURCE_ITEM = Pattern.compile("(Tool|Prompt|Resource|Skill)::\"([^\"]+)\"");
 
     private static final Pattern PRINCIPAL_IN_GROUP = Pattern.compile("principal\\s+in\\s+AgentGroup::\"([^\"]+)\"");
 
@@ -91,7 +95,7 @@ public class CedarPolicyEngine {
 
     private static final Pattern COND_PRINCIPAL_EQ = Pattern.compile("principal\\s*==\\s*Agent::\"([^\"]+)\"");
 
-    private static final Pattern COND_RESOURCE_EQ = Pattern.compile("resource\\s*==\\s*(Tool|Prompt|Resource)::\"([^\"]+)\"");
+    private static final Pattern COND_RESOURCE_EQ = Pattern.compile("resource\\s*==\\s*(Tool|Prompt|Resource|Skill)::\"([^\"]+)\"");
 
     private static final Pattern ATTR_GTE = Pattern.compile("(context|principal|resource)\\.(\\w+)\\s*>=\\s*(-?\\d+)");
 
@@ -117,61 +121,103 @@ public class CedarPolicyEngine {
 
     private static final Pattern ATTR_EQ_LONG = Pattern.compile("(context|principal|resource)\\.(\\w+)\\s*==\\s*(-?\\d+)");
 
-    private volatile List<ParsedPolicy> currentPolicies = Collections.emptyList();
+    /**
+     * Per-tenant compiled policy sets — the isolated slots that make the PDP tenant-partitioned. Each value is
+     * an immutable snapshot swapped atomically, so evaluation reads a consistent set with no lock.
+     */
+    private final Map<String, List<ParsedPolicy>> policiesByTenant = new ConcurrentHashMap<>();
 
-    private final ReadWriteLock policyLock = new ReentrantReadWriteLock();
+    /**
+     * Combined fallback set, used ONLY for requests with no resolvable tenant (open mode / pre-auth). Real
+     * tenants are isolated in {@link #policiesByTenant}; this preserves prior behavior for the null-tenant edge.
+     */
+    private volatile List<ParsedPolicy> globalPolicies = Collections.emptyList();
 
-    private volatile boolean policiesLoaded = false;
+    /** Lazily populates an unseen tenant's slot on first evaluation (and seeds its baseline guardrails). */
+    private volatile TenantPolicyLoader tenantLoader;
 
-    public CedarPolicyEngine() {
- log.info("Cedar Policy Engine initialized (pure-Java evaluator — dynamic ABAC)");
+    /** Supplies a tenant's enabled policy rows on demand; set by {@link PolicyService} after construction. */
+    public interface TenantPolicyLoader {
+        List<GatewayPolicyEntity> load(String tenant);
     }
 
+    public void setTenantLoader(TenantPolicyLoader loader) {
+        this.tenantLoader = loader;
+    }
+
+    public CedarPolicyEngine() {
+ log.info("Cedar Policy Engine initialized (pure-Java evaluator — dynamic ABAC, tenant-partitioned)");
+    }
+
+    /** Backward-compatible: loads into the combined fallback set (null-tenant requests + tests). */
     public int reloadPolicies(List<GatewayPolicyEntity> policies) {
+        return reloadGlobal(policies);
+    }
+
+    /** Load/replace the combined fallback policy set (used for requests with no resolvable tenant). */
+    public int reloadGlobal(List<GatewayPolicyEntity> policies) {
+        List<ParsedPolicy> parsed = parse(policies);
+        globalPolicies = parsed;
+ log.info("Cedar: loaded {} policy(ies) into the combined fallback set", parsed.size());
+        return parsed.size();
+    }
+
+    /** Load/replace one tenant's isolated policy set (blank tenant → the fallback set). */
+    public int reloadTenant(String tenant, List<GatewayPolicyEntity> policies) {
+        if (tenant == null || tenant.isBlank()) {
+            return reloadGlobal(policies);
+        }
+        List<ParsedPolicy> parsed = parse(policies);
+        policiesByTenant.put(tenant, parsed);
+ log.info("Cedar: loaded {} policy(ies) for tenant '{}'", parsed.size(), tenant);
+        return parsed.size();
+    }
+
+    /** Parse policy rows into the compiled form; returns an immutable (possibly empty) list. */
+    private List<ParsedPolicy> parse(List<GatewayPolicyEntity> policies) {
         if (policies == null || policies.isEmpty()) {
-            policyLock.writeLock().lock();
-            try {
-                currentPolicies = Collections.emptyList();
-                policiesLoaded = false;
- log.info("Cedar: No policies to load — all requests will be DENIED (default-deny, no permits)");
-                return 0;
-            } finally {
-                policyLock.writeLock().unlock();
-            }
+            return Collections.emptyList();
         }
-
-        try {
-            List<ParsedPolicy> parsed = new ArrayList<>();
-            for (GatewayPolicyEntity entity : policies) {
-                ParsedPolicy pp = parsePolicy(entity.getPolicyText(), entity.getPolicyName());
-                if (pp != null) {
-                    parsed.add(pp);
- log.info("Cedar PARSED: name='{}', id='{}', effect={}, principalType={}, principalId='{}', actionId='{}', resourceType={}, resourceId='{}', whenConds={}, unlessConds={}",
-                            pp.name, pp.id, pp.effect, pp.principalType, pp.principalEntityId,
-                            pp.actionId, pp.resourceType, pp.resourceEntityId,
-                            pp.whenConditions.size(), pp.unlessConditions.size());
-                } else {
+        List<ParsedPolicy> parsed = new ArrayList<>();
+        for (GatewayPolicyEntity entity : policies) {
+            ParsedPolicy pp = parsePolicy(entity.getPolicyText(), entity.getPolicyName());
+            if (pp != null) {
+                parsed.add(pp);
+            } else {
  log.warn("Cedar: Skipped unparseable policy: {} | text='{}'",
-                            entity.getPolicyName(), entity.getPolicyText());
-                }
+                        entity.getPolicyName(), entity.getPolicyText());
             }
-
-            policyLock.writeLock().lock();
-            try {
-                currentPolicies = Collections.unmodifiableList(parsed);
-                policiesLoaded = !parsed.isEmpty();
-            } finally {
-                policyLock.writeLock().unlock();
-            }
-
- log.info("Cedar: Loaded {} policies successfully (parsed {} of {})",
-                    parsed.size(), parsed.size(), policies.size());
-            return parsed.size();
-
-        } catch (Exception e) {
- log.error("Cedar: Failed to parse policies: {}", e.getMessage(), e);
-            return -1;
         }
+        return Collections.unmodifiableList(parsed);
+    }
+
+    /**
+     * The compiled policy set that applies to {@code tenant}: the tenant's isolated slot (lazily loaded +
+     * seeded on first use), or the combined fallback set when the tenant is unresolved.
+     */
+    private List<ParsedPolicy> resolvePolicies(String tenant) {
+        if (tenant == null || tenant.isBlank()) {
+            return globalPolicies;
+        }
+        List<ParsedPolicy> pols = policiesByTenant.get(tenant);
+        if (pols != null) {
+            return pols;
+        }
+        TenantPolicyLoader loader = this.tenantLoader;
+        if (loader == null) {
+            return globalPolicies; // loader not wired yet — fall back rather than deny
+        }
+        return policiesByTenant.computeIfAbsent(tenant, t -> {
+            try {
+                List<ParsedPolicy> parsed = parse(loader.load(t));
+ log.info("Cedar: lazily loaded {} policy(ies) for tenant '{}' on first use", parsed.size(), t);
+                return parsed;
+            } catch (Exception e) {
+ log.error("Cedar: lazy policy load for tenant '{}' failed — treating as no policies (deny): {}",
+                        t, e.getMessage());
+                return Collections.emptyList();
+            }
+        });
     }
 
     public String validatePolicy(String policyText) {
@@ -192,31 +238,55 @@ public class CedarPolicyEngine {
         }
     }
 
+    /** True if ANY tenant slot or the fallback set has policies (used for coarse status/stats). */
     public boolean hasPolicies() {
-        return policiesLoaded;
+        return !globalPolicies.isEmpty() || policiesByTenant.values().stream().anyMatch(l -> !l.isEmpty());
     }
 
+    /** True if the given tenant has policies loaded (no lazy-load side effect — for stats). */
+    public boolean hasPolicies(String tenant) {
+        List<ParsedPolicy> p = (tenant == null || tenant.isBlank()) ? globalPolicies : policiesByTenant.get(tenant);
+        return p != null && !p.isEmpty();
+    }
+
+    /** Backward-compatible: evaluate against the combined fallback set (null tenant). */
     public PolicyEvaluationResult evaluate(PolicyEvaluationRequest request) {
+        return evaluate(null, request);
+    }
+
+    /** Evaluate the request against {@code tenant}'s isolated policy set (fallback set when tenant is null). */
+    public PolicyEvaluationResult evaluate(String tenant, PolicyEvaluationRequest request) {
+        return evaluateParsed(resolvePolicies(tenant), tenant, request);
+    }
+
+    /**
+     * Dry-run the request against an explicit set of policy rows (authoring-time "test a policy") — e.g. the
+     * tenant's saved policies plus an unsaved draft. Parses on the fly; does not touch the loaded slots.
+     */
+    public PolicyEvaluationResult evaluateEntities(List<GatewayPolicyEntity> policies, PolicyEvaluationRequest request) {
+        return evaluateParsed(parse(policies), "test", request);
+    }
+
+    private PolicyEvaluationResult evaluateParsed(List<ParsedPolicy> policies, String tenant, PolicyEvaluationRequest request) {
         long startTime = System.currentTimeMillis();
 
-        if (!policiesLoaded || currentPolicies.isEmpty()) {
- log.info("Cedar: agent={}, action={}, resource={} → DENY (no policies configured)",
-                    request.getAgentName(), request.getAction(), request.getResourceName());
+        if (policies.isEmpty()) {
+ log.info("Cedar: tenant={}, agent={}, action={}, resource={} → DENY (no policies configured)",
+                    tenant, request.getAgentName(), request.getAction(), request.getResourceName());
             long duration = System.currentTimeMillis() - startTime;
             return PolicyEvaluationResult.noPolicies(duration);
         }
 
-        policyLock.readLock().lock();
         try {
             EvalContext ctx = buildEvalContext(request);
 
- log.info("Cedar EVAL: principalType='{}', principalId='{}', action='{}', resourceType='{}', resourceId='{}', policiesCount={}",
-                    ctx.principalType, ctx.principalId, ctx.action, ctx.resourceType, ctx.resourceId, currentPolicies.size());
+ log.info("Cedar EVAL: tenant='{}', principalType='{}', principalId='{}', action='{}', resourceType='{}', resourceId='{}', policiesCount={}",
+                    tenant, ctx.principalType, ctx.principalId, ctx.action, ctx.resourceType, ctx.resourceId, policies.size());
 
             Set<String> matchedPermitPolicies = new LinkedHashSet<>();
             Set<String> matchedForbidPolicies = new LinkedHashSet<>();
 
-            for (ParsedPolicy policy : currentPolicies) {
+            for (ParsedPolicy policy : policies) {
  log.info("Cedar MATCH CHECK: policy='{}' effect={} | principal: policy='{}' vs ctx='{}' ({}), action: policy='{}' vs ctx='{}' ({}), resource: policy='{}'/'{}' vs ctx='{}'/'{}' ({})",
                         policy.id != null ? policy.id : policy.name, policy.effect,
                         policy.principalEntityId, ctx.principalId,
@@ -252,7 +322,7 @@ public class CedarPolicyEngine {
             }
 
             String diagnostic = null;
-            for (ParsedPolicy policy : currentPolicies) {
+            for (ParsedPolicy policy : policies) {
                 if ("forbid".equals(policy.effect)
                         && !policy.unlessConditions.isEmpty()
                         && matchesIgnoringUnless(policy, ctx)) {
@@ -277,6 +347,7 @@ public class CedarPolicyEngine {
                         .decision("DENY")
                         .matchedPolicies(Set.of())
                         .reason("No matching permit policy (default deny)")
+                        .decisionBasis("DEFAULT_DENY")
                         .evaluationDurationMs(duration)
                         .diagnostics(diagnostic)
                         .build();
@@ -285,19 +356,21 @@ public class CedarPolicyEngine {
 
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - startTime;
- log.error("Cedar evaluation error: {}", e.getMessage(), e);
+ log.error("Cedar evaluation error — failing CLOSED (request DENIED): {}", e.getMessage(), e);
 
+            // Fail-closed: if the decision engine itself errors, deny the request. A crash in the
+            // gate must never become a security bypass (a forbid policy could have been about to
+            // match). The error is surfaced loudly via reason/diagnostics/hasErrors + the audit
+            // deny, so the bug is found and fixed rather than silently allowing traffic through.
             return PolicyEvaluationResult.builder()
-                    .decision("ALLOW")
+                    .decision("DENY")
                     .matchedPolicies(Set.of())
-                    .reason("Policy evaluation error (fail-open): " + e.getMessage())
+                    .reason("Policy evaluation error (fail-closed, denied): " + e.getMessage())
+                    .decisionBasis("EVAL_ERROR")
                     .evaluationDurationMs(duration)
                     .hasErrors(true)
                     .diagnostics(e.getMessage())
                     .build();
-
-        } finally {
-            policyLock.readLock().unlock();
         }
     }
 
@@ -361,9 +434,20 @@ public class CedarPolicyEngine {
         }
 
         Matcher resourceEqMatch = RESOURCE_EQ.matcher(headClause);
+        Matcher resourceInSetMatch = RESOURCE_IN_SET.matcher(headClause);
         if (resourceEqMatch.find()) {
             pp.resourceType = resourceEqMatch.group(1);
             pp.resourceEntityId = resourceEqMatch.group(2);
+        } else if (resourceInSetMatch.find()) {
+            // resource in [ Type::"a", Type::"b", ... ] — allowed iff the request resource is one of the listed.
+            pp.resourceEntityIds = new ArrayList<>();
+            Matcher itemMatch = RESOURCE_ITEM.matcher(resourceInSetMatch.group(1));
+            while (itemMatch.find()) {
+                if (pp.resourceType == null) {
+                    pp.resourceType = itemMatch.group(1);   // homogeneous sets: type from the first entry
+                }
+                pp.resourceEntityIds.add(itemMatch.group(2));
+            }
         } else {
             Matcher resourceIsMatch = RESOURCE_IS.matcher(headClause);
             if (resourceIsMatch.find()) {
@@ -554,6 +638,7 @@ public class CedarPolicyEngine {
         Map<String, Object> principalAttrs = new HashMap<>();
         Map<String, Object> resourceAttrs = new HashMap<>();
         Map<String, Object> contextAttrs = new HashMap<>();
+        java.util.Set<String> principalGroups = new java.util.HashSet<>();
     }
 
     private EvalContext buildEvalContext(PolicyEvaluationRequest request) {
@@ -569,6 +654,20 @@ public class CedarPolicyEngine {
         putIfNotNull(ctx.principalAttrs, "version", request.getAgentVersion());
         putIfNotNull(ctx.principalAttrs, "approvalStatus", request.getAgentApprovalStatus());
         putIfNotNull(ctx.principalAttrs, "sessionId", request.getAgentSessionId());
+
+        // User (root) roles from the JWT — exposed so policies can do attribute-based access control on the
+        // human/NHI identity, e.g. permit(...) when { principal.roles.contains("finance") }. Space-joined so
+        // the substring-based contains/like operators work. (Groups, if the IdP emits them, arrive via
+        // customClaims, which are merged into the context below.)
+        ctx.principalAttrs.put("roles", joinValues(request.getAgentRoles()));
+        ctx.principalAttrs.put("realmRoles", joinValues(request.getRealmRoles()));
+        ctx.principalAttrs.put("clientRoles", joinValues(request.getClientRoles()));
+        // Group memberships (Keycloak groups, normalized) — the set backs `principal in AgentGroup::"..."`,
+        // and the space-joined attr backs `principal.groups.contains("...")` for attribute-style policies.
+        ctx.principalAttrs.put("groups", joinValues(request.getAgentGroups()));
+        if (request.getAgentGroups() != null) {
+            ctx.principalGroups.addAll(request.getAgentGroups());
+        }
 
         putIfNotNull(ctx.resourceAttrs, "name", request.getResourceName());
         putIfNotNull(ctx.resourceAttrs, "serverName", request.getServerName());
@@ -588,6 +687,21 @@ public class CedarPolicyEngine {
         putIfNotNull(ctx.contextAttrs, "resourceName", request.getResourceName());
         putIfNotNull(ctx.contextAttrs, "correlationId", request.getCorrelationId());
         ctx.contextAttrs.put("argumentsFlat", flattenArguments(request.getArguments()));
+
+        // Delegation lineage (act_chain) — exposed as flat context attributes so policies can gate on it,
+        // e.g. context.rootVerified == true, context.rootType == "human", context.actChainDepth <= 2.
+        java.util.List<java.util.Map<String, Object>> actChain = request.getActChain();
+        if (actChain != null && !actChain.isEmpty()) {
+            ctx.contextAttrs.put("actChainDepth", (long) actChain.size());
+            java.util.Map<String, Object> root = actChain.get(0);
+            java.util.Map<String, Object> actor = actChain.get(actChain.size() - 1);
+            if (root.get("type") != null) ctx.contextAttrs.put("rootType", String.valueOf(root.get("type")));
+            if (root.get("id") != null) ctx.contextAttrs.put("rootId", String.valueOf(root.get("id")));
+            ctx.contextAttrs.put("rootVerified", Boolean.TRUE.equals(root.get("verified")));
+            if (actor.get("type") != null) ctx.contextAttrs.put("actorType", String.valueOf(actor.get("type")));
+            if (actor.get("id") != null) ctx.contextAttrs.put("actorId", String.valueOf(actor.get("id")));
+            ctx.contextAttrs.put("actorVerified", Boolean.TRUE.equals(actor.get("verified")));
+        }
 
         if (request.getCustomAttributes() != null) {
             ctx.contextAttrs.putAll(request.getCustomAttributes());
@@ -611,6 +725,11 @@ public class CedarPolicyEngine {
         }
     }
 
+    /** Space-joins a list into one string for the substring-based contains/like operators; "" when empty. */
+    private static String joinValues(java.util.List<String> values) {
+        return (values == null || values.isEmpty()) ? "" : String.join(" ", values);
+    }
+
     private boolean matches(ParsedPolicy policy, EvalContext ctx) {
         if (policy.principalType != null && !policy.principalType.equalsIgnoreCase(ctx.principalType)) {
             return false;
@@ -631,6 +750,10 @@ public class CedarPolicyEngine {
             return false;
         }
         if (policy.resourceEntityId != null && !policy.resourceEntityId.equals(ctx.resourceId)) {
+            return false;
+        }
+        if (policy.resourceEntityIds != null && !policy.resourceEntityIds.isEmpty()
+                && policy.resourceEntityIds.stream().noneMatch(r -> r.equals(ctx.resourceId))) {
             return false;
         }
 
@@ -657,6 +780,8 @@ public class CedarPolicyEngine {
                 && policy.actionIds.stream().noneMatch(a -> a.equalsIgnoreCase(ctx.action))) return false;
         if (policy.resourceType != null && !policy.resourceType.equalsIgnoreCase(ctx.resourceType)) return false;
         if (policy.resourceEntityId != null && !policy.resourceEntityId.equals(ctx.resourceId)) return false;
+        if (policy.resourceEntityIds != null && !policy.resourceEntityIds.isEmpty()
+                && policy.resourceEntityIds.stream().noneMatch(r -> r.equals(ctx.resourceId))) return false;
         for (Condition cond : policy.whenConditions) {
             if (!evaluateCondition(cond, ctx)) return false;
         }
@@ -718,11 +843,92 @@ public class CedarPolicyEngine {
         return refs;
     }
 
+    /** A policy's principal scope, recovered from its Cedar head for the queryable read-model (never for eval). */
+    public record PolicyPrincipal(String kind, String id) {}
+
+    /**
+     * Recover the principal a policy scopes to, for the admin "policies for agent X" read-model. Mirrors the
+     * runtime principal parsing ({@link #PRINCIPAL_EQ} / {@link #PRINCIPAL_IN_GROUP} / {@link #PRINCIPAL_IS}):
+     * {@code principal == Agent::"x"} ⇒ (AGENT, x); {@code principal in AgentGroup::"g"} ⇒ (AGENT_GROUP, g);
+     * {@code principal is <Type>} ⇒ (AGENT_TYPE, Type); anything else — a bare/unconstrained principal such as
+     * a lineage guardrail — ⇒ (ANY, null), the same null-means-wildcard semantics {@link #matches} applies.
+     * Purely descriptive: the evaluator still decides applicability from {@code policyText}; this is never read
+     * during a decision, so it can never change one.
+     */
+    public PolicyPrincipal extractPrincipal(String policyText) {
+        if (policyText == null || policyText.isBlank()) return new PolicyPrincipal("ANY", null);
+        String clean = policyText.replaceAll("//[^\n]*", "").trim();
+        Matcher m = PRINCIPAL_EQ.matcher(clean);
+        if (m.find()) return new PolicyPrincipal("AGENT", m.group(1));
+        m = PRINCIPAL_IN_GROUP.matcher(clean);
+        if (m.find()) return new PolicyPrincipal("AGENT_GROUP", m.group(1));
+        m = PRINCIPAL_IS.matcher(clean);
+        if (m.find()) return new PolicyPrincipal("AGENT_TYPE", m.group(1));
+        return new PolicyPrincipal("ANY", null);
+    }
+
+    /** A single target a policy scopes to. {@code resource in [ … ]} yields one {@code PolicyResource} per item. */
+    public record PolicyResource(String kind, String id) {}
+
+    /**
+     * Recover <em>every</em> resource a policy targets — the resource-side mirror of {@link #extractPrincipal},
+     * for the CISO Blast-Radius read-model. Unlike a principal (always one), a policy can name many targets, so
+     * this returns a list, one entry per target:
+     * <ul>
+     *   <li>{@code resource == Tool::"x"} ⇒ [(TOOL, x)] — a single named target;</li>
+     *   <li>{@code resource in [Skill::"a", Tool::"b"]} ⇒ [(SKILL, a), (TOOL, b)] — many, types may be mixed;</li>
+     *   <li>{@code resource is <Type>} ⇒ [(&lt;TYPE&gt;, null)] — any resource of that type;</li>
+     *   <li>a bare, unconstrained {@code resource} ⇒ [(ANY, null)].</li>
+     * </ul>
+     * Kinds: TOOL | SKILL | PROMPT | RESOURCE | &lt;TYPE&gt; | ANY. Computed on demand (no persistence) and purely
+     * descriptive — never read during a decision, so it can never change one. Always returns at least one entry.
+     */
+    public List<PolicyResource> extractResources(String policyText) {
+        if (policyText == null || policyText.isBlank()) return List.of(new PolicyResource("ANY", null));
+        String clean = policyText.replaceAll("//[^\n]*", "").trim();
+
+        // resource == Tool::"x" — a single named target.
+        Matcher eq = RESOURCE_EQ.matcher(clean);
+        if (eq.find()) {
+            return List.of(new PolicyResource(eq.group(1).toUpperCase(), eq.group(2)));
+        }
+        // resource in [Tool::"a", Skill::"b", …] — many targets, types may be mixed.
+        Matcher inSet = RESOURCE_IN_SET.matcher(clean);
+        if (inSet.find()) {
+            List<PolicyResource> targets = new ArrayList<>();
+            Matcher item = RESOURCE_ITEM.matcher(inSet.group(1));
+            while (item.find()) {
+                targets.add(new PolicyResource(item.group(1).toUpperCase(), item.group(2)));
+            }
+            if (!targets.isEmpty()) return List.copyOf(targets);
+        }
+        // resource is <Type> — any resource of that type.
+        Matcher is = RESOURCE_IS.matcher(clean);
+        if (is.find()) {
+            return List.of(new PolicyResource(is.group(1).toUpperCase(), null));
+        }
+        // bare, unconstrained resource — any target.
+        return List.of(new PolicyResource("ANY", null));
+    }
+
+    /**
+     * True when the policy carries a {@code when {...}} or {@code unless {...}} clause — meaning its grant/block
+     * is <em>conditional</em> on request context (verification, roles, attributes) rather than unconditional.
+     * Used by the CISO Blast-Radius view to flag such edges as CONDITIONAL rather than definitive reach.
+     */
+    public boolean hasConditions(String policyText) {
+        if (policyText == null || policyText.isBlank()) return false;
+        // Strip line comments first — same as the evaluator (parsePolicy/extractPrincipal) — so a commented-out
+        // "// when { ... }" is not mistaken for a real condition.
+        String clean = policyText.replaceAll("//[^\n]*", "");
+        return WHEN_BLOCK.matcher(clean).find() || UNLESS_BLOCK.matcher(clean).find();
+    }
+
     private boolean evaluateCondition(Condition cond, EvalContext ctx) {
 
         if (cond.operator == Condition.Operator.IN_GROUP) {
-            Object status = ctx.principalAttrs.get("approvalStatus");
-            return status != null && cond.field.equals(String.valueOf(status));
+            // principal in AgentGroup::"<name>" — true iff the caller is a member of that group.
+            return ctx.principalGroups.contains(cond.field);
         }
 
         if (cond.operator == Condition.Operator.IN_SERVER) {

@@ -5,12 +5,14 @@ import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.AgentCapabilityProfi
 import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.AgentCapabilityProfileRule;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.AgentCapabilityProfileAssignmentRepository;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.AgentCapabilityProfileRepository;
+import com.ws.wsAgenticSecurityGateway.capabilityRegistry.event.CapabilityRegistryChangedEvent;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor.CapabilityType;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.service.CapabilityRegistryService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,35 +42,44 @@ public class AgentCapabilityFilterService {
         this.agentRegistryService = agentRegistryService;
     }
 
+    // @Order(100) runs this AFTER AgentSourceReconciler (@Order(10)) has registered downstream A2A skills into
+    // the capability registry, so SKILL-exposure profiles resolve against a populated registry rather than
+    // warming empty and fail-closing every A2A skill hop. MCP tools register at @PostConstruct (earlier phase),
+    // so TOOL profiles are already safe regardless of this ordering.
     @EventListener(ApplicationReadyEvent.class)
+    @Order(100)
     @Transactional(readOnly = true)
     public void warmCache() {
- log.info("CAPABILITY FILTER — Warming cache from database");
+        int n = reloadAllAgents();
+        log.info("CAPABILITY FILTER — warmed capability filters for {} agent(s)", n);
+    }
 
+    /**
+     * The allow-sets resolve against the LIVE capability registry, so they go stale the moment that registry
+     * changes — a server connecting/reconnecting (its tools (re)appear) or disconnecting/disabling (its tools
+     * vanish). Recompute on the registry-changed event so the cache tracks reality. Without this the cache keeps
+     * whatever it held at warm time: EMPTY if the MCP server was down at startup and connected later, or stale
+     * after a disable/re-enable — silently locking agents out of tools they are actually granted.
+     */
+    @EventListener(CapabilityRegistryChangedEvent.class)
+    @Transactional(readOnly = true)
+    public void onCapabilityRegistryChanged(CapabilityRegistryChangedEvent event) {
+        int n = reloadAllAgents();
+        log.debug("Recomputed capability filters for {} agent(s) after registry change", n);
+    }
+
+    /** Rebuild every agent's allow-sets from its assignments against the current registry. Returns agent count. */
+    private int reloadAllAgents() {
         List<AgentCapabilityProfileAssignment> allAssignments = assignmentRepository.findAll();
-
         Map<UUID, List<AgentCapabilityProfileAssignment>> byAgent = allAssignments.stream()
                 .collect(Collectors.groupingBy(AgentCapabilityProfileAssignment::getAgentId));
-
         for (Map.Entry<UUID, List<AgentCapabilityProfileAssignment>> entry : byAgent.entrySet()) {
-            UUID agentId = entry.getKey();
             List<UUID> profileIds = entry.getValue().stream()
                     .map(AgentCapabilityProfileAssignment::getProfileId)
                     .collect(Collectors.toList());
-            Map<String, Set<String>> allowed = computeAllowedCapabilities(profileIds);
-            agentAllowedCapabilities.put(agentId, allowed);
+            agentAllowedCapabilities.put(entry.getKey(), computeAllowedCapabilities(profileIds));
         }
-
-        log.info("Loaded capability filters for {} agent(s)", byAgent.size());
-        for (Map.Entry<UUID, Map<String, Set<String>>> entry : agentAllowedCapabilities.entrySet()) {
-            Map<String, Set<String>> byType = entry.getValue();
-            int tools = byType.getOrDefault("TOOL", Set.of()).size();
-            int prompts = byType.getOrDefault("PROMPT", Set.of()).size();
-            int resources = byType.getOrDefault("RESOURCE", Set.of()).size();
-            log.info("- Agent {}: {} tools, {} prompts, {} resources",
-                    entry.getKey(), tools, prompts, resources);
-        }
-
+        return byAgent.size();
     }
 
     public boolean isCapabilityAllowed(UUID agentId, String publicName, String type) {
@@ -131,14 +142,11 @@ public class AgentCapabilityFilterService {
         return profileRepository.findAll();
     }
 
-    public List<AgentCapabilityProfile> getTemplateProfiles() {
-        return profileRepository.findByIsTemplateTrue();
-    }
-
     private Map<String, Set<String>> computeAllowedCapabilities(List<UUID> profileIds) {
         Set<String> allowedTools = new HashSet<>();
         Set<String> allowedPrompts = new HashSet<>();
         Set<String> allowedResources = new HashSet<>();
+        Set<String> allowedSkills = new HashSet<>();
 
         for (UUID profileId : profileIds) {
             Optional<AgentCapabilityProfile> optProfile = profileRepository.findById(profileId);
@@ -195,6 +203,7 @@ public class AgentCapabilityFilterService {
                         case TOOL -> allowedTools.add(publicName);
                         case PROMPT -> allowedPrompts.add(publicName);
                         case RESOURCE -> allowedResources.add(publicName);
+                        case SKILL -> allowedSkills.add(publicName);
                     }
                 }
             }
@@ -204,6 +213,7 @@ public class AgentCapabilityFilterService {
         result.put("TOOL", Collections.unmodifiableSet(allowedTools));
         result.put("PROMPT", Collections.unmodifiableSet(allowedPrompts));
         result.put("RESOURCE", Collections.unmodifiableSet(allowedResources));
+        result.put("SKILL", Collections.unmodifiableSet(allowedSkills));
         return result;
     }
 

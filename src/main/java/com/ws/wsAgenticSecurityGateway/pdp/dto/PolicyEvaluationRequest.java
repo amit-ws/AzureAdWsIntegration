@@ -24,9 +24,13 @@ public class PolicyEvaluationRequest {
     private List<String> agentRoles;
     private List<String> realmRoles;
     private List<String> clientRoles;
+    private List<String> agentGroups;
     private String userIdentity;
     private String tokenType;
     private Map<String, Object> jwtCustomClaims;
+
+    /** Delegation lineage (root human/NHI -> agent actor), in the act_chain claim form. */
+    private List<Map<String, Object>> actChain;
 
     private String action;
 

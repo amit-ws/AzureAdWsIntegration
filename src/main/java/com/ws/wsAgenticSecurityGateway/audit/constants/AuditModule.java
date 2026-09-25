@@ -1,13 +1,15 @@
 package com.ws.wsAgenticSecurityGateway.audit.constants;
 
 public enum AuditModule {
-    WS_SERVER,
+    MCP_INBOUND,
 
-    WS_CLIENT,
+    MCP_OUTBOUND,
 
     CAPABILITY_REGISTRY,
 
     ORCHESTRATION_LAYER,
+
+    STS,
 
     PDP,
 

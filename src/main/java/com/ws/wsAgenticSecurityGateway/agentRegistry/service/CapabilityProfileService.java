@@ -7,7 +7,7 @@ import com.ws.wsAgenticSecurityGateway.agentRegistry.entity.GatewayAgentEntity;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.AgentCapabilityProfileAssignmentRepository;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.AgentCapabilityProfileRepository;
 import com.ws.wsAgenticSecurityGateway.agentRegistry.repository.GatewayAgentRepository;
-import com.ws.wsAgenticSecurityGateway.audit.service.McpAuditService;
+import com.ws.wsAgenticSecurityGateway.audit.service.GatewayAuditService;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.event.CapabilityProfileChangedEvent;
 import com.ws.wsAgenticSecurityGateway.common.context.TenantContext;
 import com.ws.wsAgenticSecurityGateway.capabilityRegistry.model.CapabilityDescriptor;
@@ -29,7 +29,7 @@ public class CapabilityProfileService {
     private final AgentCapabilityFilterService filterService;
     private final CapabilityRegistryService registryService;
     private final GatewayAgentRepository agentRepository;
-    private final McpAuditService auditService;
+    private final GatewayAuditService auditService;
     private final ApplicationEventPublisher eventPublisher;
 
     public CapabilityProfileService(AgentCapabilityProfileRepository profileRepository,
@@ -37,7 +37,7 @@ public class CapabilityProfileService {
                                      AgentCapabilityFilterService filterService,
                                      CapabilityRegistryService registryService,
                                      GatewayAgentRepository agentRepository,
-                                     McpAuditService auditService,
+                                     GatewayAuditService auditService,
                                      ApplicationEventPublisher eventPublisher) {
         this.profileRepository = profileRepository;
         this.assignmentRepository = assignmentRepository;
@@ -209,14 +209,11 @@ public class CapabilityProfileService {
                 "PROFILE_UNASSIGNED", profileName, profileId, List.of(agentName)));
     }
 
-    public boolean isAssigned(UUID profileId, UUID agentId) {
-        return assignmentRepository.findByAgentIdAndProfileId(agentId, profileId).isPresent();
-    }
-
     public Map<String, Object> computeProfilePreview(AgentCapabilityProfile profile) {
         Set<String> allowedTools = new HashSet<>();
         Set<String> allowedPrompts = new HashSet<>();
         Set<String> allowedResources = new HashSet<>();
+        Set<String> allowedSkills = new HashSet<>();
 
         for (AgentCapabilityProfileRule rule : profile.getRules()) {
             List<CapabilityDescriptor> serverCaps = registryService.getCapabilitiesByServer(
@@ -258,6 +255,7 @@ public class CapabilityProfileService {
                         case TOOL -> allowedTools.add(name);
                         case PROMPT -> allowedPrompts.add(name);
                         case RESOURCE -> allowedResources.add(name);
+                        case SKILL -> allowedSkills.add(name);
                     }
                 });
             }
@@ -272,6 +270,7 @@ public class CapabilityProfileService {
         allAllowed.addAll(allowedTools);
         allAllowed.addAll(allowedPrompts);
         allAllowed.addAll(allowedResources);
+        allAllowed.addAll(allowedSkills);
 
         Map<String, Map<String, Object>> serverBreakdown = new LinkedHashMap<>();
         for (Map.Entry<String, Map<String, List<CapabilityDescriptor>>> entry : byServer.entrySet()) {
@@ -280,14 +279,17 @@ public class CapabilityProfileService {
             List<CapabilityDescriptor> sTools = byType.getOrDefault("TOOL", List.of());
             List<CapabilityDescriptor> sPrompts = byType.getOrDefault("PROMPT", List.of());
             List<CapabilityDescriptor> sResources = byType.getOrDefault("RESOURCE", List.of());
+            List<CapabilityDescriptor> sSkills = byType.getOrDefault("SKILL", List.of());
 
             Map<String, Object> bd = new LinkedHashMap<>();
             bd.put("totalTools", sTools.size());
             bd.put("totalPrompts", sPrompts.size());
             bd.put("totalResources", sResources.size());
+            bd.put("totalSkills", sSkills.size());
             bd.put("allowedTools", sTools.stream().filter(d -> allAllowed.contains(d.getPublicName())).count());
             bd.put("allowedPrompts", sPrompts.stream().filter(d -> allAllowed.contains(d.getPublicName())).count());
             bd.put("allowedResources", sResources.stream().filter(d -> allAllowed.contains(d.getPublicName())).count());
+            bd.put("allowedSkills", sSkills.stream().filter(d -> allAllowed.contains(d.getPublicName())).count());
             serverBreakdown.put(server, bd);
         }
 
@@ -297,6 +299,7 @@ public class CapabilityProfileService {
         preview.put("toolCount", allowedTools.size());
         preview.put("promptCount", allowedPrompts.size());
         preview.put("resourceCount", allowedResources.size());
+        preview.put("skillCount", allowedSkills.size());
         return preview;
     }
 
@@ -304,6 +307,7 @@ public class CapabilityProfileService {
         Set<String> allowedTools = filterService.getAllowedCapabilities(agentId, "TOOL");
         Set<String> allowedPrompts = filterService.getAllowedCapabilities(agentId, "PROMPT");
         Set<String> allowedResources = filterService.getAllowedCapabilities(agentId, "RESOURCE");
+        Set<String> allowedSkills = filterService.getAllowedCapabilities(agentId, "SKILL");
 
         List<AgentCapabilityProfileAssignment> assignments = assignmentRepository.findByAgentId(agentId);
         List<Map<String, String>> assignedProfiles = assignments.stream()
@@ -327,6 +331,7 @@ public class CapabilityProfileService {
         allAllowed.addAll(allowedTools);
         allAllowed.addAll(allowedPrompts);
         allAllowed.addAll(allowedResources);
+        allAllowed.addAll(allowedSkills);
 
         Map<String, Map<String, Object>> serverBreakdown = new LinkedHashMap<>();
         for (Map.Entry<String, Map<String, List<CapabilityDescriptor>>> entry : byServer.entrySet()) {
@@ -335,14 +340,17 @@ public class CapabilityProfileService {
             List<CapabilityDescriptor> sTools = byType.getOrDefault("TOOL", List.of());
             List<CapabilityDescriptor> sPrompts = byType.getOrDefault("PROMPT", List.of());
             List<CapabilityDescriptor> sResources = byType.getOrDefault("RESOURCE", List.of());
+            List<CapabilityDescriptor> sSkills = byType.getOrDefault("SKILL", List.of());
 
             Map<String, Object> bd = new LinkedHashMap<>();
             bd.put("totalTools", sTools.size());
             bd.put("totalPrompts", sPrompts.size());
             bd.put("totalResources", sResources.size());
+            bd.put("totalSkills", sSkills.size());
             bd.put("allowedTools", sTools.stream().filter(d -> allAllowed.contains(d.getPublicName())).count());
             bd.put("allowedPrompts", sPrompts.stream().filter(d -> allAllowed.contains(d.getPublicName())).count());
             bd.put("allowedResources", sResources.stream().filter(d -> allAllowed.contains(d.getPublicName())).count());
+            bd.put("allowedSkills", sSkills.stream().filter(d -> allAllowed.contains(d.getPublicName())).count());
             serverBreakdown.put(server, bd);
         }
 
@@ -353,7 +361,8 @@ public class CapabilityProfileService {
         result.put("summary", Map.of(
                 "allowedTools", allowedTools.size(),
                 "allowedPrompts", allowedPrompts.size(),
-                "allowedResources", allowedResources.size()));
+                "allowedResources", allowedResources.size(),
+                "allowedSkills", allowedSkills.size()));
         return result;
     }
 
@@ -375,9 +384,13 @@ public class CapabilityProfileService {
             server.put("tools", types.getOrDefault("TOOL", List.of()));
             server.put("prompts", types.getOrDefault("PROMPT", List.of()));
             server.put("resources", types.getOrDefault("RESOURCE", List.of()));
+            // Skills are a first-class capability kind (A2A agents expose them) — surface them to the profile
+            // builder alongside tools/prompts/resources so an admin can grant one agent another agent's skill.
+            server.put("skills", types.getOrDefault("SKILL", List.of()));
             server.put("toolCount", types.getOrDefault("TOOL", List.of()).size());
             server.put("promptCount", types.getOrDefault("PROMPT", List.of()).size());
             server.put("resourceCount", types.getOrDefault("RESOURCE", List.of()).size());
+            server.put("skillCount", types.getOrDefault("SKILL", List.of()).size());
             servers.add(server);
         }
         return servers;
@@ -450,11 +463,62 @@ public class CapabilityProfileService {
 
         return AgentCapabilityProfileRule.builder()
                 .profile(profile)
+                .wsTenantName(profile.getWsTenantName())
                 .serverConfigName(serverConfigName)
-                .capabilityType(capabilityType)
+                .capabilityType(normalizeRuleType(serverConfigName, mode, capabilityType, capabilityNames))
                 .mode(mode)
                 .capabilityNames(capabilityNames)
                 .build();
+    }
+
+    /**
+     * Reconcile a rule's declared {@code capabilityType} against the actual kinds of the capabilities it names,
+     * so the persisted rule can never carry a type-filter that contradicts the registry. This is the single
+     * authoritative choke point: every rule — whether authored via the visual builder, the LLM profile
+     * assistant, or an external provisioner — passes through here, so a capability's real kind (a fact in the
+     * capability registry) always wins over whatever type the caller supplied.
+     *
+     * <p>The motivating bug: an A2A agent's <em>skill</em> assigned to another agent was written as
+     * {@code TOOL}. Because the enforcement filter narrows a server's capabilities to the rule's type before
+     * matching names, a {@code SKILL} named under a {@code TOOL} rule was filtered out and silently un-granted
+     * (invisible in the UI). Re-deriving the type here makes the grant land correctly and display as a skill.
+     *
+     * <p>Scope: only an {@code INCLUDE_ONLY} grant of specific, named capabilities is re-derived — that is the
+     * "give agent X capability Y" case, where each named capability uniquely identifies a registry entry whose
+     * kind is authoritative. {@code ALL} rules and unnamed {@code INCLUDE_ALL} rules already behave correctly
+     * and are left untouched; {@code EXCLUDE} ("all except …") is intentionally left as authored to avoid
+     * silently broadening or narrowing an exclusion. If none of the named capabilities resolve (the server or
+     * agent is not currently registered) the declared type is kept — we do not guess about what we cannot see.
+     */
+    String normalizeRuleType(String serverConfigName, String mode, String declaredType, String capabilityNames) {
+        if (declaredType == null || "ALL".equals(declaredType)) return declaredType;
+        if (!"INCLUDE_ONLY".equals(mode)) return declaredType;
+
+        Set<String> names = parseNames(capabilityNames);
+        if (names.isEmpty()) return declaredType;
+
+        Set<String> actualTypes = registryService.getCapabilitiesByServer(serverConfigName).stream()
+                .filter(d -> names.contains(d.getOriginalName()))
+                .map(d -> d.getType().name())
+                .collect(Collectors.toSet());
+
+        if (actualTypes.isEmpty()) {
+            // Server/agent not registered right now — cannot validate the named capabilities; keep the caller's type.
+            return declaredType;
+        }
+        if (actualTypes.size() == 1) {
+            String actual = actualTypes.iterator().next();
+            if (!actual.equals(declaredType)) {
+                log.warn("Capability profile rule for '{}' declared type {} but its named capabilities {} are {} — "
+                        + "correcting to {} so the grant is not filtered out.",
+                        serverConfigName, declaredType, names, actual, actual);
+            }
+            return actual;
+        }
+        // Named capabilities span multiple kinds — no single type-filter fits; widen to ALL (names still gate).
+        log.warn("Capability profile rule for '{}' names capabilities of multiple kinds {} — widening type filter "
+                + "to ALL so all named capabilities are granted.", serverConfigName, actualTypes);
+        return "ALL";
     }
 
     Set<String> parseNames(String names) {
