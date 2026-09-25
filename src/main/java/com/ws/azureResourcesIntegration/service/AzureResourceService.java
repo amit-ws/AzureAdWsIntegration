@@ -965,7 +965,7 @@ public class AzureResourceService {
                     .forObjectId("da41ec2f-8b1b-419d-9c8b-00b9adf487d4")
                     .withRoleDefinition("/subscriptions/4769af8e-ca3d-448d-bd1a-80e03ed94158/providers/Microsoft.Authorization/roleDefinitions/b24988ac-6180-42a0-ab88-20f7382dd24c")
                     .withScope("/subscriptions/4769af8e-ca3d-448d-bd1a-80e03ed94158")
-                    .withDescription("Owner access to the JIT ACESS app on Subs")
+                    .withDescription("Owner access to the JIT ACCESS app on Subs")
                     .create();
             log.info("Role Assignment created....");
             if (createdRoleAssignment == null) {

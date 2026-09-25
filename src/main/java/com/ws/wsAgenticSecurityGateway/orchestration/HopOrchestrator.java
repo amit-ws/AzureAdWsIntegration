@@ -331,13 +331,20 @@ public class HopOrchestrator {
             PolicyEvaluationResult pdpResult = cedarPolicyEngine.evaluate(
                     auditService.resolveTenant(sessionId), pdpRequest);
 
-            auditService.auditPdpDecisionRendered(
-                    correlationId, sessionId, pdpRequest.getAgentName(),
-                    publicName, "toolCall", pdpResult.getDecision(),
-                    pdpResult.decidedBy(), pdpResult.getReason(),
-                    serverName, pdpResult, pdpResult.getEvaluationDurationMs(),
-                    requestId, clientName,
-                    LocalDateTime.now(), ++seq);
+            // Audit the decision, but NEVER let an audit-write failure bypass enforcement — the deny check
+            // below must run regardless of whether the audit row persisted.
+            try {
+                auditService.auditPdpDecisionRendered(
+                        correlationId, sessionId, pdpRequest.getAgentName(),
+                        publicName, "toolCall", pdpResult.getDecision(),
+                        pdpResult.decidedBy(), pdpResult.getReason(),
+                        serverName, pdpResult, pdpResult.getEvaluationDurationMs(),
+                        requestId, clientName,
+                        LocalDateTime.now(), ++seq);
+            } catch (Exception ae) {
+                log.error("[{}] PDP decision audit write failed — continuing to enforce the decision: {}",
+                        correlationId, ae.getMessage());
+            }
 
             if (pdpResult.isDenied()) {
                 log.warn("[{}] PDP DENIED: agent='{}', tool='{}', reason='{}'",
@@ -352,7 +359,11 @@ public class HopOrchestrator {
                     pdpResult.getEvaluationDurationMs());
 
         } catch (Exception e) {
-            log.error("[{}] PDP evaluation error (fail-open): {}", correlationId, e.getMessage());
+            // Fail-CLOSED: any error building the request or evaluating policy denies the call. A fault in the
+            // gate must never fall through into execution (this previously swallowed the error and continued).
+            log.error("[{}] PDP evaluation error — failing CLOSED (tool DENIED): {}", correlationId, e.getMessage(), e);
+            return buildErrorResult(GatewayErrorCode.PDP_DENIED,
+                    publicName, serverName, "Policy evaluation error — request denied");
         }
 
         hop.setProtocol(descriptor.getProtocol());
@@ -609,13 +620,20 @@ public class HopOrchestrator {
             PolicyEvaluationResult pdpResult = cedarPolicyEngine.evaluate(
                     auditService.resolveTenant(sessionId), pdpRequest);
 
-            auditService.auditPdpDecisionRendered(
-                    correlationId, sessionId, pdpRequest.getAgentName(),
-                    publicName, "skillInvocation", pdpResult.getDecision(),
-                    pdpResult.decidedBy(), pdpResult.getReason(),
-                    serverName, pdpResult, pdpResult.getEvaluationDurationMs(),
-                    requestId, clientName,
-                    LocalDateTime.now(), ++seq);
+            // Audit the decision, but NEVER let an audit-write failure bypass enforcement — the deny check
+            // below must run regardless of whether the audit row persisted.
+            try {
+                auditService.auditPdpDecisionRendered(
+                        correlationId, sessionId, pdpRequest.getAgentName(),
+                        publicName, "skillInvocation", pdpResult.getDecision(),
+                        pdpResult.decidedBy(), pdpResult.getReason(),
+                        serverName, pdpResult, pdpResult.getEvaluationDurationMs(),
+                        requestId, clientName,
+                        LocalDateTime.now(), ++seq);
+            } catch (Exception ae) {
+                log.error("[{}] PDP decision audit write failed — continuing to enforce the decision: {}",
+                        correlationId, ae.getMessage());
+            }
 
             if (pdpResult.isDenied()) {
                 log.warn("[{}] PDP DENIED: agent='{}', skill='{}', reason='{}'",
@@ -630,7 +648,11 @@ public class HopOrchestrator {
                     pdpResult.getEvaluationDurationMs());
 
         } catch (Exception e) {
-            log.error("[{}] PDP evaluation error (fail-open): {}", correlationId, e.getMessage());
+            // Fail-CLOSED: any error building the request or evaluating policy denies the call. A fault in the
+            // gate must never fall through into execution (this previously swallowed the error and continued).
+            log.error("[{}] PDP evaluation error — failing CLOSED (skill DENIED): {}", correlationId, e.getMessage(), e);
+            return buildSkillError(GatewayErrorCode.PDP_DENIED,
+                    publicName, serverName, "Policy evaluation error — request denied");
         }
 
         hop.setProtocol(descriptor.getProtocol());
@@ -909,7 +931,10 @@ public class HopOrchestrator {
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
-            log.error("[{}] PDP evaluation error (fail-open): {}", correlationId, e.getMessage());
+            // Fail-CLOSED: a fault in the gate denies the call, never falls through into execution.
+            log.error("[{}] PDP evaluation error — failing CLOSED (DENIED): {}", correlationId, e.getMessage(), e);
+            throw new RuntimeException(String.format("[%d] Policy evaluation error — request denied",
+                    GatewayErrorCode.PDP_DENIED.getCode()));
         }
 
         hop.setProtocol(descriptor.getProtocol());
@@ -1168,7 +1193,10 @@ public class HopOrchestrator {
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
-            log.error("[{}] PDP evaluation error (fail-open): {}", correlationId, e.getMessage());
+            // Fail-CLOSED: a fault in the gate denies the call, never falls through into execution.
+            log.error("[{}] PDP evaluation error — failing CLOSED (DENIED): {}", correlationId, e.getMessage(), e);
+            throw new RuntimeException(String.format("[%d] Policy evaluation error — request denied",
+                    GatewayErrorCode.PDP_DENIED.getCode()));
         }
 
         hop.setProtocol(descriptor.getProtocol());

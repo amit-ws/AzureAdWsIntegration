@@ -42,7 +42,7 @@ import static org.mockito.Mockito.when;
 
 /**
  * Characterization tests for the GOVERNED request flow — the safety net for the structural refactor
- * (see {@code docs/structural-refactor-plan.md}).
+ * (see {@code docs/others/structural-refactor-plan.md}).
  *
  * <p>These pin behaviour that later refactor bands are most likely to disturb and that
  * {@code ToolCallOrchestratorCharacterizationTest} does not already cover:

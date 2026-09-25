@@ -1,7 +1,7 @@
 # Agentic Auth Gateway — Build Plan
 
 A refactor of the existing MCP gateway into the **Agentic Auth Gateway**.
-PRD: `../../Agentic-Gateway-PRD.md`
+PRD: `../../../Agentic-Gateway-PRD.md`
 
 ---
 
